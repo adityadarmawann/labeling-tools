@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Pilih dataset{% endblock %}
+
+{% macro dslist(rows) -%}
+<div class="dslist">
+  {%- for r in rows %}
+  <a class="ds" href="#" onclick="setsrc({{ r.path | tojson }});return false">
+    <span class="n">{{ r.nama }}</span>
+    <span class="c">{% if r.lebih %}≥{% endif %}{{ r.jumlah }} gambar</span>
+  </a>
+  {%- endfor %}
+</div>
+{%- endmacro %}
+
+{% block body %}
+<header>
+  <div class="top"><h1>Periksa anotasi</h1>{% include "_header.html" %}</div>
+  <div style="height:12px"></div>
+</header>
+<main>
+<div class="pick">
+  <h2>Pilih dataset</h2>
+  <p class="sub">Folder berisi gambar beserta anotasi <span class="mono">.json</span>,
+    atau dataset YOLO dengan subfolder <span class="mono">images</span> dan
+    <span class="mono">labels</span>.</p>
+  {% if error %}<p class="bad" style="text-align:center">{{ error }}</p>{% endif %}
+
+  {% if datasets_root %}
+  <div class="panel">
+    <h3>Dataset tersedia</h3>
+    {% if datasets %}{{ dslist(datasets) }}
+    {% else %}
+    <p class="sub" style="text-align:left;margin:0">Belum ada subfolder berisi gambar di
+      <span class="mono">{{ datasets_root }}</span>.</p>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if unggahan %}
+  <div class="panel"><h3>Hasil unggahanmu</h3>{{ dslist(unggahan) }}</div>
+  {% endif %}
+
+  <div class="panel">
+    <h3>Unggah dari laptop</h3>
+    <label for="dsname">Nama dataset</label>
+    <input id="dsname" type="text" placeholder="mis. sponge-batch-3">
+    <div class="drop" id="drop" style="margin-top:12px">
+      Tarik gambar ke sini, atau klik untuk memilih<br>
+      <span style="font-size:11.5px;color:var(--ink-faint)">
+        gambar dan berkas .json / .txt · maks {{ max_upload_mb }} MB per berkas</span>
+    </div>
+    <input id="files" type="file" multiple hidden
+           accept=".jpg,.jpeg,.png,.bmp,.webp,.tif,.tiff,.json,.txt">
+    <div class="prog" id="prog"><i id="fill"></i></div>
+    <p class="upnote" id="upnote"></p>
+  </div>
+
+  <div class="panel">
+    <h3>Path folder di server</h3>
+    <div class="row">
+      <div style="flex:1">
+        <input id="pathbox" type="text"
+               placeholder="/home/paul/computer-vision/datasets/nama-folder">
+      </div>
+      <button class="cta" onclick="setsrcBox()">Buka</button>
+    </div>
+  </div>
+
+  {% if local %}
+  <div class="panel">
+    <h3>Dialog desktop</h3>
+    <button class="cta" style="width:auto;margin-top:0;padding:9px 18px;font-size:13px"
+            onclick="pickdir()">Buka penjelajah berkas</button>
+    <p class="sub" style="text-align:left;margin:10px 0 0">Hanya muncul saat kamu
+      membuka dari mesin server sendiri, karena dialognya tampil di layar server.</p>
+  </div>
+  {% endif %}
+</div>
+</main>
+{% endblock %}

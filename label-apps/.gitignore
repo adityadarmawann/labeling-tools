@@ -1,0 +1,31 @@
+# Kredensial — jangan pernah masuk repo
+users.json
+.env
+
+# Virtualenv (312 MB, dibuat ulang dari requirements.txt)
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Data: dataset dan unggahan tidak ikut ke repo
+_unggahan/
+unggahan/
+labelapp-unggahan/
+*.jpg
+*.jpeg
+*.png
+*.bmp
+*.webp
+*.tif
+*.tiff
+
+# Editor & OS
+.vscode/
+.idea/
+.DS_Store
+*.swp

@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Periksa anotasi{% endblock %}
+
+{% macro chip(nama, val, jumlah) -%}
+{%- set q = '?f=' ~ val ~ ('&c=' ~ (kelas | urlquote) if kelas else '') -%}
+<a class="chip"{% if flt == val %} data-on{% endif %} href="{{ q }}">{{ nama }}
+  <b>{{ jumlah }}</b></a>
+{%- endmacro %}
+
+{% block body %}
+<header>
+  <div class="top">
+    <h1>Periksa anotasi</h1>
+    <span class="path mono">{{ sess.src }}</span>
+    {% include "_header.html" %}
+  </div>
+
+  {# Rekaman kesehatan dataset: satu tick = satu gambar #}
+  <div class="strip">
+    {%- for s in strip %}<i class="{{ s }}"></i>{% endfor -%}
+  </div>
+
+  <div class="bar">
+    {{ chip("Semua", "all", total) }}
+    {{ chip("Perlu dicek", "issue", n_warn) }}
+    {{ chip("Belum dilabeli", "unlab", n_stop) }}
+    <span class="spacer"></span>
+    <span class="path mono">{{ n_obj }} objek</span>
+    <button class="chip" onclick="rescan()">Pindai ulang</button>
+    <a class="chip" href="/pilih">Ganti dataset</a>
+  </div>
+
+  <div class="bar" style="padding-top:0">
+    <a class="chip"{% if not kelas %} data-on{% endif %} href="?f={{ flt }}">semua kelas</a>
+    {%- for k, n in kelas_hitung.items() %}
+    <a class="chip"{% if kelas == k %} data-on{% endif %}
+       href="?f={{ flt }}&c={{ k | urlquote }}">{{ k }} <b>{{ n }}</b></a>
+    {%- endfor %}
+  </div>
+</header>
+
+<main>
+<div class="grid">
+  {%- for it in items %}
+  {%- set p = it | imgpath %}
+  {%- set sev = severity(it) %}
+  <div class="card" data-s="{{ sev }}"><span class="rail"></span>
+    <a href="/view?path={{ p }}"><img loading="lazy" src="/thumb?path={{ p }}&s=320"></a>
+    <div class="meta">
+      <div class="fn mono">{{ it.img.name }}</div>
+      <div class="labs">
+        {%- for l in it.shapes | map(attribute='label') | map('string') | unique | sort %}
+        {%- if loop.index <= 4 %}<span class="lab">{{ l }}</span>{% endif %}
+        {%- endfor %}
+      </div>
+      {%- if it.issues %}
+      <div class="iss{% if sev == 'stop' %} stop{% endif %}">{{ it.issues | join(' · ') }}</div>
+      {%- endif %}
+    </div>
+    <div class="acts">
+      <a class="btn" href="/view?path={{ p }}">Lihat</a>
+      {%- if local %}
+      <button class="btn pri" onclick="openIn('{{ p }}',this)">Perbaiki</button>
+      {%- endif %}
+      {%- if sev == 'bg' %}
+      <button class="btn" onclick="markbg('{{ p }}',false)">Batal latar</button>
+      {%- elif not it.shapes %}
+      <button class="btn" onclick="markbg('{{ p }}',true)">Latar</button>
+      {%- endif %}
+    </div>
+  </div>
+  {%- else %}
+  <div class="empty" style="grid-column:1/-1">
+    <strong>Tidak ada yang cocok</strong>
+    <p>Ubah saringan di atas, atau pindai ulang setelah menambah anotasi.</p>
+  </div>
+  {%- endfor %}
+</div>
+</main>
+{% endblock %}

@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Masuk{% endblock %}
+{% block body %}
+<main>
+  <form class="card-form" method="POST" action="/login">
+    <h2>Periksa anotasi</h2>
+    <p class="sub">Masuk dengan akun tim.</p>
+
+    <label for="u">Nama akun</label>
+    <input id="u" name="user" type="text" autocomplete="username" autofocus
+           value="{{ akun }}">
+
+    <label for="p">Password</label>
+    <input id="p" name="pw" type="password" autocomplete="current-password">
+
+    <button class="cta" type="submit">Masuk</button>
+    {% if error %}<p class="bad">{{ error }}</p>{% endif %}
+  </form>
+</main>
+{% endblock %}

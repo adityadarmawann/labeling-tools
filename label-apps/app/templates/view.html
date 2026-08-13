@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}{{ it.img.name }}{% endblock %}
+
+{% block body %}
+{%- set p = it | imgpath %}
+<header>
+  <div class="top">
+    <h1>{{ it.img.name }}</h1>
+    <span class="path mono">{{ it.W }}×{{ it.H }} px</span>
+    {% include "_header.html" %}
+  </div>
+  <div class="bar">
+    <a class="chip" href="/">Kembali</a>
+    {%- if local %}
+    <button class="chip" onclick="openIn('{{ p }}',this)">Perbaiki di AnyLabeling</button>
+    {%- endif %}
+    {%- if sev == 'bg' %}
+    <button class="chip" onclick="markbg('{{ p }}',false)">Batal tandai latar</button>
+    {%- elif not it.shapes %}
+    <button class="chip" onclick="markbg('{{ p }}',true)">Tandai sebagai latar</button>
+    {%- endif %}
+    <span class="spacer"></span>
+    {%- if prev_it %}
+    <a class="chip" href="/view?path={{ prev_it | imgpath }}">&larr; Sebelumnya</a>
+    {%- else %}<span class="chip" style="opacity:.35">&larr; Sebelumnya</span>{% endif %}
+    {%- if next_it %}
+    <a class="chip" href="/view?path={{ next_it | imgpath }}">Berikutnya &rarr;</a>
+    {%- else %}<span class="chip" style="opacity:.35">Berikutnya &rarr;</span>{% endif %}
+    <span class="path mono" style="margin-left:6px">{{ posisi[0] }} / {{ posisi[1] }}</span>
+  </div>
+</header>
+
+<main>
+<div class="big">
+  <img src="/thumb?path={{ p }}&s=1100">
+  <div class="side">
+    <div class="box">
+      <h3>Temuan</h3>
+      <p style="color:{% if it.issues %}var(--warn){% else %}var(--ok){% endif %}">
+        {{ it.issues | join(' · ') if it.issues else 'Tidak ada temuan' }}</p>
+    </div>
+    <div class="box">
+      <h3>Objek per kelas</h3>
+      <table>
+        {%- for k, n in hitung.items() %}
+        <tr><td>{{ k }}</td><td>{{ n }}</td></tr>
+        {%- else %}
+        <tr><td colspan="2">—</td></tr>
+        {%- endfor %}
+      </table>
+    </div>
+    <div class="box">
+      <h3>Berkas</h3>
+      <p class="mono" style="font-size:11.5px;color:var(--ink-dim);word-break:break-all">
+        {{ it.img }}</p>
+    </div>
+  </div>
+</div>
+</main>
+{% endblock %}
