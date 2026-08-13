@@ -1,0 +1,4 @@
+# Untuk menjalankan pengujian:  .venv/bin/python -m pytest
+-r requirements.txt
+pytest==9.1.1
+httpx==0.28.1          # dipakai fastapi.testclient

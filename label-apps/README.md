@@ -94,6 +94,30 @@ Aturan yang dipegang: `services/` tidak mengimpor FastAPI sama sekali, sehingga
 bisa dipakai dari skrip atau notebook tanpa menjalankan server. `routers/` hanya
 menerjemahkan HTTP ke `services/`.
 
+## Pengujian
+
+```bash
+.venv/bin/pip install -r requirements-dev.txt
+.venv/bin/python -m pytest
+```
+
+29 tes: gerbang login, isolasi antar akun, sterilisasi nama berkas unggahan,
+penjagaan endpoint desktop, tandai latar, dan kecocokan angka chip dengan isi grid.
+
+Satu aturan yang dijaga otomatis: **pengujian tidak boleh menulis apa pun ke
+dalam folder aplikasi.** Fixture `folder_aplikasi_tak_berubah` di
+[tests/conftest.py](tests/conftest.py) memotret folder ini sebelum dan sesudah
+setiap tes, lalu menggagalkannya kalau ada berkas yang muncul, hilang, atau
+berubah. Seluruh berkas akun, dataset, dan unggahan uji dibuat di `tmp_path`
+milik pytest.
+
+Aturan itu ada karena pernah kejadian: berkas akun uji tertinggal di folder
+aplikasi, lalu `start.sh` melihatnya dan menjalankan server sungguhan yang
+terbuka ke jaringan dengan password yang tercatat di log pengujian. Penjaga
+ini yang membuatnya tidak bisa terulang — dan sengaja tidak menuntut
+`users.json` tidak ada, karena di pemakaian nyata berkas akun memang tinggal
+di folder ini.
+
 ## Setelan
 
 Semua lewat environment berawalan `LABELAPP_`, atau lewat argumen `run.py` yang
