@@ -1,0 +1,30 @@
+# Kredensial
+users.json
+.env
+
+# Virtualenv
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Data: dataset dan unggahan tidak ikut ke repo
+_unggahan/
+labelapp-unggahan/
+*.jpg
+*.jpeg
+*.png
+*.bmp
+*.webp
+*.tif
+*.tiff
+
+# Editor & OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
