@@ -69,26 +69,59 @@ def test_gambar_tanpa_objek_dapat_label_kosong(tmp_path):
     assert ex.baris_yolo(items[1], peta, True) == []
 
 
-def test_zip_bertata_letak_ultralytics(tmp_path):
+def test_zip_bertata_letak_roboflow(tmp_path):
+    """
+    Tata letak disalin dari ekspor Roboflow nyata
+    (sirsak-v13/botol-kaleng-tetra-mlp-cup-1): data.yaml di akar, lalu
+    train/valid/test masing-masing berisi images/ dan labels/.
+    """
     items, _ = scanner.scan(_dataset(tmp_path / "ds"))
-    data = ex.zip_yolo(items, "ds", True)
-    with zipfile.ZipFile(io.BytesIO(data)) as z:
-        isi = set(z.namelist())
-        assert {"images/g0.jpg", "images/g1.jpg",
-                "labels/g0.txt", "labels/g1.txt",
-                "classes.txt", "data.yaml", "RINGKASAN.txt"} <= isi
-        assert z.read("classes.txt").decode() == "botol\nkaleng\n"
-        y = z.read("data.yaml").decode()
-        assert "nc: 2" in y and "0: botol" in y and "1: kaleng" in y
-        # gambar tanpa objek tetap punya berkas label, isinya kosong
-        assert z.read("labels/g1.txt").decode() == ""
+    with zipfile.ZipFile(io.BytesIO(ex.zip_yolo(items, "ds", True))) as z:
+        isi = z.namelist()
+        assert "data.yaml" in isi and "README.txt" in isi
+        # setiap gambar mendarat di salah satu split, dengan label bernama sama
+        for stem in ("g0", "g1"):
+            gambar = [n for n in isi if n.endswith(f"/images/{stem}.jpg")]
+            label = [n for n in isi if n.endswith(f"/labels/{stem}.txt")]
+            assert len(gambar) == 1 and len(label) == 1, stem
+            assert gambar[0].split("/")[0] == label[0].split("/")[0]
+            assert gambar[0].split("/")[0] in ex.SPLIT
+        # tidak ada tata letak lama yang tertinggal
+        assert not [n for n in isi if n.startswith(("images/", "labels/"))]
+        assert "classes.txt" not in isi
+
+
+def test_data_yaml_sama_bentuknya_dengan_roboflow(tmp_path):
+    items, _ = scanner.scan(_dataset(tmp_path / "ds"))
+    y = ex.data_yaml(ex.peta_kelas(items), "ds")
+    assert y.startswith("train: ../train/images\n"
+                        "val: ../valid/images\n"
+                        "test: ../test/images\n")
+    assert "nc: 2" in y
+    assert "names: ['botol', 'kaleng']" in y      # daftar rata, bukan dict
+    assert "path:" not in y                        # Roboflow tidak memakainya
+
+
+def test_pembagian_split_deterministik(tmp_path):
+    """
+    Ekspor berulang harus memberi pembagian yang sama. Kalau tidak, gambar
+    latih bisa berpindah ke validasi dan angka evaluasi jadi terlalu bagus.
+    """
+    items, _ = scanner.scan(_dataset(tmp_path / "ds"))
+    a = {k: [x["img"].name for x in v] for k, v in ex.bagi_split(items).items()}
+    b = {k: [x["img"].name for x in v] for k, v in ex.bagi_split(items).items()}
+    assert a == b
+    # setiap gambar tepat di satu split
+    semua = [n for v in a.values() for n in v]
+    assert sorted(semua) == ["g0.jpg", "g1.jpg"]
 
 
 def test_zip_tanpa_gambar(tmp_path):
     items, _ = scanner.scan(_dataset(tmp_path / "ds"))
     with zipfile.ZipFile(io.BytesIO(ex.zip_yolo(items, "ds", True, False))) as z:
-        assert not [n for n in z.namelist() if n.startswith("images/")]
-        assert "labels/g0.txt" in z.namelist()
+        isi = z.namelist()
+        assert not [n for n in isi if "/images/" in n]
+        assert [n for n in isi if "/labels/" in n]
 
 
 def test_ringkasan(tmp_path):
@@ -157,8 +190,13 @@ def test_zip_coco_dan_voc(tmp_path):
     from app.services import export as ex
     items, _ = scanner.scan(_dataset(tmp_path / "ds"))
     with zipfile.ZipFile(io.BytesIO(ex.zip_dataset(items, "ds", "coco"))) as z:
-        assert "annotations/instances.json" in z.namelist()
-        assert "images/g0.jpg" in z.namelist()
-        assert len(json.loads(z.read("annotations/instances.json"))["annotations"]) == 2
+        isi = z.namelist()
+        # nama berkas anotasi mengikuti ekspor Roboflow
+        coco = [n for n in isi if n.endswith("/_annotations.coco.json")]
+        assert coco and all(n.split("/")[0] in ex.SPLIT for n in coco)
+        total = sum(len(json.loads(z.read(n))["annotations"]) for n in coco)
+        assert total == 2
     with zipfile.ZipFile(io.BytesIO(ex.zip_dataset(items, "ds", "voc"))) as z:
-        assert {"Annotations/g0.xml", "Annotations/g1.xml"} <= set(z.namelist())
+        xml = [n for n in z.namelist() if n.endswith(".xml")]
+        assert len(xml) == 2
+        assert all(n.split("/")[0] in ex.SPLIT for n in xml)

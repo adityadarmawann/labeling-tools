@@ -89,46 +89,104 @@ def baris_yolo(it: dict, peta: dict[str, int], segmentasi: bool) -> list[str]:
     return keluar
 
 
+# Pembagian bawaan Roboflow: 70% latih, 20% validasi, 10% uji.
+RASIO_BAWAAN = (0.7, 0.2, 0.1)
+SPLIT = ("train", "valid", "test")
+
+
 def data_yaml(peta: dict[str, int], nama: str) -> str:
-    """data.yaml siap dipakai ultralytics."""
-    kelas = "\n".join(f"  {i}: {l}" for l, i in sorted(peta.items(), key=lambda kv: kv[1]))
-    return (f"# Dataset {nama}, diekspor dari labeling-tools\n"
-            f"path: .\ntrain: images\nval: images\n\nnc: {len(peta)}\nnames:\n{kelas}\n")
+    """
+    data.yaml dengan bentuk yang sama seperti ekspor Roboflow.
+
+    Disalin dari contoh nyata (sirsak-v13/botol-kaleng-tetra-mlp-cup-1):
+    path relatif berawalan `../`, `nc` lalu `names` sebagai daftar rata, dan
+    tidak ada kunci `path:`. Ultralytics menerima bentuk ini apa adanya.
+    """
+    urut = [l for l, _ in sorted(peta.items(), key=lambda kv: kv[1])]
+    nama_kelas = ", ".join(f"'{l}'" for l in urut)
+    return ("train: ../train/images\n"
+            "val: ../valid/images\n"
+            "test: ../test/images\n"
+            "\n"
+            f"nc: {len(peta)}\n"
+            f"names: [{nama_kelas}]\n"
+            "\n"
+            "labeling-tools:\n"
+            f"  dataset: {nama}\n"
+            "  format: YOLO segmentation\n")
+
+
+def bagi_split(items: list[dict], rasio=RASIO_BAWAAN) -> dict[str, list[dict]]:
+    """
+    Bagi dataset menjadi train / valid / test.
+
+    Pembagiannya **deterministik**, diturunkan dari nama berkas, bukan dari
+    pengacak. Alasannya penting: kalau ekspor kedua memakai acak baru, gambar
+    yang tadinya di train bisa pindah ke valid, dan model yang dievaluasi
+    dengan gambar yang pernah dilatih akan terlihat lebih baik daripada
+    kenyataannya. Dengan cara ini ekspor berapa kali pun memberi pembagian
+    yang sama.
+    """
+    import hashlib
+
+    batas_train = rasio[0]
+    batas_valid = rasio[0] + rasio[1]
+    hasil: dict[str, list[dict]] = {k: [] for k in SPLIT}
+    for it in sorted(items, key=lambda x: x["img"].name):
+        h = hashlib.sha1(it["img"].name.encode()).digest()
+        v = int.from_bytes(h[:4], "big") / 0xFFFFFFFF
+        if v < batas_train:
+            hasil["train"].append(it)
+        elif v < batas_valid:
+            hasil["valid"].append(it)
+        else:
+            hasil["test"].append(it)
+    return hasil
 
 
 def zip_yolo(items: list[dict], nama_dataset: str, segmentasi: bool,
-             sertakan_gambar: bool = True) -> bytes:
+             sertakan_gambar: bool = True, rasio=RASIO_BAWAAN) -> bytes:
     """
-    Seluruh dataset -> arsip ZIP bertata letak ultralytics:
+    Seluruh dataset -> ZIP dengan tata letak yang **sama seperti ekspor
+    Roboflow**, supaya bisa langsung dilatih tanpa dirapikan lagi:
 
-        images/<nama>.jpg
-        labels/<nama>.txt
-        classes.txt
         data.yaml
+        README.txt
+        train/images/  train/labels/
+        valid/images/  valid/labels/
+        test/images/   test/labels/
 
     Gambar tanpa objek tetap mendapat berkas label kosong — itu penanda contoh
     negatif yang sah di YOLO, bukan kelalaian.
     """
     peta = peta_kelas(items)
+    bagian = bagi_split(items, rasio)
     buf = io.BytesIO()
     n_objek = 0
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        for it in items:
-            p: Path = it["img"]
-            baris = baris_yolo(it, peta, segmentasi)
-            n_objek += len(baris)
-            z.writestr(f"labels/{p.stem}.txt", "\n".join(baris) + ("\n" if baris else ""))
-            if sertakan_gambar:
-                z.write(p, f"images/{p.name}")
-        urut = [l for l, _ in sorted(peta.items(), key=lambda kv: kv[1])]
-        z.writestr("classes.txt", "\n".join(urut) + ("\n" if urut else ""))
+        for split, daftar in bagian.items():
+            for it in daftar:
+                p: Path = it["img"]
+                baris = baris_yolo(it, peta, segmentasi)
+                n_objek += len(baris)
+                z.writestr(f"{split}/labels/{p.stem}.txt",
+                           "\n".join(baris) + ("\n" if baris else ""))
+                if sertakan_gambar:
+                    z.write(p, f"{split}/images/{p.name}")
         z.writestr("data.yaml", data_yaml(peta, nama_dataset))
-        z.writestr("RINGKASAN.txt",
-                   f"Dataset  : {nama_dataset}\n"
-                   f"Format   : {'YOLO segmentation' if segmentasi else 'YOLO detection'}\n"
-                   f"Gambar   : {len(items)}\n"
+        urut = [l for l, _ in sorted(peta.items(), key=lambda kv: kv[1])]
+        z.writestr("README.txt",
+                   f"{nama_dataset}\n{'=' * len(nama_dataset)}\n\n"
+                   "Diekspor dari labeling-tools, pengembangan dari AnyLabeling.\n"
+                   f"Format   : YOLO {'segmentation' if segmentasi else 'detection'}\n"
+                   f"Gambar   : {len(items)}"
+                   f"  (train {len(bagian['train'])}, valid {len(bagian['valid'])},"
+                   f" test {len(bagian['test'])})\n"
                    f"Objek    : {n_objek}\n"
-                   f"Kelas    : {len(peta)}  {', '.join(urut)}\n")
+                   f"Kelas    : {len(peta)}  {', '.join(urut)}\n\n"
+                   "Pembagian train/valid/test deterministik, diturunkan dari nama\n"
+                   "berkas. Ekspor berapa kali pun memberi pembagian yang sama, jadi\n"
+                   "tidak ada gambar latih yang berpindah ke validasi.\n")
     return buf.getvalue()
 
 
@@ -279,17 +337,21 @@ def zip_dataset(items: list[dict], nama: str, format: str,
     if format in ("yolo", "yolo-seg"):
         return zip_yolo(items, nama, format == "yolo-seg", sertakan_gambar)
 
+    bagian = bagi_split(items)
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        if format == "coco":
-            z.writestr("annotations/instances.json",
-                       json.dumps(coco_dict(items, nama), indent=2))
-        elif format == "voc":
-            for it in items:
-                z.writestr(f"Annotations/{it['img'].stem}.xml", voc_xml(it))
-        else:
-            raise ValueError(f"format '{format}' tidak dikenal")
-        if sertakan_gambar:
-            for it in items:
-                z.write(it["img"], f"images/{it['img'].name}")
+        for split, daftar in bagian.items():
+            if format == "coco":
+                # Nama berkas mengikuti ekspor Roboflow: _annotations.coco.json
+                # di dalam folder split-nya.
+                z.writestr(f"{split}/_annotations.coco.json",
+                           json.dumps(coco_dict(daftar, nama), indent=2))
+            elif format == "voc":
+                for it in daftar:
+                    z.writestr(f"{split}/{it['img'].stem}.xml", voc_xml(it))
+            else:
+                raise ValueError(f"format '{format}' tidak dikenal")
+            if sertakan_gambar:
+                for it in daftar:
+                    z.write(it["img"], f"{split}/images/{it['img'].name}")
     return buf.getvalue()
