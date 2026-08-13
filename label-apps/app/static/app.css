@@ -148,3 +148,4 @@ input:focus{outline:0;border-color:var(--ok)}
 .split-atur input{width:56px;border:1px solid var(--line2);background:#fbfcfd;
   border-radius:5px;padding:3px 6px;font-size:12.5px;font-family:inherit;
   color:var(--ink);text-align:center}
+.menu-catatan b{color:var(--ink);font-weight:600}

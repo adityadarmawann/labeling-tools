@@ -231,7 +231,12 @@ def ringkasan(items: list[dict], segmentasi: bool, rasio=RASIO_BAWAAN) -> dict:
             "nama_kelas": [l for l, _ in sorted(peta.items(), key=lambda kv: kv[1])],
             "tanpa_objek": n_kosong, "bentuk_dilewati": dilewati,
             "split": {k: len(v) for k, v in bagian.items()},
-            "rasio": [round(r * 100) for r in rasio]}
+            "rasio": [round(r * 100) for r in rasio],
+            # Persentase yang benar-benar tercapai. Berbeda sedikit dari rasio
+            # yang diminta karena pembagiannya deterministik dari nama berkas,
+            # bukan memotong daftar pada posisi tertentu.
+            "persen": {k: (round(100 * len(v) / len(items), 1) if items else 0.0)
+                       for k, v in bagian.items()}}
 
 
 # ---------------------------------------------------------------- Pascal VOC

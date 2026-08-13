@@ -251,3 +251,33 @@ def test_rasio_mengubah_pembagian(tmp_path):
     assert sum(len(v) for v in b.values()) == 200
     # 80% dari 200 ~ 160, beri toleransi karena pembagian berbasis hash
     assert 140 <= len(a["train"]) <= 180
+
+
+def test_ringkasan_memuat_persentase_nyata(tmp_path):
+    """
+    Persentase yang tercapai ditampilkan apa adanya, karena pembagian berbasis
+    hash tidak selalu pas dengan rasio yang diminta.
+    """
+    from app.services import export as ex
+    d = tmp_path / "banyak"
+    d.mkdir()
+    for i in range(100):
+        cv2.imwrite(str(d / f"i{i:03d}.jpg"), np.zeros((20, 20, 3), np.uint8))
+    items, _ = scanner.scan(d)
+    r = ex.ringkasan(items, True, (0.8, 0.1, 0.1))
+    assert r["rasio"] == [80, 10, 10]                 # yang diminta
+    p = r["persen"]
+    assert set(p) == {"train", "valid", "test"}
+    assert abs(sum(p.values()) - 100.0) < 0.2         # menjumlah ke 100
+    # angkanya turunan dari jumlah nyata, bukan salinan rasio
+    for k in p:
+        assert p[k] == round(100 * r["split"][k] / 100, 1)
+
+
+def test_ringkasan_dataset_kosong_tidak_bagi_nol(tmp_path):
+    from app.services import export as ex
+    d = tmp_path / "kosong"
+    d.mkdir()
+    r = ex.ringkasan([], True)
+    assert r["gambar"] == 0
+    assert all(v == 0.0 for v in r["persen"].values())

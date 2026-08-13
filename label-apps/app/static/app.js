@@ -178,11 +178,15 @@ document.addEventListener('DOMContentLoaded', () => {
                             + encodeURIComponent(rasio()));
       const j = await r.json();
       if (!j.ok) { info.textContent = 'Gagal: ' + (j.error || j.detail); return; }
-      const s = j.split;
-      info.textContent =
-        `train ${s.train} · valid ${s.valid} · test ${s.test}`
-        + `  (dari ${j.gambar} gambar, ${j.objek} objek, ${j.kelas} kelas)`
-        + (j.tanpa_objek ? ` · ${j.tanpa_objek} tanpa objek (contoh negatif)` : '')
+      const s = j.split, pc = j.persen;
+      const n = v => v.toFixed(1).replace('.', ',');
+      // Baris pertama: persentase yang benar-benar tercapai, karena angka yang
+      // diminta di kotak atas tidak selalu sama persis.
+      info.innerHTML =
+        `<b>nyata: ${n(pc.train)}% : ${n(pc.valid)}% : ${n(pc.test)}%</b><br>`
+        + `train ${s.train} · valid ${s.valid} · test ${s.test}`
+        + ` — dari ${j.gambar} gambar, ${j.objek} objek, ${j.kelas} kelas`
+        + (j.tanpa_objek ? `<br>${j.tanpa_objek} tanpa objek (contoh negatif)` : '')
         + (j.bentuk_dilewati ? ` · ${j.bentuk_dilewati} bentuk dilewati` : '');
     } catch (e) {
       info.textContent = 'Gagal menghubungi server';
