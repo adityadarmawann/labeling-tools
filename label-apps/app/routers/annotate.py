@@ -150,15 +150,18 @@ async def api_simpan(request: Request, sess: Session = Depends(current_session_a
     for s in body.get("shapes", []):
         titik = [[float(x), float(y)] for x, y in s.get("points", [])]
         label = str(s.get("label", "")).strip()
+        jenis = "rectangle" if s.get("shape_type") == "rectangle" else "polygon"
         if not label:
             return {"ok": False, "error": "ada bentuk tanpa kelas — pilih kelasnya dulu"}
-        if len(titik) < 3:
+        # Rectangle labelme hanya 2 titik (kiri-atas, kanan-bawah); poligon
+        # butuh minimal 3. Tanpa pembedaan ini rectangle akan terbuang diam-diam.
+        if len(titik) < (2 if jenis == "rectangle" else 3):
             continue
         bentuk.append({
             "label": label,
             "points": titik,
             "group_id": s.get("group_id"),
-            "shape_type": "rectangle" if s.get("shape_type") == "rectangle" else "polygon",
+            "shape_type": jenis,
             "flags": s.get("flags") or {},
             "description": s.get("description") or None,
         })

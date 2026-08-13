@@ -12,10 +12,10 @@
 <div class="lab-top">
   <a class="chip" href="/">Grid</a>
   <a class="chip" href="/pilih">Ganti dataset</a>
-  <span class="lab-mode" id="modeinfo">Mode: <b>Klik SAM</b></span>
-  <span class="lab-hint">Pintasan: <b>S</b> klik SAM · <b>B</b> kotak SAM ·
-    <b>P</b> poligon manual · <b>E</b> sunting · <b>A</b>/<b>D</b> gambar ·
-    <b>Del</b> hapus · <b>Ctrl+Z</b> urungkan · <b>Ctrl+S</b> simpan</span>
+  <span class="lab-mode" id="modeinfo">Mode: <b>+Point</b></span>
+  <span class="lab-hint">Pintasan: <b>Q</b> +Point · <b>E</b> −Point · <b>R</b> +Rect ·
+    <b>F</b> Finish Object · <b>C</b> Clear · <b>P</b> poligon manual ·
+    <b>V</b> sunting · <b>A</b>/<b>D</b> gambar · <b>Ctrl+S</b> simpan</span>
   <span class="spacer"></span>
   <span class="who">{{ sess.user }}</span>
   <a class="chip" href="/logout">Keluar</a>
@@ -24,10 +24,11 @@
 <div class="lab-wrap">
 
   <div class="lab-tools">
-    <button class="tool" data-mode="sam"  title="Klik SAM (S) — klik objek, poligon jadi sendiri">◎</button>
-    <button class="tool" data-mode="box"  title="Kotak SAM (B) — tarik kotak di sekitar objek">⬚</button>
-    <button class="tool" data-mode="poly" title="Poligon manual (P) — klik titik demi titik, Enter untuk menutup">⬡</button>
-    <button class="tool" data-mode="edit" title="Sunting (E) — pilih bentuk, geser titiknya">✥</button>
+    <button class="tool" data-mode="p+"   title="+Point (Q) — klik pada objek">✚</button>
+    <button class="tool" data-mode="p-"   title="−Point (E) — klik pada bagian yang BUKAN objek">✖</button>
+    <button class="tool" data-mode="rect" title="+Rect — tarik kotak di sekitar objek">⬚</button>
+    <button class="tool" data-mode="poly" title="Poligon manual (P) — klik titik demi titik, Enter menutup">⬡</button>
+    <button class="tool" data-mode="edit" title="Sunting (V) — pilih bentuk, geser titiknya">✥</button>
     <span class="tool-sep"></span>
     <button class="tool" id="btn-del"  title="Hapus bentuk terpilih (Del)">🗑</button>
     <button class="tool" id="btn-undo" title="Urungkan (Ctrl+Z)">↺</button>
@@ -39,9 +40,34 @@
     <button class="tool tool-simpan" id="btn-simpan" title="Simpan (Ctrl+S)">💾</button>
   </div>
 
-  <div class="lab-canvas" id="wrap">
-    <canvas id="c"></canvas>
-    <div class="lab-busy" id="busy">SAM bekerja…</div>
+  <div class="lab-tengah">
+    {# Baris ini menirukan bar Auto Labeling di AnyLabeling: pilih model,
+       bentuk keluaran, lalu prompt menumpuk sampai disahkan dengan Finish. #}
+    <div class="lab-auto">
+      <span class="lbl">Auto</span>
+      <select id="model">
+        {% for m in sam.tersedia %}
+        <option value="{{ m }}"{% if m == sam.default %} selected{% endif %}>{{ m }}</option>
+        {% endfor %}
+      </select>
+      <span class="lbl">Output</span>
+      <select id="output">
+        <option value="polygon" selected>Polygon</option>
+        <option value="rectangle">Rectangle</option>
+      </select>
+      <button class="ab" id="ab-p+">+Point (Q)</button>
+      <button class="ab" id="ab-p-">−Point (E)</button>
+      <button class="ab" id="ab-rect">+Rect (R)</button>
+      <button class="ab" id="ab-clear">Clear (C)</button>
+      <button class="ab ab-ok" id="ab-finish">Finish Object (F)</button>
+      <span class="spacer"></span>
+      <span class="lab-pesan" id="pesan"></span>
+    </div>
+
+    <div class="lab-canvas" id="wrap">
+      <canvas id="c"></canvas>
+      <div class="lab-busy" id="busy">SAM bekerja…</div>
+    </div>
   </div>
 
   <div class="lab-side">
@@ -59,18 +85,14 @@
     </div>
 
     <div class="pan">
-      <h3>Model SAM</h3>
-      <select id="model">
-        {% for m in sam.tersedia %}
-        <option value="{{ m }}"{% if m == sam.default %} selected{% endif %}>{{ m }}</option>
-        {% endfor %}
-      </select>
+      <h3>Setelan</h3>
       {% if not sam.mobilesam_siap %}
       <p class="peringatan">Berkas MobileSAM tidak ada di
         <span class="mono">{{ sam.dir_model }}</span> — pakai model lain.</p>
       {% endif %}
       <label class="halus" for="eps">Kerapatan titik poligon</label>
       <input id="eps" type="range" min="5" max="200" value="40">
+      <label class="halus"><input type="checkbox" id="silang" checked> Garis bantu silang</label>
     </div>
 
     <div class="pan pan-grow">
