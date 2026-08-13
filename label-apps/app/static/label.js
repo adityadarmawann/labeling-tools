@@ -21,6 +21,7 @@ const S = {
   label: D.kelas[0] || '',
   mode: 'p+',
   sel: -1,
+  selv: -1,        // indeks titik terpilih, untuk Backspace
   zoom: 1, panx: 0, pany: 0,
   prompt: [],        // { x, y, label } — 1 = objek, 0 = bukan objek
   kotak: null,       // prompt kotak terakhir, dalam koordinat gambar
@@ -89,7 +90,7 @@ function gambar() {
 
   if (S.pratinjau) gambarPratinjau(S.pratinjau);
   if (S.draft) gambarDraft(S.draft);
-  if (S.seret && S.seret.jenis === 'kotak') gambarKotakSeret(S.seret);
+  if (S.seret && S.seret.jenis.startsWith('kotak')) gambarKotakSeret(S.seret);
   if (S.kotak && S.pratinjau) gambarKotakGambar(S.kotak);
   S.prompt.forEach(p => titikPrompt(p));
   if (S.kursor && el('silang').checked) garisSilang(S.kursor);
@@ -239,7 +240,8 @@ function tandaiKotor() {
 // ---------------------------------------------------------------- mode
 
 const NAMA_MODE = { 'p+': '+Point', 'p-': '−Point', rect: '+Rect',
-                    poly: 'Poligon manual', edit: 'Sunting' };
+                    kotak: 'Rectangle manual', poly: 'Poligon manual',
+                    edit: 'Sunting' };
 
 function setMode(m) {
   S.mode = m;
@@ -362,12 +364,14 @@ c.addEventListener('mousedown', ev => {
     if (v) {
       simpanUndo();
       S.sel = v.i;
+      S.selv = v.v;
       S.seret = { jenis: 'vertex', i: v.i, v: v.v };
       render();
       return;
     }
     const i = bentukDi(gx, gy);
     S.sel = i;
+    S.selv = -1;
     if (i >= 0) {
       simpanUndo();
       S.seret = { jenis: 'bentuk', i, x0: gx, y0: gy,
@@ -384,9 +388,9 @@ c.addEventListener('mousedown', ev => {
     return;
   }
 
-  if (S.mode === 'rect') {
-    S.seret = { jenis: 'kotak', x0: ev.offsetX, y0: ev.offsetY,
-                x1: ev.offsetX, y1: ev.offsetY };
+  if (S.mode === 'rect' || S.mode === 'kotak') {
+    S.seret = { jenis: S.mode === 'kotak' ? 'kotakmanual' : 'kotak',
+                x0: ev.offsetX, y0: ev.offsetY, x1: ev.offsetX, y1: ev.offsetY };
     return;
   }
 
@@ -436,15 +440,27 @@ window.addEventListener('mouseup', () => {
   if (!S.seret) return;
   const s = S.seret;
   S.seret = null;
-  if (s.jenis === 'kotak') {
+  if (s.jenis.startsWith('kotak')) {
     const x0 = keGambarX(Math.min(s.x0, s.x1)), y0 = keGambarY(Math.min(s.y0, s.y1));
     const x1 = keGambarX(Math.max(s.x0, s.x1)), y1 = keGambarY(Math.max(s.y0, s.y1));
-    if (Math.abs(x1 - x0) > 3 && Math.abs(y1 - y0) > 3) {
+    if (Math.abs(x1 - x0) <= 3 || Math.abs(y1 - y0) <= 3) {
+      toast('Kotaknya terlalu kecil');
+    } else if (s.jenis === 'kotakmanual') {
+      // Rectangle manual (R): langsung jadi objek, tanpa SAM — persis
+      // create_rectangle di AnyLabeling.
+      if (!S.label) { toast('Pilih kelas dulu'); }
+      else {
+        simpanUndo();
+        S.shapes.push({ label: S.label, shape_type: 'rectangle',
+                        points: [[x0, y0], [x1, y1]] });
+        S.sel = S.shapes.length - 1;
+        tandaiKotor();
+        render();
+      }
+    } else {
       S.prompt = [];
       S.kotak = [x0, y0, x1, y1];
       jalankanSam();
-    } else {
-      toast('Kotaknya terlalu kecil');
     }
     gambar();
   } else {
@@ -484,27 +500,43 @@ function tutupDraft() {
 
 // ---------------------------------------------------------------- papan tombol
 
+/*
+ * Peta tombol mengikuti ~/.anylabelingrc supaya refleks orang yang sudah biasa
+ * dengan AnyLabeling tetap berlaku. Yang paling penting: Backspace membuang
+ * SATU TITIK, bukan seluruh objek — salah di sini berarti orang kehilangan
+ * pekerjaan karena menekan tombol yang di aplikasi sebelahnya aman.
+ */
 window.addEventListener('keydown', ev => {
   if (ev.target.tagName === 'INPUT' || ev.target.tagName === 'SELECT') return;
   if (ev.key === ' ') { spasi = true; ev.preventDefault(); return; }
-  if (ev.ctrlKey && ev.key.toLowerCase() === 'z') { ev.preventDefault(); urungkan(); return; }
-  if (ev.ctrlKey && ev.key.toLowerCase() === 's') { ev.preventDefault(); simpan(); return; }
-  if (ev.ctrlKey) return;
+
+  if (ev.ctrlKey) {
+    const ck = ev.key.toLowerCase();
+    if (ck === 'z') { ev.preventDefault(); urungkan(); }
+    else if (ck === 's') { ev.preventDefault(); simpan(); }
+    else if (ck === 'f') { ev.preventDefault(); muatKeLayar(); }
+    else if (ck === 'e') { ev.preventDefault(); ubahKelasTerpilih(); }
+    else if (ck === 'd') { ev.preventDefault(); duplikatTerpilih(); }
+    else if (ev.key === '0') { ev.preventDefault(); zoomAsli(); }
+    else if (ev.key === '+' || ev.key === '=') { ev.preventDefault(); zoomDi(1.25, c.width / 2, c.height / 2); }
+    else if (ev.key === '-') { ev.preventDefault(); zoomDi(1 / 1.25, c.width / 2, c.height / 2); }
+    return;
+  }
 
   const k = ev.key.toLowerCase();
   if (k === 'q') setMode('p+');
   else if (k === 'e') setMode('p-');
-  else if (k === 'r') setMode('rect');
+  else if (k === 'r') setMode('kotak');          // rectangle manual, seperti AnyLabeling
   else if (k === 'p') setMode('poly');
   else if (k === 'v') setMode('edit');
   else if (k === 'f') finishObject();
   else if (k === 'c') bersihkanPrompt();
-  else if (k === 'z') muatKeLayar();
   else if (k === 'a') pindah(D.prev);
   else if (k === 'd') pindah(D.next);
   else if (ev.key === 'Enter') { if (S.mode === 'poly') tutupDraft(); else finishObject(); }
-  else if (ev.key === 'Escape') { S.draft = null; S.sel = -1; bersihkanPrompt(); render(); }
-  else if (ev.key === 'Delete' || ev.key === 'Backspace') hapusTerpilih();
+  else if (ev.key === 'Escape') { S.draft = null; S.sel = -1; S.selv = -1; bersihkanPrompt(); render(); }
+  else if (ev.key === 'Delete') hapusTerpilih();
+  else if (ev.key === 'Backspace') { ev.preventDefault(); hapusTitikTerpilih(); }
 });
 
 window.addEventListener('keyup', ev => { if (ev.key === ' ') spasi = false; });
@@ -514,8 +546,55 @@ function hapusTerpilih() {
   simpanUndo();
   S.shapes.splice(S.sel, 1);
   S.sel = -1;
+  S.selv = -1;
   tandaiKotor();
   render();
+}
+
+/** Backspace di AnyLabeling: buang satu titik, bukan seluruh objek. */
+function hapusTitikTerpilih() {
+  if (S.sel < 0 || S.selv < 0) {
+    toast('Klik dulu titik yang mau dibuang (mode Sunting)');
+    return;
+  }
+  const s = S.shapes[S.sel];
+  if (s.shape_type === 'rectangle') { toast('Rectangle tidak bisa dikurangi titiknya'); return; }
+  if (s.points.length <= 3) { toast('Poligon minimal 3 titik — pakai Delete untuk membuang objeknya'); return; }
+  simpanUndo();
+  s.points.splice(S.selv, 1);
+  S.selv = -1;
+  tandaiKotor();
+  render();
+}
+
+/** Ctrl+E: ubah kelas objek terpilih. */
+function ubahKelasTerpilih() {
+  if (S.sel < 0) { toast('Pilih objeknya dulu'); return; }
+  const v = (prompt('Kelas untuk objek ini:', S.shapes[S.sel].label) || '').trim();
+  if (!v) return;
+  simpanUndo();
+  S.shapes[S.sel].label = v;
+  if (!S.kelas.includes(v)) { S.kelas.push(v); S.kelas.sort(); }
+  S.label = v;
+  tandaiKotor();
+  render();
+}
+
+/** Ctrl+D: duplikat objek terpilih, digeser sedikit supaya terlihat. */
+function duplikatTerpilih() {
+  if (S.sel < 0) { toast('Pilih objeknya dulu'); return; }
+  simpanUndo();
+  const s = S.shapes[S.sel];
+  S.shapes.push({ label: s.label, shape_type: s.shape_type,
+                  points: s.points.map(p => [p[0] + 8, p[1] + 8]) });
+  S.sel = S.shapes.length - 1;
+  tandaiKotor();
+  render();
+}
+
+function zoomAsli() {
+  const cx = c.width / 2, cy = c.height / 2;
+  zoomDi(1 / S.zoom, cx, cy);
 }
 
 // ---------------------------------------------------------------- panel
