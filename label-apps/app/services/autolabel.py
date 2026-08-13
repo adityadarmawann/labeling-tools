@@ -45,9 +45,18 @@ MODEL_DIIZINKAN = {
     "sam2:small",
 }
 
-# Ukuran sisi terpanjang yang diminta SAM. Gambar diskalakan ke ukuran ini
-# sebelum masuk encoder; koordinat prompt harus diskalakan dengan faktor sama.
+# Ukuran kanvas encoder. Nilai (tinggi, lebar) ini diambil apa adanya dari
+# SegmentAnythingONNX AnyLabeling (`self.input_size`), bukan dipilih sendiri:
+# hasil segmentasi bergantung padanya. Diuji berdampingan — dengan padding
+# 1024x1024 buatan sendiri, galat pada sumbu Y mencapai 14 px; dengan nilai ini
+# hasilnya sama dengan aplikasi desktop, galat 1 px.
+SAM_INPUT = (684, 1024)
 SAM_SIDE = 1024
+
+# Rasio penyederhanaan poligon. 0.001 diambil dari segment_anything.py
+# AnyLabeling (`epsilon = 0.001 * cv2.arcLength`). Nilai yang lebih besar
+# menghasilkan poligon lebih kasar dengan titik lebih sedikit.
+EPSILON_ANYLABELING = 0.001
 
 # Embedding beberapa MB per gambar. Delapan gambar terakhir cukup untuk pola
 # kerja "buka gambar, klik beberapa objek, lanjut gambar berikutnya".
@@ -111,42 +120,50 @@ class MobileSam:
 
     def embed(self, bgr: np.ndarray):
         """
-        Gambar -> (embedding, skala, (H_asli, W_asli)).
+        Gambar -> (embedding, matriks, (H_asli, W_asli)).
 
-        Sisi terpanjang diskalakan ke 1024, lalu diberi padding nol sampai
-        1024x1024 — preprocessing resmi SAM.
+        Meniru SegmentAnythingONNX.encode di AnyLabeling langkah demi langkah:
+        gambar di-warpAffine dengan skala min(1024/W, 684/H) ke kanvas
+        684x1024, lalu dikirim mentah sebagai float32 — encoder ekspor ini
+        mengurus normalisasinya sendiri.
 
-        Catatan hasil uji: encoder ekspor ini ternyata sudah mengurus padding
-        sendiri, keluarannya sama dengan atau tanpa padding di sini. Padding
-        tetap dilakukan supaya tidak bergantung pada perilaku internal ekspor
-        ONNX yang bisa berubah antar versi.
-
-        Koordinat prompt WAJIB diskalakan dengan `skala` yang sama (lihat
-        decode). Ini sudah diuji dengan gambar sintetis: lingkaran di posisi
-        yang diketahui menghasilkan galat 15 px dengan koordinat berskala,
-        versus 184 px kalau koordinat asli dikirim mentah.
+        Bukan pilihan gaya: dengan padding 1024x1024 buatan sendiri, mask pada
+        gambar uji bergeser 14 px di sumbu Y dibanding hasil desktop. Dengan
+        cara ini keduanya sama.
         """
         H, W = bgr.shape[:2]
-        skala = SAM_SIDE / max(H, W)
-        h, w = max(1, round(H * skala)), max(1, round(W * skala))
-        kecil = cv2.resize(bgr, (w, h), interpolation=cv2.INTER_LINEAR)
-        rgb = cv2.cvtColor(kecil, cv2.COLOR_BGR2RGB).astype(np.float32)
-        kanvas = np.zeros((SAM_SIDE, SAM_SIDE, 3), np.float32)
-        kanvas[:h, :w] = rgb
-        emb = self.encoder.run(None, {"input_image": kanvas})[0]
-        return emb, skala, (H, W)
+        skala = min(SAM_INPUT[1] / W, SAM_INPUT[0] / H)
+        matriks = np.array([[skala, 0, 0], [0, skala, 0], [0, 0, 1]], np.float64)
+        kanvas = cv2.warpAffine(bgr, matriks[:2], (SAM_INPUT[1], SAM_INPUT[0]),
+                                flags=cv2.INTER_LINEAR)
+        emb = self.encoder.run(None, {"input_image": kanvas.astype(np.float32)})[0]
+        return emb, matriks, (H, W)
 
-    def decode(self, emb, skala, hw, points, labels) -> np.ndarray:
-        """Prompt -> mask biner seukuran gambar asli."""
+    def decode(self, emb, matriks, hw, points, labels) -> np.ndarray:
+        """
+        Prompt -> mask biner seukuran gambar asli.
+
+        Koordinat prompt dipetakan dengan transform SAM resmi (skala
+        1024/sisi-terpanjang), sementara `orig_im_size` diisi ukuran KANVAS,
+        bukan ukuran gambar asli — persis seperti AnyLabeling. Mask yang keluar
+        lalu di-warp balik dengan matriks kebalikannya.
+        """
         H, W = hw
-        pts = np.asarray(points, np.float32) * skala          # ke ruang 1024
+        # Koordinat prompt HARUS diskalakan dengan skala warp yang sama, yaitu
+        # min(1024/W, 684/H) — diambil dari matriksnya. Memakai
+        # 1024/sisi-terpanjang tampak benar dan kebetulan sama untuk gambar
+        # 640x400, tetapi salah begitu tinggi gambar yang menentukan skala:
+        # pada 640x488 skalanya 1.4016 bukan 1.6, dan mask hasil prompt titik
+        # meluber ke hampir seluruh gambar (IoU 0.017 terhadap hasil desktop).
+        pts = np.asarray(points, np.float32) * float(matriks[0][0])
         lbl = np.asarray(labels, np.float32)
 
-        # Ekspor ONNX resmi SAM menuntut satu titik pengisi berlabel -1 kalau
-        # prompt-nya bukan kotak. Tanpa ini mask-nya melebar tak beraturan.
-        if not (lbl == 2).any():
-            pts = np.concatenate([pts, np.zeros((1, 2), np.float32)], 0)
-            lbl = np.concatenate([lbl, np.array([-1], np.float32)], 0)
+        # Titik pengisi [0,0] berlabel -1 SELALU ditambahkan, termasuk untuk
+        # prompt kotak. AnyLabeling melakukannya tanpa syarat di run_decoder,
+        # dan kehadirannya mengubah hasil: dengan syarat "hanya kalau bukan
+        # kotak", mask prompt kotak berbeda dari hasil desktop (IoU 0.949).
+        pts = np.concatenate([pts, np.zeros((1, 2), np.float32)], 0)
+        lbl = np.concatenate([lbl, np.array([-1], np.float32)], 0)
 
         keluar = self.decoder.run(None, {
             "image_embeddings": emb,
@@ -154,13 +171,16 @@ class MobileSam:
             "point_labels": lbl[None, ...],
             "mask_input": np.zeros((1, 1, 256, 256), np.float32),
             "has_mask_input": np.zeros(1, np.float32),
-            "orig_im_size": np.array([H, W], np.float32),
+            "orig_im_size": np.array(SAM_INPUT, np.float32),
         })
-        masks = keluar[0]                                     # logit, bukan 0/1
-        iou = keluar[1].reshape(-1)
-        m = masks.reshape(-1, *masks.shape[-2:])
-        terbaik = int(np.argmax(iou)) if iou.size == m.shape[0] else 0
-        return m[terbaik] > 0
+        masks = keluar[0]
+        m = masks
+        while m.ndim > 2:        # ekspor ini mengeluarkan satu mask: (1,1,h,w)
+            m = m[0]
+        balik = np.linalg.inv(matriks)
+        m = cv2.warpAffine(m.astype(np.float32), balik[:2], (W, H),
+                           flags=cv2.INTER_LINEAR)
+        return m > 0
 
 
 def _mobilesam() -> MobileSam:
@@ -179,7 +199,7 @@ def _mobilesam() -> MobileSam:
 
 # ---------------------------------------------------------------- poligon
 
-def mask_ke_poligon(mask, offset=(0, 0), epsilon_rasio: float = 0.004):
+def mask_ke_poligon(mask, offset=(0, 0), epsilon_rasio: float = EPSILON_ANYLABELING):
     """
     Mask biner -> poligon dalam koordinat gambar.
 
@@ -192,10 +212,17 @@ def mask_ke_poligon(mask, offset=(0, 0), epsilon_rasio: float = 0.004):
     m = (np.asarray(mask) > 0).astype(np.uint8)
     if m.ndim != 2 or not m.any():
         return None
-    kontur, _ = cv2.findContours(m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # CHAIN_APPROX_NONE seperti AnyLabeling: semua titik kontur diambil dulu,
+    # penyederhanaan diserahkan sepenuhnya ke approxPolyDP. Dengan SIMPLE,
+    # segmen lurus sudah dipadatkan lebih awal sehingga hasilnya berbeda.
+    kontur, _ = cv2.findContours(m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
     if not kontur:
         return None
-    c = max(kontur, key=cv2.contourArea)
+    # Kontur yang menutupi >90% gambar dibuang — biasanya latar yang ikut
+    # tersegmentasi, bukan objek. Aturan yang sama ada di segment_anything.py.
+    luas_gambar = m.shape[0] * m.shape[1]
+    layak = [c for c in kontur if cv2.contourArea(c) < 0.9 * luas_gambar] or list(kontur)
+    c = max(layak, key=cv2.contourArea)
     if cv2.contourArea(c) < 4:
         return None
     approx = cv2.approxPolyDP(c, epsilon_rasio * cv2.arcLength(c, True), True)
@@ -223,19 +250,19 @@ def _segment_mobilesam(img: Path, points, labels, eps) -> Usulan:
 
     if kunci in _cache:
         _cache.move_to_end(kunci)
-        emb, skala, hw = _cache[kunci]
+        emb, matriks, hw = _cache[kunci]
         dari_cache = True
     else:
         bgr = cv2.imread(str(img))
         if bgr is None:
             raise TidakAdaObjek("gambar tidak bisa dibaca")
-        emb, skala, hw = sesi.embed(bgr)
-        _cache[kunci] = (emb, skala, hw)
+        emb, matriks, hw = sesi.embed(bgr)
+        _cache[kunci] = (emb, matriks, hw)
         while len(_cache) > CACHE_MAKS:
             _cache.popitem(last=False)
         dari_cache = False
 
-    mask = sesi.decode(emb, skala, hw, points, labels)
+    mask = sesi.decode(emb, matriks, hw, points, labels)
     poly = mask_ke_poligon(mask, (0, 0), eps)
     if poly is None:
         raise TidakAdaObjek("mask terlalu kecil untuk dijadikan poligon")
@@ -294,7 +321,7 @@ def _segment(img: Path, points, labels, model: str, eps: float) -> Usulan:
 # ---------------------------------------------------------------- API
 
 def dari_kotak(img: Path, x1, y1, x2, y2, model: str = MODEL_DEFAULT,
-               eps: float = 0.004) -> Usulan:
+               eps: float = EPSILON_ANYLABELING) -> Usulan:
     """Prompt kotak: pengguna menarik kotak di sekitar objek."""
     x1, x2 = sorted((float(x1), float(x2)))
     y1, y2 = sorted((float(y1), float(y2)))
@@ -305,7 +332,7 @@ def dari_kotak(img: Path, x1, y1, x2, y2, model: str = MODEL_DEFAULT,
 
 
 def dari_titik(img: Path, titik, label=None, model: str = MODEL_DEFAULT,
-               eps: float = 0.004) -> Usulan:
+               eps: float = EPSILON_ANYLABELING) -> Usulan:
     """
     Prompt titik: klik di atas objek.
 

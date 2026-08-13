@@ -144,7 +144,7 @@ async def api_sam(request: Request, sess: Session = Depends(current_session_api)
         return {"ok": False, "error": "berkas tidak dikenal di dataset ini"}
 
     model = body.get("model") or autolabel.MODEL_DEFAULT
-    eps = min(max(float(body.get("eps", 0.004)), 0.0005), 0.05)
+    eps = min(max(float(body.get("eps", autolabel.EPSILON_ANYLABELING)), 0.0005), 0.05)
     try:
         if body.get("box"):
             x1, y1, x2, y2 = (float(v) for v in body["box"])
