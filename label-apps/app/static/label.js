@@ -668,9 +668,20 @@ window.addEventListener('keydown', ev => {
   }
   if (ev.key.startsWith('Arrow')) {
     ev.preventDefault();
-    const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0],
-                ArrowUp: [0, -1], ArrowDown: [0, 1] }[ev.key];
-    if (d) geserDenganPanah(d[0] * MOVE_SPEED, d[1] * MOVE_SPEED);
+    // canvas.py memasang panah di dalam `elif self.editing():` — jadi panah
+    // menggeser bentuk HANYA di mode Sunting. Di mode lain panah dipakai
+    // pindah gambar, sama seperti di grid dan tampilan besar aplikasi ini.
+    // Tanpa pembatasan mode, Finish Object yang menyisakan bentuk terpilih
+    // membuat panah menggeser bentuk padahal orang bermaksud pindah gambar.
+    if (S.mode === 'edit' && S.sel >= 0) {
+      const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0],
+                  ArrowUp: [0, -1], ArrowDown: [0, 1] }[ev.key];
+      if (d) geserDenganPanah(d[0] * MOVE_SPEED, d[1] * MOVE_SPEED);
+    } else if (ev.key === 'ArrowLeft') {
+      pindah(D.prev);
+    } else if (ev.key === 'ArrowRight') {
+      pindah(D.next);
+    }
     return;
   }
   if (ev.ctrlKey) {

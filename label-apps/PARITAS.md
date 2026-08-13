@@ -21,7 +21,7 @@ yang benar** kecuali ada alasan yang ditulis terang-terangan.
 | `close_enough` + `can_close_shape` | `canvas.py:985,552` | Klik dekat titik pertama menutup poligon, butuh >2 titik |
 | `add_point_to_edge` | `canvas.py:400` | Sisip titik di sisi, vertex baru langsung aktif |
 | `remove_selected_point` | `canvas.py:414` | Backspace |
-| `move_by_keyboard` | `canvas.py:1081` | Panah, terkurung |
+| `move_by_keyboard` | `canvas.py:1081` | Panah menggeser bentuk, terkurung, **hanya di mode Sunting** seperti `elif self.editing():` di `keyPressEvent` |
 | `out_off_pixmap` + `bounded_move_*` | `canvas.py` | Bentuk & vertex terkurung di dalam gambar |
 | `set_shape_visible` | `canvas.py` | Centang tampil/sembunyi per objek |
 | `set_show_cross_line` | `canvas.py` | Garis bantu silang |
@@ -59,6 +59,7 @@ yang benar** kecuali ada alasan yang ditulis terang-terangan.
 | Warna isian bentuk | Hijau seragam (`line_color [0,255,0,128]`) | Per kelas | Dengan banyak kelas jauh lebih terbaca, dan warnanya sama dengan grid QC |
 | `Conf 0,50` | Ada di bar Auto Labeling | Tidak ada | Pada prompt titik SAM nilai itu tidak dipakai; kalau dipasang hanya jadi kontrol palsu |
 | `Run (i)` | Tombol manual | Tidak ada | SAM jalan otomatis begitu prompt ditambah |
+| Panah di luar mode Sunting | Tidak dipakai kanvas | Pindah gambar | Sama seperti panah di grid dan tampilan besar aplikasi ini; `A`/`D` tetap berlaku |
 | Kanvas | PyQt6 `QWidget` + `QPainter` | `<canvas>` + JavaScript | Qt tidak bisa digambar di browser; hanya keputusan geometrinya yang di-port |
 | Auto-labeling | `services/auto_labeling/` (GPLv3) | `osam` (MIT) + ONNX langsung | Menghindari import kode GPL; mesinnya sama |
 
