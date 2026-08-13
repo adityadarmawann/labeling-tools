@@ -173,6 +173,13 @@ def zip_yolo(items: list[dict], nama_dataset: str, segmentasi: bool,
                            "\n".join(baris) + ("\n" if baris else ""))
                 if sertakan_gambar:
                     z.write(p, f"{split}/images/{p.name}")
+        # Ketiga folder selalu dibuat, walau salah satu split kosong: data.yaml
+        # menunjuk ../test/images, dan folder yang tidak ada membuat perkakas
+        # latih mengeluh tentang path yang hilang. Pada dataset kecil, split
+        # test memang bisa kebagian nol gambar.
+        for split in SPLIT:
+            for sub in ("images", "labels"):
+                z.writestr(f"{split}/{sub}/", "")
         z.writestr("data.yaml", data_yaml(peta, nama_dataset))
         urut = [l for l, _ in sorted(peta.items(), key=lambda kv: kv[1])]
         z.writestr("README.txt",
@@ -340,6 +347,8 @@ def zip_dataset(items: list[dict], nama: str, format: str,
     bagian = bagi_split(items)
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for split in SPLIT:
+            z.writestr(f"{split}/images/", "")
         for split, daftar in bagian.items():
             if format == "coco":
                 # Nama berkas mengikuti ekspor Roboflow: _annotations.coco.json

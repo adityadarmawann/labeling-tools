@@ -200,3 +200,18 @@ def test_zip_coco_dan_voc(tmp_path):
         xml = [n for n in z.namelist() if n.endswith(".xml")]
         assert len(xml) == 2
         assert all(n.split("/")[0] in ex.SPLIT for n in xml)
+
+
+def test_folder_split_selalu_ada_walau_kosong(tmp_path):
+    """
+    data.yaml menunjuk ../test/images. Pada dataset kecil split test bisa
+    kebagian nol gambar, dan folder yang hilang membuat perkakas latih
+    mengeluh soal path yang tidak ada.
+    """
+    from app.services import export as ex
+    items, _ = scanner.scan(_dataset(tmp_path / "ds"))
+    with zipfile.ZipFile(io.BytesIO(ex.zip_yolo(items, "ds", True))) as z:
+        isi = set(z.namelist())
+        for split in ex.SPLIT:
+            assert f"{split}/images/" in isi, split
+            assert f"{split}/labels/" in isi, split
