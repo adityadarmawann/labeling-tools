@@ -28,3 +28,14 @@ labelapp-unggahan/
 .idea/
 .DS_Store
 *.swp
+
+# Venv AnyLabeling (referensi + desktop, dibuat ulang dengan pip install anylabeling)
+.venv-anylabeling/
+
+# Bobot model SAM (43 MB, diunduh terpisah)
+models/
+*.onnx
+
+# Bobot model PyTorch/ultralytics
+*.pt
+*.pth

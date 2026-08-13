@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{ it.img.name }} — anotasi</title>
+<link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="/static/label.css">
+</head>
+<body class="lab">
+
+<div class="lab-top">
+  <a class="chip" href="/">Grid</a>
+  <a class="chip" href="/pilih">Ganti dataset</a>
+  <span class="lab-mode" id="modeinfo">Mode: <b>Klik SAM</b></span>
+  <span class="lab-hint">Pintasan: <b>S</b> klik SAM · <b>B</b> kotak SAM ·
+    <b>P</b> poligon manual · <b>E</b> sunting · <b>A</b>/<b>D</b> gambar ·
+    <b>Del</b> hapus · <b>Ctrl+Z</b> urungkan · <b>Ctrl+S</b> simpan</span>
+  <span class="spacer"></span>
+  <span class="who">{{ sess.user }}</span>
+  <a class="chip" href="/logout">Keluar</a>
+</div>
+
+<div class="lab-wrap">
+
+  <div class="lab-tools">
+    <button class="tool" data-mode="sam"  title="Klik SAM (S) — klik objek, poligon jadi sendiri">◎</button>
+    <button class="tool" data-mode="box"  title="Kotak SAM (B) — tarik kotak di sekitar objek">⬚</button>
+    <button class="tool" data-mode="poly" title="Poligon manual (P) — klik titik demi titik, Enter untuk menutup">⬡</button>
+    <button class="tool" data-mode="edit" title="Sunting (E) — pilih bentuk, geser titiknya">✥</button>
+    <span class="tool-sep"></span>
+    <button class="tool" id="btn-del"  title="Hapus bentuk terpilih (Del)">🗑</button>
+    <button class="tool" id="btn-undo" title="Urungkan (Ctrl+Z)">↺</button>
+    <span class="tool-sep"></span>
+    <button class="tool" id="btn-zin"  title="Perbesar">+</button>
+    <button class="tool" id="btn-zout" title="Perkecil">−</button>
+    <button class="tool" id="btn-fit"  title="Muat ke layar (F)">⤢</button>
+    <span class="tool-sep"></span>
+    <button class="tool tool-simpan" id="btn-simpan" title="Simpan (Ctrl+S)">💾</button>
+  </div>
+
+  <div class="lab-canvas" id="wrap">
+    <canvas id="c"></canvas>
+    <div class="lab-busy" id="busy">SAM bekerja…</div>
+  </div>
+
+  <div class="lab-side">
+    <div class="pan">
+      <h3>Labels</h3>
+      <div class="kelas-list" id="kelas"></div>
+      <div class="kelas-baru">
+        <input id="kelasbaru" type="text" placeholder="kelas baru lalu Enter">
+      </div>
+    </div>
+
+    <div class="pan pan-grow">
+      <h3>Objects <span class="ct" id="nobj">0</span></h3>
+      <div class="obj-list" id="objek"></div>
+    </div>
+
+    <div class="pan">
+      <h3>Model SAM</h3>
+      <select id="model">
+        {% for m in sam.tersedia %}
+        <option value="{{ m }}"{% if m == sam.default %} selected{% endif %}>{{ m }}</option>
+        {% endfor %}
+      </select>
+      {% if not sam.mobilesam_siap %}
+      <p class="peringatan">Berkas MobileSAM tidak ada di
+        <span class="mono">{{ sam.dir_model }}</span> — pakai model lain.</p>
+      {% endif %}
+      <label class="halus" for="eps">Kerapatan titik poligon</label>
+      <input id="eps" type="range" min="5" max="200" value="40">
+    </div>
+
+    <div class="pan pan-grow">
+      <h3>Files <span class="ct">{{ posisi[0] }}/{{ posisi[1] }}</span></h3>
+      <input id="cari" type="text" placeholder="Search Filename">
+      <div class="file-list" id="berkas"></div>
+    </div>
+  </div>
+</div>
+
+<div class="lab-bawah">
+  <span id="status">Siap</span>
+  <span class="spacer"></span>
+  <span class="mono" id="koord">—</span>
+  <span class="mono">{{ it.W }}×{{ it.H }}</span>
+  <a class="chip" id="prev" href="{% if prev_path %}/label?path={{ prev_path | urlquote }}{% else %}#{% endif %}"
+     {% if not prev_path %}data-off{% endif %}>← A</a>
+  <a class="chip" id="next" href="{% if next_path %}/label?path={{ next_path | urlquote }}{% else %}#{% endif %}"
+     {% if not next_path %}data-off{% endif %}>D →</a>
+</div>
+
+<div class="toast" id="t"></div>
+
+<script id="data-awal" type="application/json">
+{{ {"path": it.img.resolve() | string,
+    "nama": it.img.name,
+    "W": it.W, "H": it.H,
+    "shapes": bentuk,
+    "kelas": kelas,
+    "berkas": berkas,
+    "prev": prev_path,
+    "next": next_path,
+    "model": sam.default} | tojson }}
+</script>
+<script src="/static/app.js"></script>
+<script src="/static/label.js"></script>
+</body>
+</html>

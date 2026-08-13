@@ -58,9 +58,10 @@
       {%- endif %}
     </div>
     <div class="acts">
+      <a class="btn pri" href="/label?path={{ p }}">Labeli</a>
       <a class="btn" href="/view?path={{ p }}">Lihat</a>
       {%- if local %}
-      <button class="btn pri" onclick="openIn('{{ p }}',this)">Perbaiki</button>
+      <button class="btn" onclick="openIn('{{ p }}',this)">Desktop</button>
       {%- endif %}
       {%- if sev == 'bg' %}
       <button class="btn" onclick="markbg('{{ p }}',false)">Batal latar</button>
