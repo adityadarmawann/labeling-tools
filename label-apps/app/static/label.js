@@ -31,7 +31,11 @@ const S = {
   kursor: null,      // posisi kursor dalam koordinat gambar, untuk garis silang
   undo: [],
   flags: { ...(D.flags_gambar || {}) },   // flag tingkat gambar, seperti panel Flags AnyLabeling
+  hover: null,       // { i, v } vertex atau bentuk di bawah kursor
   kotor: false,
+  // Setelan menu View. Namanya mengikuti menu View AnyLabeling.
+  v: { poligon: true, teks: false, grup: false, isi: true, silang: true,
+       labelTerakhir: true, zoomTetap: false, autosave: true },
 };
 
 const c = document.getElementById('c');
@@ -75,6 +79,11 @@ function bentukBaru(jenis, titik) {
 const keLayarX = x => x * S.zoom + S.panx;
 const keLayarY = y => y * S.zoom + S.pany;
 const keGambarX = x => (x - S.panx) / S.zoom;
+/* Setara out_off_pixmap + bounded_move_* di canvas.py: titik tidak boleh keluar
+   gambar. Tanpa ini objek bisa diseret ke luar dan anotasinya jadi tidak sah —
+   koordinat negatif atau melebihi lebar gambar. */
+const kurungX = x => Math.min(Math.max(x, 0), D.W);
+const kurungY = y => Math.min(Math.max(y, 0), D.H);
 const keGambarY = y => (y - S.pany) / S.zoom;
 
 function ukur() { c.width = wrap.clientWidth; c.height = wrap.clientHeight; }
@@ -103,14 +112,16 @@ function gambar() {
     g.drawImage(img, S.panx, S.pany, D.W * S.zoom, D.H * S.zoom);
   }
 
-  S.shapes.forEach((s, i) => { if (!s.sembunyi) gambarBentuk(s, i === S.sel); });
+  if (S.v.poligon) {
+    S.shapes.forEach((s, i) => { if (!s.sembunyi) gambarBentuk(s, i === S.sel); });
+  }
 
   if (S.pratinjau) gambarPratinjau(S.pratinjau);
   if (S.draft) gambarDraft(S.draft);
   if (S.seret && S.seret.jenis.startsWith('kotak')) gambarKotakSeret(S.seret);
   if (S.kotak && S.pratinjau) gambarKotakGambar(S.kotak);
   S.prompt.forEach(p => titikPrompt(p));
-  if (S.kursor && el('silang').checked) garisSilang(S.kursor);
+  if (S.kursor && S.v.silang) garisSilang(S.kursor);
 }
 
 function jalur(p) {
@@ -126,9 +137,26 @@ function gambarBentuk(s, terpilih) {
   jalur(p);
   g.fillStyle = warna(s.label, terpilih ? 0.38 : 0.2);
   g.fill();
-  g.strokeStyle = terpilih ? GARIS_PILIH : warna(s.label, 1);
-  g.lineWidth = terpilih ? 2.5 : 1.6;
+  const disorot = S.hover && S.hover.i === S.shapes.indexOf(s);
+  g.strokeStyle = terpilih ? GARIS_PILIH : warna(s.label, disorot ? 1 : 1);
+  g.lineWidth = terpilih ? 2.5 : (disorot ? 2.4 : 1.6);
   g.stroke();
+  if (S.v.teks || S.v.grup) {
+    const xs = p.map(a => a[0]), ys = p.map(a => a[1]);
+    const bagian = [];
+    if (S.v.teks) bagian.push(s.label || '(tanpa kelas)');
+    if (S.v.grup && s.group_id != null) bagian.push('grup ' + s.group_id);
+    if (bagian.length) {
+      const t = bagian.join(' · ');
+      g.font = '600 11px ui-sans-serif, sans-serif';
+      const lb = g.measureText(t).width + 8;
+      const tx = keLayarX(Math.min(...xs)), ty = keLayarY(Math.min(...ys)) - 4;
+      g.fillStyle = 'rgba(20,30,45,.78)';
+      g.fillRect(tx, ty - 14, lb, 15);
+      g.fillStyle = '#fff';
+      g.fillText(t, tx + 4, ty - 3);
+    }
+  }
   if (terpilih) {
     p.forEach(([x, y], v) => bulatan(x, y, UKURAN_TITIK / 2,
       v === S.selv ? '#fff' : ISI_VERTEX, GARIS_PILIH));
@@ -163,6 +191,10 @@ function gambarDraft(d) {
   g.moveTo(keLayarX(p[0][0]), keLayarY(p[0][1]));
   for (let i = 1; i < p.length; i++) g.lineTo(keLayarX(p[i][0]), keLayarY(p[i][1]));
   if (d.hover) g.lineTo(keLayarX(d.hover[0]), keLayarY(d.hover[1]));
+  if (S.v.isi && p.length > 2) {
+    g.fillStyle = warna(S.label, 0.2);
+    g.fill();
+  }
   g.strokeStyle = warna(S.label, 1);
   g.lineWidth = 1.8;
   g.setLineDash([5, 4]);
@@ -436,10 +468,15 @@ c.addEventListener('mousemove', ev => {
   }
   if (S.seret) {
     if (S.seret.jenis === 'vertex') {
-      S.shapes[S.seret.i].points[S.seret.v] = [gx, gy];
+      S.shapes[S.seret.i].points[S.seret.v] = [kurungX(gx), kurungY(gy)];
       tandaiKotor();
     } else if (S.seret.jenis === 'bentuk') {
-      const dx = gx - S.seret.x0, dy = gy - S.seret.y0;
+      // Geser seluruh bentuk, tapi tahan di tepi supaya tidak ada titik yang
+      // keluar gambar — sama seperti bounded_move_shapes.
+      let dx = gx - S.seret.x0, dy = gy - S.seret.y0;
+      const xs = S.seret.awal.map(p => p[0]), ys = S.seret.awal.map(p => p[1]);
+      dx = Math.min(Math.max(dx, -Math.min(...xs)), D.W - Math.max(...xs));
+      dy = Math.min(Math.max(dy, -Math.min(...ys)), D.H - Math.max(...ys));
       S.shapes[S.seret.i].points = S.seret.awal.map(p => [p[0] + dx, p[1] + dy]);
       tandaiKotor();
     } else {
@@ -450,6 +487,12 @@ c.addEventListener('mousemove', ev => {
     return;
   }
   if (S.draft) S.draft.hover = [gx, gy];
+  if (S.mode === 'edit') {
+    const v = dekatVertex(gx, gy);
+    S.hover = v || (bentukDi(gx, gy) >= 0 ? { i: bentukDi(gx, gy), v: -1 } : null);
+  } else {
+    S.hover = null;
+  }
   gambar();
 });
 
@@ -777,7 +820,7 @@ async function simpan() {
 async function pindah(path) {
   if (!path) { toast('Sudah di ujung'); return; }
   // AnyLabeling bawaannya auto_save: True — pindah gambar menyimpan sendiri.
-  if (S.kotor && el('autosave').checked) {
+  if (S.kotor && S.v.autosave) {
     await simpan();
     if (S.kotor) { toast('Belum tersimpan — pindah dibatalkan'); return; }
   } else if (S.kotor && !confirm('Ada perubahan belum disimpan. Tinggalkan?')) {
@@ -807,7 +850,6 @@ el('btn-fit').onclick = muatKeLayar;
 el('btn-zin').onclick = () => zoomDi(1.25, c.width / 2, c.height / 2);
 el('btn-zout').onclick = () => zoomDi(1 / 1.25, c.width / 2, c.height / 2);
 el('cari').oninput = renderBerkas;
-el('silang').onchange = gambar;
 el('btn-dup').onclick = duplikatTerpilih;
 el('teks').oninput = () => {
   if (S.sel < 0) return;
@@ -847,4 +889,61 @@ img.src = '/gambar?path=' + encodeURIComponent(D.path);
 
 setMode('p+');
 renderBerkas();
+render();
+
+// ---------------------------------------------------------------- menu View
+
+/*
+ * Meniru menu View AnyLabeling: panel bisa disembunyikan satu-satu, dan
+ * beberapa hal tampilan dimatikan. Semua tersimpan di localStorage supaya
+ * pilihan orang tidak hilang saat pindah gambar — di AnyLabeling setelan ini
+ * juga bertahan lewat ~/.anylabelingrc.
+ */
+const VKUNCI = 'labelapp_view';
+
+function simpanView() {
+  const panel = {};
+  document.querySelectorAll('#view-isi input[data-panel]').forEach(cb => {
+    panel[cb.dataset.panel] = cb.checked;
+  });
+  localStorage.setItem(VKUNCI, JSON.stringify({ v: S.v, panel }));
+}
+
+function terapkanPanel(id, tampil) {
+  const n = el(id);
+  if (n) n.hidden = !tampil;
+}
+
+function muatView() {
+  let d = {};
+  try { d = JSON.parse(localStorage.getItem(VKUNCI)) || {}; } catch (e) { /* abai */ }
+  Object.assign(S.v, d.v || {});
+  const peta = { 'v-poligon': 'poligon', 'v-teks': 'teks', 'v-grup': 'grup',
+                 'v-isi': 'isi', 'v-silang': 'silang',
+                 'v-labelterakhir': 'labelTerakhir', 'v-zoomtetap': 'zoomTetap',
+                 'v-autosave': 'autosave' };
+  for (const [id, kunci] of Object.entries(peta)) {
+    const cb = el(id);
+    if (!cb) continue;
+    cb.checked = !!S.v[kunci];
+    cb.onchange = () => { S.v[kunci] = cb.checked; simpanView(); gambar(); };
+  }
+  document.querySelectorAll('#view-isi input[data-panel]').forEach(cb => {
+    const p = cb.dataset.panel;
+    if (d.panel && p in d.panel) cb.checked = d.panel[p];
+    terapkanPanel(p, cb.checked);
+    cb.onchange = () => { terapkanPanel(p, cb.checked); simpanView(); };
+  });
+}
+
+const menuView = el('menu-view');
+el('view-tombol').onclick = ev => {
+  ev.stopPropagation();
+  menuView.toggleAttribute('data-buka');
+};
+document.addEventListener('click', ev => {
+  if (!menuView.contains(ev.target)) menuView.removeAttribute('data-buka');
+});
+
+muatView();
 render();

@@ -258,3 +258,25 @@ body.lab {
 }
 .flag button:hover { color: var(--stop); }
 .flag-kosong { color: var(--ink-faint); font-size: 12px; padding: 4px 2px; }
+
+/* ---------------------------------------------------------------- menu View */
+
+.menu { position: relative; }
+.menu-isi {
+  display: none; position: absolute; right: 0; top: 26px; z-index: 40;
+  background: var(--panel); border: 1px solid var(--line2); border-radius: 8px;
+  padding: 7px 0; min-width: 232px; box-shadow: 0 8px 24px rgba(20,30,45,.16);
+}
+.menu[data-buka] .menu-isi { display: block; }
+.menu-isi label {
+  display: flex; align-items: center; gap: 8px; padding: 4px 12px;
+  font-size: 12.5px; cursor: pointer; text-transform: none; letter-spacing: 0;
+  font-weight: 400; color: var(--ink); margin: 0;
+}
+.menu-isi label:hover { background: #f3f6f9; }
+.menu-judul {
+  font-size: 10px; text-transform: uppercase; letter-spacing: .09em;
+  color: var(--ink-faint); font-weight: 600; padding: 4px 12px 3px;
+}
+.menu-pisah { height: 1px; background: var(--line); margin: 5px 0; }
+.pan[hidden], .lab-auto[hidden] { display: none; }

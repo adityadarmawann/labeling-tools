@@ -19,6 +19,33 @@
     <b>Ctrl+E</b> ubah kelas · <b>Ctrl+D</b> duplikat · <b>Ctrl+F</b> muat ·
     <b>Ctrl+S</b> simpan</span>
   <span class="spacer"></span>
+  {# Menu View meniru menu View AnyLabeling: panel bisa disembunyikan, dan
+     beberapa hal tampilan bisa dimatikan. #}
+  <div class="menu" id="menu-view">
+    <button class="chip" id="view-tombol">View ▾</button>
+    <div class="menu-isi" id="view-isi">
+      <div class="menu-judul">Panel</div>
+      <label><input type="checkbox" data-panel="pan-teks" checked> Text Editor</label>
+      <label><input type="checkbox" data-panel="pan-flags" checked> Flags</label>
+      <label><input type="checkbox" data-panel="pan-labels" checked> Labels</label>
+      <label><input type="checkbox" data-panel="pan-objects" checked> Objects</label>
+      <label><input type="checkbox" data-panel="pan-setelan" checked> Setelan</label>
+      <label><input type="checkbox" data-panel="pan-files" checked> Files</label>
+      <label><input type="checkbox" data-panel="lab-auto" checked> Bar Auto Labeling</label>
+      <div class="menu-pisah"></div>
+      <div class="menu-judul">Tampilan</div>
+      <label><input type="checkbox" id="v-poligon" checked> Tampilkan semua poligon</label>
+      <label><input type="checkbox" id="v-teks"> Tulis kelas di atas bentuk</label>
+      <label><input type="checkbox" id="v-grup"> Tampilkan grup bentuk</label>
+      <label><input type="checkbox" id="v-isi" checked> Isi poligon saat digambar</label>
+      <label><input type="checkbox" id="v-silang" checked> Garis bantu silang</label>
+      <div class="menu-pisah"></div>
+      <div class="menu-judul">Perilaku</div>
+      <label><input type="checkbox" id="v-labelterakhir" checked> Pakai kelas terakhir otomatis</label>
+      <label><input type="checkbox" id="v-zoomtetap"> Pertahankan zoom saat pindah gambar</label>
+      <label><input type="checkbox" id="v-autosave" checked> Simpan otomatis saat pindah</label>
+    </div>
+  </div>
   <span class="who">{{ sess.user }}</span>
   <a class="chip" href="/logout">Keluar</a>
 </div>
@@ -84,13 +111,13 @@
       <p class="halus" id="teksinfo">Belum ada objek terpilih</p>
     </div>
 
-    <div class="pan">
+    <div class="pan" id="pan-flags">
       <h3>Flags <span class="ct" id="nflag">0</span></h3>
       <div class="flag-list" id="flags"></div>
       <input id="flagbaru" type="text" placeholder="flag baru lalu Enter">
     </div>
 
-    <div class="pan">
+    <div class="pan" id="pan-labels">
       <h3>Labels</h3>
       <div class="kelas-list" id="kelas"></div>
       <div class="kelas-baru">
@@ -98,12 +125,12 @@
       </div>
     </div>
 
-    <div class="pan pan-grow">
+    <div class="pan pan-grow" id="pan-objects">
       <h3>Objects <span class="ct" id="nobj">0</span></h3>
       <div class="obj-list" id="objek"></div>
     </div>
 
-    <div class="pan">
+    <div class="pan" id="pan-setelan">
       <h3>Setelan</h3>
       {% if not sam.mobilesam_siap %}
       <p class="peringatan">Berkas MobileSAM tidak ada di
@@ -111,11 +138,9 @@
       {% endif %}
       <label class="halus" for="eps">Kerapatan titik poligon</label>
       <input id="eps" type="range" min="5" max="200" value="40">
-      <label class="halus"><input type="checkbox" id="silang" checked> Garis bantu silang</label>
-      <label class="halus"><input type="checkbox" id="autosave" checked> Simpan otomatis saat pindah gambar</label>
     </div>
 
-    <div class="pan pan-grow">
+    <div class="pan pan-grow" id="pan-files">
       <h3>Files <span class="ct">{{ posisi[0] }}/{{ posisi[1] }}</span></h3>
       <input id="cari" type="text" placeholder="Search Filename">
       <div class="file-list" id="berkas"></div>
@@ -151,4 +176,4 @@
 <script src="/static/app.js"></script>
 <script src="/static/label.js"></script>
 </body>
-</html>
+</html> id="pan-teks"
