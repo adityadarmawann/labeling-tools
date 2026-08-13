@@ -53,6 +53,22 @@ function warna(label, alpha) {
   return `hsla(${h.toFixed(0)},62%,55%,${alpha})`;
 }
 
+/*
+ * Gaya seleksi mengikuti bawaan AnyLabeling (~/.anylabelingrc):
+ *   select_line_color [255,255,255,255]  vertex_fill_color [0,255,0,255]
+ *   hvertex_fill_color [255,255,255,255] point_size 8
+ * Warna isian tetap per kelas, bukan hijau seragam seperti AnyLabeling —
+ * dengan banyak kelas itu jauh lebih terbaca, dan warnanya sama dengan grid.
+ */
+const GARIS_PILIH = 'rgba(255,255,255,1)';
+const ISI_VERTEX = 'rgba(0,255,0,1)';
+const UKURAN_TITIK = 8;
+
+function bentukBaru(jenis, titik) {
+  return { label: S.label, shape_type: jenis, points: titik,
+           text: '', group_id: null, flags: {}, titipan: {} };
+}
+
 // ---------------------------------------------------------------- transform
 
 const keLayarX = x => x * S.zoom + S.panx;
@@ -109,10 +125,13 @@ function gambarBentuk(s, terpilih) {
   jalur(p);
   g.fillStyle = warna(s.label, terpilih ? 0.38 : 0.2);
   g.fill();
-  g.strokeStyle = warna(s.label, 1);
+  g.strokeStyle = terpilih ? GARIS_PILIH : warna(s.label, 1);
   g.lineWidth = terpilih ? 2.5 : 1.6;
   g.stroke();
-  if (terpilih) p.forEach(([x, y]) => bulatan(x, y, 4, '#fff', warna(s.label, 1)));
+  if (terpilih) {
+    p.forEach(([x, y], v) => bulatan(x, y, UKURAN_TITIK / 2,
+      v === S.selv ? '#fff' : ISI_VERTEX, GARIS_PILIH));
+  }
 }
 
 // Rectangle disimpan 2 titik (konvensi labelme); untuk digambar dijadikan 4.
@@ -334,7 +353,7 @@ function finishObject() {
     titik = [[Math.min(...xs), Math.min(...ys)], [Math.max(...xs), Math.max(...ys)]];
     jenis = 'rectangle';
   }
-  S.shapes.push({ label: S.label, shape_type: jenis, points: titik });
+  S.shapes.push(bentukBaru(jenis, titik));
   S.sel = S.shapes.length - 1;
   S.prompt = [];
   S.kotak = null;
@@ -451,8 +470,7 @@ window.addEventListener('mouseup', () => {
       if (!S.label) { toast('Pilih kelas dulu'); }
       else {
         simpanUndo();
-        S.shapes.push({ label: S.label, shape_type: 'rectangle',
-                        points: [[x0, y0], [x1, y1]] });
+        S.shapes.push(bentukBaru('rectangle', [[x0, y0], [x1, y1]]));
         S.sel = S.shapes.length - 1;
         tandaiKotor();
         render();
@@ -491,7 +509,7 @@ function tutupDraft() {
   if (!S.draft || S.draft.points.length < 3) { toast('Poligon perlu minimal 3 titik'); return; }
   if (!S.label) { toast('Pilih kelas dulu'); return; }
   simpanUndo();
-  S.shapes.push({ label: S.label, shape_type: 'polygon', points: S.draft.points });
+  S.shapes.push(bentukBaru('polygon', S.draft.points));
   S.sel = S.shapes.length - 1;
   S.draft = null;
   tandaiKotor();
@@ -585,8 +603,7 @@ function duplikatTerpilih() {
   if (S.sel < 0) { toast('Pilih objeknya dulu'); return; }
   simpanUndo();
   const s = S.shapes[S.sel];
-  S.shapes.push({ label: s.label, shape_type: s.shape_type,
-                  points: s.points.map(p => [p[0] + 8, p[1] + 8]) });
+  S.shapes.push({ ...s, points: s.points.map(p => [p[0] + 8, p[1] + 8]) });
   S.sel = S.shapes.length - 1;
   tandaiKotor();
   render();
@@ -688,8 +705,15 @@ async function simpan() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         path: D.path,
-        shapes: S.shapes.map(s => ({ label: s.label, shape_type: s.shape_type,
-                                     points: s.points })),
+        // Seluruh field dikirim balik, termasuk `titipan` berisi field asing
+        // dari AnyLabeling (difficult, attributes, ...). Kalau tidak, berkas
+        // buatan desktop kehilangan datanya begitu disimpan dari web.
+        shapes: S.shapes.map(s => ({
+          label: s.label, shape_type: s.shape_type, points: s.points,
+          text: s.text || '', group_id: s.group_id ?? null,
+          flags: s.flags || {}, titipan: s.titipan || {},
+        })),
+        flags: D.flags_gambar || {},
       }),
     });
     const j = await r.json();
@@ -706,9 +730,15 @@ async function simpan() {
   }
 }
 
-function pindah(path) {
+async function pindah(path) {
   if (!path) { toast('Sudah di ujung'); return; }
-  if (S.kotor && !confirm('Ada perubahan belum disimpan. Tinggalkan?')) return;
+  // AnyLabeling bawaannya auto_save: True — pindah gambar menyimpan sendiri.
+  if (S.kotor && el('autosave').checked) {
+    await simpan();
+    if (S.kotor) { toast('Belum tersimpan — pindah dibatalkan'); return; }
+  } else if (S.kotor && !confirm('Ada perubahan belum disimpan. Tinggalkan?')) {
+    return;
+  }
   location.href = '/label?path=' + encodeURIComponent(path);
 }
 

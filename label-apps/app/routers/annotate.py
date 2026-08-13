@@ -39,12 +39,48 @@ def daftar_kelas(sess: Session) -> list[str]:
     return sorted(dipakai | set(sess.settings.extra_labels))
 
 
-def bentuk_untuk_kanvas(it: dict) -> list[dict]:
-    """Bentuk hasil pindai -> bentuk siap dikirim ke JavaScript."""
-    return [{"label": "" if s["label"] is None else str(s["label"]),
-             "shape_type": s["type"],
-             "points": [[float(x), float(y)] for x, y in s["pts"].tolist()]}
-            for s in it["shapes"]]
+# Field tingkat atas dan per-bentuk yang memang milik kita. Sisanya dianggap
+# titipan AnyLabeling dan harus dikembalikan apa adanya saat menyimpan.
+KUNCI_ATAS = {"version", "flags", "shapes", "imagePath", "imageData",
+              "imageHeight", "imageWidth"}
+KUNCI_BENTUK = {"label", "text", "points", "group_id", "shape_type", "flags",
+                "description"}
+
+
+def baca_mentah(jp: Path) -> dict:
+    """Isi .json apa adanya, untuk mempertahankan field yang tidak kita pakai."""
+    if not jp.exists():
+        return {}
+    try:
+        d = json.loads(jp.read_text(encoding="utf-8"))
+        return d if isinstance(d, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def bentuk_untuk_kanvas(it: dict, mentah: dict) -> list[dict]:
+    """
+    Bentuk hasil pindai -> bentuk siap dikirim ke JavaScript.
+
+    Field yang tidak dikenali kanvas (difficult, attributes, kie_linking, ...)
+    dibawa serta sebagai `titipan` supaya bisa dikembalikan utuh saat disimpan.
+    Tanpa ini, berkas yang dibuat di AnyLabeling akan kehilangan datanya begitu
+    disimpan ulang dari web — kerusakan yang tidak terlihat sampai terlambat.
+    """
+    asli = mentah.get("shapes") or []
+    out = []
+    for i, s in enumerate(it["shapes"]):
+        a = asli[i] if i < len(asli) and isinstance(asli[i], dict) else {}
+        out.append({
+            "label": "" if s["label"] is None else str(s["label"]),
+            "shape_type": s["type"],
+            "points": [[float(x), float(y)] for x, y in s["pts"].tolist()],
+            "text": a.get("text", "") or "",
+            "group_id": a.get("group_id"),
+            "flags": a.get("flags") or {},
+            "titipan": {k: v for k, v in a.items() if k not in KUNCI_BENTUK},
+        })
+    return out
 
 
 @router.get("/label", response_class=HTMLResponse)
@@ -54,6 +90,7 @@ async def halaman(request: Request, path: str = "",
         return templates.TemplateResponse(request, "notfound.html", {"sess": sess},
                                           status_code=404)
     it = sess.find(path) or sess.items[0]
+    mentah = baca_mentah(it["img"].with_suffix(".json"))
     with sess.lock:
         items = sess.items
         i = items.index(it)
@@ -70,7 +107,8 @@ async def halaman(request: Request, path: str = "",
         "prev_path": str(prev_it["img"].resolve()) if prev_it else "",
         "next_path": str(next_it["img"].resolve()) if next_it else "",
         "kelas": daftar_kelas(sess),
-        "bentuk": bentuk_untuk_kanvas(it),
+        "bentuk": bentuk_untuk_kanvas(it, mentah),
+        "flags_gambar": mentah.get("flags") or {},
         "berkas": berkas,
         "sam": autolabel.info(),
     })
@@ -157,27 +195,36 @@ async def api_simpan(request: Request, sess: Session = Depends(current_session_a
         # butuh minimal 3. Tanpa pembedaan ini rectangle akan terbuang diam-diam.
         if len(titik) < (2 if jenis == "rectangle" else 3):
             continue
+        # Titipan dikembalikan lebih dulu supaya field milik kita tetap menang.
         bentuk.append({
+            **(s.get("titipan") if isinstance(s.get("titipan"), dict) else {}),
             "label": label,
+            "text": s.get("text") or "",
             "points": titik,
             "group_id": s.get("group_id"),
             "shape_type": jenis,
             "flags": s.get("flags") or {},
-            "description": s.get("description") or None,
         })
 
     jp: Path = it["img"].with_suffix(".json")
+    lama = baca_mentah(jp)
+    isi = {
+        # Field tingkat atas yang bukan milik kita (mis. sumber kustom) ikut
+        # dipertahankan, begitu juga imageData kalau berkasnya memang menanam
+        # gambar — membuangnya berarti mengubah berkas orang tanpa diminta.
+        **{k: v for k, v in lama.items() if k not in KUNCI_ATAS},
+        "version": lama.get("version") or LABELME_VERSION,
+        "flags": body.get("flags") if body.get("flags") is not None
+                 else (lama.get("flags") or {}),
+        "shapes": bentuk,
+        "imagePath": it["img"].name,
+        "imageData": lama.get("imageData"),
+        "imageHeight": it["H"],
+        "imageWidth": it["W"],
+    }
     tmp = jp.with_suffix(".json.tmp")
     try:
-        tmp.write_text(json.dumps({
-            "version": LABELME_VERSION,
-            "flags": body.get("flags") or {},
-            "shapes": bentuk,
-            "imagePath": it["img"].name,
-            "imageData": None,
-            "imageHeight": it["H"],
-            "imageWidth": it["W"],
-        }, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp.write_text(json.dumps(isi, ensure_ascii=False, indent=2), encoding="utf-8")
         tmp.replace(jp)
     except OSError as e:
         tmp.unlink(missing_ok=True)

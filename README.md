@@ -26,3 +26,11 @@ python3 -m venv .venv
 
 Penjelasan lengkap, struktur kode, dan catatan keamanan ada di
 [label-apps/README.md](label-apps/README.md).
+
+## Lisensi
+
+**GPLv3** — lihat [LICENSE](LICENSE).
+
+Perkakas ini pengembangan dari [AnyLabeling](https://github.com/vietanhdev/anylabeling)
+(Viet-Anh Nguyen, GPLv3). Rincian apa yang diambil dan apa yang tidak ada di
+[NOTICE.md](NOTICE.md).

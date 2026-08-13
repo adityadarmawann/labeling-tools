@@ -18,6 +18,7 @@ labelapp-unggahan/
 *.jpg
 *.jpeg
 *.png
+!label-apps/app/static/icons/*.png
 *.bmp
 *.webp
 *.tif

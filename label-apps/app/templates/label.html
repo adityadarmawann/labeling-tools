@@ -96,6 +96,7 @@
       <label class="halus" for="eps">Kerapatan titik poligon</label>
       <input id="eps" type="range" min="5" max="200" value="40">
       <label class="halus"><input type="checkbox" id="silang" checked> Garis bantu silang</label>
+      <label class="halus"><input type="checkbox" id="autosave" checked> Simpan otomatis saat pindah gambar</label>
     </div>
 
     <div class="pan pan-grow">
@@ -124,6 +125,7 @@
     "nama": it.img.name,
     "W": it.W, "H": it.H,
     "shapes": bentuk,
+    "flags_gambar": flags_gambar,
     "kelas": kelas,
     "berkas": berkas,
     "prev": prev_path,
