@@ -158,23 +158,47 @@ document.addEventListener('DOMContentLoaded', () => {
   if (!m) return;
   const tombol = document.getElementById('ekspor-tombol');
   const info = document.getElementById('ekspor-info');
+  const kotak = ['s-train', 's-valid', 's-test'].map(i => document.getElementById(i));
+  const rasio = () => kotak.map(k => k.value || '0').join(',');
+
+  // Tautan unduh membawa rasio yang sedang diketik, supaya angka di layar dan
+  // isi ZIP selalu cocok.
+  function perbaruiTautan() {
+    m.querySelectorAll('a[href^="/ekspor"]').forEach(a => {
+      const u = new URL(a.href, location.origin);
+      u.searchParams.set('split', rasio());
+      a.href = u.pathname + '?' + u.searchParams.toString();
+    });
+  }
+
+  async function muatRingkasan() {
+    info.textContent = 'menghitung…';
+    try {
+      const r = await fetch('/api/ekspor/ringkasan?format=yolo-seg&split='
+                            + encodeURIComponent(rasio()));
+      const j = await r.json();
+      if (!j.ok) { info.textContent = 'Gagal: ' + (j.error || j.detail); return; }
+      const s = j.split;
+      info.textContent =
+        `train ${s.train} · valid ${s.valid} · test ${s.test}`
+        + `  (dari ${j.gambar} gambar, ${j.objek} objek, ${j.kelas} kelas)`
+        + (j.tanpa_objek ? ` · ${j.tanpa_objek} tanpa objek (contoh negatif)` : '')
+        + (j.bentuk_dilewati ? ` · ${j.bentuk_dilewati} bentuk dilewati` : '');
+    } catch (e) {
+      info.textContent = 'Gagal menghubungi server';
+    }
+    perbaruiTautan();
+  }
+
+  kotak.forEach(k => { if (k) k.onchange = muatRingkasan; });
+
   let sudah = false;
-  tombol.onclick = async ev => {
+  tombol.onclick = ev => {
     ev.stopPropagation();
     m.toggleAttribute('data-buka');
     if (!m.hasAttribute('data-buka') || sudah) return;
     sudah = true;
-    try {
-      const r = await fetch('/api/ekspor/ringkasan?format=yolo-seg');
-      const j = await r.json();
-      info.textContent = j.ok
-        ? `${j.gambar} gambar · ${j.objek} objek · ${j.kelas} kelas`
-          + (j.tanpa_objek ? ` · ${j.tanpa_objek} tanpa objek (contoh negatif)` : '')
-          + (j.bentuk_dilewati ? ` · ${j.bentuk_dilewati} bentuk dilewati` : '')
-        : 'Gagal: ' + (j.error || j.detail);
-    } catch (e) {
-      info.textContent = 'Gagal menghubungi server';
-    }
+    muatRingkasan();
   };
   document.addEventListener('click', ev => {
     if (!m.contains(ev.target)) m.removeAttribute('data-buka');

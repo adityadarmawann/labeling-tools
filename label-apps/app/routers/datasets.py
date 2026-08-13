@@ -75,7 +75,7 @@ async def pick_dir(sess: Session = Depends(current_session_api)):
 
 
 @router.get("/api/ekspor/ringkasan")
-async def ekspor_ringkasan(format: str = "yolo-seg",
+async def ekspor_ringkasan(format: str = "yolo-seg", split: str = "",
                            sess: Session = Depends(current_session_api)):
     """Angka yang ditampilkan sebelum orang menekan unduh."""
     if sess.src is None:
@@ -84,12 +84,13 @@ async def ekspor_ringkasan(format: str = "yolo-seg",
         return {"ok": False, "error": f"format '{format}' tidak dikenal"}
     with sess.lock:
         r = await asyncio.to_thread(export.ringkasan, list(sess.items),
-                                    format == "yolo-seg")
+                                    format == "yolo-seg",
+                                    export.baca_rasio(split))
     return {"ok": True, "format": export.FORMAT[format], **r}
 
 
 @router.get("/ekspor")
-async def ekspor(format: str = "yolo-seg", gambar: int = 1,
+async def ekspor(format: str = "yolo-seg", gambar: int = 1, split: str = "",
                  sess: Session = Depends(current_session)):
     """
     Unduh dataset sebagai ZIP bertata letak ultralytics.
@@ -108,7 +109,7 @@ async def ekspor(format: str = "yolo-seg", gambar: int = 1,
     with sess.lock:
         items = list(sess.items)
     data = await asyncio.to_thread(export.zip_dataset, items, nama, format,
-                                   bool(gambar))
+                                   bool(gambar), export.baca_rasio(split))
     berkas = f"{nama}-{format}.zip"
     return Response(data, media_type="application/zip", headers={
         "Content-Disposition": f'attachment; filename="{berkas}"',

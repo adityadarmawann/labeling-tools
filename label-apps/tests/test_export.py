@@ -217,3 +217,37 @@ def test_folder_split_selalu_ada_walau_kosong(tmp_path):
         for split in ex.SPLIT:
             assert f"{split}/images/" in isi, split
             assert f"{split}/labels/" in isi, split
+
+
+def test_baca_rasio(tmp_path):
+    from app.services import export as ex
+    assert ex.baca_rasio("80,10,10") == (0.8, 0.1, 0.1)
+    assert ex.baca_rasio("70/20/10") == (0.7, 0.2, 0.1)
+    # dinormalkan: pemakai tidak harus mengetik angka yang pas 100
+    a = ex.baca_rasio("8,1,1")
+    assert abs(a[0] - 0.8) < 1e-9 and abs(a[1] - 0.1) < 1e-9
+    for buruk in ("", None, "abc", "50,50", "-1,1,1", "0,0,0"):
+        assert ex.baca_rasio(buruk) == ex.RASIO_BAWAAN, buruk
+
+
+def test_rasio_bawaan_80_10_10():
+    from app.services import export as ex
+    assert ex.RASIO_BAWAAN == (0.8, 0.1, 0.1)
+
+
+def test_rasio_mengubah_pembagian(tmp_path):
+    """Dengan cukup gambar, rasio berbeda harus memberi jumlah berbeda."""
+    from app.services import export as ex
+    d = tmp_path / "banyak"
+    d.mkdir()
+    for i in range(200):
+        p = d / f"i{i:03d}.jpg"
+        cv2.imwrite(str(p), np.zeros((20, 20, 3), np.uint8))
+    items, _ = scanner.scan(d)
+    a = ex.bagi_split(items, (0.8, 0.1, 0.1))
+    b = ex.bagi_split(items, (0.5, 0.25, 0.25))
+    assert len(a["train"]) > len(b["train"])
+    assert sum(len(v) for v in a.values()) == 200
+    assert sum(len(v) for v in b.values()) == 200
+    # 80% dari 200 ~ 160, beri toleransi karena pembagian berbasis hash
+    assert 140 <= len(a["train"]) <= 180

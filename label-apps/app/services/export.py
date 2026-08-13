@@ -89,8 +89,9 @@ def baris_yolo(it: dict, peta: dict[str, int], segmentasi: bool) -> list[str]:
     return keluar
 
 
-# Pembagian bawaan Roboflow: 70% latih, 20% validasi, 10% uji.
-RASIO_BAWAAN = (0.7, 0.2, 0.1)
+# Pembagian bawaan 80:10:10. Roboflow membiarkan pemakainya menentukan sendiri
+# lewat Train/Test Split, dan angka ini yang biasa dipakai di proyek ini.
+RASIO_BAWAAN = (0.8, 0.1, 0.1)
 SPLIT = ("train", "valid", "test")
 
 
@@ -114,6 +115,26 @@ def data_yaml(peta: dict[str, int], nama: str) -> str:
             "labeling-tools:\n"
             f"  dataset: {nama}\n"
             "  format: YOLO segmentation\n")
+
+
+def baca_rasio(teks: str | None) -> tuple[float, float, float]:
+    """
+    "80,10,10" -> (0.8, 0.1, 0.1). Menerima persen maupun pecahan, dan
+    dinormalkan supaya jumlahnya selalu 1 — pemakai mengetik 80/10/10 atau
+    70/20/10 tanpa harus pas.
+    """
+    if not teks:
+        return RASIO_BAWAAN
+    try:
+        angka = [float(x) for x in str(teks).replace("/", ",").split(",")]
+    except ValueError:
+        return RASIO_BAWAAN
+    if len(angka) != 3 or any(a < 0 for a in angka):
+        return RASIO_BAWAAN
+    total = sum(angka)
+    if total <= 0:
+        return RASIO_BAWAAN
+    return (angka[0] / total, angka[1] / total, angka[2] / total)
 
 
 def bagi_split(items: list[dict], rasio=RASIO_BAWAAN) -> dict[str, list[dict]]:
@@ -197,16 +218,20 @@ def zip_yolo(items: list[dict], nama_dataset: str, segmentasi: bool,
     return buf.getvalue()
 
 
-def ringkasan(items: list[dict], segmentasi: bool) -> dict:
-    """Angka untuk ditampilkan sebelum orang menekan unduh."""
+def ringkasan(items: list[dict], segmentasi: bool, rasio=RASIO_BAWAAN) -> dict:
+    """Angka untuk ditampilkan sebelum orang menekan unduh, termasuk jumlah
+    gambar per split — seperti yang Roboflow tampilkan di Train/Test Split."""
     peta = peta_kelas(items)
+    bagian = bagi_split(items, rasio)
     n_objek = sum(len(baris_yolo(it, peta, segmentasi)) for it in items)
     n_kosong = sum(1 for it in items if not baris_yolo(it, peta, segmentasi))
     dilewati = sum(1 for it in items for s in it["shapes"]
                    if s["type"] not in ("rectangle", "polygon"))
     return {"gambar": len(items), "objek": n_objek, "kelas": len(peta),
             "nama_kelas": [l for l, _ in sorted(peta.items(), key=lambda kv: kv[1])],
-            "tanpa_objek": n_kosong, "bentuk_dilewati": dilewati}
+            "tanpa_objek": n_kosong, "bentuk_dilewati": dilewati,
+            "split": {k: len(v) for k, v in bagian.items()},
+            "rasio": [round(r * 100) for r in rasio]}
 
 
 # ---------------------------------------------------------------- Pascal VOC
@@ -339,12 +364,12 @@ def coco_dict(items: list[dict], nama_dataset: str) -> dict:
 # ---------------------------------------------------------------- arsip
 
 def zip_dataset(items: list[dict], nama: str, format: str,
-                sertakan_gambar: bool = True) -> bytes:
+                sertakan_gambar: bool = True, rasio=RASIO_BAWAAN) -> bytes:
     """Satu pintu untuk semua format."""
     if format in ("yolo", "yolo-seg"):
-        return zip_yolo(items, nama, format == "yolo-seg", sertakan_gambar)
+        return zip_yolo(items, nama, format == "yolo-seg", sertakan_gambar, rasio)
 
-    bagian = bagi_split(items)
+    bagian = bagi_split(items, rasio)
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for split in SPLIT:
