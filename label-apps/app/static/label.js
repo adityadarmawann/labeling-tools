@@ -30,6 +30,7 @@ const S = {
   seret: null,
   kursor: null,      // posisi kursor dalam koordinat gambar, untuk garis silang
   undo: [],
+  flags: { ...(D.flags_gambar || {}) },   // flag tingkat gambar, seperti panel Flags AnyLabeling
   kotor: false,
 };
 
@@ -689,7 +690,50 @@ function renderBerkas() {
   });
 }
 
-function render() { gambar(); renderKelas(); renderObjek(); }
+/* Panel Text Editor: terikat ke objek terpilih. Isinya masuk field `text`
+   pada .json — field yang sama dipakai AnyLabeling, jadi catatan yang ditulis
+   di sini terbaca di desktop dan sebaliknya. */
+function renderTeks() {
+  const ta = el('teks'), info = el('teksinfo');
+  if (S.sel < 0) {
+    ta.value = ''; ta.disabled = true;
+    info.textContent = 'Belum ada objek terpilih';
+    return;
+  }
+  const s = S.shapes[S.sel];
+  ta.disabled = false;
+  if (document.activeElement !== ta) ta.value = s.text || '';
+  info.textContent = `Catatan untuk objek "${s.label || 'tanpa kelas'}"`;
+}
+
+/* Panel Flags: flag tingkat gambar, disimpan di `flags` tingkat atas .json. */
+function renderFlags() {
+  const box = el('flags'), nama = Object.keys(S.flags).sort();
+  el('nflag').textContent = nama.filter(k => S.flags[k]).length;
+  box.innerHTML = '';
+  if (!nama.length) {
+    box.innerHTML = '<div class="flag-kosong">Belum ada flag — tulis di bawah.</div>';
+    return;
+  }
+  nama.forEach(k => {
+    const d = document.createElement('label');
+    d.className = 'flag';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = !!S.flags[k];
+    cb.onchange = () => { S.flags[k] = cb.checked; tandaiKotor(); renderFlags(); };
+    const sp = document.createElement('span');
+    sp.textContent = k;
+    const x = document.createElement('button');
+    x.textContent = '\u00d7';
+    x.title = 'Buang flag ini';
+    x.onclick = e => { e.preventDefault(); delete S.flags[k]; tandaiKotor(); renderFlags(); };
+    d.append(cb, sp, x);
+    box.appendChild(d);
+  });
+}
+
+function render() { gambar(); renderKelas(); renderObjek(); renderTeks(); renderFlags(); }
 function status(t) { el('status').textContent = t; }
 function pesan(t) { el('pesan').textContent = t; status(t); }
 
@@ -713,7 +757,7 @@ async function simpan() {
           text: s.text || '', group_id: s.group_id ?? null,
           flags: s.flags || {}, titipan: s.titipan || {},
         })),
-        flags: D.flags_gambar || {},
+        flags: S.flags,
       }),
     });
     const j = await r.json();
@@ -764,6 +808,21 @@ el('btn-zin').onclick = () => zoomDi(1.25, c.width / 2, c.height / 2);
 el('btn-zout').onclick = () => zoomDi(1 / 1.25, c.width / 2, c.height / 2);
 el('cari').oninput = renderBerkas;
 el('silang').onchange = gambar;
+el('btn-dup').onclick = duplikatTerpilih;
+el('teks').oninput = () => {
+  if (S.sel < 0) return;
+  S.shapes[S.sel].text = el('teks').value;
+  tandaiKotor();
+};
+el('flagbaru').addEventListener('keydown', ev => {
+  if (ev.key !== 'Enter') return;
+  const v = ev.target.value.trim();
+  if (!v) return;
+  S.flags[v] = true;
+  ev.target.value = '';
+  tandaiKotor();
+  renderFlags();
+});
 el('model').onchange = () => { if (S.prompt.length || S.kotak) jalankanSam(); };
 
 el('kelasbaru').addEventListener('keydown', ev => {

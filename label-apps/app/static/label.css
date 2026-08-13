@@ -126,7 +126,10 @@ body.lab {
   border-left: 1px solid var(--line);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  /* Dengan enam panel di kolom 260px, isi bisa lebih tinggi daripada layar.
+     Kolomnya sendiri yang menggulung; sebelumnya overflow:hidden membuat
+     panel Objects terhimpit jadi segaris tipis. */
+  overflow-y: auto;
 }
 .pan {
   border-bottom: 1px solid var(--line);
@@ -168,7 +171,8 @@ body.lab {
 .kelas-baru { margin-top: 7px; }
 
 /* daftar objek */
-.obj-list { overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.obj-list { overflow-y: auto; display: flex; flex-direction: column; gap: 2px;
+            min-height: 84px; max-height: 240px; }
 .obj {
   display: flex; align-items: center; gap: 7px;
   padding: 4px 7px; border-radius: 5px; cursor: pointer; font-size: 12.5px;
@@ -182,7 +186,8 @@ body.lab {
 
 /* daftar berkas */
 .file-list { overflow-y: auto; margin-top: 7px; display: flex;
-             flex-direction: column; gap: 1px; }
+             flex-direction: column; gap: 1px;
+             min-height: 110px; max-height: 300px; }
 .fitem {
   display: flex; align-items: center; gap: 7px; padding: 4px 7px;
   border-radius: 5px; font-size: 12px; text-decoration: none; color: var(--ink);
@@ -212,3 +217,44 @@ body.lab {
 }
 .lab-bawah .chip { padding: 3px 10px; font-size: 12px; }
 .lab-bawah .chip[data-off] { opacity: .35; pointer-events: none; }
+
+/* ---------------------------------------------------------------- ikon */
+
+/* Ikon asli AnyLabeling berukuran 512px dan berwarna; diperkecil di sini.
+   Yang tidak aktif diredam supaya alat aktif tetap paling menonjol. */
+.tool img {
+  width: 19px; height: 19px; display: block; margin: 0 auto;
+  opacity: .62; transition: .12s;
+}
+.tool:hover img { opacity: 1; }
+.tool[data-on] img { opacity: 1; filter: brightness(0) invert(1); }
+.tool-simpan[data-kotor] img { filter: brightness(0) invert(1); }
+.ab img { width: 13px; height: 13px; vertical-align: -2px; margin-right: 4px; opacity: .7; }
+.ab[data-on] img, .ab-ok[data-siap] img { opacity: 1; filter: brightness(0) invert(1); }
+
+/* ---------------------------------------------------------------- Text Editor */
+
+.pan textarea {
+  width: 100%; border: 1px solid var(--line2); background: #fbfcfd;
+  border-radius: 5px; padding: 6px 8px; font-size: 12.5px; font-family: inherit;
+  color: var(--ink); resize: vertical; min-height: 46px;
+}
+.pan textarea:focus { outline: 0; border-color: var(--ok); }
+.pan textarea:disabled { background: #f1f3f6; color: var(--ink-faint); }
+
+/* ---------------------------------------------------------------- Flags */
+
+.flag-list { display: flex; flex-direction: column; gap: 1px; margin-bottom: 7px;
+             max-height: 120px; overflow-y: auto; }
+.flag {
+  display: flex; align-items: center; gap: 7px; padding: 3px 6px;
+  border-radius: 5px; font-size: 12.5px; cursor: pointer;
+}
+.flag:hover { background: #f3f6f9; }
+.flag span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flag button {
+  border: 0; background: transparent; color: var(--ink-faint); cursor: pointer;
+  font-size: 14px; line-height: 1; padding: 0 2px;
+}
+.flag button:hover { color: var(--stop); }
+.flag-kosong { color: var(--ink-faint); font-size: 12px; padding: 4px 2px; }

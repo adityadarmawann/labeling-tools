@@ -26,21 +26,24 @@
 <div class="lab-wrap">
 
   <div class="lab-tools">
-    <button class="tool" data-mode="p+"   title="+Point (Q) — klik pada objek">✚</button>
-    <button class="tool" data-mode="p-"   title="−Point (E) — klik pada bagian yang BUKAN objek">✖</button>
-    <button class="tool" data-mode="rect" title="+Rect — tarik kotak di sekitar objek">⬚</button>
-    <button class="tool" data-mode="poly"  title="Poligon manual (P) — klik titik demi titik, Enter menutup">⬡</button>
-    <button class="tool" data-mode="kotak" title="Rectangle manual (R) — tarik kotak, langsung jadi objek">▭</button>
-    <button class="tool" data-mode="edit"  title="Sunting (V) — pilih bentuk, geser titiknya">✥</button>
+    {# Ikon diekstrak dari resources.py AnyLabeling — lihat NOTICE.md #}
+    <button class="tool" data-mode="p+"    title="+Point (Q) — klik pada objek"><img src="/static/icons/point.png" alt=""></button>
+    <button class="tool" data-mode="p-"    title="−Point (E) — klik pada bagian yang BUKAN objek"><img src="/static/icons/minus.png" alt=""></button>
+    <button class="tool" data-mode="rect"  title="+Rect — tarik kotak di sekitar objek, SAM yang membuat poligonnya"><img src="/static/icons/brain.png" alt=""></button>
     <span class="tool-sep"></span>
-    <button class="tool" id="btn-del"  title="Hapus bentuk terpilih (Del)">🗑</button>
-    <button class="tool" id="btn-undo" title="Urungkan (Ctrl+Z)">↺</button>
+    <button class="tool" data-mode="poly"  title="Poligon manual (P) — klik titik demi titik, Enter menutup"><img src="/static/icons/polygon.png" alt=""></button>
+    <button class="tool" data-mode="kotak" title="Rectangle manual (R) — tarik kotak, langsung jadi objek"><img src="/static/icons/rectangle.png" alt=""></button>
+    <button class="tool" data-mode="edit"  title="Sunting (V) — pilih bentuk, geser titiknya"><img src="/static/icons/edit.png" alt=""></button>
     <span class="tool-sep"></span>
-    <button class="tool" id="btn-zin"  title="Perbesar">+</button>
-    <button class="tool" id="btn-zout" title="Perkecil">−</button>
-    <button class="tool" id="btn-fit"  title="Muat ke layar (F)">⤢</button>
+    <button class="tool" id="btn-dup"  title="Duplikat objek (Ctrl+D)"><img src="/static/icons/copy.png" alt=""></button>
+    <button class="tool" id="btn-del"  title="Hapus objek terpilih (Del)"><img src="/static/icons/delete.png" alt=""></button>
+    <button class="tool" id="btn-undo" title="Urungkan (Ctrl+Z)"><img src="/static/icons/undo.png" alt=""></button>
     <span class="tool-sep"></span>
-    <button class="tool tool-simpan" id="btn-simpan" title="Simpan (Ctrl+S)">💾</button>
+    <button class="tool" id="btn-zin"  title="Perbesar (Ctrl++)"><img src="/static/icons/zoom-in.png" alt=""></button>
+    <button class="tool" id="btn-zout" title="Perkecil (Ctrl+−)"><img src="/static/icons/zoom-out.png" alt=""></button>
+    <button class="tool" id="btn-fit"  title="Muat ke jendela (Ctrl+F)"><img src="/static/icons/fit-window.png" alt=""></button>
+    <span class="tool-sep"></span>
+    <button class="tool tool-simpan" id="btn-simpan" title="Simpan (Ctrl+S)"><img src="/static/icons/save.png" alt=""></button>
   </div>
 
   <div class="lab-tengah">
@@ -61,8 +64,8 @@
       <button class="ab" id="ab-p+">+Point (Q)</button>
       <button class="ab" id="ab-p-">−Point (E)</button>
       <button class="ab" id="ab-rect">+Rect (R)</button>
-      <button class="ab" id="ab-clear">Clear (C)</button>
-      <button class="ab ab-ok" id="ab-finish">Finish Object (F)</button>
+      <button class="ab" id="ab-clear"><img src="/static/icons/cancel.png" alt="">Clear (C)</button>
+      <button class="ab ab-ok" id="ab-finish"><img src="/static/icons/done.png" alt="">Finish Object (F)</button>
       <span class="spacer"></span>
       <span class="lab-pesan" id="pesan"></span>
     </div>
@@ -74,6 +77,19 @@
   </div>
 
   <div class="lab-side">
+    <div class="pan">
+      <h3>Text Editor</h3>
+      <textarea id="teks" rows="3"
+        placeholder="Pilih objek dulu, lalu tulis catatannya di sini"></textarea>
+      <p class="halus" id="teksinfo">Belum ada objek terpilih</p>
+    </div>
+
+    <div class="pan">
+      <h3>Flags <span class="ct" id="nflag">0</span></h3>
+      <div class="flag-list" id="flags"></div>
+      <input id="flagbaru" type="text" placeholder="flag baru lalu Enter">
+    </div>
+
     <div class="pan">
       <h3>Labels</h3>
       <div class="kelas-list" id="kelas"></div>
