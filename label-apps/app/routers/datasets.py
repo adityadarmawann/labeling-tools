@@ -5,11 +5,11 @@ import asyncio
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 
 from ..config import Settings, get_settings
 from ..deps import current_session, current_session_api, is_local, require_local
-from ..services import anylabeling, scanner
+from ..services import anylabeling, export, scanner
 from ..session import Session
 from ..templating import templates
 
@@ -72,3 +72,45 @@ async def pick_dir(sess: Session = Depends(current_session_api)):
         return {"ok": False, "error": "bukan folder"}
     n = len(await asyncio.to_thread(sess.load, d))
     return {"ok": True, "dir": str(d), "n": n}
+
+
+@router.get("/api/ekspor/ringkasan")
+async def ekspor_ringkasan(format: str = "yolo-seg",
+                           sess: Session = Depends(current_session_api)):
+    """Angka yang ditampilkan sebelum orang menekan unduh."""
+    if sess.src is None:
+        return {"ok": False, "error": "belum ada dataset terbuka"}
+    if format not in export.FORMAT:
+        return {"ok": False, "error": f"format '{format}' tidak dikenal"}
+    with sess.lock:
+        r = await asyncio.to_thread(export.ringkasan, list(sess.items),
+                                    format == "yolo-seg")
+    return {"ok": True, "format": export.FORMAT[format], **r}
+
+
+@router.get("/ekspor")
+async def ekspor(format: str = "yolo-seg", gambar: int = 1,
+                 sess: Session = Depends(current_session)):
+    """
+    Unduh dataset sebagai ZIP bertata letak ultralytics.
+
+    Dibuat di memori lalu dikirim sekali jalan: dataset tim ini ukurannya
+    ribuan gambar, bukan ratusan ribu, jadi tidak perlu berkas sementara di
+    disk yang harus dibersihkan.
+    """
+    if sess.src is None:
+        return Response("belum ada dataset terbuka", status_code=400,
+                        media_type="text/plain; charset=utf-8")
+    if format not in export.FORMAT:
+        return Response("format tidak dikenal", status_code=400,
+                        media_type="text/plain; charset=utf-8")
+    nama = sess.src.name
+    with sess.lock:
+        items = list(sess.items)
+    data = await asyncio.to_thread(export.zip_yolo, items, nama,
+                                   format == "yolo-seg", bool(gambar))
+    berkas = f"{nama}-{format}.zip"
+    return Response(data, media_type="application/zip", headers={
+        "Content-Disposition": f'attachment; filename="{berkas}"',
+        "Content-Length": str(len(data)),
+    })

@@ -28,6 +28,18 @@
     <span class="path mono">{{ n_obj }} objek</span>
     <button class="chip" onclick="rescan()">Pindai ulang</button>
     <a class="chip" href="/pilih">Ganti dataset</a>
+    <span class="menu" id="menu-ekspor">
+      <button class="chip" id="ekspor-tombol">Ekspor ▾</button>
+      <span class="menu-isi" id="ekspor-isi">
+        <span class="menu-judul">Format</span>
+        <a href="/ekspor?format=yolo-seg">YOLO segmentation (poligon)</a>
+        <a href="/ekspor?format=yolo">YOLO detection (bounding box)</a>
+        <span class="menu-pisah"></span>
+        <a href="/ekspor?format=yolo-seg&gambar=0">YOLO-seg, label saja</a>
+        <span class="menu-pisah"></span>
+        <span class="menu-catatan" id="ekspor-info">memuat ringkasan…</span>
+      </span>
+    </span>
   </div>
 
   <div class="bar" style="padding-top:0">

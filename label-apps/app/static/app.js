@@ -147,3 +147,36 @@ document.addEventListener('DOMContentLoaded', () => {
     uploadFiles(e.dataTransfer.files);
   };
 });
+
+// ---------------------------------------------------------------- menu Ekspor
+
+// Ringkasan diminta saat menu dibuka, bukan saat halaman dimuat: menghitung
+// objek berarti menyusun ulang seluruh baris label, dan itu tidak perlu
+// dilakukan untuk orang yang tidak berniat mengekspor.
+(() => {
+  const m = document.getElementById('menu-ekspor');
+  if (!m) return;
+  const tombol = document.getElementById('ekspor-tombol');
+  const info = document.getElementById('ekspor-info');
+  let sudah = false;
+  tombol.onclick = async ev => {
+    ev.stopPropagation();
+    m.toggleAttribute('data-buka');
+    if (!m.hasAttribute('data-buka') || sudah) return;
+    sudah = true;
+    try {
+      const r = await fetch('/api/ekspor/ringkasan?format=yolo-seg');
+      const j = await r.json();
+      info.textContent = j.ok
+        ? `${j.gambar} gambar · ${j.objek} objek · ${j.kelas} kelas`
+          + (j.tanpa_objek ? ` · ${j.tanpa_objek} tanpa objek (contoh negatif)` : '')
+          + (j.bentuk_dilewati ? ` · ${j.bentuk_dilewati} bentuk dilewati` : '')
+        : 'Gagal: ' + (j.error || j.detail);
+    } catch (e) {
+      info.textContent = 'Gagal menghubungi server';
+    }
+  };
+  document.addEventListener('click', ev => {
+    if (!m.contains(ev.target)) m.removeAttribute('data-buka');
+  });
+})();

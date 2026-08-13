@@ -32,12 +32,13 @@ yang benar** kecuali ada alasan yang ditulis terang-terangan.
 | `auto_save` | `~/.anylabelingrc` | Bawaan aktif, pindah gambar menyimpan sendiri |
 | Gaya seleksi | `~/.anylabelingrc` `shape` | `select_line_color`, `vertex_fill_color`, `hvertex_fill_color`, `point_size` |
 | Ikon | `resources.py` | 30 dari 61 ikon dipakai |
+| Ekspor YOLO | `export_formats.py` `export_to_yolo` | Mode segmentation & detection. **Keluaran byte-identik** dengan FormatExporter: `%.6f`, rectangle jadi 4 sudut (KA, KaA, KaB, KB), poligon diringkas jadi bbox, peta kelas dari label terurut |
 
 ## Belum — urutan menurut dampak
 
 | Hal | Acuan | Kenapa penting |
 |---|---|---|
-| **Ekspor anotasi** | `utils/export_formats.py` | `export_to_yolo`, `export_to_yolo_segmentation`, `export_to_pascal_voc`, `export_to_coco`, `export_to_createml`. Sekarang masih lewat `labelme2yoloseg.py` manual |
+| **Ekspor Pascal VOC / COCO / CreateML** | `export_formats.py` | Ketiganya belum dibaca utuh. Menulisnya dari ingatan berisiko menghasilkan berkas yang tampak benar tapi tidak dikenali perkakas lain |
 | Grup bentuk | `canvas.py` `group_selected_shapes`, `ungroup`, `merge_group_ids`, `gen_new_group_id` | `G` / `U`. Field `group_id` sudah bolak-balik utuh, tinggal aksinya |
 | Pilih banyak bentuk | `canvas.py` `select_shapes` (jamak) | Geser/hapus beberapa objek sekaligus |
 | Salin / tempel objek | `label_widget.py` | `Ctrl+C` / `Ctrl+V` |
