@@ -120,8 +120,10 @@ def test_zip_tanpa_gambar(tmp_path):
     items, _ = scanner.scan(_dataset(tmp_path / "ds"))
     with zipfile.ZipFile(io.BytesIO(ex.zip_yolo(items, "ds", True, False))) as z:
         isi = z.namelist()
-        assert not [n for n in isi if "/images/" in n]
-        assert [n for n in isi if "/labels/" in n]
+        # entri folder (berakhiran "/") selalu ada; yang harus kosong adalah
+        # berkas gambarnya
+        assert not [n for n in isi if "/images/" in n and not n.endswith("/")]
+        assert [n for n in isi if "/labels/" in n and not n.endswith("/")]
 
 
 def test_ringkasan(tmp_path):
