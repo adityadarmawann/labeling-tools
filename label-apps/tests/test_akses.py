@@ -169,3 +169,36 @@ def test_setelan_uji_seluruhnya_menunjuk_ke_tmp(klien, lingkungan):
                      ("thumb_root", st.thumb_root)):
         assert tmp in Path(p).parents or Path(p) == tmp, f"{label} di luar tmp: {p}"
         assert ROOT not in Path(p).parents, f"{label} menunjuk ke folder aplikasi: {p}"
+
+
+def test_item_dataset_bisa_diklik(klien, lingkungan):
+    """
+    Path dataset harus lewat data-path, bukan disisipkan ke string JavaScript
+    di dalam atribut onclick. Cara itu pernah membuat SELURUH daftar dataset
+    tidak bisa diklik: tojson menghasilkan tanda kutip ganda biasa, dan itu
+    menutup atribut onclick lebih awal sehingga HTML-nya rusak.
+    """
+    from html.parser import HTMLParser
+
+    masuk(klien, "paul", PW_PAUL)
+    html = klien.get("/pilih").text
+
+    class Ambil(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.ds = []
+
+        def handle_starttag(self, tag, attrs):
+            d = dict(attrs)
+            if tag == "a" and "ds" in (d.get("class") or ""):
+                self.ds.append(d)
+
+    p = Ambil()
+    p.feed(html)
+    assert p.ds, "tidak ada item dataset di halaman"
+    for d in p.ds:
+        # parser HTML sungguhan berhasil membaca path-nya utuh
+        assert d.get("data-path", "").startswith("/"), d
+        assert "onclick" not in d, "path jangan disisipkan ke onclick"
+    # tidak ada lagi kutip ganda yang menutup atribut lebih awal
+    assert 'onclick="setsrc("' not in html

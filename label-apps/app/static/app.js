@@ -77,6 +77,17 @@ function setsrcBox() {
   setsrc(document.getElementById('pathbox').value.trim());
 }
 
+// Item dataset membawa path di data-path. Dipasang lewat delegasi supaya path
+// tidak perlu disisipkan ke dalam string JavaScript di atribut HTML — cara itu
+// pernah membuat seluruh daftar tidak bisa diklik karena tanda kutipnya
+// menutup atribut onclick lebih awal.
+document.addEventListener('click', ev => {
+  const a = ev.target.closest && ev.target.closest('a.ds[data-path]');
+  if (!a) return;
+  ev.preventDefault();
+  setsrc(a.dataset.path);
+});
+
 async function pickdir() {
   toast('Dialog terbuka di layar server...');
   try {

@@ -4,7 +4,10 @@
 {% macro dslist(rows) -%}
 <div class="dslist">
   {%- for r in rows %}
-  <a class="ds" href="#" onclick="setsrc({{ r.path | tojson }});return false">
+  {# Path ditaruh di data-path, bukan di dalam string JS di atribut onclick.
+     tojson menghasilkan tanda kutip ganda biasa, dan itu menutup atribut
+     onclick lebih awal sehingga seluruh item tidak bisa diklik. #}
+  <a class="ds" href="#" data-path="{{ r.path }}">
     <span class="n">{{ r.nama }}</span>
     <span class="c">{% if r.lebih %}≥{% endif %}{{ r.jumlah }} gambar</span>
   </a>
