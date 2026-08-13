@@ -32,13 +32,15 @@ yang benar** kecuali ada alasan yang ditulis terang-terangan.
 | `auto_save` | `~/.anylabelingrc` | Bawaan aktif, pindah gambar menyimpan sendiri |
 | Gaya seleksi | `~/.anylabelingrc` `shape` | `select_line_color`, `vertex_fill_color`, `hvertex_fill_color`, `point_size` |
 | Ikon | `resources.py` | 30 dari 61 ikon dipakai |
+| Ekspor COCO | `export_formats.py` `export_to_coco` | `categories`, `images`, `annotations`, `licenses` **identik**. `info` sengaja beda (nama aplikasi). `area` poligon ditiru apa adanya walau bukan luas geometris — lihat "Ditiru walau keliru" |
+| Ekspor Pascal VOC | `export_formats.py` `export_to_pascal_voc` | XML **identik**, termasuk `toprettyxml(indent="  ")` dan koordinat `int()` yang dipotong |
 | Ekspor YOLO | `export_formats.py` `export_to_yolo` | Mode segmentation & detection. **Keluaran byte-identik** dengan FormatExporter: `%.6f`, rectangle jadi 4 sudut (KA, KaA, KaB, KB), poligon diringkas jadi bbox, peta kelas dari label terurut |
 
 ## Belum — urutan menurut dampak
 
 | Hal | Acuan | Kenapa penting |
 |---|---|---|
-| **Ekspor Pascal VOC / COCO / CreateML** | `export_formats.py` | Ketiganya belum dibaca utuh. Menulisnya dari ingatan berisiko menghasilkan berkas yang tampak benar tapi tidak dikenali perkakas lain |
+| **Ekspor CreateML** | `export_formats.py` `export_to_createml` | Belum dibaca utuh |
 | Grup bentuk | `canvas.py` `group_selected_shapes`, `ungroup`, `merge_group_ids`, `gen_new_group_id` | `G` / `U`. Field `group_id` sudah bolak-balik utuh, tinggal aksinya |
 | Pilih banyak bentuk | `canvas.py` `select_shapes` (jamak) | Geser/hapus beberapa objek sekaligus |
 | Salin / tempel objek | `label_widget.py` | `Ctrl+C` / `Ctrl+V` |
@@ -59,6 +61,30 @@ yang benar** kecuali ada alasan yang ditulis terang-terangan.
 | `Run (i)` | Tombol manual | Tidak ada | SAM jalan otomatis begitu prompt ditambah |
 | Kanvas | PyQt6 `QWidget` + `QPainter` | `<canvas>` + JavaScript | Qt tidak bisa digambar di browser; hanya keputusan geometrinya yang di-port |
 | Auto-labeling | `services/auto_labeling/` (GPLv3) | `osam` (MIT) + ONNX langsung | Menghindari import kode GPL; mesinnya sama |
+
+## Ditiru walau keliru
+
+Satu hal ditiru walau hasilnya bukan yang benar secara matematis, atas
+keputusan pemilik proyek: **keluaran harus sama dengan desktop.**
+
+`area` poligon di COCO (`export_to_coco`) menaruh `abs()` di dalam penjumlahan
+shoelace, bukan di luar:
+
+```python
+area += 0.5 * abs(x1*y2 - x2*y1)      # AnyLabeling
+A = |sum(x1*y2 - x2*y1)| / 2          # shoelace baku
+```
+
+Akibatnya nilai membengkak makin jauh poligon dari titik-asal — kotak 10x10 di
+(100,100) menghasilkan 2100 bukan 100; di (500,300) menghasilkan 8100. Jalur
+rectangle di fungsi yang sama memakai `width*height` sehingga bentuk identik
+mendapat angka berbeda.
+
+Dampaknya terbatas pada **evaluasi**: `pycocotools` memakai `area` untuk memilah
+objek small/medium/large, jadi `mAP_small` / `mAP_medium` / `mAP_large` ikut
+bergeser. Pelatihan tidak membaca field ini. Dijaga oleh
+`test_coco_area_poligon_mengikuti_anylabeling` supaya tidak berubah tanpa
+keputusan.
 
 ## Cara memeriksa ulang
 

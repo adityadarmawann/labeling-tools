@@ -107,8 +107,8 @@ async def ekspor(format: str = "yolo-seg", gambar: int = 1,
     nama = sess.src.name
     with sess.lock:
         items = list(sess.items)
-    data = await asyncio.to_thread(export.zip_yolo, items, nama,
-                                   format == "yolo-seg", bool(gambar))
+    data = await asyncio.to_thread(export.zip_dataset, items, nama, format,
+                                   bool(gambar))
     berkas = f"{nama}-{format}.zip"
     return Response(data, media_type="application/zip", headers={
         "Content-Disposition": f'attachment; filename="{berkas}"',

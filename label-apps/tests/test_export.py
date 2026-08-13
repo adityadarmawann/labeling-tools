@@ -97,3 +97,68 @@ def test_ringkasan(tmp_path):
     assert r["gambar"] == 2 and r["objek"] == 2 and r["kelas"] == 2
     assert r["tanpa_objek"] == 1
     assert r["nama_kelas"] == ["botol", "kaleng"]
+
+
+# ---------------------------------------------------------------- VOC & COCO
+
+def test_voc_xml_sama_dengan_anylabeling(tmp_path):
+    """Struktur & nilai acuan dari export_to_pascal_voc; diuji identik."""
+    from app.services import export as ex
+    items, _ = scanner.scan(_dataset(tmp_path / "ds"))
+    x = ex.voc_xml(items[0])
+    for potongan in ('<folder>', '<filename>g0.jpg</filename>', '<database>Unknown</database>',
+                     '<width>100</width>', '<height>80</height>', '<depth>3</depth>',
+                     '<segmented>0</segmented>', '<pose>Unspecified</pose>',
+                     '<truncated>0</truncated>', '<difficult>0</difficult>'):
+        assert potongan in x, potongan
+    # bndbox: koordinat dipotong int, bukan dibulatkan
+    assert '<xmin>10</xmin>' in x and '<ymax>70</ymax>' in x     # poligon
+    assert '<xmin>20</xmin>' in x and '<xmax>60</xmax>' in x     # rectangle
+    assert x.count('<object>') == 2
+    # gambar tanpa objek: XML tetap ada, tanpa <object>
+    assert '<object>' not in ex.voc_xml(items[1])
+
+
+def test_coco_struktur_dan_id(tmp_path):
+    from app.services import export as ex
+    items, _ = scanner.scan(_dataset(tmp_path / "ds"))
+    d = ex.coco_dict(items, "ds")
+    assert d["categories"] == [
+        {"id": 1, "name": "botol", "supercategory": "none"},
+        {"id": 2, "name": "kaleng", "supercategory": "none"},
+    ]                                        # id mulai 1, label terurut
+    assert [i["id"] for i in d["images"]] == [1, 2]
+    assert d["images"][0]["file_name"] == "g0.jpg"
+    assert d["licenses"] == [{"id": 1, "name": "Unknown", "url": ""}]
+    a = d["annotations"]
+    assert [x["id"] for x in a] == [1, 2]     # id anotasi mulai 1, menerus
+    assert a[0]["iscrowd"] == 0
+    assert a[1]["bbox"] == [20.0, 20.0, 40.0, 35.0]
+    # rectangle -> segmentasi 4 sudut, area width*height
+    assert a[1]["segmentation"] == [[20.0, 20.0, 60.0, 20.0, 60.0, 55.0, 20.0, 55.0]]
+    assert a[1]["area"] == 40.0 * 35.0
+
+
+def test_coco_area_poligon_mengikuti_anylabeling(tmp_path):
+    """
+    AnyLabeling menaruh abs() di dalam penjumlahan shoelace, sehingga `area`
+    membengkak makin jauh poligon dari titik-asal. Ditiru dengan sengaja; uji
+    ini memastikan perilakunya tidak berubah tanpa keputusan.
+    """
+    from app.services import export as ex
+    kotak = [(100.0, 100.0), (110.0, 100.0), (110.0, 110.0), (100.0, 110.0)]
+    assert ex._luas_poligon_coco(kotak) == 2100.0      # luas geometris 100
+    di_asal = [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)]
+    assert ex._luas_poligon_coco(di_asal) == 100.0     # di (0,0) kebetulan benar
+
+
+def test_zip_coco_dan_voc(tmp_path):
+    import io, json, zipfile
+    from app.services import export as ex
+    items, _ = scanner.scan(_dataset(tmp_path / "ds"))
+    with zipfile.ZipFile(io.BytesIO(ex.zip_dataset(items, "ds", "coco"))) as z:
+        assert "annotations/instances.json" in z.namelist()
+        assert "images/g0.jpg" in z.namelist()
+        assert len(json.loads(z.read("annotations/instances.json"))["annotations"]) == 2
+    with zipfile.ZipFile(io.BytesIO(ex.zip_dataset(items, "ds", "voc"))) as z:
+        assert {"Annotations/g0.xml", "Annotations/g1.xml"} <= set(z.namelist())

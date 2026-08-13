@@ -12,23 +12,32 @@ kecocokan berkas:
   kiri-atas, kanan-atas, kanan-bawah, kiri-bawah.
 - Mode deteksi: poligon diringkas menjadi bounding box.
 
-Yang belum: Pascal VOC, COCO, dan CreateML. Ketiganya ada di
-`export_formats.py` dan belum aku baca utuh — menuliskannya dari ingatan
-berisiko menghasilkan berkas yang tampak benar tapi tidak dikenali perkakas
-lain, jadi lebih baik belum ada daripada salah.
+Pascal VOC dan COCO juga mengikuti `export_formats.py` baris demi baris,
+termasuk hal yang tampak ganjil — lihat catatan pada `_luas_poligon_coco`.
+
+Yang belum: CreateML.
 """
 from __future__ import annotations
 
 import io
+import json
+import os.path as osp
+import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
+from xml.dom import minidom
 
 from . import scanner
 
 FORMAT = {
     "yolo-seg": "YOLO segmentation (poligon)",
     "yolo": "YOLO detection (bounding box)",
+    "coco": "COCO (satu instances.json)",
+    "voc": "Pascal VOC (satu .xml per gambar)",
 }
+
+# Versi yang ditulis di berkas keluaran, sama dengan AnyLabeling 0.4.36.
+VERSI = "0.4.36"
 
 
 def peta_kelas(items: list[dict]) -> dict[str, int]:
@@ -133,3 +142,154 @@ def ringkasan(items: list[dict], segmentasi: bool) -> dict:
     return {"gambar": len(items), "objek": n_objek, "kelas": len(peta),
             "nama_kelas": [l for l, _ in sorted(peta.items(), key=lambda kv: kv[1])],
             "tanpa_objek": n_kosong, "bentuk_dilewati": dilewati}
+
+
+# ---------------------------------------------------------------- Pascal VOC
+
+def voc_xml(it: dict) -> str:
+    """
+    Satu gambar -> XML Pascal VOC.
+
+    Struktur, urutan elemen, dan `toprettyxml(indent="  ")` mengikuti
+    `export_to_pascal_voc`. Koordinat ditulis `str(int(...))` — dipotong, bukan
+    dibulatkan, sama seperti di sana.
+    """
+    p: Path = it["img"]
+    ann = ET.Element("annotation")
+    ET.SubElement(ann, "folder").text = osp.dirname(str(p))
+    ET.SubElement(ann, "filename").text = p.name
+    ET.SubElement(ann, "path").text = str(p)
+    ET.SubElement(ET.SubElement(ann, "source"), "database").text = "Unknown"
+    size = ET.SubElement(ann, "size")
+    ET.SubElement(size, "width").text = str(it["W"])
+    ET.SubElement(size, "height").text = str(it["H"])
+    ET.SubElement(size, "depth").text = "3"
+    ET.SubElement(ann, "segmented").text = "0"
+
+    for s in it["shapes"]:
+        if s["type"] not in ("rectangle", "polygon"):
+            continue
+        obj = ET.SubElement(ann, "object")
+        ET.SubElement(obj, "name").text = "" if s["label"] is None else str(s["label"])
+        ET.SubElement(obj, "pose").text = "Unspecified"
+        ET.SubElement(obj, "truncated").text = "0"
+        ET.SubElement(obj, "difficult").text = "0"
+        pts = s["pts"].tolist()
+        xs = [q[0] for q in pts]
+        ys = [q[1] for q in pts]
+        bnd = ET.SubElement(obj, "bndbox")
+        ET.SubElement(bnd, "xmin").text = str(int(min(xs)))
+        ET.SubElement(bnd, "ymin").text = str(int(min(ys)))
+        ET.SubElement(bnd, "xmax").text = str(int(max(xs)))
+        ET.SubElement(bnd, "ymax").text = str(int(max(ys)))
+
+    return minidom.parseString(ET.tostring(ann, encoding="utf-8")).toprettyxml(indent="  ")
+
+
+# ---------------------------------------------------------------- COCO
+
+def _luas_poligon_coco(pts) -> float:
+    """
+    Luas poligon persis seperti `export_to_coco` AnyLabeling.
+
+    CATATAN PENTING — nilai ini bukan luas geometris. AnyLabeling menaruh abs()
+    di dalam penjumlahan:
+
+        area += 0.5 * abs(x1*y2 - x2*y1)
+
+    sedangkan shoelace menaruhnya di luar. Akibatnya nilai membengkak makin
+    jauh poligon dari titik-asal: kotak 10x10 di (100,100) menghasilkan 2100
+    bukan 100, di (500,300) menghasilkan 8100. Jalur rectangle di fungsi yang
+    sama memakai width*height sehingga hasilnya berbeda untuk bentuk identik.
+
+    Tetap ditiru karena aturannya jelas: keluaran harus sama dengan desktop.
+    Dampaknya terbatas pada evaluasi — pycocotools memakai `area` untuk memilah
+    objek small/medium/large, jadi mAP per ukuran ikut bergeser. Pelatihan tidak
+    membaca field ini.
+    """
+    luas = 0.0
+    for i in range(len(pts)):
+        x1, y1 = pts[i]
+        x2, y2 = pts[(i + 1) % len(pts)]
+        luas += 0.5 * abs(x1 * y2 - x2 * y1)
+    return luas
+
+
+def coco_dict(items: list[dict], nama_dataset: str) -> dict:
+    """Seluruh dataset -> satu dict COCO. Kategori dan id mengikuti aslinya:
+    label unik terurut, `id` mulai 1, `supercategory` "none"."""
+    label = sorted({str(s["label"]) for it in items for s in it["shapes"]
+                    if s["label"] is not None})
+    kategori = [{"id": i + 1, "name": l, "supercategory": "none"}
+                for i, l in enumerate(label)]
+    peta = {c["name"]: c["id"] for c in kategori}
+
+    d = {
+        "info": {
+            "description": f"Dataset {nama_dataset} diekspor dari labeling-tools"
+                           " (pengembangan AnyLabeling)",
+            "url": "", "version": VERSI, "year": 2023,
+            "contributor": "labeling-tools", "date_created": "",
+        },
+        "licenses": [{"id": 1, "name": "Unknown", "url": ""}],
+        "images": [], "annotations": [], "categories": kategori,
+    }
+
+    id_anotasi = 1
+    for i, it in enumerate(items):
+        id_gambar = i + 1
+        d["images"].append({
+            "id": id_gambar, "file_name": it["img"].name,
+            "width": it["W"], "height": it["H"],
+            "license": 1, "date_captured": "",
+        })
+        for s in it["shapes"]:
+            if s["type"] not in ("rectangle", "polygon"):
+                continue
+            pts = [(float(x), float(y)) for x, y in s["pts"].tolist()]
+            xs = [q[0] for q in pts]
+            ys = [q[1] for q in pts]
+            xmin, xmax, ymin, ymax = min(xs), max(xs), min(ys), max(ys)
+
+            if s["type"] == "rectangle":
+                w, h = xmax - xmin, ymax - ymin
+                segmentasi = [[xmin, ymin, xmax, ymin, xmax, ymax, xmin, ymax]]
+                luas = w * h
+                bbox = [xmin, ymin, w, h]
+            else:
+                segmentasi = [[k for q in pts for k in q]]
+                luas = _luas_poligon_coco(pts)
+                bbox = [xmin, ymin, xmax - xmin, ymax - ymin]
+
+            d["annotations"].append({
+                "id": id_anotasi, "image_id": id_gambar,
+                "category_id": peta[str(s["label"])],
+                "segmentation": segmentasi, "area": luas,
+                "bbox": bbox, "iscrowd": 0,
+            })
+            id_anotasi += 1
+    return d
+
+
+# ---------------------------------------------------------------- arsip
+
+def zip_dataset(items: list[dict], nama: str, format: str,
+                sertakan_gambar: bool = True) -> bytes:
+    """Satu pintu untuk semua format."""
+    if format in ("yolo", "yolo-seg"):
+        return zip_yolo(items, nama, format == "yolo-seg", sertakan_gambar)
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        if format == "coco":
+            z.writestr("annotations/instances.json",
+                       json.dumps(coco_dict(items, nama), indent=2))
+        elif format == "voc":
+            for it in items:
+                z.writestr(f"Annotations/{it['img'].stem}.xml", voc_xml(it))
+        else:
+            raise ValueError(f"format '{format}' tidak dikenal")
+        if sertakan_gambar:
+            for it in items:
+                z.write(it["img"], f"images/{it['img'].name}")
+    return buf.getvalue()
