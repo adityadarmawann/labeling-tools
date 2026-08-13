@@ -1,0 +1,70 @@
+# Paritas dengan AnyLabeling
+
+Daftar ini disusun dari **source AnyLabeling 0.4.36**, bukan dari tangkapan
+layar atau dugaan. Sumbernya disebut supaya setiap baris bisa diperiksa ulang.
+
+Aturan yang dipegang: kalau AnyLabeling dan aplikasi ini berbeda, **AnyLabeling
+yang benar** kecuali ada alasan yang ditulis terang-terangan.
+
+## Sudah sama
+
+| Hal | Acuan | Catatan |
+|---|---|---|
+| Format `.json` | `label_file.py` | `version, flags, shapes[label, text, points, group_id, shape_type, flags], imagePath, imageData, imageHeight, imageWidth` |
+| Field asing dipertahankan | `label_file.py` `other_data` | Diuji: `difficult`, `attributes`, kunci kustom, `imageData` selamat saat disimpan ulang |
+| Pipeline MobileSAM | `sam_onnx.py` | Kanvas `(684,1024)` + `warpAffine`, `orig_im_size` = ukuran kanvas, mask di-warp balik, titik pengisi `[0,0]`/`-1` selalu ada, skala prompt = skala warp. **IoU 1.0000, nol piksel berbeda** pada 7 kasus |
+| Mask → poligon | `segment_anything.py` | `epsilon = 0.001 * arcLength`, `CHAIN_APPROX_NONE`, kontur >90% gambar dibuang |
+| Alur Auto Labeling | `auto_labeling.py` | Prompt menumpuk → pratinjau → `+Point (Q)` / `−Point (E)` / `+Rect` → `Finish Object (F)`, `Clear (C)` |
+| Peta tombol | `~/.anylabelingrc` | `A`/`D`, `P`, `R`, `Delete`, `Backspace` (satu titik), `Ctrl+S`, `Ctrl+Z`, `Ctrl+F`, `Ctrl+E`, `Ctrl+D`, `Ctrl+0`, `Ctrl±`, `Ctrl+Shift+P`, panah |
+| `epsilon = 10.0` | `canvas.py:46` | Ambang sentuh vertex & sisi, dibagi zoom |
+| `MOVE_SPEED = 5.0` | `canvas.py:21` | Langkah panah |
+| `close_enough` + `can_close_shape` | `canvas.py:985,552` | Klik dekat titik pertama menutup poligon, butuh >2 titik |
+| `add_point_to_edge` | `canvas.py:400` | Sisip titik di sisi, vertex baru langsung aktif |
+| `remove_selected_point` | `canvas.py:414` | Backspace |
+| `move_by_keyboard` | `canvas.py:1081` | Panah, terkurung |
+| `out_off_pixmap` + `bounded_move_*` | `canvas.py` | Bentuk & vertex terkurung di dalam gambar |
+| `set_shape_visible` | `canvas.py` | Centang tampil/sembunyi per objek |
+| `set_show_cross_line` | `canvas.py` | Garis bantu silang |
+| `set_show_texts` / `set_show_groups` | `canvas.py` | Tulis kelas / grup di atas bentuk |
+| `fill_drawing` | `canvas.py` | Isi poligon saat digambar |
+| `highlight` / `un_highlight` | `canvas.py` | Sorotan saat kursor mendekat |
+| Menu View: 5 dock | `label_widget.py` | Text Editor, Flags, Labels, Objects, Files bisa disembunyikan |
+| `auto_save` | `~/.anylabelingrc` | Bawaan aktif, pindah gambar menyimpan sendiri |
+| Gaya seleksi | `~/.anylabelingrc` `shape` | `select_line_color`, `vertex_fill_color`, `hvertex_fill_color`, `point_size` |
+| Ikon | `resources.py` | 30 dari 61 ikon dipakai |
+
+## Belum — urutan menurut dampak
+
+| Hal | Acuan | Kenapa penting |
+|---|---|---|
+| **Ekspor anotasi** | `utils/export_formats.py` | `export_to_yolo`, `export_to_yolo_segmentation`, `export_to_pascal_voc`, `export_to_coco`, `export_to_createml`. Sekarang masih lewat `labelme2yoloseg.py` manual |
+| Grup bentuk | `canvas.py` `group_selected_shapes`, `ungroup`, `merge_group_ids`, `gen_new_group_id` | `G` / `U`. Field `group_id` sudah bolak-balik utuh, tinggal aksinya |
+| Pilih banyak bentuk | `canvas.py` `select_shapes` (jamak) | Geser/hapus beberapa objek sekaligus |
+| Salin / tempel objek | `label_widget.py` | `Ctrl+C` / `Ctrl+V` |
+| `undo_last_point` | `canvas.py` | Urungkan satu titik saat sedang menggambar (sekarang lewat klik kanan) |
+| `hide_background_shapes` | `canvas.py` | Sembunyikan objek lain saat menyunting satu objek |
+| Bentuk lain | `shape.py` | `circle`, `line`, `linestrip`, `point` |
+| `Brightness Contrast` | `brightness_contrast_dialog.py` | Membantu pada gambar gelap |
+| `keep_prev` | `~/.anylabelingrc` | Bawa anotasi gambar sebelumnya ke gambar berikutnya |
+| `Change Output Dir` | `label_widget.py` | Simpan `.json` ke folder lain |
+| Tema Light/Dark, Language | `label_widget.py` | Kenyamanan |
+
+## Sengaja berbeda
+
+| Hal | Di AnyLabeling | Di sini | Alasan |
+|---|---|---|---|
+| Warna isian bentuk | Hijau seragam (`line_color [0,255,0,128]`) | Per kelas | Dengan banyak kelas jauh lebih terbaca, dan warnanya sama dengan grid QC |
+| `Conf 0,50` | Ada di bar Auto Labeling | Tidak ada | Pada prompt titik SAM nilai itu tidak dipakai; kalau dipasang hanya jadi kontrol palsu |
+| `Run (i)` | Tombol manual | Tidak ada | SAM jalan otomatis begitu prompt ditambah |
+| Kanvas | PyQt6 `QWidget` + `QPainter` | `<canvas>` + JavaScript | Qt tidak bisa digambar di browser; hanya keputusan geometrinya yang di-port |
+| Auto-labeling | `services/auto_labeling/` (GPLv3) | `osam` (MIT) + ONNX langsung | Menghindari import kode GPL; mesinnya sama |
+
+## Cara memeriksa ulang
+
+```bash
+# uji paritas MobileSAM terhadap implementasi AnyLabeling sendiri
+.venv/bin/python -m pytest tests/test_sam.py -v
+
+# nilai acuan di test_sam.py berasal dari perbandingan langsung:
+#   IoU mask 1.0000, nol piksel berbeda, 7 kasus
+```

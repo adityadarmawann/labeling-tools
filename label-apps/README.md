@@ -94,6 +94,13 @@ Aturan yang dipegang: `services/` tidak mengimpor FastAPI sama sekali, sehingga
 bisa dipakai dari skrip atau notebook tanpa menjalankan server. `routers/` hanya
 menerjemahkan HTTP ke `services/`.
 
+## Paritas dengan AnyLabeling
+
+Aplikasi ini pengembangan dari AnyLabeling, dan source AnyLabeling dipakai
+sebagai **spesifikasi** — bukan tangkapan layar, bukan dugaan. Daftar apa yang
+sudah sama, apa yang belum, dan apa yang sengaja dibedakan beserta alasannya
+ada di [PARITAS.md](PARITAS.md).
+
 ## Pengujian
 
 ```bash

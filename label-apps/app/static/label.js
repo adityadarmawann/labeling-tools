@@ -32,6 +32,7 @@ const S = {
   undo: [],
   flags: { ...(D.flags_gambar || {}) },   // flag tingkat gambar, seperti panel Flags AnyLabeling
   hover: null,       // { i, v } vertex atau bentuk di bawah kursor
+  sisi: null,        // { i, e, titik } sisi terdekat, untuk add_point_to_edge
   kotor: false,
   // Setelan menu View. Namanya mengikuti menu View AnyLabeling.
   v: { poligon: true, teks: false, grup: false, isi: true, silang: true,
@@ -68,6 +69,12 @@ function warna(label, alpha) {
 const GARIS_PILIH = 'rgba(255,255,255,1)';
 const ISI_VERTEX = 'rgba(0,255,0,1)';
 const UKURAN_TITIK = 8;
+/* Konstanta ini nilainya diambil dari canvas.py AnyLabeling, bukan dikarang:
+     epsilon = 10.0   ambang sentuh vertex/sisi, dibagi zoom supaya makin
+                      presisi saat gambar diperbesar
+     MOVE_SPEED = 5.0 langkah geser dengan tombol panah                     */
+const EPSILON = 10.0;
+const MOVE_SPEED = 5.0;
 
 function bentukBaru(jenis, titik) {
   return { label: S.label, shape_type: jenis, points: titik,
@@ -121,6 +128,7 @@ function gambar() {
   if (S.seret && S.seret.jenis.startsWith('kotak')) gambarKotakSeret(S.seret);
   if (S.kotak && S.pratinjau) gambarKotakGambar(S.kotak);
   S.prompt.forEach(p => titikPrompt(p));
+  if (S.sisi) gambarSisiDisorot(S.sisi);
   if (S.kursor && S.v.silang) garisSilang(S.kursor);
 }
 
@@ -228,6 +236,25 @@ function titikPrompt(p) {
   bulatan(p.x, p.y, 5, p.label ? '#38d16a' : '#e8483a', '#fff');
 }
 
+/* Sisi yang disorot ditandai, dan calon titik baru ditampilkan sebagai kotak
+   kecil — di AnyLabeling titik yang sedang digeser digambar P_SQUARE. */
+function gambarSisiDisorot(sisi) {
+  const p = S.shapes[sisi.i].points;
+  const a = p[sisi.e], b = p[(sisi.e + 1) % p.length];
+  g.strokeStyle = '#fff';
+  g.lineWidth = 3;
+  g.beginPath();
+  g.moveTo(keLayarX(a[0]), keLayarY(a[1]));
+  g.lineTo(keLayarX(b[0]), keLayarY(b[1]));
+  g.stroke();
+  const x = keLayarX(sisi.titik[0]), y = keLayarY(sisi.titik[1]);
+  g.fillStyle = ISI_VERTEX;
+  g.strokeStyle = '#fff';
+  g.lineWidth = 1.5;
+  g.fillRect(x - 4, y - 4, 8, 8);
+  g.strokeRect(x - 4, y - 4, 8, 8);
+}
+
 function garisSilang(k) {
   const x = keLayarX(k[0]), y = keLayarY(k[1]);
   g.strokeStyle = 'rgba(56,209,106,.55)';
@@ -243,7 +270,7 @@ function garisSilang(k) {
 // ---------------------------------------------------------------- hit test
 
 function dekatVertex(gx, gy) {
-  const r = 7 / S.zoom;
+  const r = EPSILON / S.zoom;
   for (let i = S.shapes.length - 1; i >= 0; i--) {
     if (S.shapes[i].sembunyi) continue;
     const p = S.shapes[i].points;
@@ -252,6 +279,60 @@ function dekatVertex(gx, gy) {
     }
   }
   return null;
+}
+
+/* Padanan Shape.nearest_edge: sisi terdekat dalam jarak epsilon/zoom.
+   Dipakai add_point_to_edge untuk menyisipkan titik di tengah sisi. */
+function dekatSisi(gx, gy) {
+  const r = EPSILON / S.zoom;
+  for (let i = S.shapes.length - 1; i >= 0; i--) {
+    const s = S.shapes[i];
+    if (s.sembunyi || s.shape_type === 'rectangle') continue;
+    const p = s.points;
+    for (let j = 0; j < p.length; j++) {
+      const a = p[j], b = p[(j + 1) % p.length];
+      const dx = b[0] - a[0], dy = b[1] - a[1];
+      const pj = dx * dx + dy * dy;
+      if (pj === 0) continue;
+      let t = ((gx - a[0]) * dx + (gy - a[1]) * dy) / pj;
+      t = Math.min(Math.max(t, 0), 1);
+      const cx = a[0] + t * dx, cy = a[1] + t * dy;
+      if (Math.hypot(gx - cx, gy - cy) < r) {
+        return { i, e: j, titik: [cx, cy] };
+      }
+    }
+  }
+  return null;
+}
+
+/* Padanan add_point_to_edge: sisipkan titik pada sisi yang sedang disorot,
+   lalu jadikan vertex itu yang aktif — di AnyLabeling titik baru langsung
+   bisa digeser (moving_shape = True). */
+function tambahTitikDiSisi() {
+  if (!S.sisi) { toast('Dekatkan kursor ke sisi poligon dulu (mode Sunting)'); return; }
+  const { i, e, titik } = S.sisi;
+  simpanUndo();
+  S.shapes[i].points.splice(e + 1, 0, [kurungX(titik[0]), kurungY(titik[1])]);
+  S.sel = i;
+  S.selv = e + 1;
+  S.sisi = null;
+  tandaiKotor();
+  render();
+}
+
+/* Padanan move_by_keyboard: panah menggeser objek terpilih sejauh MOVE_SPEED,
+   tetap terkurung di dalam gambar. */
+function geserDenganPanah(dx, dy) {
+  if (S.sel < 0) { toast('Pilih objeknya dulu'); return; }
+  const p = S.shapes[S.sel].points;
+  const xs = p.map(a => a[0]), ys = p.map(a => a[1]);
+  dx = Math.min(Math.max(dx, -Math.min(...xs)), D.W - Math.max(...xs));
+  dy = Math.min(Math.max(dy, -Math.min(...ys)), D.H - Math.max(...ys));
+  if (!dx && !dy) return;
+  simpanUndo();
+  S.shapes[S.sel].points = p.map(a => [a[0] + dx, a[1] + dy]);
+  tandaiKotor();
+  render();
 }
 
 function didalam(s, gx, gy) {
@@ -435,7 +516,15 @@ c.addEventListener('mousedown', ev => {
 
   if (S.mode === 'poly') {
     if (!S.draft) S.draft = { points: [] };
-    S.draft.points.push([gx, gy]);
+    // Padanan close_enough + can_close_shape: klik dalam jarak epsilon/zoom
+    // dari titik pertama menutup poligon, asal titiknya sudah lebih dari dua.
+    const p0 = S.draft.points[0];
+    if (p0 && S.draft.points.length > 2 &&
+        Math.hypot(gx - p0[0], gy - p0[1]) < EPSILON / S.zoom) {
+      tutupDraft();
+      return;
+    }
+    S.draft.points.push([kurungX(gx), kurungY(gy)]);
     gambar();
     return;
   }
@@ -490,8 +579,10 @@ c.addEventListener('mousemove', ev => {
   if (S.mode === 'edit') {
     const v = dekatVertex(gx, gy);
     S.hover = v || (bentukDi(gx, gy) >= 0 ? { i: bentukDi(gx, gy), v: -1 } : null);
+    S.sisi = v ? null : dekatSisi(gx, gy);
   } else {
     S.hover = null;
+    S.sisi = null;
   }
   gambar();
 });
@@ -572,6 +663,16 @@ window.addEventListener('keydown', ev => {
   if (ev.target.tagName === 'INPUT' || ev.target.tagName === 'SELECT') return;
   if (ev.key === ' ') { spasi = true; ev.preventDefault(); return; }
 
+  if (ev.ctrlKey && ev.shiftKey && ev.key.toLowerCase() === 'p') {
+    ev.preventDefault(); tambahTitikDiSisi(); return;
+  }
+  if (ev.key.startsWith('Arrow')) {
+    ev.preventDefault();
+    const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0],
+                ArrowUp: [0, -1], ArrowDown: [0, 1] }[ev.key];
+    if (d) geserDenganPanah(d[0] * MOVE_SPEED, d[1] * MOVE_SPEED);
+    return;
+  }
   if (ev.ctrlKey) {
     const ck = ev.key.toLowerCase();
     if (ck === 'z') { ev.preventDefault(); urungkan(); }
@@ -596,7 +697,7 @@ window.addEventListener('keydown', ev => {
   else if (k === 'a') pindah(D.prev);
   else if (k === 'd') pindah(D.next);
   else if (ev.key === 'Enter') { if (S.mode === 'poly') tutupDraft(); else finishObject(); }
-  else if (ev.key === 'Escape') { S.draft = null; S.sel = -1; S.selv = -1; bersihkanPrompt(); render(); }
+  else if (ev.key === 'Escape') { S.draft = null; S.sel = -1; S.selv = -1; S.sisi = null; bersihkanPrompt(); render(); }
   else if (ev.key === 'Delete') hapusTerpilih();
   else if (ev.key === 'Backspace') { ev.preventDefault(); hapusTitikTerpilih(); }
 });
