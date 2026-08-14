@@ -202,3 +202,29 @@ def test_item_dataset_bisa_diklik(klien, lingkungan):
         assert "onclick" not in d, "path jangan disisipkan ke onclick"
     # tidak ada lagi kutip ganda yang menutup atribut lebih awal
     assert 'onclick="setsrc("' not in html
+
+
+def test_header_proxy_membatalkan_status_lokal(klien_lokal, lingkungan):
+    """
+    Di belakang reverse proxy pada mesin yang sama, semua permintaan datang
+    dari 127.0.0.1. Tanpa pemeriksaan header proxy, endpoint yang membuka
+    jendela di layar server akan terbuka untuk siapa saja lewat domain.
+    """
+    masuk(klien_lokal, "paul", PW_PAUL)
+    src = lingkungan["roots"] / "ds-alpha"
+    gambar = src / "ds-alpha-00.jpg"
+    klien_lokal.post(f"/setsrc?path={src}")
+
+    # tanpa header proxy: dianggap lokal, lolos penjagaan
+    assert klien_lokal.post(f"/open?path={gambar}").status_code == 200
+
+    # dengan header proxy: ditolak walau soketnya 127.0.0.1
+    for h in ("X-Forwarded-For", "X-Real-IP", "Forwarded",
+              "X-Forwarded-Host", "X-Forwarded-Proto"):
+        r = klien_lokal.post(f"/open?path={gambar}", headers={h: "103.182.240.26"})
+        assert r.status_code == 403, h
+        assert "mesin server" in r.json()["detail"], h
+
+    # tombol desktop juga hilang dari HTML lewat proxy
+    html = klien_lokal.get("/", headers={"X-Forwarded-For": "103.182.240.26"}).text
+    assert "openIn(" not in html

@@ -62,6 +62,7 @@ yang benar** kecuali ada alasan yang ditulis terang-terangan.
 | Panah di luar mode Sunting | Tidak dipakai kanvas | Pindah gambar | Sama seperti panah di grid dan tampilan besar aplikasi ini; `A`/`D` tetap berlaku |
 | Kanvas | PyQt6 `QWidget` + `QPainter` | `<canvas>` + JavaScript | Qt tidak bisa digambar di browser; hanya keputusan geometrinya yang di-port |
 | Auto-labeling | `services/auto_labeling/` (GPLv3) | `osam` (MIT) + ONNX langsung | Menghindari import kode GPL; mesinnya sama |
+| Penilaian "dari mesin server" | Tidak ada — desktop | Alamat soket lokal **dan** tanpa header proxy | Di belakang reverse proxy semua permintaan datang dari 127.0.0.1; tanpa syarat kedua, tombol yang membuka jendela di layar server aktif untuk semua orang |
 
 ## Ditiru walau keliru
 

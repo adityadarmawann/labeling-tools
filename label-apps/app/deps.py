@@ -20,15 +20,32 @@ class NeedsLogin(Exception):
     """Halaman HTML tanpa sesi -> dialihkan ke /login (bukan 401 mentah)."""
 
 
+# Header yang dipasang reverse proxy. Kehadirannya berarti permintaan sudah
+# melewati perantara, jadi tidak mungkin benar-benar dari mesin server.
+HEADER_PROXY = ("x-forwarded-for", "x-real-ip", "forwarded",
+                "x-forwarded-host", "x-forwarded-proto")
+
+
 def is_local(request: Request) -> bool:
     """
-    True kalau permintaan berasal dari mesin server sendiri.
+    True kalau permintaan benar-benar dari mesin server sendiri.
 
-    Sengaja memakai alamat soket, bukan X-Forwarded-For, karena header itu
-    bisa dipalsukan klien. Konsekuensinya: di belakang reverse proxy semua
-    permintaan terlihat lokal, jadi jangan pasang proxy di mesin yang sama
-    tanpa memikirkan ini.
+    Dua syarat, dan syarat kedua penting:
+
+    1. Alamat soketnya lokal. Sengaja alamat soket, bukan X-Forwarded-For,
+       karena header itu bisa dipalsukan klien.
+    2. Tidak ada satu pun header proxy. Di belakang nginx pada mesin yang sama,
+       SEMUA permintaan datang dari 127.0.0.1 — tanpa syarat ini, tombol yang
+       membuka jendela di layar server (AnyLabeling, dialog folder) akan aktif
+       untuk siapa saja yang mengakses lewat domain, dan jendelanya muncul di
+       monitor fisik server.
+
+    Akibat yang disengaja: kalau kamu sendiri membuka lewat domain, tombol
+    desktop juga mati. Untuk memakainya, buka langsung lewat 127.0.0.1 dari
+    mesin itu.
     """
+    if any(h in request.headers for h in HEADER_PROXY):
+        return False
     return bool(request.client) and request.client.host in LOCAL_HOSTS
 
 
