@@ -20,12 +20,12 @@ def test_nama_berkas_disterilkan_dan_tetap_di_folder_akun(klien, lingkungan):
     masuk(klien, "anggi", PW_ANGGI)
     unggahan = lingkungan["tmp"] / "unggahan"
 
+    # Nama bermuatan `..` DITOLAK, bukan ditafsirkan jadi path lain. Unggahan
+    # folder yang sah tidak pernah memuatnya, jadi menolak lebih jelas.
     r = klien.put("/upload?ds=batch-1&name=../../../etc/jahat.png", content=b"x" * 10)
-    assert r.json()["ok"] is True
-    assert r.json()["name"] == "jahat.png"
-    # mendarat di dalam folder akun, bukan di luar
-    assert (unggahan / "anggi" / "batch-1" / "jahat.png").exists()
+    assert r.json()["ok"] is False
     assert not (unggahan.parent / "etc").exists()
+    assert not list(unggahan.rglob("jahat.png"))
 
     # nama dataset pun tidak boleh membawa keluar
     klien.put("/upload?ds=../../luar&name=b.png", content=b"x" * 10)
@@ -189,3 +189,68 @@ def test_daftar_dataset_muncul_di_halaman_pilih(klien):
     assert "ds-alpha" in html and "ds-beta" in html
     assert 'id="drop"' in html          # panel unggah
     assert 'id="pathbox"' in html       # kotak path
+
+
+# ---------------------------------------------------------------- unggah folder
+
+def test_safe_relpath_menjaga_subfolder_dan_membuang_yang_berbahaya():
+    from app.security import safe_relpath
+    assert safe_relpath("sirsak/images/a.jpg") == "sirsak/images/a.jpg"
+    assert safe_relpath("sirsak/labels/a.txt") == "sirsak/labels/a.txt"
+    assert safe_relpath("sirsak\\images\\w.jpg") == "sirsak/images/w.jpg"
+    # `..` ditolak seluruhnya, tidak ditafsirkan
+    assert safe_relpath("../../etc/x.png") == ""
+    assert safe_relpath("a/./b/../c.jpg") == ""
+    # path absolut kehilangan awalannya, sisanya tetap relatif
+    assert safe_relpath("/abs/path/b.jpg") == "abs/path/b.jpg"
+    assert safe_relpath("a/./b/c.jpg") == "a/b/c.jpg"
+    # ekstensi tetap disaring
+    assert safe_relpath("folder/x.sh") == ""
+    assert safe_relpath("") == ""
+    # kedalaman dibatasi
+    from app.security import MAKS_DALAM
+    dalam = safe_relpath("/".join(f"d{i}" for i in range(12)) + "/z.jpg")
+    assert dalam.count("/") <= MAKS_DALAM
+
+
+def test_unggah_folder_mempertahankan_struktur_yolo(klien, lingkungan):
+    """
+    Struktur images/ + labels/ harus utuh, karena pemindai mengenali dataset
+    YOLO justru dari kedua folder itu. Kalau diratakan, dataset yang diunggah
+    tidak akan terbaca sebagai YOLO.
+    """
+    from conftest import PW_ANGGI, masuk
+    from app.services import scanner
+
+    masuk(klien, "anggi", PW_ANGGI)
+    asli = (lingkungan["roots"] / "ds-beta" / "ds-beta-00.jpg").read_bytes()
+
+    for nama in ("ds/images/a.jpg", "ds/images/b.jpg"):
+        r = klien.put(f"/upload?ds=folder-uji&name={nama}", content=asli)
+        assert r.json()["ok"] is True, nama
+    for nama in ("ds/labels/a.txt", "ds/labels/b.txt"):
+        r = klien.put(f"/upload?ds=folder-uji&name={nama}", content=b"0 0.5 0.5 0.2 0.2\n")
+        assert r.json()["ok"] is True, nama
+
+    d = lingkungan["tmp"] / "unggahan" / "anggi" / "folder-uji" / "ds"
+    assert (d / "images" / "a.jpg").exists()
+    assert (d / "labels" / "a.txt").exists()
+    # dan pemindai mengenalinya sebagai dataset YOLO
+    items, _ = scanner.scan(d)
+    assert len(items) == 2
+
+
+def test_unggah_tidak_bisa_keluar_folder_akun(klien, lingkungan):
+    from conftest import PW_ANGGI, masuk
+    masuk(klien, "anggi", PW_ANGGI)
+    unggahan = lingkungan["tmp"] / "unggahan"
+
+    for jahat in ("../../../etc/lolos.png", "/etc/lolos2.png",
+                  "a/../../../../lolos3.png"):
+        klien.put(f"/upload?ds=uji&name={jahat}", content=b"x" * 10)
+
+    milik = unggahan / "anggi"
+    for p in unggahan.rglob("*"):
+        if p.is_file():
+            assert milik in p.parents, f"bocor keluar: {p}"
+    assert not (unggahan.parent / "etc").exists()

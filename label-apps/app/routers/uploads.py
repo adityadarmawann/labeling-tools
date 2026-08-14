@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, Request
 
 from ..config import Settings, get_settings
 from ..deps import current_session_api
-from ..security import safe_filename, safe_slug
+from ..security import safe_relpath, safe_slug
 from ..session import Session
 
 router = APIRouter(tags=["uploads"])
@@ -26,7 +26,9 @@ CHUNK = 256 * 1024
 async def upload(request: Request, ds: str = "", name: str = "",
                  sess: Session = Depends(current_session_api),
                  settings: Settings = Depends(get_settings)):
-    fn = safe_filename(name)
+    # `name` boleh memuat subfolder (unggahan folder mengirim
+    # webkitRelativePath), dan strukturnya dipertahankan.
+    fn = safe_relpath(name)
     if not fn:
         return {"ok": False, "error": "nama atau jenis berkas tidak didukung"}
 
@@ -41,8 +43,14 @@ async def upload(request: Request, ds: str = "", name: str = "",
                 "error": f"lebih dari {settings.max_upload_mb} MB"}
 
     d = sess.upload_dir(ds)
-    d.mkdir(parents=True, exist_ok=True)
     dest = d / fn
+    # Penjagaan berlapis: walau safe_relpath sudah membuang `..`, tujuan akhirnya
+    # tetap diperiksa masih berada di dalam folder milik akun ini.
+    try:
+        dest.resolve().relative_to(d.resolve().parent.resolve() / d.name)
+    except ValueError:
+        return {"ok": False, "error": "tujuan di luar folder unggahan"}
+    dest.parent.mkdir(parents=True, exist_ok=True)
     # Tulis ke .part dulu, ganti nama setelah lengkap, supaya koneksi yang
     # terputus tidak meninggalkan berkas setengah jadi yang ikut terpindai.
     tmp = dest.with_suffix(dest.suffix + ".part")

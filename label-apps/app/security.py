@@ -53,6 +53,43 @@ def safe_filename(s: str) -> str:
     return base[:120]
 
 
+MAKS_DALAM = 6          # kedalaman subfolder yang diterima saat unggah folder
+
+
+def safe_relpath(s: str) -> str:
+    """
+    Path relatif dari unggahan folder -> path yang aman, subfoldernya utuh.
+
+    Dipakai karena struktur folder itu BERMAKNA: pemindai mengenali dataset
+    YOLO dari adanya `images/` dan `labels/`. Kalau semua diratakan menjadi
+    nama berkas saja, dataset YOLO yang diunggah tidak akan terbaca.
+
+    Setiap komponen disterilkan sendiri-sendiri. Path yang memuat `..`
+    DITOLAK, bukan ditafsirkan: unggahan folder yang sah tidak pernah
+    memuatnya, jadi menolak lebih jelas daripada diam-diam mengubah maksudnya
+    menjadi path lain.
+
+    Mengembalikan "" kalau tidak layak.
+    """
+    bagian = []
+    for k in re.split(r"[\\/]+", str(s or "")):
+        k = k.strip()
+        if k == "..":
+            return ""
+        if k in ("", "."):
+            continue
+        k = re.sub(r"[^A-Za-z0-9._-]+", "-", k).strip("-.")
+        if k:
+            bagian.append(k[:80])
+    if not bagian:
+        return ""
+    berkas = safe_filename(bagian[-1])
+    if not berkas:
+        return ""
+    folder = bagian[:-1][-MAKS_DALAM:]
+    return "/".join(folder + [berkas])
+
+
 # ---------------------------------------------------------------- password
 
 def hash_password(pw: str, salt: str | None = None, iters: int = ITERATIONS) -> str:

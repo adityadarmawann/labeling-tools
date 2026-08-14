@@ -15,7 +15,9 @@ aplikasi desktop masing-masing.
   seberapa banyak yang bermasalah
 - **Login per akun.** Tiap akun punya dataset dan cache thumbnail sendiri, jadi
   satu orang mengganti folder tidak mengubah tampilan orang lain
-- **Unggah dari laptop** — tarik-lepas gambar, masuk ke folder milik akun itu
+- **Unggah folder dari laptop** — tarik-lepas satu folder dataset, atau tekan
+  "Pilih folder". Subfolder `images/` dan `labels/` **ikut terjaga**, sehingga
+  dataset YOLO yang diunggah tetap terbaca sebagai YOLO
 - **Tandai latar** (setara *Mark Null* di Roboflow): gambar tanpa objek ikut ke
   dataset sebagai contoh negatif, bukan dibuang
 - **Pindai ulang** tanpa restart

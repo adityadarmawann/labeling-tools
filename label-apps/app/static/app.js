@@ -107,6 +107,41 @@ async function pickdir() {
 const UP_EXT = ['.jpg', '.jpeg', '.png', '.bmp', '.webp', '.tif', '.tiff',
                 '.json', '.txt'];
 
+// Nama yang dikirim ke server memuat subfolder kalau ada. Struktur itu
+// bermakna: pemindai mengenali dataset YOLO dari adanya images/ dan labels/,
+// jadi meratakan semuanya membuat dataset yang diunggah tidak terbaca.
+const namaKirim = f => f.webkitRelativePath || f.relPath || f.name;
+
+/* Folder yang di-drop tidak muncul di dataTransfer.files — hanya entri
+   foldernya. Isinya harus ditelusuri sendiri lewat webkitGetAsEntry. */
+async function bacaEntri(entry, awalan = '') {
+  if (entry.isFile) {
+    return new Promise(res => entry.file(f => {
+      f.relPath = awalan + entry.name;
+      res([f]);
+    }, () => res([])));
+  }
+  const reader = entry.createReader();
+  const semua = [];
+  // readEntries hanya mengembalikan sebagian per panggilan; harus diulang
+  // sampai kosong, kalau tidak folder besar terpotong diam-diam.
+  for (;;) {
+    const batch = await new Promise(res => reader.readEntries(res, () => res([])));
+    if (!batch.length) break;
+    for (const e of batch) semua.push(...await bacaEntri(e, awalan + entry.name + '/'));
+  }
+  return semua;
+}
+
+async function dariDrop(dt) {
+  const item = [...(dt.items || [])];
+  const entri = item.map(i => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+  if (!entri.length) return [...dt.files];
+  const out = [];
+  for (const e of entri) out.push(...await bacaEntri(e));
+  return out;
+}
+
 async function uploadFiles(files) {
   const ds = (document.getElementById('dsname').value || '').trim();
   if (!ds) { toast('Beri nama dataset dulu'); return; }
@@ -123,7 +158,7 @@ async function uploadFiles(files) {
   for (const f of pilih) {
     try {
       const j = await send('/upload?ds=' + encodeURIComponent(ds) +
-                           '&name=' + encodeURIComponent(f.name),
+                           '&name=' + encodeURIComponent(namaKirim(f)),
                            { method: 'PUT', body: f });
       if (!j.ok) { gagal++; if (gagal <= 2) toast(f.name + ': ' + j.error); }
     } catch (e) {
@@ -146,16 +181,28 @@ async function uploadFiles(files) {
 
 document.addEventListener('DOMContentLoaded', () => {
   const d = document.getElementById('drop');
-  const inp = document.getElementById('files');
-  if (!d || !inp) return;
-  d.onclick = () => inp.click();
-  inp.onchange = () => uploadFiles(inp.files);
+  const berkas = document.getElementById('files');
+  const folder = document.getElementById('folder');
+  if (!d || !berkas) return;
+
+  // Klik pada area tarik-lepas membuka pemilih FOLDER, bukan pemilih berkas —
+  // unggahan dataset hampir selalu satu folder, bukan berkas satu-satu.
+  d.onclick = () => (folder || berkas).click();
+  if (folder) folder.onchange = () => uploadFiles(folder.files);
+  berkas.onchange = () => uploadFiles(berkas.files);
+
+  const tf = document.getElementById('pilih-folder');
+  const tb = document.getElementById('pilih-berkas');
+  if (tf) tf.onclick = ev => { ev.preventDefault(); (folder || berkas).click(); };
+  if (tb) tb.onclick = ev => { ev.preventDefault(); berkas.click(); };
+
   d.ondragover = e => { e.preventDefault(); d.setAttribute('data-over', ''); };
   d.ondragleave = () => d.removeAttribute('data-over');
-  d.ondrop = e => {
+  d.ondrop = async e => {
     e.preventDefault();
     d.removeAttribute('data-over');
-    uploadFiles(e.dataTransfer.files);
+    document.getElementById('upnote').textContent = 'membaca isi folder…';
+    uploadFiles(await dariDrop(e.dataTransfer));
   };
 });
 
