@@ -1,4 +1,10 @@
-# Memasang di `anylabel.higo.id`
+# Memasang di belakang domain
+
+Contoh di bawah memakai `anylabel.higo.id`. Untuk domain sendiri yang tidak
+menyentuh zona perusahaan, `anylabel-higo.my.id` sama saja — ganti namanya di
+semua perintah. Perhatikan `cv.id` **bukan** zona terdaftar (tidak punya NS),
+jadi `*.cv.id` tidak bisa dipakai; SLD Indonesia yang tersedia antara lain
+`my.id`, `web.id`, `co.id`, `biz.id`.
 
 Tujuannya menggantikan `http://103.182.240.28:8042` dengan
 `https://anylabel.higo.id` — tanpa nomor port, dan **dengan TLS**, sehingga
@@ -120,3 +126,98 @@ Untuk memakai tombol desktop, buka langsung dari mesin itu lewat
 | `413 Request Entity Too Large` | berkas unggahan melebihi `client_max_body_size` di konfigurasi nginx |
 | Unggahan besar terputus | naikkan `proxy_read_timeout` |
 | Tombol desktop hilang padahal dibuka dari server | memang begitu lewat domain; pakai `http://127.0.0.1:8042` |
+
+
+---
+
+# Varian: hanya bisa diakses dari WiFi kantor
+
+Kalau aksesnya memang mau dibatasi ke jaringan kantor saja, jangan pakai
+langkah 2 dan 4 di atas — keduanya menuntut port 80 terbuka untuk seluruh
+dunia karena Let's Encrypt memverifikasi dengan mengetuk dari luar (HTTP-01).
+
+Pakai **DNS-01**: kepemilikan domain dibuktikan lewat record TXT, bukan lewat
+HTTP. Tidak ada port yang perlu dibuka ke publik.
+
+## Firewall
+
+```bash
+sudo ufw allow from 103.182.240.26 to any port 443 proto tcp comment 'anylabel - kantor'
+# port 80 TIDAK dibuka sama sekali
+sudo ufw status | grep -E '443|22|2202'
+```
+
+Pastikan `22` dan `2202` masih ada sesudahnya.
+
+## Sertifikat tanpa membuka port
+
+Paling praktis kalau DNS domainnya dikelola penyedia yang punya plugin
+certbot — Cloudflare gratis dan paling umum:
+
+```bash
+sudo apt install certbot python3-certbot-dns-cloudflare
+
+# token API Cloudflare dengan izin Zone:DNS:Edit, simpan berizin 600
+sudo install -m 600 /dev/null /etc/letsencrypt/cloudflare.ini
+sudo tee /etc/letsencrypt/cloudflare.ini >/dev/null <<'EOF'
+dns_cloudflare_api_token = TARUH_TOKEN_DI_SINI
+EOF
+
+sudo certbot certonly --dns-cloudflare   --dns-cloudflare-credentials /etc/letsencrypt/cloudflare.ini   -d anylabel-higo.my.id
+```
+
+Perpanjangannya otomatis lewat timer systemd, tanpa port terbuka dan tanpa
+kamu sentuh lagi.
+
+Kalau DNS-nya di penyedia tanpa plugin, masih bisa manual:
+
+```bash
+sudo certbot certonly --manual --preferred-challenges dns -d anylabel-higo.my.id
+```
+
+Tapi record TXT-nya harus kamu tambahkan sendiri **setiap kali diperbarui**
+(sekitar 60 hari). Mudah terlupa sampai sertifikatnya kedaluwarsa — pakai ini
+hanya kalau tidak ada pilihan lain.
+
+## Nginx untuk mode ini
+
+Pakai konfigurasi yang sama, tapi karena certbot dijalankan dengan `certonly`
+(bukan `--nginx`), blok TLS-nya ditulis sendiri:
+
+```nginx
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name anylabel-higo.my.id;
+
+    ssl_certificate     /etc/letsencrypt/live/anylabel-higo.my.id/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/anylabel-higo.my.id/privkey.pem;
+
+    client_max_body_size 100M;
+    proxy_request_buffering off;
+    proxy_read_timeout 300s;
+
+    location / {
+        proxy_pass http://127.0.0.1:8042;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+Tidak ada blok `listen 80` sama sekali — tidak dibutuhkan, dan tidak membuka
+apa pun.
+
+## Yang perlu diingat
+
+Karena port 443 dibatasi ke `103.182.240.26`, anggota tim **hanya** bisa
+mengakses dari jaringan kantor. Dari rumah atau data seluler akan tertolak —
+dan itu memang yang diminta.
+
+Kalau IP publik kantor berubah (ISP dinamis), aturan itu patah dan semua orang
+kehilangan akses. Periksa berkala dengan `curl -s ifconfig.me` dari laptop
+kantor; kalau berubah, hapus aturan lama lewat `sudo ufw status numbered` lalu
+`sudo ufw delete <nomor>` dan pasang yang baru.
