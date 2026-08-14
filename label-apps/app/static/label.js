@@ -20,7 +20,8 @@ const S = {
   kelas: D.kelas.slice(),
   label: D.kelas[0] || '',
   mode: 'p+',
-  sel: -1,
+  sel: -1,           // bentuk utama terpilih (untuk Text Editor & vertex)
+  terpilih: [],      // SEMUA bentuk terpilih; Ctrl+klik menambah/mengurangi
   selv: -1,        // indeks titik terpilih, untuk Backspace
   zoom: 1, panx: 0, pany: 0,
   prompt: [],        // { x, y, label } — 1 = objek, 0 = bukan objek
@@ -120,7 +121,9 @@ function gambar() {
   }
 
   if (S.v.poligon) {
-    S.shapes.forEach((s, i) => { if (!s.sembunyi) gambarBentuk(s, i === S.sel); });
+    S.shapes.forEach((s, i) => {
+      if (!s.sembunyi) gambarBentuk(s, S.terpilih.includes(i));
+    });
   }
 
   if (S.pratinjau) gambarPratinjau(S.pratinjau);
@@ -345,6 +348,30 @@ function didalam(s, gx, gy) {
   return ada;
 }
 
+/* Padanan select_shape_point(multiple_selection_mode) di canvas.py:
+   Ctrl+klik menambahkan bentuk ke pilihan alih-alih menggantinya. */
+function pilihBentuk(i, tambah) {
+  if (i < 0) {
+    if (!tambah) { S.sel = -1; S.terpilih = []; }
+    return;
+  }
+  if (tambah) {
+    const ada = S.terpilih.indexOf(i);
+    if (ada >= 0) {
+      S.terpilih.splice(ada, 1);
+      S.sel = S.terpilih.length ? S.terpilih[S.terpilih.length - 1] : -1;
+    } else {
+      S.terpilih.push(i);
+      S.sel = i;
+    }
+  } else {
+    S.terpilih = [i];
+    S.sel = i;
+  }
+}
+
+const adaTerpilih = () => S.terpilih.length;
+
 function bentukDi(gx, gy) {
   for (let i = S.shapes.length - 1; i >= 0; i--) {
     if (!S.shapes[i].sembunyi && didalam(S.shapes[i], gx, gy)) return i;
@@ -496,19 +523,21 @@ c.addEventListener('mousedown', ev => {
     const v = dekatVertex(gx, gy);
     if (v) {
       simpanUndo();
-      S.sel = v.i;
+      pilihBentuk(v.i, false);
       S.selv = v.v;
       S.seret = { jenis: 'vertex', i: v.i, v: v.v };
       render();
       return;
     }
     const i = bentukDi(gx, gy);
-    S.sel = i;
     S.selv = -1;
-    if (i >= 0) {
+    pilihBentuk(i, ev.ctrlKey);
+    if (i >= 0 && !ev.ctrlKey) {
       simpanUndo();
-      S.seret = { jenis: 'bentuk', i, x0: gx, y0: gy,
-                  awal: S.shapes[i].points.map(p => [p[0], p[1]]) };
+      // Seret memindahkan SELURUH bentuk terpilih, seperti bounded_move_shapes.
+      S.seret = { jenis: 'bentuk', x0: gx, y0: gy,
+                  awal: S.terpilih.map(k => ({
+                    i: k, pts: S.shapes[k].points.map(p => [p[0], p[1]]) })) };
     }
     render();
     return;
@@ -560,13 +589,16 @@ c.addEventListener('mousemove', ev => {
       S.shapes[S.seret.i].points[S.seret.v] = [kurungX(gx), kurungY(gy)];
       tandaiKotor();
     } else if (S.seret.jenis === 'bentuk') {
-      // Geser seluruh bentuk, tapi tahan di tepi supaya tidak ada titik yang
-      // keluar gambar — sama seperti bounded_move_shapes.
+      // Geser seluruh bentuk terpilih, ditahan di tepi supaya tidak ada titik
+      // yang keluar gambar — sama seperti bounded_move_shapes.
       let dx = gx - S.seret.x0, dy = gy - S.seret.y0;
-      const xs = S.seret.awal.map(p => p[0]), ys = S.seret.awal.map(p => p[1]);
+      const semua = S.seret.awal.flatMap(a => a.pts);
+      const xs = semua.map(p => p[0]), ys = semua.map(p => p[1]);
       dx = Math.min(Math.max(dx, -Math.min(...xs)), D.W - Math.max(...xs));
       dy = Math.min(Math.max(dy, -Math.min(...ys)), D.H - Math.max(...ys));
-      S.shapes[S.seret.i].points = S.seret.awal.map(p => [p[0] + dx, p[1] + dy]);
+      S.seret.awal.forEach(a => {
+        S.shapes[a.i].points = a.pts.map(p => [p[0] + dx, p[1] + dy]);
+      });
       tandaiKotor();
     } else {
       S.seret.x1 = ev.offsetX;
@@ -623,17 +655,89 @@ window.addEventListener('mouseup', () => {
 
 c.addEventListener('dblclick', () => { if (S.mode === 'poly') tutupDraft(); });
 
+/*
+ * Klik kanan mengikuti canvas.py AnyLabeling:
+ *   - saat menggambar  -> mencabut titik / prompt terakhir
+ *   - saat menyunting  -> memilih bentuk di bawah kursor lalu membuka menu
+ *
+ * Aturan aktifnya juga dari sana (label_widget.py:1650-1653):
+ *   hapus & duplikat butuh >=1 terpilih, ubah kelas tepat 1.
+ */
+function tutupMenu() { el('ctx').removeAttribute('data-on'); }
+
+function bukaMenu(x, y) {
+  const m = el('ctx');
+  const n = S.terpilih.length;
+  const isi = [
+    ['judul', n ? `${n} objek terpilih` : 'tidak ada yang terpilih'],
+    ['aksi', 'Ubah kelas', 'Ctrl+E', n === 1, ubahKelasTerpilih, false],
+    ['aksi', 'Duplikat', 'Ctrl+D', n >= 1, duplikatTerpilih, false],
+    ['aksi', n > 1 ? `Sembunyikan ${n} objek` : 'Sembunyikan', '', n >= 1,
+     () => { S.terpilih.forEach(i => { S.shapes[i].sembunyi = true; }); render(); }, false],
+    ['pisah'],
+    ['aksi', 'Sisip titik di sisi', 'Ctrl+Shift+P', !!S.sisi, tambahTitikDiSisi, false],
+    ['aksi', 'Hapus titik terpilih', 'Backspace', S.sel >= 0 && S.selv >= 0,
+     hapusTitikTerpilih, false],
+    ['pisah'],
+    ['aksi', n > 1 ? `Hapus ${n} objek` : 'Hapus objek', 'Del', n >= 1,
+     hapusTerpilih, true],
+    ['aksi', 'Urungkan', 'Ctrl+Z', S.undo.length > 0, urungkan, false],
+  ];
+  m.innerHTML = '';
+  for (const baris of isi) {
+    if (baris[0] === 'pisah') { m.appendChild(document.createElement('hr')); continue; }
+    if (baris[0] === 'judul') {
+      const d = document.createElement('div');
+      d.className = 'judul';
+      d.textContent = baris[1];
+      m.appendChild(d);
+      continue;
+    }
+    const [, teks, kunci, aktif, fn, bahaya] = baris;
+    const b = document.createElement('button');
+    b.disabled = !aktif;
+    if (bahaya) b.setAttribute('data-bahaya', '');
+    b.innerHTML = '<span></span><i></i>';
+    b.querySelector('span').textContent = teks;
+    b.querySelector('i').textContent = kunci;
+    b.onclick = () => { tutupMenu(); fn(); };
+    m.appendChild(b);
+  }
+  // Jangan sampai menu terpotong tepi layar.
+  m.setAttribute('data-on', '');
+  const r = m.getBoundingClientRect();
+  m.style.left = Math.min(x, window.innerWidth - r.width - 8) + 'px';
+  m.style.top = Math.min(y, window.innerHeight - r.height - 8) + 'px';
+}
+
 c.addEventListener('contextmenu', ev => {
   ev.preventDefault();
   if (S.mode === 'poly' && S.draft && S.draft.points.length) {
     S.draft.points.pop();
     gambar();
-  } else if (S.prompt.length) {
-    S.prompt.pop();                     // klik kanan mencabut prompt terakhir
+    return;
+  }
+  if (S.mode !== 'edit' && S.prompt.length) {
+    S.prompt.pop();                     // mencabut prompt SAM terakhir
     if (S.prompt.length || S.kotak) jalankanSam();
     else bersihkanPrompt();
+    return;
   }
+  if (S.mode !== 'edit') { setMode('edit'); }
+  // Padanan select_shape_point pada klik kanan: kalau yang diklik belum
+  // terpilih, dia yang dipilih; kalau sudah, pilihan yang ada dipertahankan
+  // supaya menu berlaku untuk semuanya.
+  const i = bentukDi(keGambarX(ev.offsetX), keGambarY(ev.offsetY));
+  if (i >= 0 && !S.terpilih.includes(i)) pilihBentuk(i, ev.ctrlKey);
+  render();
+  bukaMenu(ev.clientX, ev.clientY);
 });
+
+document.addEventListener('click', ev => {
+  if (!el('ctx').contains(ev.target)) tutupMenu();
+});
+window.addEventListener('blur', tutupMenu);
+wrap.addEventListener('wheel', tutupMenu, { passive: true });
 
 wrap.addEventListener('wheel', ev => {
   ev.preventDefault();
@@ -708,7 +812,7 @@ window.addEventListener('keydown', ev => {
   else if (k === 'a') pindah(D.prev);
   else if (k === 'd') pindah(D.next);
   else if (ev.key === 'Enter') { if (S.mode === 'poly') tutupDraft(); else finishObject(); }
-  else if (ev.key === 'Escape') { S.draft = null; S.sel = -1; S.selv = -1; S.sisi = null; bersihkanPrompt(); render(); }
+  else if (ev.key === 'Escape') { S.draft = null; S.sel = -1; S.terpilih = []; S.selv = -1; S.sisi = null; tutupMenu(); bersihkanPrompt(); render(); }
   else if (ev.key === 'Delete') hapusTerpilih();
   else if (ev.key === 'Backspace') { ev.preventDefault(); hapusTitikTerpilih(); }
 });
@@ -716,12 +820,16 @@ window.addEventListener('keydown', ev => {
 window.addEventListener('keyup', ev => { if (ev.key === ' ') spasi = false; });
 
 function hapusTerpilih() {
-  if (S.sel < 0) { toast('Pilih bentuknya dulu (V untuk mode Sunting)'); return; }
+  if (!adaTerpilih()) { toast('Pilih objeknya dulu — klik objek, Ctrl+klik untuk beberapa'); return; }
   simpanUndo();
-  S.shapes.splice(S.sel, 1);
+  const n = S.terpilih.length;
+  // Dihapus dari indeks terbesar supaya indeks yang belum dihapus tidak bergeser.
+  [...S.terpilih].sort((a, b) => b - a).forEach(i => S.shapes.splice(i, 1));
   S.sel = -1;
   S.selv = -1;
+  S.terpilih = [];
   tandaiKotor();
+  pesan(`${n} objek dihapus`);
   render();
 }
 
@@ -744,10 +852,11 @@ function hapusTitikTerpilih() {
 /** Ctrl+E: ubah kelas objek terpilih. */
 function ubahKelasTerpilih() {
   if (S.sel < 0) { toast('Pilih objeknya dulu'); return; }
+  // Kalau beberapa terpilih, semuanya diganti sekaligus.
   const v = (prompt('Kelas untuk objek ini:', S.shapes[S.sel].label) || '').trim();
   if (!v) return;
   simpanUndo();
-  S.shapes[S.sel].label = v;
+  (adaTerpilih() ? S.terpilih : [S.sel]).forEach(i => { S.shapes[i].label = v; });
   if (!S.kelas.includes(v)) { S.kelas.push(v); S.kelas.sort(); }
   S.label = v;
   tandaiKotor();
@@ -756,11 +865,16 @@ function ubahKelasTerpilih() {
 
 /** Ctrl+D: duplikat objek terpilih, digeser sedikit supaya terlihat. */
 function duplikatTerpilih() {
-  if (S.sel < 0) { toast('Pilih objeknya dulu'); return; }
+  if (!adaTerpilih()) { toast('Pilih objeknya dulu'); return; }
   simpanUndo();
-  const s = S.shapes[S.sel];
-  S.shapes.push({ ...s, points: s.points.map(p => [p[0] + 8, p[1] + 8]) });
-  S.sel = S.shapes.length - 1;
+  const baru = [];
+  S.terpilih.forEach(i => {
+    const s = S.shapes[i];
+    S.shapes.push({ ...s, points: s.points.map(p => [p[0] + 8, p[1] + 8]) });
+    baru.push(S.shapes.length - 1);
+  });
+  S.terpilih = baru;
+  S.sel = baru[baru.length - 1];
   tandaiKotor();
   render();
 }
@@ -805,7 +919,7 @@ function renderObjek() {
   S.shapes.forEach((s, i) => {
     const d = document.createElement('div');
     d.className = 'obj';
-    if (i === S.sel) d.setAttribute('data-on', '');
+    if (S.terpilih.includes(i)) d.setAttribute('data-on', '');
     const cb = document.createElement('input');
     cb.type = 'checkbox';
     cb.checked = !s.sembunyi;
@@ -821,7 +935,7 @@ function renderObjek() {
     const b = document.createElement('b');
     b.textContent = s.shape_type === 'rectangle' ? 'kotak' : `${s.points.length} titik`;
     d.appendChild(b);
-    d.onclick = () => { S.sel = i; setMode('edit'); render(); };
+    d.onclick = ev => { pilihBentuk(i, ev.ctrlKey); setMode('edit'); render(); };
     box.appendChild(d);
   });
 }

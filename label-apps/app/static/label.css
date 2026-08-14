@@ -280,3 +280,26 @@ body.lab {
 }
 .menu-pisah { height: 1px; background: var(--line); margin: 5px 0; }
 .pan[hidden], .lab-auto[hidden] { display: none; }
+
+/* ---------------------------------------------------------------- menu klik kanan */
+
+.ctx {
+  display: none; position: fixed; z-index: 60; min-width: 200px;
+  background: var(--panel); border: 1px solid var(--line2); border-radius: 8px;
+  padding: 5px 0; box-shadow: 0 10px 28px rgba(20,30,45,.20);
+}
+.ctx[data-on] { display: block; }
+.ctx button {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  width: 100%; border: 0; background: transparent; cursor: pointer;
+  padding: 6px 13px; font-size: 12.5px; font-family: inherit; color: var(--ink);
+  text-align: left;
+}
+.ctx button:hover:not(:disabled) { background: #f3f6f9; }
+.ctx button:disabled { color: var(--ink-faint); cursor: default; }
+.ctx button i { color: var(--ink-faint); font-style: normal; font-size: 11px;
+                font-family: ui-monospace, monospace; }
+.ctx button[data-bahaya]:hover:not(:disabled) { background: #fdecea; color: var(--stop); }
+.ctx hr { border: 0; border-top: 1px solid var(--line); margin: 5px 0; }
+.ctx .judul { padding: 4px 13px 2px; font-size: 10px; text-transform: uppercase;
+              letter-spacing: .09em; color: var(--ink-faint); font-weight: 600; }

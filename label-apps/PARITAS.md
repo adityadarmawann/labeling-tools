@@ -28,6 +28,8 @@ yang benar** kecuali ada alasan yang ditulis terang-terangan.
 | `set_show_texts` / `set_show_groups` | `canvas.py` | Tulis kelas / grup di atas bentuk |
 | `fill_drawing` | `canvas.py` | Isi poligon saat digambar |
 | `highlight` / `un_highlight` | `canvas.py` | Sorotan saat kursor mendekat |
+| `select_shape_point(multiple_selection_mode)` | `canvas.py:577` | **Ctrl+klik** memilih banyak bentuk; hapus, duplikat, geser, dan ubah kelas berlaku untuk semuanya |
+| Menu klik kanan | `canvas.py:479,493` + `label_widget.py:861,1650` | Klik kanan memilih bentuk di bawah kursor lalu membuka menu. Aturan aktif sama: hapus & duplikat butuh ≥1 terpilih, ubah kelas tepat 1 |
 | Menu View: 5 dock | `label_widget.py` | Text Editor, Flags, Labels, Objects, Files bisa disembunyikan |
 | `auto_save` | `~/.anylabelingrc` | Bawaan aktif, pindah gambar menyimpan sendiri |
 | Gaya seleksi | `~/.anylabelingrc` `shape` | `select_line_color`, `vertex_fill_color`, `hvertex_fill_color`, `point_size` |
@@ -42,8 +44,8 @@ yang benar** kecuali ada alasan yang ditulis terang-terangan.
 |---|---|---|
 | **Ekspor CreateML** | `export_formats.py` `export_to_createml` | Belum dibaca utuh |
 | Grup bentuk | `canvas.py` `group_selected_shapes`, `ungroup`, `merge_group_ids`, `gen_new_group_id` | `G` / `U`. Field `group_id` sudah bolak-balik utuh, tinggal aksinya |
-| Pilih banyak bentuk | `canvas.py` `select_shapes` (jamak) | Geser/hapus beberapa objek sekaligus |
 | Salin / tempel objek | `label_widget.py` | `Ctrl+C` / `Ctrl+V` |
+| Seret kanan = duplikat-dan-pindah | `canvas.py:323` | Klik kanan lalu seret menggandakan bentuk terpilih; menu keduanya berisi "Copy here" / "Move here" |
 | `undo_last_point` | `canvas.py` | Urungkan satu titik saat sedang menggambar (sekarang lewat klik kanan) |
 | `hide_background_shapes` | `canvas.py` | Sembunyikan objek lain saat menyunting satu objek |
 | Bentuk lain | `shape.py` | `circle`, `line`, `linestrip`, `point` |
