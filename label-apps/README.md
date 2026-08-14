@@ -94,6 +94,46 @@ Aturan yang dipegang: `services/` tidak mengimpor FastAPI sama sekali, sehingga
 bisa dipakai dari skrip atau notebook tanpa menjalankan server. `routers/` hanya
 menerjemahkan HTTP ke `services/`.
 
+## Dua mode: dev dan prod
+
+```bash
+./start.sh            # dev (bawaan) — localhost:8043, muat ulang otomatis
+./start.sh prod       # produksi — dipakai tim
+```
+
+Setelannya di [env/dev.env](env/dev.env) dan [env/prod.env](env/prod.env).
+
+| | dev | prod |
+|---|---|---|
+| Port | 8043 | 8042 |
+| Alamat | `127.0.0.1` saja | `0.0.0.0` (atau `127.0.0.1` di belakang nginx) |
+| Berkas akun | `users.dev.json` | `users.json` |
+| Dataset | `./dev-data/datasets` | folder dataset sungguhan |
+| Unggahan | `./dev-data/unggahan` | folder unggahan sungguhan |
+| Muat ulang saat kode berubah | ya | tidak |
+| Batas unggahan | 20 MB | 80 MB |
+
+Tiga hal yang disengaja:
+
+**Semua path dev berbeda dari prod.** Akun, dataset, unggahan, dan thumbnail
+terpisah — mencoba-coba di dev tidak bisa merusak anotasi tim, dan akun uji
+tidak bisa dipakai masuk ke prod. Port juga berbeda supaya keduanya bisa hidup
+bersamaan.
+
+**dev adalah bawaan, prod harus diminta.** Menyalakan produksi perlu disengaja,
+bukan kebetulan.
+
+**Muat ulang otomatis hanya di dev.** Di produksi, restart mendadak saat kode
+tersentuh berarti semua orang kehilangan sesinya di tengah pekerjaan.
+
+Buat akun dev sekali:
+
+```bash
+.venv/bin/python run.py --users users.dev.json --adduser devuser
+```
+
+`users.dev.json` dan `dev-data/` tidak masuk repo.
+
 ## Paritas dengan AnyLabeling
 
 Aplikasi ini pengembangan dari AnyLabeling, dan source AnyLabeling dipakai

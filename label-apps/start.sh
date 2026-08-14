@@ -2,83 +2,101 @@
 #
 # Nyalakan papan periksa anotasi.
 #
-#   ./start.sh                    # untuk tim, di semua alamat (0.0.0.0)
-#   ./start.sh --lokal            # hanya mesin ini, tidak terbuka ke jaringan
-#   PORT=8043 ./start.sh          # ganti port
-#   DATASETS=~/lain ./start.sh    # ganti folder induk dataset
-#   USERS=/path/users.json ./start.sh
+#   ./start.sh              mode dev (bawaan) — localhost, muat ulang otomatis
+#   ./start.sh dev
+#   ./start.sh prod         mode produksi — dipakai tim
 #
-# Argumen lain diteruskan ke run.py, mis:  ./start.sh --open-mode dir
+# Setelan tiap mode ada di env/dev.env dan env/prod.env. Argumen tambahan
+# diteruskan ke run.py, mis:  ./start.sh prod --open-mode dir
 #
-# Ctrl+C untuk berhenti. Kalau dijalankan lewat SSH dan ingin tetap hidup
-# setelah SSH ditutup, jalankan di dalam tmux:
-#   tmux new -s label      lalu ./start.sh      lepas dengan Ctrl+B lalu D
-#   tmux attach -t label   untuk kembali
+# dev BAWAAN dan prod harus diminta, bukan sebaliknya: menyalakan produksi
+# adalah tindakan yang perlu disengaja.
+#
+# Ctrl+C untuk berhenti. Supaya tetap hidup setelah SSH ditutup:
+#   tmux new -s label   lalu   ./start.sh prod   lalu Ctrl+B D
 #
 set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")"
 
-PORT="${PORT:-8042}"
-DATASETS="${DATASETS:-$HOME/computer-vision/datasets}"
-USERS="${USERS:-users.json}"
-HOST="0.0.0.0"
-
-# Pisahkan --lokal (milik skrip ini) dari argumen yang diteruskan ke run.py.
+MODE="dev"
 PASS=()
 while (($#)); do
   case "$1" in
-    --lokal|--local) HOST="127.0.0.1" ;;
-    -h|--help) sed -n '3,18p' "$0" | sed 's/^# \?//'; exit 0 ;;
+    dev|prod) MODE="$1" ;;
+    -h|--help) sed -n '3,16p' "$0" | sed 's/^# \?//'; exit 0 ;;
     *) PASS+=("$1") ;;
   esac
   shift
 done
 
+BERKAS="env/${MODE}.env"
 merah()  { printf '\033[31m%s\033[0m\n' "$1"; }
 kuning() { printf '\033[33m%s\033[0m\n' "$1"; }
 
-# -- prasyarat --------------------------------------------------------------
-
-if [[ ! -x .venv/bin/python ]]; then
+[[ -f "$BERKAS" ]] || { merah "  $BERKAS tidak ada."; exit 1; }
+[[ -x .venv/bin/python ]] || {
   merah "  Virtualenv belum ada."
-  echo  "  Buat dulu:"
-  echo  "    python3 -m venv .venv"
-  echo  "    .venv/bin/pip install -r requirements.txt"
+  echo  "    python3 -m venv .venv && .venv/bin/pip install -r requirements.txt"
   exit 1
-fi
+}
+
+# Muat setelan mode ini. Nilai yang sudah ada di environment TIDAK ditimpa,
+# supaya PORT=9000 ./start.sh dev tetap berlaku.
+set -a
+while IFS='=' read -r k v; do
+  [[ "$k" =~ ^LABELAPP_ ]] || continue
+  [[ -n "${!k-}" ]] || printf -v "$k" '%s' "$v"
+  export "$k"
+done < <(grep -E '^LABELAPP_' "$BERKAS")
+set +a
+
+PORT="${LABELAPP_PORT:-8042}"
+HOST="${LABELAPP_HOST:-127.0.0.1}"
+USERS="${LABELAPP_USERS_FILE:-users.json}"
 
 if [[ ! -s "$USERS" ]]; then
-  merah "  Belum ada akun di $USERS — server tidak akan mau jalan tanpa ini."
-  echo  "  Buat akun untuk tiap anggota tim:"
-  echo  "    .venv/bin/python run.py --adduser <nama>"
+  merah "  Belum ada akun di $USERS (mode $MODE)."
+  echo  "  Buat dulu:"
+  echo  "    LABELAPP_USERS_FILE=$USERS .venv/bin/python run.py --users $USERS --adduser <nama>"
   exit 1
 fi
 
-if [[ ! -d "$DATASETS" ]]; then
-  kuning "  Folder dataset tidak ada: $DATASETS"
-  kuning "  Daftar dataset akan kosong. Timpa dengan:  DATASETS=~/folder ./start.sh"
-  DATASETS=""
+if [[ ! -d "${LABELAPP_DATASETS_ROOT:-}" ]]; then
+  kuning "  Folder dataset tidak ada: ${LABELAPP_DATASETS_ROOT:-(kosong)}"
+  if [[ "$MODE" == "dev" && -n "${LABELAPP_DATASETS_ROOT:-}" ]]; then
+    mkdir -p "$LABELAPP_DATASETS_ROOT"
+    kuning "  dibuatkan untuk dev."
+  fi
 fi
-
-# -- info --------------------------------------------------------------------
 
 AKUN=$(.venv/bin/python run.py --users "$USERS" --list-users 2>/dev/null \
        | tail -n +2 | awk '{print $1}' | paste -sd' ')
 IP=$(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -1)
 
-echo
-echo "  Akun      : ${AKUN:-(tidak terbaca)}"
+printf '\n  \033[1mmode %s\033[0m  ·  %s\n' "$MODE" "$BERKAS"
+echo "  Akun    : ${AKUN:-(tidak terbaca)}   <- dari $USERS"
+echo "  Dataset : ${LABELAPP_DATASETS_ROOT:-(tidak diisi)}"
 if [[ "$HOST" == "0.0.0.0" ]]; then
-  echo "  Untuk tim : http://${IP:-<ip-mesin-ini>}:$PORT"
-  # Tidak bisa memeriksa ufw tanpa sudo, jadi ini pengingat — bukan hasil cek.
-  echo "  Firewall  : pastikan port $PORT diizinkan  ->  sudo ufw status | grep $PORT"
+  echo "  Alamat  : http://${IP:-<ip-mesin-ini>}:$PORT"
+  echo "  Firewall: pastikan $PORT diizinkan  ->  sudo ufw status | grep $PORT"
 else
-  echo "  Mode      : lokal, hanya bisa dibuka dari mesin ini"
+  echo "  Alamat  : http://127.0.0.1:$PORT   (hanya mesin ini)"
 fi
 
-# -- jalan -------------------------------------------------------------------
-
 ARGS=(--host "$HOST" --port "$PORT" --users "$USERS")
-[[ -n "$DATASETS" ]] && ARGS+=(--datasets-root "$DATASETS")
+# Bentuk `if`, bukan `[[ ... ]] && ...`: dengan set -e, baris && yang kondisinya
+# salah membuat skrip berhenti tanpa pesan — dan itu justru terjadi pada mode
+# prod, yang paling tidak boleh gagal diam-diam.
+if [[ -n "${LABELAPP_DATASETS_ROOT:-}" ]]; then
+  ARGS+=(--datasets-root "$LABELAPP_DATASETS_ROOT")
+fi
+if [[ -n "${LABELAPP_UPLOADS_ROOT:-}" ]]; then
+  ARGS+=(--uploads-root "$LABELAPP_UPLOADS_ROOT")
+fi
+# Muat ulang otomatis hanya di dev: di produksi restart mendadak berarti semua
+# orang kehilangan sesinya di tengah pekerjaan.
+if [[ "$MODE" == "dev" ]]; then
+  ARGS+=(--reload)
+fi
 
 exec .venv/bin/python run.py "${ARGS[@]}" ${PASS[@]+"${PASS[@]}"}

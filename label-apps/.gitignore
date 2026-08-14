@@ -30,3 +30,7 @@ labelapp-unggahan/
 .idea/
 .DS_Store
 *.swp
+
+# Akun & data mode dev (terpisah dari prod)
+users.dev.json
+dev-data/
