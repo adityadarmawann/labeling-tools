@@ -32,6 +32,10 @@ async def lifespan(app: FastAPI):
     print(f"  Daftar dari: {st.datasets_root or '(LABELAPP_DATASETS_ROOT tidak diisi)'}", flush=True)
     print(f"  Unggahan  : {st.uploads_root}  (maks {st.max_upload_mb} MB/berkas)", flush=True)
     print(f"  Thumbnail : {st.thumb_root}  (per akun, dihapus saat berhenti)", flush=True)
+    if st.autologin:
+        print(f"  AUTOLOGIN : '{st.autologin}' — masuk tanpa password, HANYA dari\n"
+              f"              mesin ini. Permintaan dari jaringan tetap harus login.",
+              flush=True)
     yield
     # Cache thumbnail bersifat sementara: dibuang saat proses berhenti supaya
     # /tmp tidak menumpuk sisa dari sesi-sesi lama.

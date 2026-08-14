@@ -49,9 +49,40 @@ def is_local(request: Request) -> bool:
     return bool(request.client) and request.client.host in LOCAL_HOSTS
 
 
+def sesi_otomatis(request: Request) -> Session | None:
+    """
+    Login otomatis untuk mode dev, supaya `--reload` tidak memaksa login ulang
+    setiap kali kode disentuh.
+
+    Tiga syarat, dan dua terakhir yang membuatnya aman dipasang:
+
+    1. LABELAPP_DEV_AUTOLOGIN memuat nama akun.
+    2. Permintaan datang dari mesin itu sendiri — memakai is_local(), jadi
+       permintaan lewat reverse proxy atau dari jaringan tetap ditolak.
+    3. Akunnya benar-benar ada di berkas akun.
+
+    Syarat kedua yang penting: kalau setelan ini sampai tersalin ke produksi,
+    anggota tim dari jaringan TETAP harus login. Yang bisa memakainya hanya
+    orang yang sudah berada di mesin server.
+    """
+    from .config import get_settings
+    from .security import load_users, user_slug
+
+    st = get_settings()
+    if not st.autologin or not is_local(request):
+        return None
+    akun = user_slug(st.autologin)
+    if akun not in load_users(st.users_file):
+        return None
+    _, sess = store.create(akun, st)
+    return sess
+
+
 def current_session(request: Request) -> Session:
     """Sesi akun untuk halaman HTML. Tanpa sesi -> NeedsLogin."""
     sess = store.get(request.cookies.get(COOKIE_NAME))
+    if sess is None:
+        sess = sesi_otomatis(request)
     if sess is None:
         raise NeedsLogin
     return sess
@@ -60,6 +91,8 @@ def current_session(request: Request) -> Session:
 def current_session_api(request: Request) -> Session:
     """Sesi akun untuk endpoint JSON. Tanpa sesi -> 401 dengan pesan jelas."""
     sess = store.get(request.cookies.get(COOKIE_NAME))
+    if sess is None:
+        sess = sesi_otomatis(request)
     if sess is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED,
                             "sesi habis — muat ulang halaman lalu masuk lagi")

@@ -228,3 +228,60 @@ def test_header_proxy_membatalkan_status_lokal(klien_lokal, lingkungan):
     # tombol desktop juga hilang dari HTML lewat proxy
     html = klien_lokal.get("/", headers={"X-Forwarded-For": "103.182.240.26"}).text
     assert "openIn(" not in html
+
+
+# ---------------------------------------------------------------- autologin dev
+
+def test_autologin_tanpa_setelan_tetap_minta_login(klien_lokal, monkeypatch):
+    """Tanpa LABELAPP_DEV_AUTOLOGIN, tidak ada jalan pintas."""
+    r = klien_lokal.get("/", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/login"
+
+
+def test_autologin_hanya_dari_mesin_itu_sendiri(aplikasi, lingkungan, monkeypatch):
+    """
+    Ini penjagaan yang membuat setelan dev aman dipasang: kalau sampai tersalin
+    ke produksi, anggota tim dari jaringan TETAP harus login. Yang bisa
+    memakainya hanya orang yang sudah berada di mesin server.
+    """
+    from fastapi.testclient import TestClient
+
+    from app.config import get_settings
+
+    monkeypatch.setenv("LABELAPP_DEV_AUTOLOGIN", "paul")
+    get_settings.cache_clear()
+    try:
+        # dari mesin itu sendiri: langsung masuk tanpa password
+        lokal = TestClient(aplikasi, client=("127.0.0.1", 50000))
+        r = lokal.get("/", follow_redirects=False)
+        assert r.status_code in (200, 303), r.status_code
+        if r.status_code == 303:
+            assert r.headers["location"] != "/login"
+
+        # dari jaringan: tetap ditolak
+        jauh = TestClient(aplikasi)
+        r = jauh.get("/", follow_redirects=False)
+        assert r.status_code == 303 and r.headers["location"] == "/login"
+
+        # lewat reverse proxy pada mesin yang sama: juga ditolak
+        r = lokal.get("/", follow_redirects=False,
+                      headers={"X-Forwarded-For": "103.182.240.26"})
+        assert r.status_code == 303 and r.headers["location"] == "/login"
+    finally:
+        get_settings.cache_clear()
+
+
+def test_autologin_akun_tidak_ada_ditolak(aplikasi, monkeypatch):
+    """Nama akun yang tidak terdaftar tidak boleh jadi jalan masuk."""
+    from fastapi.testclient import TestClient
+
+    from app.config import get_settings
+
+    monkeypatch.setenv("LABELAPP_DEV_AUTOLOGIN", "hantu-tidak-terdaftar")
+    get_settings.cache_clear()
+    try:
+        lokal = TestClient(aplikasi, client=("127.0.0.1", 50000))
+        r = lokal.get("/", follow_redirects=False)
+        assert r.status_code == 303 and r.headers["location"] == "/login"
+    finally:
+        get_settings.cache_clear()
