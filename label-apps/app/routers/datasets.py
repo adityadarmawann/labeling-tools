@@ -26,6 +26,7 @@ def picker_context(request: Request, sess: Session, settings: Settings,
         "unggahan": scanner.list_dirs(settings.uploads_root / sess.user),
         "datasets_root": settings.datasets_root,
         "max_upload_mb": settings.max_upload_mb,
+        "max_zip_mb": settings.max_zip_mb,
     }
 
 
@@ -83,9 +84,12 @@ async def ekspor_ringkasan(format: str = "yolo-seg", split: str = "",
     if format not in export.FORMAT:
         return {"ok": False, "error": f"format '{format}' tidak dikenal"}
     with sess.lock:
+        # `sess.names` dibawa serta supaya indeks kelas mengikuti urutan
+        # data.yaml dataset sumbernya, bukan diturunkan ulang dari label yang
+        # kebetulan ada di seleksi ini.
         r = await asyncio.to_thread(export.ringkasan, list(sess.items),
                                     format == "yolo-seg",
-                                    export.baca_rasio(split))
+                                    export.baca_rasio(split), dict(sess.names))
     return {"ok": True, "format": export.FORMAT[format], **r}
 
 
@@ -108,8 +112,9 @@ async def ekspor(format: str = "yolo-seg", gambar: int = 1, split: str = "",
     nama = sess.src.name
     with sess.lock:
         items = list(sess.items)
+        names = dict(sess.names)
     data = await asyncio.to_thread(export.zip_dataset, items, nama, format,
-                                   bool(gambar), export.baca_rasio(split))
+                                   bool(gambar), export.baca_rasio(split), names)
     berkas = f"{nama}-{format}.zip"
     return Response(data, media_type="application/zip", headers={
         "Content-Disposition": f'attachment; filename="{berkas}"',

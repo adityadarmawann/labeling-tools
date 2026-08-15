@@ -22,6 +22,7 @@ from __future__ import annotations
 import io
 import json
 import os.path as osp
+import re
 import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
@@ -40,11 +41,34 @@ FORMAT = {
 VERSI = "0.4.36"
 
 
-def peta_kelas(items: list[dict]) -> dict[str, int]:
-    """Label unik terurut -> indeks kelas, seperti label_map AnyLabeling."""
-    label = {str(s["label"]).strip() for it in items for s in it["shapes"]
-             if s["label"] is not None and str(s["label"]).strip()}
-    return {l: i for i, l in enumerate(sorted(label))}
+def peta_kelas(items: list[dict], names: dict | None = None) -> dict[str, int]:
+    """
+    Label -> indeks kelas.
+
+    Kalau dataset sumbernya punya daftar kelas sendiri (`names` dari data.yaml
+    atau classes.txt), URUTAN ITU YANG DIPAKAI, dan kelas yang kebetulan tidak
+    punya objek tetap disertakan.
+
+    Alasannya penting. Dulu indeks selalu diturunkan ulang dari label yang
+    ada, diurutkan abjad. Selama seluruh kelas terwakili dan namanya memang
+    urut abjad, hasilnya kebetulan sama. Tetapi begitu satu kelas tidak punya
+    objek di seleksi yang diekspor — misalnya setelah menyaring grid, atau
+    saat mengekspor sebagian — kelas itu hilang dari peta dan SELURUH indeks
+    sesudahnya bergeser. Berkasnya tetap konsisten dengan data.yaml barunya,
+    sehingga tidak ada yang tampak salah, padahal labelnya tidak lagi cocok
+    dengan dataset asal maupun model yang sudah dilatih.
+    """
+    ada = {str(s["label"]).strip() for it in items for s in it["shapes"]
+           if s["label"] is not None and str(s["label"]).strip()}
+    if names:
+        urut = [str(n).strip() for _, n in sorted(names.items())]
+        peta = {n: i for i, n in enumerate(urut)}
+        # Label yang muncul di anotasi tetapi tidak ada di daftar resmi
+        # ditambahkan di belakang, supaya tidak diam-diam terbuang.
+        for l in sorted(ada - set(peta)):
+            peta[l] = len(peta)
+        return peta
+    return {l: i for i, l in enumerate(sorted(ada))}
 
 
 def _titik_rectangle(pts):
@@ -71,8 +95,12 @@ def baris_yolo(it: dict, peta: dict[str, int], segmentasi: bool) -> list[str]:
         if segmentasi:
             if s["type"] == "rectangle" and len(pts) == 2:
                 pts = _titik_rectangle(pts)
+            # Kurung ke dalam gambar dan buang kembaran beruntun, lalu tutup
+            # cincinnya — ketiganya menyamakan keluaran dengan ekspor Roboflow.
+            pts = scanner.rapikan_titik(pts, W, H)
             if len(pts) < 3:
                 continue
+            pts = scanner.tutup_cincin(pts)
             angka = []
             for x, y in pts:
                 angka += [x / W, y / H]
@@ -137,24 +165,71 @@ def baca_rasio(teks: str | None) -> tuple[float, float, float]:
     return (angka[0] / total, angka[1] / total, angka[2] / total)
 
 
+# Nama split di dataset sumber -> nama yang kita pakai. `val` dan `valid`
+# dua-duanya beredar; data.yaml Roboflow menulis `val:` tapi foldernya `valid`.
+PETA_SPLIT = {"train": "train", "valid": "valid", "val": "valid", "test": "test"}
+
+# Augmentasi Roboflow menempel SESUDAH `.rf.<hash>`: satu foto bisa jadi
+# `foto_jpg.rf.<hash>_aug1.jpg`, `..._bal4_216.jpg`, `..._p5zoom_normal.jpg`.
+# Bagian sampai hash itulah identitas foto aslinya.
+_POLA_ASAL = re.compile(r"^(.*\.rf\.[0-9a-f]+)")
+
+
+def kunci_asal(nama: str) -> str:
+    """
+    Identitas FOTO ASAL sebuah berkas, supaya augmentasinya tidak terpisah.
+
+    Kalau variasi dari satu foto tersebar ke train dan valid, model dinilai
+    memakai versi lain dari gambar yang sudah dia pelajari — angkanya naik
+    tanpa kemampuannya bertambah. Pada dataset milik pengguna, membagi per
+    nama berkas memecah 54% foto asal seperti itu.
+    """
+    m = _POLA_ASAL.match(nama)
+    return m.group(1) if m else Path(nama).stem
+
+
 def bagi_split(items: list[dict], rasio=RASIO_BAWAAN) -> dict[str, list[dict]]:
     """
     Bagi dataset menjadi train / valid / test.
 
-    Pembagiannya **deterministik**, diturunkan dari nama berkas, bukan dari
-    pengacak. Alasannya penting: kalau ekspor kedua memakai acak baru, gambar
-    yang tadinya di train bisa pindah ke valid, dan model yang dievaluasi
-    dengan gambar yang pernah dilatih akan terlihat lebih baik daripada
-    kenyataannya. Dengan cara ini ekspor berapa kali pun memberi pembagian
-    yang sama.
+    Dua aturan, keduanya soal mencegah kebocoran:
+
+    **1. Split yang sudah ada dipertahankan.** Kalau datasetnya memang sudah
+    terbagi (mis. ekspor Roboflow dengan train/valid/test), pembagian itu yang
+    dipakai. Mengacaknya ulang memindahkan gambar yang tadinya di valid ke
+    train, sehingga perbandingan dengan hasil latihan sebelumnya jadi tidak
+    berarti.
+
+    **2. Satu foto asal tidak pernah terpecah.** Saat membagi sendiri,
+    yang diundi adalah FOTO ASALNYA, bukan tiap berkas — supaya augmentasi
+    dari foto yang sama mendarat di split yang sama.
+
+    Undiannya deterministik, diturunkan dari nama, bukan dari pengacak: ekspor
+    berapa kali pun memberi pembagian yang sama.
     """
     import hashlib
 
+    # 1. Hormati split bawaan dataset kalau ada.
+    if any(it.get("split") for it in items):
+        hasil: dict[str, list[dict]] = {k: [] for k in SPLIT}
+        sisa = []
+        for it in sorted(items, key=lambda x: x["img"].name):
+            s = PETA_SPLIT.get(str(it.get("split") or "").lower())
+            (hasil[s] if s else sisa).append(it)
+        # Gambar tanpa asal split yang jelas tetap dibagi, tetapi ikut aturan
+        # pengelompokan di bawah.
+        if sisa:
+            for s, daftar in bagi_split(
+                    [{**it, "split": None} for it in sisa], rasio).items():
+                hasil[s].extend(daftar)
+        return hasil
+
+    # 2. Bagi sendiri, per foto asal.
     batas_train = rasio[0]
     batas_valid = rasio[0] + rasio[1]
-    hasil: dict[str, list[dict]] = {k: [] for k in SPLIT}
+    hasil = {k: [] for k in SPLIT}
     for it in sorted(items, key=lambda x: x["img"].name):
-        h = hashlib.sha1(it["img"].name.encode()).digest()
+        h = hashlib.sha1(kunci_asal(it["img"].name).encode()).digest()
         v = int.from_bytes(h[:4], "big") / 0xFFFFFFFF
         if v < batas_train:
             hasil["train"].append(it)
@@ -166,7 +241,8 @@ def bagi_split(items: list[dict], rasio=RASIO_BAWAAN) -> dict[str, list[dict]]:
 
 
 def zip_yolo(items: list[dict], nama_dataset: str, segmentasi: bool,
-             sertakan_gambar: bool = True, rasio=RASIO_BAWAAN) -> bytes:
+             sertakan_gambar: bool = True, rasio=RASIO_BAWAAN,
+             names: dict | None = None) -> bytes:
     """
     Seluruh dataset -> ZIP dengan tata letak yang **sama seperti ekspor
     Roboflow**, supaya bisa langsung dilatih tanpa dirapikan lagi:
@@ -180,7 +256,7 @@ def zip_yolo(items: list[dict], nama_dataset: str, segmentasi: bool,
     Gambar tanpa objek tetap mendapat berkas label kosong — itu penanda contoh
     negatif yang sah di YOLO, bukan kelalaian.
     """
-    peta = peta_kelas(items)
+    peta = peta_kelas(items, names)
     bagian = bagi_split(items, rasio)
     buf = io.BytesIO()
     n_objek = 0
@@ -218,19 +294,25 @@ def zip_yolo(items: list[dict], nama_dataset: str, segmentasi: bool,
     return buf.getvalue()
 
 
-def ringkasan(items: list[dict], segmentasi: bool, rasio=RASIO_BAWAAN) -> dict:
+def ringkasan(items: list[dict], segmentasi: bool, rasio=RASIO_BAWAAN,
+              names: dict | None = None) -> dict:
     """Angka untuk ditampilkan sebelum orang menekan unduh, termasuk jumlah
     gambar per split — seperti yang Roboflow tampilkan di Train/Test Split."""
-    peta = peta_kelas(items)
+    peta = peta_kelas(items, names)
     bagian = bagi_split(items, rasio)
     n_objek = sum(len(baris_yolo(it, peta, segmentasi)) for it in items)
     n_kosong = sum(1 for it in items if not baris_yolo(it, peta, segmentasi))
     dilewati = sum(1 for it in items for s in it["shapes"]
                    if s["type"] not in ("rectangle", "polygon"))
+    # Dari mana pembagiannya datang perlu terlihat: rasio yang diketik orang
+    # tidak berlaku kalau datasetnya sudah punya split sendiri, dan diam-diam
+    # mengabaikan angka yang mereka ketik itu membingungkan.
+    bawaan = any(it.get("split") for it in items)
     return {"gambar": len(items), "objek": n_objek, "kelas": len(peta),
             "nama_kelas": [l for l, _ in sorted(peta.items(), key=lambda kv: kv[1])],
             "tanpa_objek": n_kosong, "bentuk_dilewati": dilewati,
             "split": {k: len(v) for k, v in bagian.items()},
+            "split_bawaan": bawaan,
             "rasio": [round(r * 100) for r in rasio],
             # Persentase yang benar-benar tercapai. Berbeda sedikit dari rasio
             # yang diminta karena pembagiannya deterministik dari nama berkas,
@@ -285,32 +367,36 @@ def voc_xml(it: dict) -> str:
 
 def _luas_poligon_coco(pts) -> float:
     """
-    Luas poligon persis seperti `export_to_coco` AnyLabeling.
+    Luas poligon dengan shoelace — abs() DI LUAR penjumlahan.
 
-    CATATAN PENTING — nilai ini bukan luas geometris. AnyLabeling menaruh abs()
-    di dalam penjumlahan:
+    Ini sengaja BERBEDA dari AnyLabeling, yang menaruh abs() di dalam:
 
-        area += 0.5 * abs(x1*y2 - x2*y1)
+        area += 0.5 * abs(x1*y2 - x2*y1)        # AnyLabeling, keliru
 
-    sedangkan shoelace menaruhnya di luar. Akibatnya nilai membengkak makin
-    jauh poligon dari titik-asal: kotak 10x10 di (100,100) menghasilkan 2100
-    bukan 100, di (500,300) menghasilkan 8100. Jalur rectangle di fungsi yang
-    sama memakai width*height sehingga hasilnya berbeda untuk bentuk identik.
+    Shoelace bekerja justru karena suku-sukunya saling meniadakan; mengambil
+    nilai mutlak per suku merusak itu. Yang tersisa bukan luas poligon,
+    melainkan jumlah luas segitiga tiap sisi dengan titik-asal (0,0) — jadi
+    nilainya ikut membesar hanya karena objeknya jauh dari pojok kiri-atas.
+    Kotak 10x10 yang sama menghasilkan 100 di titik-asal, 2100 di (100,100),
+    dan 8100 di (500,300). Luas tidak boleh bergantung pada posisi.
 
-    Tetap ditiru karena aturannya jelas: keluaran harus sama dengan desktop.
-    Dampaknya terbatas pada evaluasi — pycocotools memakai `area` untuk memilah
-    objek small/medium/large, jadi mAP per ukuran ikut bergeser. Pelatihan tidak
-    membaca field ini.
+    Kenapa tidak ditiru demi kompatibilitas: tidak ada yang membaca nilai itu
+    dengan mengharapkan bug-nya. pycocotools memakai `area` untuk memilah objek
+    small/medium/large pada ambang 32^2 dan 96^2, sehingga nilai yang membengkak
+    puluhan kali mendorong hampir semua objek ke bucket "large" dan membuat
+    AP_small serta AP_medium tidak bermakna. Pelatihan YOLO tidak membaca field
+    ini sama sekali.
     """
-    luas = 0.0
+    jumlah = 0.0
     for i in range(len(pts)):
         x1, y1 = pts[i]
         x2, y2 = pts[(i + 1) % len(pts)]
-        luas += 0.5 * abs(x1 * y2 - x2 * y1)
-    return luas
+        jumlah += x1 * y2 - x2 * y1
+    return abs(jumlah) / 2.0
 
 
-def coco_dict(items: list[dict], nama_dataset: str) -> dict:
+def coco_dict(items: list[dict], nama_dataset: str,
+              names: dict | None = None) -> dict:
     """Seluruh dataset -> satu dict COCO. Kategori dan id mengikuti aslinya:
     label unik terurut, `id` mulai 1, `supercategory` "none"."""
     label = sorted({str(s["label"]) for it in items for s in it["shapes"]
@@ -369,10 +455,12 @@ def coco_dict(items: list[dict], nama_dataset: str) -> dict:
 # ---------------------------------------------------------------- arsip
 
 def zip_dataset(items: list[dict], nama: str, format: str,
-                sertakan_gambar: bool = True, rasio=RASIO_BAWAAN) -> bytes:
+                sertakan_gambar: bool = True, rasio=RASIO_BAWAAN,
+                names: dict | None = None) -> bytes:
     """Satu pintu untuk semua format."""
     if format in ("yolo", "yolo-seg"):
-        return zip_yolo(items, nama, format == "yolo-seg", sertakan_gambar, rasio)
+        return zip_yolo(items, nama, format == "yolo-seg", sertakan_gambar,
+                        rasio, names)
 
     bagian = bagi_split(items, rasio)
     buf = io.BytesIO()
@@ -384,7 +472,7 @@ def zip_dataset(items: list[dict], nama: str, format: str,
                 # Nama berkas mengikuti ekspor Roboflow: _annotations.coco.json
                 # di dalam folder split-nya.
                 z.writestr(f"{split}/_annotations.coco.json",
-                           json.dumps(coco_dict(daftar, nama), indent=2))
+                           json.dumps(coco_dict(daftar, nama, names), indent=2))
             elif format == "voc":
                 for it in daftar:
                     z.writestr(f"{split}/{it['img'].stem}.xml", voc_xml(it))
