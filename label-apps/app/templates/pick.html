@@ -48,12 +48,17 @@
     <label for="dsname">Nama dataset</label>
     <input id="dsname" type="text" placeholder="mis. sponge-batch-3">
     <div class="drop" id="drop" style="margin-top:12px">
-      <b>Tarik folder dataset ke sini</b><br>
+      <b>Tarik folder dataset atau berkas .zip ke sini</b><br>
       <span style="font-size:11.5px;color:var(--ink-faint)">
         subfolder <span class="mono">images</span> /
-        <span class="mono">labels</span> ikut terjaga · gambar dan
-        <span class="mono">.json</span> / <span class="mono">.txt</span> ·
-        maks {{ max_upload_mb }} MB per berkas</span>
+        <span class="mono">labels</span> ikut terjaga · gambar,
+        <span class="mono">.json</span> / <span class="mono">.txt</span>,
+        dan <span class="mono">data.yaml</span> ·
+        maks {{ max_upload_mb }} MB per berkas, {{ max_zip_mb }} MB untuk .zip<br>
+        {# Sebab paling sering dataset Roboflow tampil dengan kelas berupa
+           angka: data.yaml ketinggalan saat mengunggah. #}
+        <b>ekspor Roboflow:</b> sertakan <span class="mono">data.yaml</span>-nya,
+        atau unggah saja .zip-nya utuh — dibongkar sendiri di server</span>
     </div>
     <div class="row" style="margin-top:10px">
       <button class="cta" id="pilih-folder" style="flex:1;margin-top:0">
@@ -64,8 +69,10 @@
     </div>
     {# webkitdirectory: pemilih folder. Didukung Chrome, Edge, dan Firefox. #}
     <input id="folder" type="file" webkitdirectory multiple hidden>
+    {# Daftar ini harus sama dengan UP_EXT di app.js dan dengan
+       IMG_EXT + ANN_EXT + META_EXT + ARSIP_EXT di app/config.py. #}
     <input id="files" type="file" multiple hidden
-           accept=".jpg,.jpeg,.png,.bmp,.webp,.tif,.tiff,.json,.txt">
+           accept=".jpg,.jpeg,.png,.bmp,.webp,.tif,.tiff,.json,.txt,.yaml,.yml,.zip">
     <div class="prog" id="prog"><i id="fill"></i></div>
     <p class="upnote" id="upnote"></p>
   </div>

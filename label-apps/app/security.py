@@ -17,7 +17,7 @@ import re
 import secrets
 from pathlib import Path
 
-from .config import ANN_EXT, IMG_EXT
+from .config import ANN_EXT, ARSIP_EXT, IMG_EXT, META_EXT
 
 ITERATIONS = 200_000
 COOKIE_NAME = "labelapp_sid"
@@ -39,16 +39,22 @@ def user_slug(s: str) -> str:
     return safe_slug(s).lower()
 
 
-def safe_filename(s: str) -> str:
+def safe_filename(s: str, arsip: bool = False) -> str:
     """
     Ambil nama berkas saja dari kiriman klien, buang seluruh komponen path,
     dan tolak ekstensi di luar daftar. Mengembalikan "" kalau tidak layak.
+
+    `arsip=True` ikut mengizinkan .zip. Sengaja TIDAK dinyalakan secara bawaan:
+    arsip hanya boleh masuk lewat unggahan berkas tunggal yang memang akan
+    dibongkar, bukan lewat isi arsip itu sendiri — kalau tidak, satu zip bisa
+    memuat zip lain dan pembongkarannya jadi berlapis tanpa batas.
     """
     base = os.path.basename(str(s or "").replace("\\", "/"))
     base = re.sub(r"[^A-Za-z0-9._-]+", "-", base).strip("-.")
     if not base or base.startswith("."):
         return ""
-    if Path(base).suffix.lower() not in IMG_EXT + ANN_EXT:
+    boleh = IMG_EXT + ANN_EXT + META_EXT + (ARSIP_EXT if arsip else ())
+    if Path(base).suffix.lower() not in boleh:
         return ""
     return base[:120]
 
@@ -56,7 +62,7 @@ def safe_filename(s: str) -> str:
 MAKS_DALAM = 6          # kedalaman subfolder yang diterima saat unggah folder
 
 
-def safe_relpath(s: str) -> str:
+def safe_relpath(s: str, arsip: bool = False) -> str:
     """
     Path relatif dari unggahan folder -> path yang aman, subfoldernya utuh.
 
@@ -83,7 +89,7 @@ def safe_relpath(s: str) -> str:
             bagian.append(k[:80])
     if not bagian:
         return ""
-    berkas = safe_filename(bagian[-1])
+    berkas = safe_filename(bagian[-1], arsip=arsip)
     if not berkas:
         return ""
     folder = bagian[:-1][-MAKS_DALAM:]

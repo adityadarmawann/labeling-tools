@@ -104,8 +104,14 @@ async function pickdir() {
 // Tiap berkas dikirim satu-satu lewat PUT dengan bodi mentah. Tanpa multipart,
 // jadi berkas besar tidak ditahan di memori server, progres terhitung per
 // berkas, dan satu berkas gagal tidak menggagalkan seluruh batch.
+// Harus sama dengan IMG_EXT + ANN_EXT + META_EXT + ARSIP_EXT di app/config.py.
+// Kalau daftar ini tertinggal, berkas yang sebenarnya diterima server justru
+// disaring di sini dan tidak pernah terkirim — persis yang dulu terjadi pada
+// data.yaml, sehingga nama kelas dataset Roboflow hilang tanpa pesan apa pun.
 const UP_EXT = ['.jpg', '.jpeg', '.png', '.bmp', '.webp', '.tif', '.tiff',
-                '.json', '.txt'];
+                '.json', '.txt', '.yaml', '.yml', '.zip'];
+const ARSIP_EXT = ['.zip'];
+const adalahArsip = n => ARSIP_EXT.some(e => n.toLowerCase().endsWith(e));
 
 // Nama yang dikirim ke server memuat subfolder kalau ada. Struktur itu
 // bermakna: pemindai mengenali dataset YOLO dari adanya images/ dan labels/,
@@ -147,7 +153,10 @@ async function uploadFiles(files) {
   if (!ds) { toast('Beri nama dataset dulu'); return; }
 
   const pilih = [...files].filter(f => UP_EXT.some(e => f.name.toLowerCase().endsWith(e)));
-  if (!pilih.length) { toast('Tidak ada gambar atau .json di pilihan itu'); return; }
+  if (!pilih.length) {
+    toast('Tidak ada gambar, anotasi, data.yaml, atau .zip di pilihan itu');
+    return;
+  }
 
   const bar = document.getElementById('prog');
   const fill = document.getElementById('fill');
@@ -155,12 +164,15 @@ async function uploadFiles(files) {
   bar.setAttribute('data-on', '');
 
   let selesai = 0, gagal = 0;
+  const arsip = [];
   for (const f of pilih) {
+    const nama = namaKirim(f);
     try {
       const j = await send('/upload?ds=' + encodeURIComponent(ds) +
-                           '&name=' + encodeURIComponent(namaKirim(f)),
+                           '&name=' + encodeURIComponent(nama),
                            { method: 'PUT', body: f });
       if (!j.ok) { gagal++; if (gagal <= 2) toast(f.name + ': ' + j.error); }
+      else if (j.arsip) arsip.push(j.name);
     } catch (e) {
       gagal++;
     }
@@ -170,13 +182,42 @@ async function uploadFiles(files) {
                        (gagal ? (' · ' + gagal + ' gagal') : '');
   }
 
-  if (selesai > gagal) {
-    toast('Selesai — membuka dataset');
-    const j = await post('/useupload?ds=' + encodeURIComponent(ds));
-    if (j.ok) location.href = '/'; else toast(j.error);
-  } else {
-    toast('Semua berkas gagal terkirim');
+  if (selesai <= gagal) { toast('Semua berkas gagal terkirim'); return; }
+
+  // Arsip dibongkar di server. Untuk berkas 1 GB ini bisa memakan waktu, jadi
+  // keadaannya dikatakan, bukan dibiarkan tampak menggantung.
+  for (const nama of arsip) {
+    note.textContent = 'Membongkar ' + nama + '… (berkas besar perlu waktu)';
+    fill.style.width = '100%';
+    try {
+      const j = await post('/unzip?ds=' + encodeURIComponent(ds) +
+                           '&name=' + encodeURIComponent(nama));
+      if (!j.ok) { toast('Gagal membongkar: ' + j.error); note.textContent = j.error; return; }
+      note.textContent = `${nama}: ${j.n} berkas dibongkar`
+                       + (j.dilewati ? ` · ${j.dilewati} dilewati` : '');
+    } catch (e) {
+      toast('Gagal menghubungi server saat membongkar');
+      return;
+    }
   }
+
+  const j = await post('/useupload?ds=' + encodeURIComponent(ds));
+  if (!j.ok) { toast(j.error); return; }
+
+  // Peringatan ditahan di layar dan menunggu diklik. Kalau ditoast lalu
+  // langsung pindah halaman, orang tidak akan sempat membacanya — padahal
+  // isinya justru menentukan apakah datasetnya benar.
+  if ((j.peringatan || []).length) {
+    bar.removeAttribute('data-on');
+    note.innerHTML = '<b>Dataset terbuka (' + j.n + ' gambar), tapi perlu dicek:</b><br>'
+      + j.peringatan.map(p => '· ' + p).join('<br>')
+      + '<br><button class="btn pri" id="lanjut-grid">Lanjut ke grid</button>';
+    const b = document.getElementById('lanjut-grid');
+    if (b) b.onclick = () => { location.href = '/'; };
+    return;
+  }
+  toast('Selesai — membuka dataset');
+  location.href = '/';
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -240,12 +281,22 @@ document.addEventListener('DOMContentLoaded', () => {
       const n = v => v.toFixed(1).replace('.', ',');
       // Baris pertama: persentase yang benar-benar tercapai, karena angka yang
       // diminta di kotak atas tidak selalu sama persis.
+      // Kalau datasetnya sudah punya split sendiri, pembagian itu yang dipakai
+      // dan rasio yang diketik tidak berlaku. Itu harus dikatakan, bukan
+      // dibiarkan jadi teka-teki kenapa angkanya tidak berubah.
       info.innerHTML =
-        `<b>nyata: ${n(pc.train)}% : ${n(pc.valid)}% : ${n(pc.test)}%</b><br>`
+        (j.split_bawaan
+          ? '<b>memakai split asli dataset</b><br>'
+          : `<b>nyata: ${n(pc.train)}% : ${n(pc.valid)}% : ${n(pc.test)}%</b><br>`)
         + `train ${s.train} · valid ${s.valid} · test ${s.test}`
         + ` — dari ${j.gambar} gambar, ${j.objek} objek, ${j.kelas} kelas`
+        + (j.split_bawaan
+          ? '<br>Dataset ini sudah terbagi train/valid/test, jadi pembagiannya '
+            + 'dipertahankan dan angka rasio di atas tidak dipakai.'
+          : '')
         + (j.tanpa_objek ? `<br>${j.tanpa_objek} tanpa objek (contoh negatif)` : '')
         + (j.bentuk_dilewati ? ` · ${j.bentuk_dilewati} bentuk dilewati` : '');
+      kotak.forEach(k => { if (k) k.disabled = !!j.split_bawaan; });
     } catch (e) {
       info.textContent = 'Gagal menghubungi server';
     }

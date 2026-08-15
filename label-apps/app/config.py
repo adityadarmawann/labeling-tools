@@ -14,6 +14,12 @@ from pathlib import Path
 
 IMG_EXT = (".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff")
 ANN_EXT = (".json", ".txt")
+# Berkas pendamping dataset. `data.yaml` ekspor Roboflow ada di sini — di
+# situlah nama kelas disimpan, dan tanpa menerimanya dataset yang diunggah
+# tampil dengan kelas "0", "1", "2" alih-alih nama sebenarnya.
+META_EXT = (".yaml", ".yml")
+# Arsip yang boleh diunggah lalu dibongkar di server.
+ARSIP_EXT = (".zip",)
 
 PREFIX = "LABELAPP_"
 
@@ -49,6 +55,15 @@ class Settings:
     datasets_root: Path | None = None
     default_src: Path | None = None
     max_upload_mb: int = 80
+    # Arsip punya batas sendiri: satu ekspor Roboflow bisa lebih dari 1 GB,
+    # sementara batas per-gambar sengaja tetap kecil supaya salah seret tidak
+    # mengirim berkas raksasa.
+    max_zip_mb: int = 4096
+    # Perlindungan zip bomb: total isi setelah dibongkar dibatasi sekian kali
+    # ukuran arsipnya. Ekspor dataset berisi JPEG yang sudah termampatkan,
+    # jadi rasionya mendekati 1 — nilai 20 sudah sangat longgar.
+    zip_ratio_max: int = 20
+    zip_entries_max: int = 200_000
     anylabeling: str = "anylabeling"
     open_mode: str = "file"          # "file" | "dir"
     lock_labels: bool = False
@@ -60,6 +75,16 @@ class Settings:
     @property
     def max_upload_bytes(self) -> int:
         return self.max_upload_mb * 1024 * 1024
+
+    @property
+    def max_zip_bytes(self) -> int:
+        return self.max_zip_mb * 1024 * 1024
+
+    def batas_untuk(self, nama: str) -> tuple[int, str]:
+        """Batas ukuran unggahan untuk sebuah nama berkas -> (byte, keterangan)."""
+        if Path(nama).suffix.lower() in ARSIP_EXT:
+            return self.max_zip_bytes, f"{self.max_zip_mb} MB (arsip)"
+        return self.max_upload_bytes, f"{self.max_upload_mb} MB"
 
 
 def _read_labels(p: Path | None) -> list[str]:
@@ -90,6 +115,7 @@ def get_settings() -> Settings:
         datasets_root=datasets_root,
         default_src=_path("DEFAULT_SRC"),
         max_upload_mb=max(1, _int("MAX_UPLOAD_MB", 80)),
+        max_zip_mb=max(1, _int("MAX_ZIP_MB", 4096)),
         anylabeling=_get("ANYLABELING") or "anylabeling",
         open_mode="dir" if _get("OPEN_MODE") == "dir" else "file",
         lock_labels=_bool("LOCK_LABELS"),
