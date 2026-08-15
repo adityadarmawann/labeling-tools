@@ -216,6 +216,33 @@ def test_safe_relpath_menjaga_subfolder_dan_membuang_yang_berbahaya():
     assert dalam.count("/") <= MAKS_DALAM
 
 
+def test_nama_panjang_ala_roboflow_tidak_hilang():
+    """
+    Regresi. Dulu setiap komponen path dipotong ke 80 karakter lebih dulu,
+    termasuk nama berkasnya. Nama ekspor Roboflow berbentuk
+    `<asli>.rf.<32 digit hash>.jpg` dan mudah lewat dari 80, jadi potongannya
+    ikut memakan `.jpg`; berkasnya lalu tertolak karena ekstensinya tidak
+    dikenal, dan gambar hilang tanpa pesan apa pun. Satu dataset sirsak
+    kehilangan 440 berkas persis karena ini.
+    """
+    from app.security import MAKS_NAMA, safe_filename, safe_relpath
+    nama = "WhatsApp-Image-2024-05-22-at-12-17-46-1-_jpeg.rf." + "e" * 32 + ".jpg"
+    assert len(nama) > 80
+    assert safe_relpath(f"train/images/{nama}") == f"train/images/{nama}"
+
+    # Yang benar-benar kepanjangan tetap dipotong, tetapi ekstensinya bertahan
+    # sehingga berkasnya masih dikenali sebagai gambar.
+    panjang = "a" * 400 + ".jpg"
+    hasil = safe_filename(panjang)
+    assert hasil.endswith(".jpg") and len(hasil) <= MAKS_NAMA
+    assert safe_relpath("train/images/" + panjang).endswith(".jpg")
+
+    # Nama subfolder tetap dibatasi — yang dilonggarkan hanya nama berkas.
+    from app.security import MAKS_KOMPONEN
+    p = safe_relpath("b" * 300 + "/c.jpg")
+    assert len(p.split("/")[0]) == MAKS_KOMPONEN
+
+
 def test_unggah_folder_mempertahankan_struktur_yolo(klien, lingkungan):
     """
     Struktur images/ + labels/ harus utuh, karena pemindai mengenali dataset

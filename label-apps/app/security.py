@@ -39,6 +39,14 @@ def user_slug(s: str) -> str:
     return safe_slug(s).lower()
 
 
+# ext4 memberi 255 byte per nama. Sisanya disediakan untuk akhiran sementara
+# yang dipakai penulis atomik di aplikasi ini (".part", ".tmp"), supaya berkas
+# yang namanya lolos di sini tidak gagal ditulis satu langkah kemudian.
+MAKS_NAMA = 230
+MAKS_DALAM = 6          # kedalaman subfolder yang diterima saat unggah folder
+MAKS_KOMPONEN = 80      # panjang nama subfolder
+
+
 def safe_filename(s: str, arsip: bool = False) -> str:
     """
     Ambil nama berkas saja dari kiriman klien, buang seluruh komponen path,
@@ -48,18 +56,24 @@ def safe_filename(s: str, arsip: bool = False) -> str:
     arsip hanya boleh masuk lewat unggahan berkas tunggal yang memang akan
     dibongkar, bukan lewat isi arsip itu sendiri — kalau tidak, satu zip bisa
     memuat zip lain dan pembongkarannya jadi berlapis tanpa batas.
+
+    Nama yang kepanjangan dipotong pada BATANGnya, ekstensinya dipertahankan.
+    Memotong nama secara buta ikut memakan ekstensi, dan berkasnya lalu tertolak
+    di baris `boleh` di bawah — yang berarti gambar hilang diam-diam alih-alih
+    masuk dengan nama lebih pendek. Ekspor Roboflow persis mengenai kasus itu:
+    namanya `<asli>.rf.<32 digit hash>.jpg`, mudah lewat dari 80 karakter.
     """
     base = os.path.basename(str(s or "").replace("\\", "/"))
     base = re.sub(r"[^A-Za-z0-9._-]+", "-", base).strip("-.")
     if not base or base.startswith("."):
         return ""
     boleh = IMG_EXT + ANN_EXT + META_EXT + (ARSIP_EXT if arsip else ())
-    if Path(base).suffix.lower() not in boleh:
+    sfx = Path(base).suffix
+    if sfx.lower() not in boleh:
         return ""
-    return base[:120]
-
-
-MAKS_DALAM = 6          # kedalaman subfolder yang diterima saat unggah folder
+    if len(base) > MAKS_NAMA:
+        base = (base[:MAKS_NAMA - len(sfx)].rstrip("-.") or "berkas") + sfx
+    return base
 
 
 def safe_relpath(s: str, arsip: bool = False) -> str:
@@ -86,13 +100,17 @@ def safe_relpath(s: str, arsip: bool = False) -> str:
             continue
         k = re.sub(r"[^A-Za-z0-9._-]+", "-", k).strip("-.")
         if k:
-            bagian.append(k[:80])
+            bagian.append(k)
     if not bagian:
         return ""
+    # Komponen terakhir diserahkan utuh ke safe_filename: hanya fungsi itu yang
+    # tahu mana ekstensinya, jadi hanya di sana pemotongan boleh terjadi.
     berkas = safe_filename(bagian[-1], arsip=arsip)
     if not berkas:
         return ""
-    folder = bagian[:-1][-MAKS_DALAM:]
+    # `k` sudah dibersihkan dari '-' dan '.' di ujungnya dan diawali karakter
+    # yang sah, sehingga rstrip di sini tidak mungkin mengosongkannya.
+    folder = [k[:MAKS_KOMPONEN].rstrip("-.") for k in bagian[:-1]][-MAKS_DALAM:]
     return "/".join(folder + [berkas])
 
 
