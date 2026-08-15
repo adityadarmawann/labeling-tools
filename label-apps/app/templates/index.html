@@ -28,6 +28,45 @@
     <span class="path mono">{{ n_obj }} objek</span>
     <button class="chip" onclick="rescan()">Pindai ulang</button>
     <a class="chip" href="/pilih">Ganti dataset</a>
+    {# Tombolnya tetap ada walau datasetnya tidak boleh ditambahi. Tombol yang
+       hilang tanpa keterangan menyisakan teka-teki; tombol yang menjelaskan
+       kenapa tidak bisa, dan apa yang harus dilakukan, tidak. #}
+    <span class="menu" id="menu-tambah">
+      <button class="chip" id="tambah-tombol">Tambah gambar ▾</button>
+      <span class="menu-isi" id="tambah-isi">
+        {% if tolak_tambah %}
+        <span class="menu-catatan">{{ tolak_tambah }}</span>
+        {% else %}
+        <span class="menu-judul">Dari laptop</span>
+        <div class="drop" id="drop-tambah" style="margin:2px 0 8px">
+          <b>Tarik gambar atau folder ke sini</b><br>
+          <span style="font-size:11px;color:var(--ink-faint)">
+            gambar beserta <span class="mono">.txt</span> /
+            <span class="mono">.json</span>-nya
+            {%- if bersplit %} · dibagi mengikuti rasio train/valid/test yang
+            sudah ada, label ikut gambarnya{% endif %}</span>
+        </div>
+        <span class="split-atur" style="gap:6px">
+          <button class="chip" id="tambah-pilih-folder">Pilih folder</button>
+          <button class="chip" id="tambah-pilih-berkas">Pilih berkas</button>
+        </span>
+        <input id="tambah-folder" type="file" webkitdirectory multiple hidden>
+        <input id="tambah-berkas" type="file" multiple hidden
+               accept=".jpg,.jpeg,.png,.bmp,.webp,.tif,.tiff,.json,.txt">
+        <span class="menu-pisah"></span>
+        <span class="menu-judul">Dari folder di server</span>
+        <input id="tambah-path" type="text" style="width:100%"
+               placeholder="/home/paul/computer-vision/gambar-baru">
+        <button class="chip" id="tambah-impor" style="margin-top:6px">
+          Gabungkan ke dataset ini</button>
+        <div class="prog" id="prog-tambah"><i id="fill-tambah"></i></div>
+        {% endif %}
+        <span class="menu-catatan" id="tambah-info">
+          Tidak ada berkas yang ditimpa. Nama yang sudah ada diperiksa isinya:
+          sama persis berarti sudah pernah masuk dan dilewati, isinya beda
+          disimpan dengan akhiran.</span>
+      </span>
+    </span>
     <span class="menu" id="menu-ekspor">
       <button class="chip" id="ekspor-tombol">Ekspor ▾</button>
       <span class="menu-isi" id="ekspor-isi">

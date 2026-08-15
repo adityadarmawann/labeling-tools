@@ -8,7 +8,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from ..config import Settings, get_settings
 from ..deps import current_session, current_session_api, is_local, require_local
-from ..services import annotations, anylabeling, render, scanner
+from ..security import safe_slug
+from ..services import annotations, anylabeling, render, scanner, tambah
 from ..services.annotations import Menolak
 from ..session import Session
 from ..templating import templates
@@ -67,6 +68,12 @@ async def index(request: Request, f: str = "all", c: str | None = None,
         "n_stop": sum(1 for s in sev if s == "stop"),
         "n_obj": sum(len(i["shapes"]) for i in items),
         "kelas_hitung": dict(sorted(kelas_hitung.items())),
+        # Dataset yang dibuka langsung dari path server tidak boleh ditambahi,
+        # dan alasannya ikut dikirim supaya tombolnya bisa menjelaskan diri
+        # sendiri alih-alih hanya menghilang tanpa keterangan.
+        "tolak_tambah": tambah.boleh_ditambahi(
+            sess.src, settings.uploads_root / safe_slug(sess.user)),
+        "bersplit": tambah.tata_letak(sess.src) == tambah.TATA_SPLIT,
     })
 
 

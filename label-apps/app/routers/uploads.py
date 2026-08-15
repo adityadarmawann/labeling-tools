@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, Request
 from ..config import ARSIP_EXT, Settings, get_settings
 from ..deps import current_session_api
 from ..security import safe_relpath, safe_slug
-from ..services import arsip, impor, riwayat, scanner
+from ..services import arsip, impor, riwayat, scanner, tambah
 from ..session import Session
 
 router = APIRouter(tags=["uploads"])
@@ -181,6 +181,117 @@ async def impor_dari_server(path: str = "", ds: str = "",
     impor.catat_maju(sess.user, tahap="selesai")
     return {"ok": True, "nama": nama, "dir": str(tujuan), "n": n,
             "disalin": hasil["berkas"], "dilewati": hasil["dilewati"],
+            "bytes": hasil["bytes"], "peringatan": peringatan,
+            "contoh_dilewati": hasil["contoh_dilewati"],
+            "bentrok": hasil["bentrok"]}
+
+
+def _siap_ditambahi(sess: Session, settings: Settings) -> str:
+    if sess.src is None:
+        return "belum ada dataset yang dibuka"
+    return tambah.boleh_ditambahi(sess.src,
+                                  settings.uploads_root / safe_slug(sess.user))
+
+
+@router.put("/tambah")
+async def tambah_berkas(request: Request, name: str = "",
+                        sess: Session = Depends(current_session_api),
+                        settings: Settings = Depends(get_settings)):
+    """
+    Tambahkan satu berkas ke dataset yang SEDANG dibuka.
+
+    Berbeda dengan /upload, yang menaruh berkas di folder unggahan bernama
+    tersendiri. Di sini berkasnya menyatu ke dataset yang terbuka, dan
+    letaknya ditentukan tata letak dataset itu — bukan tata letak folder di
+    laptop pengirim. Lihat tambah.Penempat.
+    """
+    galat = _siap_ditambahi(sess, settings)
+    if galat:
+        return {"ok": False, "error": galat}
+
+    fn = safe_relpath(name)
+    if not fn:
+        return {"ok": False, "error": "nama atau jenis berkas tidak didukung"}
+
+    batas, sebutan = settings.batas_untuk(fn)
+    try:
+        total = int(request.headers.get("content-length", 0))
+    except ValueError:
+        total = 0
+    if total <= 0:
+        return {"ok": False, "error": "berkas kosong"}
+    if total > batas:
+        return {"ok": False, "error": f"lebih dari {sebutan}"}
+
+    # Penempatnya dipegang sesi, bukan dibuat ulang tiap berkas: satu seretan
+    # folder mengirim ratusan permintaan terpisah, dan perbandingan split baru
+    # terjaga kalau keputusannya dihitung atas keadaan yang sama-sama berjalan.
+    with sess.lock:
+        penempat = sess.penempat_tambah()
+        dest = penempat.tujuan(fn)
+    if dest is None:
+        return {"ok": False, "error": "hanya gambar dan anotasi yang bisa "
+                                      "ditambahkan ke dataset yang sudah ada"}
+
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_suffix(dest.suffix + ".part")
+    ditulis = 0
+    try:
+        with open(tmp, "wb") as f:
+            async for chunk in request.stream():
+                if not chunk:
+                    continue
+                ditulis += len(chunk)
+                if ditulis > batas:
+                    raise ValueError(f"lebih dari {sebutan}")
+                f.write(chunk)
+        if ditulis == 0:
+            raise ValueError("tidak ada data yang diterima")
+        akhir, hasil = await asyncio.to_thread(tambah.pasang, tmp, dest)
+    except Exception as e:
+        tmp.unlink(missing_ok=True)
+        return {"ok": False, "error": str(e)[:90]}
+
+    if akhir is not None:
+        with sess.lock:
+            penempat.catat(fn, akhir)
+    return {"ok": True, "name": fn, "bytes": ditulis, "hasil": hasil,
+            "split": akhir.parent.parent.name if akhir and
+            penempat.tata == tambah.TATA_SPLIT else ""}
+
+
+@router.post("/tambah/impor")
+async def tambah_dari_server(path: str = "",
+                             sess: Session = Depends(current_session_api),
+                             settings: Settings = Depends(get_settings)):
+    """Gabungkan folder di server ke dataset yang sedang dibuka."""
+    galat = _siap_ditambahi(sess, settings)
+    if galat:
+        return {"ok": False, "error": galat}
+
+    sumber = Path((path or "").strip()).expanduser()
+    tujuan = sess.src
+    if impor._didalam(tujuan, sumber) or impor._didalam(sumber, tujuan):
+        return {"ok": False, "error": "folder itu berada di dalam datasetnya "
+                                      "sendiri — tidak ada yang perlu ditambah"}
+    with sess.lock:
+        penempat = sess.penempat_tambah()
+    try:
+        hasil = await asyncio.to_thread(
+            impor.impor_folder, sumber, tujuan, kunci=sess.user,
+            tentukan=penempat.tujuan, lapor_nama=penempat.catat)
+    except impor.ImporTolak as e:
+        impor.catat_maju(sess.user, tahap="gagal")
+        return {"ok": False, "error": str(e)[:160]}
+    except OSError as e:
+        impor.catat_maju(sess.user, tahap="gagal")
+        return {"ok": False, "error": f"gagal menyalin: {str(e)[:90]}"}
+
+    n = len(await asyncio.to_thread(sess.load, tujuan))
+    peringatan = await asyncio.to_thread(scanner.periksa_kelengkapan, tujuan)
+    impor.catat_maju(sess.user, tahap="selesai")
+    return {"ok": True, "n": n, "ditambah": hasil["berkas"],
+            "sudah_ada": hasil["sudah_ada"], "dilewati": hasil["dilewati"],
             "bytes": hasil["bytes"], "peringatan": peringatan,
             "contoh_dilewati": hasil["contoh_dilewati"],
             "bentrok": hasil["bentrok"]}

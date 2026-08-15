@@ -20,6 +20,7 @@ import threading
 from pathlib import Path
 
 from ..security import safe_relpath
+from . import tambah
 
 # Sisa disk yang harus tetap tersisa setelah menyalin. Mengisi disk sampai
 # penuh membuat seluruh mesin bermasalah, bukan cuma aplikasi ini.
@@ -91,7 +92,8 @@ def survei(sumber: Path) -> dict:
     return {"berkas": n, "bytes": byte, "dilewati": dilewati}
 
 
-def impor_folder(sumber: Path, tujuan: Path, *, batal=None, kunci: str = "") -> dict:
+def impor_folder(sumber: Path, tujuan: Path, *, batal=None, kunci: str = "",
+                 tentukan=None, lapor_nama=None) -> dict:
     """
     Salin isi `sumber` ke `tujuan`, struktur foldernya dipertahankan.
 
@@ -103,6 +105,15 @@ def impor_folder(sumber: Path, tujuan: Path, *, batal=None, kunci: str = "") -> 
     harus dihentikan; berkas yang sedang ditulis dibersihkan lebih dulu.
 
     `kunci` menyalakan pelaporan kemajuan — lihat catat_maju di atas.
+
+    `tentukan(rel) -> Path | None` boleh diberikan untuk memindahkan berkas ke
+    tempat lain daripada `tujuan / rel`, atau melewatinya dengan None. Itu yang
+    dipakai saat menambah ke dataset yang sudah ada, karena di sana letaknya
+    ditentukan tata letak dataset tujuan, bukan tata letak folder sumbernya.
+
+    `lapor_nama(rel, akhir)` dipanggil kalau nama yang benar-benar dipakai
+    berbeda dari yang diminta, supaya berkas lain dengan nama-dasar yang sama
+    bisa mengikutinya.
     """
     sumber, tujuan = Path(sumber), Path(tujuan)
     catat_maju(kunci, tahap="survei", berkas=0, bytes=0, total=0, total_bytes=0)
@@ -124,9 +135,8 @@ def impor_folder(sumber: Path, tujuan: Path, *, batal=None, kunci: str = "") -> 
             f"{sisa / 1073741824:.1f} GB — terlalu mepet")
 
     catat_maju(kunci, tahap="salin", total=s["berkas"], total_bytes=s["bytes"])
-    ditulis = dilewati = 0
+    ditulis = dilewati = sudah_ada = 0
     byte = 0
-    dipakai: set[str] = set()
     bentrok: list[str] = []
     contoh: list[str] = []
     for p in sorted(sumber.rglob("*")):
@@ -142,37 +152,46 @@ def impor_folder(sumber: Path, tujuan: Path, *, batal=None, kunci: str = "") -> 
             if len(contoh) < 5:
                 contoh.append(p.name)
             continue
-        # Dua nama sumber yang berbeda bisa menyatu setelah disterilkan. Yang
-        # kedua TIDAK ditulis: menimpanya berarti satu gambar hilang tanpa
-        # jejak, sementara melewatinya masih bisa dilaporkan ke pemakai.
-        if rel in dipakai:
+        dest = tentukan(rel) if tentukan else (tujuan / rel)
+        if dest is None:
             dilewati += 1
-            if len(bentrok) < 5:
-                bentrok.append(p.name)
+            if len(contoh) < 5:
+                contoh.append(p.name)
             continue
-        dipakai.add(rel)
-        dest = tujuan / rel
         if not _didalam(dest.parent, tujuan) and dest.parent != tujuan:
             dilewati += 1
             continue
         dest.parent.mkdir(parents=True, exist_ok=True)
-        # Salin ke nama sementara lalu ganti nama: proses yang terputus tidak
-        # meninggalkan gambar setengah jadi yang tampak sah saat dipindai.
+        # Salin ke nama sementara lalu serahkan ke tambah.pasang: proses yang
+        # terputus tidak meninggalkan gambar setengah jadi yang tampak sah saat
+        # dipindai, dan tidak ada berkas yang pernah ditimpa.
         tmp = dest.with_suffix(dest.suffix + ".part")
         try:
             shutil.copy2(p, tmp)
-            tmp.replace(dest)
-            ditulis += 1
-            byte += dest.stat().st_size
-            if ditulis % LAPOR_TIAP == 0:
-                catat_maju(kunci, berkas=ditulis, bytes=byte)
+            akhir, hasil = tambah.pasang(tmp, dest)
         except OSError:
             tmp.unlink(missing_ok=True)
             dilewati += 1
+            continue
+        if hasil == "sudah-ada":
+            sudah_ada += 1
+            continue
+        if hasil == "senama":
+            if len(bentrok) < 5:
+                bentrok.append(p.name)
+            # Berkas lain dengan nama-dasar yang sama harus ikut berganti,
+            # kalau tidak gambar dan labelnya terpisah.
+            if lapor_nama:
+                lapor_nama(rel, akhir)
+        ditulis += 1
+        byte += akhir.stat().st_size
+        if ditulis % LAPOR_TIAP == 0:
+            catat_maju(kunci, berkas=ditulis, bytes=byte)
 
     # Tahap berikutnya (memindai isi salinan) dikerjakan pemanggil dan bisa
     # selama penyalinannya sendiri, jadi perpindahannya perlu terlihat —
     # kalau tidak, bilah progres berhenti penuh dan tampak menggantung.
     catat_maju(kunci, tahap="pindai", berkas=ditulis, bytes=byte)
     return {"berkas": ditulis, "dilewati": dilewati, "bytes": byte,
-            "sumber": str(sumber), "contoh_dilewati": contoh, "bentrok": bentrok}
+            "sudah_ada": sudah_ada, "sumber": str(sumber),
+            "contoh_dilewati": contoh, "bentrok": bentrok}

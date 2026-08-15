@@ -965,7 +965,10 @@ def test_impor_melewati_berkas_asing_dan_melaporkannya(lingkungan):
 def test_impor_tidak_menimpa_saat_nama_bentrok(lingkungan):
     """
     Dua nama berbeda bisa menyatu setelah disterilkan (spasi jadi '-').
-    Yang kedua dilewati dan dilaporkan; menimpanya berarti gambar hilang diam.
+
+    Tidak ada yang ditimpa dan tidak ada yang dibuang: yang kedua masuk dengan
+    akhiran. Sebelumnya yang kedua dilewati begitu saja, dan itu berarti satu
+    gambar hilang hanya karena namanya mengandung spasi.
     """
     from app.services import impor
 
@@ -976,9 +979,26 @@ def test_impor_tidak_menimpa_saat_nama_bentrok(lingkungan):
     tujuan = lingkungan["tmp"] / "hasil4"
 
     h = impor.impor_folder(sumber, tujuan)
-    assert h["berkas"] == 1 and h["dilewati"] == 1
+    assert h["berkas"] == 2 and h["dilewati"] == 0
     assert len(h["bentrok"]) == 1
     assert (tujuan / "foto-a.jpg").read_bytes() == b"pertama"
+    assert (tujuan / "foto-a-2.jpg").read_bytes() == b"kedua"
+
+
+def test_impor_ulang_tidak_menggandakan_berkas_yang_isinya_sama(lingkungan):
+    """Menyalin folder yang sama dua kali harus menghasilkan dataset yang sama,
+    bukan dataset dengan setiap gambar kembar dua."""
+    from app.services import impor
+    from conftest import buat_dataset
+
+    sumber = buat_dataset(lingkungan["tmp"] / "s4b", 3, 2)
+    tujuan = lingkungan["tmp"] / "hasil4b"
+
+    a = impor.impor_folder(sumber, tujuan)
+    b = impor.impor_folder(sumber, tujuan)
+    assert a["berkas"] == 5 and a["sudah_ada"] == 0
+    assert b["berkas"] == 0 and b["sudah_ada"] == 5
+    assert len(list(tujuan.glob("*.jpg"))) == 3
 
 
 def test_impor_menolak_kalau_disk_hampir_penuh(lingkungan, monkeypatch):
@@ -1105,3 +1125,161 @@ def test_rute_kemajuan_bisa_ditanyakan_terpisah(klien, lingkungan):
     r = klien.get("/api/impor/kemajuan").json()
     assert r == {"ok": True, "tahap": "salin", "berkas": 7, "total": 10,
                  "bytes": 99, "total_bytes": 200}
+
+
+# ------------------------------------------- tambah gambar ke dataset terbuka
+
+def _proyek_bersplit(root, n=(80, 10, 10)):
+    """Dataset YOLO bersplit 80:10:10 di ruang kerja akun."""
+    import cv2
+    import numpy as np
+    for s, k in zip(("train", "valid", "test"), n):
+        (root / s / "images").mkdir(parents=True, exist_ok=True)
+        (root / s / "labels").mkdir(parents=True, exist_ok=True)
+        for i in range(k):
+            cv2.imwrite(str(root / s / "images" / f"{s}{i}.jpg"),
+                        np.full((60, 80, 3), (50 + i) % 250, np.uint8))
+            (root / s / "labels" / f"{s}{i}.txt").write_text("0 0.5 0.5 0.2 0.2\n")
+    (root / "data.yaml").write_text("names: [botol, kaleng]\n")
+    return root
+
+
+def _gambar_baru(d, n, mulai=0):
+    import cv2
+    import numpy as np
+    d.mkdir(parents=True, exist_ok=True)
+    for i in range(mulai, mulai + n):
+        cv2.imwrite(str(d / f"n{i}.jpg"), np.full((60, 80, 3), (100 + i) % 250, np.uint8))
+        (d / f"n{i}.txt").write_text("1 0.5 0.5 0.3 0.3\n")
+    return d
+
+
+def _isi(root):
+    return {s: len(list((root / s / "images").glob("*.jpg")))
+            for s in ("train", "valid", "test")}
+
+
+def test_tambah_menjaga_rasio_split_yang_sudah_ada(klien, lingkungan):
+    """
+    Rasionya harus utuh sesudah penambahan, bukan cuma mendekati.
+
+    Pernah gagal justru di sini: hitungan per split hanya naik setelah berkasnya
+    mendarat, sehingga setiap gambar dinilai seolah ia satu-satunya yang
+    ditambahkan dan seluruh batch menumpuk di train — 80:10:10 rusak jadi
+    100:10:10.
+    """
+    masuk(klien, "paul", PW_PAUL)
+    proyek = _proyek_bersplit(lingkungan["tmp"] / "unggahan" / "paul" / "proyek")
+    assert klien.post("/useupload?ds=proyek").json()["n"] == 100
+    baru = _gambar_baru(lingkungan["tmp"] / "baru", 20)
+
+    r = klien.post(f"/tambah/impor?path={baru}").json()
+    assert r["ok"] is True and r["ditambah"] == 40 and r["n"] == 120
+    assert _isi(proyek) == {"train": 96, "valid": 12, "test": 12}
+
+
+def test_tambah_menaruh_label_di_split_yang_sama_dengan_gambarnya(klien,
+                                                                  lingkungan):
+    """Label yang terpisah dari gambarnya membuat gambar itu tampak belum
+    dilabeli, dan labelnya menjadi yatim di split lain."""
+    masuk(klien, "paul", PW_PAUL)
+    proyek = _proyek_bersplit(lingkungan["tmp"] / "unggahan" / "paul" / "p2")
+    klien.post("/useupload?ds=p2")
+    baru = _gambar_baru(lingkungan["tmp"] / "baru2", 20)
+    klien.post(f"/tambah/impor?path={baru}")
+
+    for s in ("train", "valid", "test"):
+        gbr = {p.stem for p in (proyek / s / "images").glob("n*.jpg")}
+        lbl = {p.stem for p in (proyek / s / "labels").glob("n*.txt")}
+        assert gbr == lbl, f"split {s}: gambar {gbr} vs label {lbl}"
+
+
+def test_tambah_dua_kali_tidak_menggandakan(klien, lingkungan):
+    masuk(klien, "paul", PW_PAUL)
+    proyek = _proyek_bersplit(lingkungan["tmp"] / "unggahan" / "paul" / "p3")
+    klien.post("/useupload?ds=p3")
+    baru = _gambar_baru(lingkungan["tmp"] / "baru3", 20)
+
+    klien.post(f"/tambah/impor?path={baru}")
+    sesudah = _isi(proyek)
+    r = klien.post(f"/tambah/impor?path={baru}").json()
+    assert r["ditambah"] == 0 and r["sudah_ada"] == 40
+    assert _isi(proyek) == sesudah
+
+
+def test_tambah_berkas_senama_tapi_beda_isi_tetap_masuk_berpasangan(klien,
+                                                                    lingkungan):
+    """'Tambah' berarti tidak ada yang diganti. Gambar senama yang isinya beda
+    tetap masuk, dan labelnya harus ikut memakai nama pengganti yang sama —
+    kalau tidak, gambarnya tampak belum dilabeli."""
+    import cv2
+    import numpy as np
+
+    masuk(klien, "paul", PW_PAUL)
+    proyek = _proyek_bersplit(lingkungan["tmp"] / "unggahan" / "paul" / "p4")
+    klien.post("/useupload?ds=p4")
+    klien.post(f"/tambah/impor?path={_gambar_baru(lingkungan['tmp'] / 'baru4', 5)}")
+
+    lain = lingkungan["tmp"] / "lain4"
+    lain.mkdir()
+    cv2.imwrite(str(lain / "n0.jpg"), np.full((60, 80, 3), 7, np.uint8))
+    (lain / "n0.txt").write_text("0 0.1 0.1 0.1 0.1\n")
+
+    r = klien.post(f"/tambah/impor?path={lain}").json()
+    assert r["ditambah"] == 2 and r["bentrok"]
+    pasang = [(s, (proyek / s / "labels" / "n0-2.txt").exists())
+              for s in ("train", "valid", "test")
+              if (proyek / s / "images" / "n0-2.jpg").exists()]
+    assert pasang and all(ada for _, ada in pasang), pasang
+    # yang lama tidak tersentuh
+    assert (proyek / pasang[0][0] / "labels" / "n0.txt").read_text() \
+        == "1 0.5 0.5 0.3 0.3\n"
+
+
+def test_tambah_ditolak_kalau_dataset_dibuka_dari_path_server(klien, lingkungan):
+    """Menambah ke dataset yang dibuka di tempat berarti menulis ke folder
+    sumber milik orang lain — aturan aplikasi ini, folder sumber hanya dibaca."""
+    from conftest import buat_dataset
+
+    masuk(klien, "paul", PW_PAUL)
+    luar = buat_dataset(lingkungan["tmp"] / "luar" / "ds", 3, 1)
+    klien.post(f"/setsrc?path={luar}")
+    sebelum = sorted(p.name for p in luar.iterdir())
+
+    baru = _gambar_baru(lingkungan["tmp"] / "baru5", 2)
+    r = klien.post(f"/tambah/impor?path={baru}").json()
+    assert r["ok"] is False and "salin dulu" in r["error"]
+
+    r = klien.put("/tambah?name=x.jpg", content=b"x" * 50).json()
+    assert r["ok"] is False
+    assert sorted(p.name for p in luar.iterdir()) == sebelum
+
+    # dan halaman grid mengatakan alasannya, bukan menyembunyikan tombolnya
+    assert "salin dulu" in klien.get("/").text
+
+
+def test_tambah_satu_berkas_lewat_unggahan(klien, lingkungan):
+    masuk(klien, "paul", PW_PAUL)
+    proyek = _proyek_bersplit(lingkungan["tmp"] / "unggahan" / "paul" / "p6")
+    klien.post("/useupload?ds=p6")
+    gbr = (proyek / "train" / "images" / "train0.jpg").read_bytes()
+
+    r = klien.put("/tambah?name=sub/folder/foto-baru.jpg", content=gbr).json()
+    assert r["ok"] is True and r["hasil"] == "baru"
+    # struktur folder pengirim dibuang; yang menentukan adalah tata letak tujuan
+    assert (proyek / r["split"] / "images" / "foto-baru.jpg").exists()
+    assert not (proyek / "sub").exists()
+
+    # berkas yang sama persis, dikirim lagi
+    assert klien.put("/tambah?name=foto-baru.jpg",
+                     content=gbr).json()["hasil"] == "sudah-ada"
+
+
+def test_tambah_menolak_jenis_berkas_yang_bukan_gambar_atau_anotasi(klien,
+                                                                    lingkungan):
+    masuk(klien, "paul", PW_PAUL)
+    _proyek_bersplit(lingkungan["tmp"] / "unggahan" / "paul" / "p7")
+    klien.post("/useupload?ds=p7")
+    for nama in ("catatan.sh", "data.yaml", "arsip.zip"):
+        assert klien.put(f"/tambah?name={nama}",
+                         content=b"x" * 20).json()["ok"] is False, nama

@@ -34,6 +34,7 @@ class Session:
         self.thumbdir = settings.thumb_root / safe_slug(user)
         self.thumbdir.mkdir(parents=True, exist_ok=True)
         self.lock = threading.Lock()
+        self._penempat = None
 
     # -- dataset --
 
@@ -41,9 +42,27 @@ class Session:
         """Pindai folder baru dan buang cache thumbnail folder sebelumnya."""
         self.src = Path(src).resolve()
         self.items, self.names = scanner.scan(self.src)
+        # Penempat memegang jumlah gambar per split saat ia dibuat. Setelah
+        # pemindaian ulang angka itu sudah usang, jadi dibuang — kalau tidak,
+        # penambahan berikutnya membagi berdasarkan keadaan yang sudah lewat.
+        self._penempat = None
         self.reset_thumbs()
         annotations.write_label_file(self)
         return self.items
+
+    def penempat_tambah(self):
+        """
+        Penentu letak berkas baru, dipakai bersama sepanjang satu batch.
+
+        Satu seretan folder mengirim ratusan permintaan terpisah. Membuat
+        penempat baru di tiap permintaan berarti tiap berkas dibagi seolah ia
+        satu-satunya yang ditambahkan, dan seluruhnya akan mendarat di split
+        yang sama.
+        """
+        from .services import tambah
+        if self._penempat is None or self._penempat.src != self.src:
+            self._penempat = tambah.Penempat(self.src)
+        return self._penempat
 
     def reload(self) -> list[dict]:
         if self.src is None:
