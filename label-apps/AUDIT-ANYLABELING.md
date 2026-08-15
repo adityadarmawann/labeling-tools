@@ -28,7 +28,7 @@ PASTI** — sengaja tidak dispekulasikan.
 
 ## Ringkasan untuk yang tidak punya waktu
 
-Lima hal terpenting dari audit ini:
+Enam hal terpenting dari audit ini:
 
 1. **Rasa "ringan" AnyLabeling saat menyunting berasal dari tiga jalur pintas
    mouse**, bukan dari menu: klik di sisi poligon langsung menyisipkan titik
@@ -44,10 +44,13 @@ Lima hal terpenting dari audit ini:
    (`export_worker.py:147-163`). Ekspor kita sengaja lebih baik di sini.
 4. **Rumus luas poligon COCO-nya salah** (`export_formats.py:338-343`), dan
    `category_id` tidak konsisten antar split (`export_worker.py:355-433`).
-   Bug pertama **sudah tidak kita tiru lagi** (lihat H.4); yang kedua masih
+   Bug pertama **sudah tidak kita tiru lagi** (lihat H.6); yang kedua masih
    kita tanggung.
 5. **Pipeline MobileSAM sudah diverifikasi bit-exact** dengan AnyLabeling
    (IoU 1.0000, selisih 0 piksel). Lihat Bagian E dan [`PARITAS.md`](PARITAS.md).
+6. **Bagian H disusun dari pengecekan silang, bukan ingatan** — cara Bagian H
+   versi pertama disusun manual pernah membuat dua temuan yang sudah tercatat
+   di bagian deskriptif tidak pernah dibandingkan dengan kode kita. Lihat H.1.
 
 ---
 
@@ -1302,59 +1305,98 @@ Jalur pemicunya **TIDAK PASTI**.
 
 Inilah bagian yang menentukan pekerjaan berikutnya. Dibagi empat kategori.
 
-## H.1 Belum ada, dan ini yang membuat aplikasi kita terasa kaku
+## H.1 Cara Bagian H ini disusun
 
-Prioritas tertinggi. Ketiga hal pertama menjelaskan keluhan *"masih belum
-friendly buat hapus salah satu atau 2 objek yang udah terlabeli"* — **dan
-ketiganya sudah dikerjakan**, diverifikasi dengan peristiwa mouse sungguhan di
-`tests/e2e_kanvas.py`.
+Daftar di bawah **bukan** hasil ingatan. Tiap baris diperoleh dengan memeriksa
+perilaku yang dideskripsikan di Bagian A–F terhadap kode aplikasi ini, satu per
+satu.
 
-| # | AnyLabeling | Aplikasi kita sekarang |
-|---|---|---|
-| 1 | **Klik kiri di sisi poligon langsung menyisipkan titik** (`canvas.py:464-465`) | ✅ `Ctrl+Shift+P` tetap ada sebagai cadangan |
-| 2 | **Shift+klik pada titik langsung menghapusnya** (`canvas.py:466-471`) | ✅ `Backspace` tetap ada |
-| 3 | **Klik ulang objek terpilih membatalkan pilihannya** (`canvas.py:503-512`) | ✅ dan menyeret objek terpilih tetap tidak melepas pilihan, seperti uji `not moving_shape` di sana |
-| 4 | **Seret klik kanan = duplikat-dan-pindah** + menu `Copy here`/`Move here` (`canvas.py:323-331`, `label_widget.py:1019-1024`) | ✅ menu kedua berisi tepat dua pilihan; menutupnya tanpa memilih membatalkan salinan |
-| 5 | **`Alt` mematikan snapping** saat menggambar (`canvas.py:1100-1101`) | ✅ |
-| 6 | Snapping menyorot **vertex 0** sebagai umpan balik (`canvas.py:299-302`) | ✅ titik awal membesar begitu poligon siap ditutup |
-| 7 | `Ctrl+C` / `Ctrl+V` antar gambar (`label_widget.py:496-511`) | ✅ lewat `sessionStorage`, jadi bertahan saat pindah gambar |
-| 8 | `G` / `U` menetapkan dan melepas `group_id` (`canvas.py:1236-1285`) | ✅ termasuk dua perilaku yang mudah salah: id diambil dari yang terkecil di seleksi, dan melepas grup melepaskan semua bentuk berid sama walau tidak terpilih |
-| 9 | Panel Objects bisa **diurutkan dengan drag-drop** (`label_list_widget.py:124-125`) | ✅ |
+Itu penting karena versi pertama Bagian H disusun manual, dan dua temuan yang
+sudah tercatat rapi di bagian deskriptif tidak pernah menyeberang ke sini —
+sehingga tidak pernah dibandingkan dan tidak pernah jadi pekerjaan:
 
-## H.2 Fitur labeling lain yang kini ada
+- **penutupan cincin poligon** (`segment_anything.py:235`), tercatat di Bagian
+  E.4 langkah 8 sejak awal, baru ditindaklanjuti setelah ditanyakan;
+- **satu kontur = satu bentuk** (`segment_anything.py:224-252`), tidak pernah
+  masuk daftar sama sekali.
 
-| Hal | Status |
+Auditnya sendiri tidak bolong — keenam laporan agen mencakup seluruh 40 berkas
+`.py` paket itu. Yang bocor adalah penyeberangan dari "AnyLabeling begini" ke
+"kita bagaimana".
+
+## H.2 Setara — sudah diperiksa, tidak ada bedanya
+
+| Perilaku | Rujukan |
 |---|---|
-| Tipe bentuk `circle`, `line`, `point`, `linestrip` | ✅ lengkap enam tipe, tiap tipe dengan cara mengakhiri sendiri: `point` 1 klik · `line` 2 klik · `circle` seret pusat→tepi · `linestrip` Ctrl+klik/Enter · `polygon` sampai tertutup · `rectangle` seret |
-| Brightness / Contrast | ✅ rentang dan titik netral mengikuti `BrightnessContrastDialog` (slider 0–150, netral 50, faktor 0–3), diingat **per gambar** dan hanya mengenai citranya — bukan bentuknya |
-| `keep_prev` | ✅ dengan syarat yang sama persis: hanya menyalin kalau gambar baru **belum punya objek sama sekali**. Bawaannya mati, seperti di sana |
+| `epsilon` 10.0 dibagi skala untuk sentuh vertex/sisi | `canvas.py:46` |
+| Panah menggeser 5.0 satuan, **hanya** di mode Sunting | `canvas.py:1103-1110` |
+| Klik ganda menutup poligon | `canvas.py:557-569` |
+| `Esc` membuang bentuk yang sedang digambar | `canvas.py:1094-1097` |
+| `Enter` mengakhiri bentuk | `canvas.py:1098-1099` |
+| Ctrl+wheel memperbesar, wheel biasa menggulir | `canvas.py:1067-1079` |
+| Bentuk tidak bisa diseret keluar gambar | `canvas.py:629-653` |
+| Bentuk tersorot saat kursor di atasnya | `canvas.py:803-806` |
+| Prioritas hover: vertex → sisi → bagian dalam | `canvas.py:346-398` |
+| Titik hanya bisa disisipkan pada polygon dan linestrip | `shape.py:116-118` |
+| Sisi penutup ikut diuji pada bentuk tertutup | `shape.py:247-261` |
+| `finalise` mengurutkan rectangle ke (xmin,ymin)-(xmax,ymax) | `canvas.py:900-926` |
+| line/point/linestrip hanya bisa dipilih lewat titiknya | `shape.py:263-265` |
+| Grup: id terkecil menang; melepas grup melepas semua berid sama | `canvas.py:1236-1285` |
+| `imagePath` ditulis relatif terhadap folder JSON | `label_widget.py:1841` |
+| Field asing dipertahankan saat menyimpan ulang | `label_file.py:175-177` |
+| Flag tingkat gambar | `label_widget.py:1834-1839` |
+| Warna kelas otomatis dan konsisten | `label_widget.py:1711-1741` |
+| Garis bantu silang, teks kelas, penanda grup, isi saat menggambar | `canvas.py:757-873` |
+| Sembunyikan/tampilkan semua poligon | `label_widget.py:2069-2073` |
+| Centang di panel Objects mengatur visibilitas | `label_widget.py:1899-1901` |
+| Pencarian nama berkas di panel Files | `label_widget.py:1614-1619` |
+| `keep_prev`, `keep_prev_scale`, `auto_use_last_label` | `anylabeling_config.yaml:6-10` |
+| Enam tipe bentuk beserta cara mengakhirinya | `canvas.py:432-462` |
+| Klik di sisi, Shift+klik, klik ulang, seret klik kanan | `canvas.py:463-512` |
+| Ctrl+C/Ctrl+V, G/U, Alt mematikan snapping | `label_widget.py:496-511`, `canvas.py:1100` |
+| Kecerahan dan kontras, rentang dan titik netral sama | `brightness_contrast_dialog.py` |
+| Urutan objek bisa digeser | `label_list_widget.py:124-125` |
 
-### Yang sengaja belum — akan menyusul
+## H.3 Sengaja berbeda
 
-Semuanya di luar alur labeling itu sendiri:
+| Hal | AnyLabeling | Kita | Alasan |
+|---|---|---|---|
+| **Satu klik SAM** | satu bentuk per kontur (`segment_anything.py:224-252`) | selalu **satu** bentuk, kontur terbesar | Diminta: satu klik satu objek. Diukur pada 86 klik data nyata: **0%** kehilangan potongan berarti |
+| **Cincin poligon di kanvas** | tertutup, dua titik bertumpuk | terbuka di kanvas, tertutup di berkas | Titik bertumpuk membuat menyeret salah satunya meninggalkan duri |
+| **Kedalaman urungkan** | ~11 langkah, `deepcopy` tiap bentuk | 40 langkah, snapshot JSON | Lebih murah dan lebih dalam |
+| **Rentang zoom** | 1%–1000% | 5%–4000% | Gambar 4080 px butuh perbesaran lebih untuk menaruh titik |
+| **Simpan otomatis** | agresif: apa pun, tanpa tanda, tanpa konfirmasi | begitu tiap objek punya kelas; pratinjau tidak ikut | Menyimpan coretan yang belum disahkan itu jebakan |
+| **Tulis-aman** | menimpa langsung, proses mati = JSON rusak | `.tmp` lalu `replace` | — |
+| **Isolasi pengguna** | satu proses satu orang | per akun: dataset, unggahan, sesi | Dipakai satu tim |
+| **Luas poligon COCO** | rumus salah, bergantung posisi | shoelace benar | Lihat H.6 |
+| **Indeks kelas ekspor** | — | ikut urutan `data.yaml` sumber | Lihat H.6 |
+| **Pembagian split** | acak tanpa seed, `test_ratio` diabaikan | split asli dipertahankan; kalau membagi sendiri, per foto asal | Mencegah kebocoran |
+
+## H.4 Belum ada, dan memang belum diputuskan
+
+Ditemukan lewat pengecekan silang ini, bukan sebelumnya:
+
+| Hal | AnyLabeling | Dampak kalau tidak ada |
+|---|---|---|
+| **`validate_label: exact`** | label baru ditolak kalau tidak ada di daftar (`label_widget.py:1542-1556`) | Salah ketik nama kelas langsung membuat kelas baru tanpa peringatan. Untuk satu tim, ini penyebab dataset kotor yang paling sering |
+| **Flag per bentuk** | dinyalakan lewat `label_flags`, pola regex → daftar flag (`label_dialog.py:169-192`) | Datanya sudah dipertahankan bulat-balik, tetapi belum ada cara mengisinya. Panel Flags kita masih tingkat gambar saja |
+| `sort_labels` | daftar kelas bisa diurutkan atau diseret sendiri | Kecil |
+| `label_completion` | autocomplete `startswith`/`contains` di dialog label | Tidak berlaku: kelas dipilih dari panel, bukan diketik bebas |
+| `label_colors` | warna manual per kelas | Kecil; warna otomatis kita sudah konsisten |
+| `display_label_popup` | melewati dialog kalau sudah ada kelas terpilih | Tidak berlaku: alur kita memang memilih kelas lebih dulu |
+
+Dua yang pertama layak dipertimbangkan. Sisanya tidak berlaku atau kecil.
+
+## H.5 Sengaja belum — di luar alur melabeli
 
 | Hal | Alasan menunda |
 |---|---|
-| Ekspor CreateML | Formatnya pun salah di AnyLabeling (F.5); kalau ditambah, ditambah yang benar |
-| SAM2/SAM2.1/SAM3, YOLOv5/v8 | Fokus MobileSAM dulu; SAM2 bahkan punya bug kanal warna (G.1 #11) |
+| Ekspor CreateML | Formatnya pun salah di AnyLabeling (F.5) |
+| SAM2/SAM2.1/SAM3, YOLOv5/v8 | Fokus MobileSAM; SAM2 punya bug kanal warna (G.1 #11) |
 | Prompt teks | Butuh CLIP tokenizer dari API privat `osam` (`sam3_onnx.py:240`) |
 | Ganti bahasa dan tema | Bukan bagian melabeli |
 
-## H.3 Kita sudah sengaja berbeda (dan lebih baik)
-
-| Hal | AnyLabeling | Aplikasi kita |
-|---|---|---|
-| `data.yaml` | **Tidak dibuat** (F.6) | Dibuat, bentuk Roboflow, `train`/`val`/`test` menunjuk folder berbeda |
-| Pembagian split | `random.shuffle` **tanpa seed**, `test_ratio` diabaikan | Deterministik berbasis sha1 nama berkas; rasio dapat diatur pengguna, bawaan 80:10:10, plus persentase real |
-| Struktur ekspor | `train/val/test` dengan `val` | `train/valid/test` sesuai ekspor Roboflow nyata |
-| Kedalaman undo | ~11 langkah, `deepcopy` per bentuk | 40 langkah, snapshot JSON |
-| Isolasi pengguna | Satu proses satu pengguna | Per akun: dataset, unggahan, dan sesi terpisah |
-| Luas poligon COCO | Rumus salah, hasil bergantung posisi | Shoelace yang benar — lihat H.4 |
-| Autosave | **Agresif**: menyimpan apa pun, termasuk hasil salinan `keep_prev`, tanpa tanda bintang dan tanpa konfirmasi | Menyimpan begitu tiap objek punya kelas; pratinjau SAM yang belum disahkan tidak pernah ikut, dan objek tanpa kelas tidak memicu penyimpanan sama sekali |
-| Atomic write | **Tidak ada** — proses mati saat menulis = JSON rusak dan versi lama sudah hilang | Tulis ke `.json.tmp` lalu `replace` (`routers/annotate.py:225-231`) |
-| Menyimpan field asing | Dipertahankan | Dipertahankan, plus `titipan` per bentuk |
-
-## H.4 Bug AnyLabeling — status di aplikasi kita
+## H.6 Bug AnyLabeling — status di aplikasi kita
 
 | # | Bug | Status |
 |---|---|---|
@@ -1514,7 +1556,7 @@ Tiga alasan, diputuskan setelah diperiksa:
 Pelatihan YOLO tidak terpengaruh sama sekali — format YOLO tidak punya field
 `area`.
 
-## H.5 Keputusan yang sudah diambil
+## H.7 Keputusan yang sudah diambil
 
 1. **Luas poligon COCO** → dibetulkan (alasannya di atas).
 2. **Autosave** → menyimpan **begitu tiap objek sudah punya kelas**, seperti
@@ -1528,7 +1570,7 @@ Pelatihan YOLO tidak terpengaruh sama sekali — format YOLO tidak punya field
 
 ---
 
-## Lampiran — Yang tidak dapat dipastikan dari kode
+# Lampiran A — Yang tidak dapat dipastikan dari kode
 
 Dicatat supaya tidak ada yang menganggapnya sudah terverifikasi:
 
@@ -1550,3 +1592,32 @@ Dicatat supaya tidak ada yang menganggapnya sudah terverifikasi:
 berkas AnyLabeling yang diubah. Dokumen pendamping:
 [`PARITAS.md`](PARITAS.md) (verifikasi bit-exact MobileSAM),
 [`NOTICE.md`](../NOTICE.md) (atribusi GPLv3).*
+
+---
+
+# Lampiran B — Berkas yang detailnya sempat hilang
+
+Dokumen ini memampatkan enam laporan agen, dan pemampatan itu **lossy**: 12
+berkas sempat tidak disebut sama sekali di sini walaupun seluruhnya sudah
+diaudit. Bagian ini mengembalikannya, supaya tidak ada berkas yang tampak
+belum diperiksa padahal sudah.
+
+| Berkas | Isi | Yang perlu diketahui |
+|---|---|---|
+| `services/auto_labeling/lru_cache.py` | `LRUCache` `OrderedDict` + `threading.Lock` (`:7-39`) | Cache embedding SAM, muat 10 entri, kunci = **nama berkas** (bukan hash isi) sehingga berkas yang diubah di tempat memberi embedding basi |
+| `services/auto_labeling/registry.py` | `ModelRegistry` (`:4-7`) | Peta `type` di `models.yaml` → kelas model. Dekorator `@ModelRegistry.register("yolov8")` |
+| `services/auto_labeling/sam2_coreml.py` | Backend SAM2 lewat CoreML | macOS saja, import lazy. Memakai `PIL.resize((1024,1024), LANCZOS)` — aspek tidak dijaga. `original_size` di sini `(W,H)`, backend lain `(H,W)` — tidak konsisten |
+| `services/auto_labeling/yolov5.py` | Inferensi YOLOv5 | Tidak ada entri bawaannya di `models.yaml`; hidup hanya sebagai model kustom. Menyaring dua tahap (`obj_conf` lalu `score_threshold`), berbeda dari YOLOv8 |
+| `views/common/toaster.py` | `QToaster` (9,5 KB) | Notifikasi toast buatan sendiri di Qt. Tidak perlu diporting — pustaka toast web mana pun cukup |
+| `views/labeling/testing.py` | `assert_labelfile_sanity()` | **Kontrak paling eksplisit** untuk skema JSON: `image_path` wajib, `image_data` opsional, dimensi harus cocok, tiap `points` dibatasi `0 <= x <= W` |
+| `views/labeling/utils/_io.py` | `lblsave()` | Simpan PNG berpalet; rentang nilai harus `[-1,254]`, di luar itu `ValueError` |
+| `views/labeling/widgets/brightness_contrast_dialog.py` | Dialog kecerahan/kontras | 2 slider `range(0,150)` awal `50`; faktor `nilai/50` → 0–3, netral di 1. Selalu diterapkan ke citra **asli**, jadi tidak menumpuk |
+| `views/labeling/widgets/escapable_qlist_widget.py` | `EscapableQListWidget` (`:5-10`) | `Esc` membatalkan seleksi daftar. Dipakai panel Labels |
+| `views/labeling/widgets/file_dialog_preview.py` | `FileDialogPreview` | Dialog buka berkas dengan pratinjau 300×300; `.json` ditampilkan sebagai teks ber-indent. Memakai enum bergaya Qt5 — kompatibilitasnya **TIDAK PASTI** |
+| `views/labeling/widgets/unique_label_qlist_widget.py` | Panel **Labels** | Item menyimpan nama kelas di `UserRole`, dirender `QLabel` HTML dengan titik warna. **Tidak ada checkbox, tidak ada klik-ganda, tidak ada menu konteks.** Kelas terpilih jadi kelas bawaan bentuk baru |
+| `views/labeling/widgets/zoom_widget.py` | `ZoomWidget(QSpinBox)` | Rentang **1–1000%**, sufiks `%`, tanpa tombol naik/turun. `setWhatsThis` memberi repr list ke `fmt_shortcut` sehingga teksnya rusak |
+
+Dari kedua belas ini, yang benar-benar berpengaruh pada aplikasi kita cuma dua:
+`testing.py` karena memuat kontrak skema JSON yang kita ikuti, dan
+`brightness_contrast_dialog.py` yang rentang serta titik netralnya kita tiru
+persis.
