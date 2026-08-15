@@ -15,9 +15,15 @@
   <span class="lab-mode" id="modeinfo">Mode: <b>+Point</b></span>
   <span class="lab-hint">Pintasan: <b>Q</b> +Point · <b>E</b> −Point · <b>F</b> Finish ·
     <b>C</b> Clear · <b>P</b> poligon · <b>R</b> rectangle · <b>V</b> sunting ·
-    <b>A</b>/<b>D</b> atau <b>panah</b> gambar · <b>klik kanan</b> menu · <b>Ctrl+klik</b> pilih banyak · <b>Del</b> hapus · <b>Backspace</b> hapus titik ·
+    <b>A</b>/<b>D</b> atau <b>panah</b> gambar · <b>klik kanan</b> menu · <b>Ctrl+klik</b> pilih banyak · <b>Del</b> hapus ·
     <b>Ctrl+E</b> ubah kelas · <b>Ctrl+D</b> duplikat · <b>Ctrl+F</b> muat ·
-    <b>Ctrl+S</b> simpan · <b>Ctrl+Shift+P</b> sisip titik di sisi · <b>panah</b> geser objek</span>
+    <b>Ctrl+S</b> simpan · <b>panah</b> geser objek</span>
+  {# Tiga jalur pintas ini dipakai paling sering saat merapikan hasil SAM, jadi
+     ditulis terpisah supaya tidak tenggelam di antara pintasan lain. #}
+  <span class="lab-hint lab-hint-sunting">Sunting: <b>klik di sisi</b> sisipkan titik ·
+    <b>Shift+klik titik</b> hapus titik · <b>klik ulang</b> batal pilih ·
+    <b>seret klik kanan</b> salin/pindahkan · <b>Ctrl+C</b>/<b>Ctrl+V</b> ·
+    <b>G</b>/<b>U</b> grup · <b>Alt</b> matikan tarik-magnet</span>
   <span class="spacer"></span>
   {# Menu View meniru menu View AnyLabeling: panel bisa disembunyikan, dan
      beberapa hal tampilan bisa dimatikan. #}
@@ -43,7 +49,12 @@
       <div class="menu-judul">Perilaku</div>
       <label><input type="checkbox" id="v-labelterakhir" checked> Pakai kelas terakhir otomatis</label>
       <label><input type="checkbox" id="v-zoomtetap"> Pertahankan zoom saat pindah gambar</label>
-      <label><input type="checkbox" id="v-autosave" checked> Simpan otomatis saat pindah</label>
+      {# Padanan "Keep Previous Annotation" (Ctrl+P). Bawaannya mati, sama
+         seperti keep_prev: false di AnyLabeling — dengan simpan otomatis,
+         anotasi salinan langsung tertulis ke berkas. #}
+      <label title="Kalau gambar berikutnya belum punya objek sama sekali, objek dari gambar sebelumnya disalin ke sana. Langsung tersimpan, jadi periksa dulu."><input type="checkbox" id="v-keepprev"> Pertahankan anotasi sebelumnya</label>
+      <label><input type="checkbox" id="v-autosave" checked
+        title="Begitu tiap objek punya kelas, perubahan langsung tersimpan. Pratinjau SAM yang belum disahkan dengan F tidak ikut."> Simpan otomatis</label>
     </div>
   </div>
   <span class="who">{{ sess.user }}</span>
@@ -58,8 +69,12 @@
     <button class="tool" data-mode="p-"    title="−Point (E) — klik pada bagian yang BUKAN objek"><img src="/static/icons/minus.png" alt=""></button>
     <button class="tool" data-mode="rect"  title="+Rect — tarik kotak di sekitar objek, SAM yang membuat poligonnya"><img src="/static/icons/brain.png" alt=""></button>
     <span class="tool-sep"></span>
-    <button class="tool" data-mode="poly"  title="Poligon manual (P) — klik titik demi titik, Enter menutup"><img src="/static/icons/polygon.png" alt=""></button>
+    <button class="tool" data-mode="poly"  title="Poligon manual (P) — klik titik demi titik, Enter menutup. Tahan Alt supaya tidak menempel ke titik awal"><img src="/static/icons/polygon.png" alt=""></button>
     <button class="tool" data-mode="kotak" title="Rectangle manual (R) — tarik kotak, langsung jadi objek"><img src="/static/icons/rectangle.png" alt=""></button>
+    <button class="tool" data-mode="circle" title="Circle — tarik dari titik pusat ke tepi"><img src="/static/icons/circle.png" alt=""></button>
+    <button class="tool" data-mode="line"  title="Line — dua klik"><img src="/static/icons/line.png" alt=""></button>
+    <button class="tool" data-mode="linestrip" title="LineStrip — klik terus, akhiri dengan Ctrl+klik atau Enter"><img src="/static/icons/line-strip.png" alt=""></button>
+    <button class="tool" data-mode="point" title="Point — satu klik satu objek"><img src="/static/icons/point.png" alt=""></button>
     <button class="tool" data-mode="edit"  title="Sunting (V) — pilih bentuk, geser titiknya"><img src="/static/icons/edit.png" alt=""></button>
     <span class="tool-sep"></span>
     <button class="tool" id="btn-dup"  title="Duplikat objek (Ctrl+D)"><img src="/static/icons/copy.png" alt=""></button>
@@ -138,6 +153,14 @@
       {% endif %}
       <label class="halus" for="eps">Kerapatan titik poligon</label>
       <input id="eps" type="range" min="5" max="200" value="10">
+
+      {# Rentang dan titik netral mengikuti BrightnessContrastDialog: slider
+         0..150 dengan nilai awal 50, faktor = nilai/50 sehingga 50 = normal. #}
+      <label class="halus" for="cerah">Kecerahan <span class="mono" id="cerah-nilai">1.00</span></label>
+      <input id="cerah" type="range" min="0" max="150" value="50">
+      <label class="halus" for="kontras">Kontras <span class="mono" id="kontras-nilai">1.00</span></label>
+      <input id="kontras" type="range" min="0" max="150" value="50">
+      <button class="chip" id="btn-reset-cerah">Kembalikan normal</button>
     </div>
 
     <div class="pan pan-grow" id="pan-files">

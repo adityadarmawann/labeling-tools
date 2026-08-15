@@ -178,6 +178,10 @@ body.lab {
   padding: 4px 7px; border-radius: 5px; cursor: pointer; font-size: 12.5px;
 }
 .obj:hover { background: #f3f6f9; }
+/* Umpan balik saat urutan objek digeser. Tanpa penanda garis jatuh, orang
+   tidak tahu objeknya akan mendarat di atas atau di bawah item yang disorot. */
+.obj[data-seret] { opacity: .4; }
+.obj[data-jatuh] { box-shadow: inset 0 2px 0 0 var(--biru, #2196F3); }
 .obj[data-on] { background: #e7edf5; font-weight: 600; }
 .obj i { width: 10px; height: 10px; border-radius: 3px; flex: 0 0 auto; }
 .obj span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
