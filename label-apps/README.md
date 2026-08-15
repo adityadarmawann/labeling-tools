@@ -15,14 +15,45 @@ aplikasi desktop masing-masing.
   seberapa banyak yang bermasalah
 - **Login per akun.** Tiap akun punya dataset dan cache thumbnail sendiri, jadi
   satu orang mengganti folder tidak mengubah tampilan orang lain
-- **Unggah folder dari laptop** — tarik-lepas satu folder dataset, atau tekan
-  "Pilih folder". Subfolder `images/` dan `labels/` **ikut terjaga**, sehingga
-  dataset YOLO yang diunggah tetap terbaca sebagai YOLO
+- **Unggah folder atau `.zip` dari laptop** — tarik-lepas satu folder dataset,
+  atau langsung berkas `.zip` ekspor Roboflow yang dibongkar sendiri di server.
+  Subfolder `images/` dan `labels/` **ikut terjaga**, dan `data.yaml` ikut
+  terkirim sehingga nama kelasnya tidak hilang jadi angka. Kalau sebuah dataset
+  YOLO diunggah tanpa nama kelas, aplikasi mengatakannya sebelum kamu mulai
+  bekerja
 - **Tandai latar** (setara *Mark Null* di Roboflow): gambar tanpa objek ikut ke
   dataset sebagai contoh negatif, bukan dibuang
 - **Pindai ulang** tanpa restart
+- **Ekspor Roboflow dibuka dari akarnya** — `train/`, `valid/`, dan `test/`
+  dipindai sekaligus, tiap gambar diberi tanda asal splitnya, dan nama kelas
+  diambil dari `data.yaml`
+- **Menyunting dataset YOLO menulis balik ke `labels/*.txt`**, ditambah berkas
+  `.json` di sebelah gambar sebagai cadangan untuk `group_id` dan catatan teks
+  yang tidak muat di format YOLO. Baris yang tidak disunting ditulis kembali
+  **persis seperti aslinya**, termasuk jumlah desimalnya — diuji pada 900 berkas
+  label sungguhan dari ekspor Roboflow, byte-nya identik semua
+- **Ekspor YOLO-seg siap latih** — struktur dan `data.yaml` sama seperti ekspor
+  Roboflow, diverifikasi termuat oleh ultralytics 8.4 sebagai dataset
+  segmentasi. Split asli dataset dipertahankan, dan saat membagi sendiri
+  augmentasi dari satu foto tidak pernah terpisah antar split
 - **Tombol "Perbaiki di AnyLabeling"** — hanya aktif untuk akses dari mesin
   server, karena jendela Qt-nya muncul di layar server
+
+**Melabeli langsung di browser**, mengikuti AnyLabeling:
+
+- **MobileSAM**: klik objeknya, poligonnya muncul sebagai pratinjau, perbaiki
+  dengan +Point / −Point atau kotak, sahkan dengan `F`. Pipeline-nya sudah
+  diverifikasi identik dengan desktop — lihat [PARITAS.md](PARITAS.md)
+- **Enam tipe bentuk**: polygon, rectangle (bbox), circle, line, linestrip,
+  point — masing-masing dengan cara mengakhiri seperti aslinya
+- **Menyunting terasa ringan**: klik di sisi poligon menyisipkan titik,
+  Shift+klik di titik menghapusnya, klik ulang membatalkan pilihan, seret klik
+  kanan menyalin atau memindahkan
+- `Ctrl+C`/`Ctrl+V` antar gambar, `G`/`U` grup, `Alt` mematikan tarik-magnet,
+  urutan objek bisa digeser, kecerahan/kontras per gambar, dan riwayat urungkan
+  40 langkah
+- **Simpan otomatis** begitu tiap objek punya kelas — dan semuanya tetap bisa
+  disunting sesudahnya
 
 ## Pasang
 
@@ -82,9 +113,10 @@ label-apps/
     │   ├── auth.py         /login  /logout
     │   ├── datasets.py     /pilih  /setsrc  /rescan  /pickdir
     │   ├── review.py       /  /view  /thumb  /markbg  /unmarkbg  /open
-    │   └── uploads.py      /upload  /useupload
+    │   └── uploads.py      /upload  /unzip  /useupload
     ├── services/           logika inti, tanpa HTTP
     │   ├── scanner.py      pindai dataset, nilai anotasi
+    │   ├── arsip.py        bongkar .zip unggahan dengan aman
     │   ├── render.py       overlay mask + cache thumbnail
     │   ├── annotations.py  tulis/hapus anotasi latar
     │   └── anylabeling.py  jalankan AnyLabeling & dialog folder
@@ -143,6 +175,13 @@ sebagai **spesifikasi** — bukan tangkapan layar, bukan dugaan. Daftar apa yang
 sudah sama, apa yang belum, dan apa yang sengaja dibedakan beserta alasannya
 ada di [PARITAS.md](PARITAS.md).
 
+Audit menyeluruh atas seluruh basis kode AnyLabeling 0.4.36 — antarmuka, kanvas,
+penyimpanan, konfigurasi, auto-labeling, dan ekspor, semuanya dengan rujukan
+`berkas:baris` — ada di [AUDIT-ANYLABELING.md](AUDIT-ANYLABELING.md). Dokumen itu
+adalah **rujukan utama** saat menambah fitur: bacalah dulu daripada menyimpulkan
+perilaku AnyLabeling dari ingatan. Bagian H-nya memuat daftar penyimpangan
+aplikasi ini beserta prioritasnya.
+
 ## Pengujian
 
 ```bash
@@ -150,8 +189,28 @@ ada di [PARITAS.md](PARITAS.md).
 .venv/bin/python -m pytest
 ```
 
-29 tes: gerbang login, isolasi antar akun, sterilisasi nama berkas unggahan,
-penjagaan endpoint desktop, tandai latar, dan kecocokan angka chip dengan isi grid.
+99 tes: gerbang login, isolasi antar akun, sterilisasi nama berkas unggahan,
+penjagaan endpoint desktop, tandai latar, kecocokan angka chip dengan isi grid,
+paritas MobileSAM, bentuk keluaran ekspor, bulat-balik keenam tipe bentuk,
+pemindaian ekspor bersplit, penulisan balik label YOLO, pembagian split yang
+tidak memecah augmentasi satu foto, serta keamanan bongkar arsip (zip-slip,
+zip bomb, dan zip di dalam zip), serta kesetaraan keluaran dengan Roboflow
+(cincin poligon, pengurungan koordinat, dan urutan indeks kelas).
+
+Kanvas diuji terpisah dengan Chrome sungguhan, karena perilaku mouse tidak bisa
+dipercaya kalau hanya fungsinya yang dipanggil langsung — urutan penanganan klik
+justru bagian yang paling mudah salah:
+
+```bash
+.venv/bin/python tests/e2e_kanvas.py      # butuh google-chrome terpasang
+```
+
+Menyalakan server sendiri di 127.0.0.1, menjalankan Chrome headless lewat CDP,
+lalu mengirim peristiwa mouse asli — 28 pemeriksaan: klik di sisi poligon,
+Shift+klik di titik, klik ulang untuk membatalkan pilihan, menyeret objek,
+autosave yang benar-benar menulis ke disk, pembuatan keenam tipe bentuk,
+salin-tempel, grup, seret klik kanan beserta menu dua-pilihannya, kecerahan,
+dan pengurutan ulang panel Objects.
 
 Satu aturan yang dijaga otomatis: **pengujian tidak boleh menulis apa pun ke
 dalam folder aplikasi.** Fixture `folder_aplikasi_tak_berubah` di
@@ -248,4 +307,6 @@ Hal-hal yang jelas dibutuhkan kalau dipakai satu tim penuh, dan belum dikerjakan
   yang sama dan saling menimpa anotasi latar
 - **Jejak audit** — tidak ada catatan siapa mengubah apa dan kapan
 - **Peran** — semua akun punya hak yang sama
-- **Editor anotasi di browser** — membuat poligon baru masih di AnyLabeling desktop
+- **Ekspor CreateML**, **model selain MobileSAM**, **prompt teks**, serta
+  **ganti bahasa dan tema** — di luar alur melabeli, menyusul kemudian
+  (lihat H.2 di [AUDIT-ANYLABELING.md](AUDIT-ANYLABELING.md))
