@@ -4,6 +4,8 @@ from __future__ import annotations
 import json
 import re
 
+import pytest
+
 from conftest import PW_ANGGI, PW_PAUL, masuk
 
 
@@ -12,7 +14,8 @@ from conftest import PW_ANGGI, PW_PAUL, masuk
 def test_unggah_berkas_normal(klien, lingkungan):
     masuk(klien, "anggi", PW_ANGGI)
     r = klien.put("/upload?ds=batch-1&name=foto.png", content=b"x" * 500)
-    assert r.json() == {"ok": True, "name": "foto.png", "bytes": 500}
+    assert r.json() == {"ok": True, "name": "foto.png", "bytes": 500,
+                        "arsip": False}
     assert (lingkungan["tmp"] / "unggahan" / "anggi" / "batch-1" / "foto.png").exists()
 
 
@@ -238,6 +241,561 @@ def test_unggah_folder_mempertahankan_struktur_yolo(klien, lingkungan):
     # dan pemindai mengenalinya sebagai dataset YOLO
     items, _ = scanner.scan(d)
     assert len(items) == 2
+
+
+# ---------------------------------------------------------------- unggah .yaml & .zip
+
+def test_data_yaml_diterima_unggahan(klien, lingkungan):
+    """
+    Regresi. Dulu `.yaml` tidak ada di daftar ekstensi, sehingga data.yaml
+    ekspor Roboflow ditolak diam-diam saat unggah folder — dan seluruh dataset
+    lalu tampil dengan kelas "0", "1", "2" karena nama kelasnya memang hanya
+    ada di berkas itu.
+    """
+    masuk(klien, "anggi", PW_ANGGI)
+    for nama in ("data.yaml", "sub/data.yml", "dataset.yaml"):
+        r = klien.put(f"/upload?ds=rf&name={nama}", content=b"names: ['a']\n")
+        assert r.json()["ok"] is True, (nama, r.json())
+    d = lingkungan["tmp"] / "unggahan" / "anggi" / "rf"
+    assert (d / "data.yaml").exists() and (d / "sub" / "data.yml").exists()
+
+
+def test_ekstensi_berbahaya_tetap_ditolak_setelah_pelonggaran(klien):
+    """Melonggarkan .yaml/.zip tidak boleh ikut membuka yang lain."""
+    masuk(klien, "anggi", PW_ANGGI)
+    for nama in ("a.sh", "b.py", "c.exe", "d.yaml.sh", "e.so", "f.zip.py"):
+        r = klien.put(f"/upload?ds=x&name={nama}", content=b"x" * 10)
+        assert r.json()["ok"] is False, nama
+
+
+def _zip_bytes(entri):
+    import io
+    import zipfile
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for nama, isi in entri:
+            z.writestr(nama, isi)
+    return buf.getvalue()
+
+
+def test_unggah_zip_lalu_dibongkar_di_server(klien, lingkungan):
+    import cv2
+    import numpy as np
+
+    masuk(klien, "anggi", PW_ANGGI)
+    img = cv2.imencode(".jpg", np.full((60, 80, 3), 90, np.uint8))[1].tobytes()
+    blob = _zip_bytes([
+        ("data.yaml", b"nc: 2\nnames: ['botol','kaleng']\n"),
+        ("train/images/a.jpg", img),
+        ("train/labels/a.txt", b"0 0.5 0.5 0.4 0.4\n"),
+        ("valid/images/b.jpg", img),
+        ("valid/labels/b.txt", b"1 0.4 0.4 0.2 0.2\n"),
+    ])
+    assert klien.put("/upload?ds=rfzip&name=export.zip", content=blob).json()["ok"] is True
+    r = klien.post("/unzip?ds=rfzip&name=export.zip").json()
+    assert r["ok"] is True, r
+    assert r["n"] == 5, r
+
+    d = lingkungan["tmp"] / "unggahan" / "anggi" / "rfzip"
+    assert (d / "data.yaml").exists()
+    assert (d / "train" / "images" / "a.jpg").exists()
+    assert not (d / "export.zip").exists(), "arsip seharusnya dibuang setelah dibongkar"
+
+    # dan datasetnya terbaca dengan NAMA kelas, bukan angka
+    r = klien.post("/useupload?ds=rfzip").json()
+    assert r["ok"] is True and r["n"] == 2, r
+    assert r["peringatan"] == [], r["peringatan"]
+    from app.services import scanner
+    items, _ = scanner.scan(d)
+    assert sorted({s["label"] for i in items for s in i["shapes"]}) == ["botol", "kaleng"]
+
+
+def test_zip_slip_ditolak(klien, lingkungan):
+    """Entri yang mencoba menulis di luar folder unggahan harus dilewati."""
+    masuk(klien, "anggi", PW_ANGGI)
+    import cv2
+    import numpy as np
+    img = cv2.imencode(".jpg", np.full((60, 80, 3), 90, np.uint8))[1].tobytes()
+    blob = _zip_bytes([
+        ("../../../jahat.jpg", img),
+        ("/etc/jahat2.jpg", img),
+        ("aman.jpg", img),
+    ])
+    klien.put("/upload?ds=slip&name=x.zip", content=blob)
+    r = klien.post("/unzip?ds=slip&name=x.zip").json()
+    assert r["ok"] is True, r
+
+    unggahan = lingkungan["tmp"] / "unggahan"
+    milik = unggahan / "anggi"
+    for p in unggahan.rglob("*"):
+        if p.is_file():
+            assert milik in p.parents, f"bocor keluar: {p}"
+    assert not list(unggahan.parent.glob("jahat*.jpg"))
+    assert (milik / "slip" / "aman.jpg").exists()
+
+
+def test_isi_zip_yang_tidak_didukung_dilewati_bukan_menggagalkan(klien, lingkungan):
+    import cv2
+    import numpy as np
+
+    masuk(klien, "anggi", PW_ANGGI)
+    img = cv2.imencode(".jpg", np.full((60, 80, 3), 90, np.uint8))[1].tobytes()
+    blob = _zip_bytes([
+        ("a.jpg", img),
+        ("jahat.sh", b"rm -rf /"),
+        ("dalam.zip", b"PK\x03\x04bukan-zip-sungguhan"),
+    ])
+    klien.put("/upload?ds=campur&name=c.zip", content=blob)
+    r = klien.post("/unzip?ds=campur&name=c.zip").json()
+    assert r["ok"] is True and r["n"] == 1, r
+    assert r["dilewati"] == 2, r
+    d = lingkungan["tmp"] / "unggahan" / "anggi" / "campur"
+    assert (d / "a.jpg").exists()
+    assert not (d / "jahat.sh").exists()
+    # zip di dalam zip tidak ikut ditulis, jadi pembongkaran tidak pernah berlapis
+    assert not (d / "dalam.zip").exists()
+
+
+def test_zip_bomb_ditolak(tmp_path):
+    """
+    5 MB nol memampat jadi beberapa kilobyte. Tanpa pagar ukuran, arsip kecil
+    bisa memenuhi disk server. Diuji langsung di lapisan layanan karena batas
+    sungguhannya (puluhan GB) tidak masuk akal dijalankan lewat HTTP.
+    """
+    from app.services import arsip
+
+    zp = tmp_path / "b.zip"
+    zp.write_bytes(_zip_bytes([("besar.txt", b"0" * (5 * 1024 * 1024))]))
+    with pytest.raises(arsip.ArsipTolak) as e:
+        arsip.bongkar(zp, tmp_path / "keluar", maks_byte=1024)
+    assert "melebihi batas" in str(e.value)
+    # tidak meninggalkan berkas setengah jadi
+    assert not list((tmp_path / "keluar").rglob("*.part"))
+
+
+def test_entri_zip_terlalu_banyak_ditolak(tmp_path):
+    from app.services import arsip
+
+    zp = tmp_path / "banyak.zip"
+    zp.write_bytes(_zip_bytes([(f"f{i}.txt", b"x") for i in range(40)]))
+    with pytest.raises(arsip.ArsipTolak) as e:
+        arsip.bongkar(zp, tmp_path / "keluar", maks_byte=10**9, maks_entri=10)
+    assert "terlalu banyak" in str(e.value)
+
+
+def test_arsip_rusak_memberi_pesan_jelas(klien):
+    masuk(klien, "anggi", PW_ANGGI)
+    klien.put("/upload?ds=rusak&name=r.zip", content=b"ini bukan zip sama sekali")
+    r = klien.post("/unzip?ds=rusak&name=r.zip").json()
+    assert r["ok"] is False and "tidak terbaca" in r["error"], r
+
+
+def test_peringatan_muncul_kalau_yolo_tanpa_nama_kelas(klien, lingkungan):
+    import cv2
+    import numpy as np
+
+    masuk(klien, "anggi", PW_ANGGI)
+    img = cv2.imencode(".jpg", np.full((60, 80, 3), 90, np.uint8))[1].tobytes()
+    klien.put("/upload?ds=tanpa-yaml&name=train/images/a.jpg", content=img)
+    klien.put("/upload?ds=tanpa-yaml&name=train/labels/a.txt",
+              content=b"0 0.5 0.5 0.4 0.4\n")
+    r = klien.post("/useupload?ds=tanpa-yaml").json()
+    assert r["ok"] is True
+    assert any("data.yaml" in p for p in r["peringatan"]), r["peringatan"]
+
+
+# ---------------------------------------------------------------- ekspor bersplit
+
+def _buat_ekspor_roboflow(root, splits=("train", "valid", "test"), n=2,
+                          data_yaml=True):
+    """Tiruan struktur ekspor Roboflow: train/valid/test, masing-masing YOLO."""
+    import cv2
+    import numpy as np
+
+    root.mkdir(parents=True, exist_ok=True)
+    if data_yaml:
+        (root / "data.yaml").write_text(
+            "train: ../train/images\nval: ../valid/images\ntest: ../test/images\n"
+            "\nnc: 2\nnames: ['botol', 'kaleng']\n")
+    for s in splits:
+        (root / s / "images").mkdir(parents=True, exist_ok=True)
+        (root / s / "labels").mkdir(parents=True, exist_ok=True)
+        for i in range(n):
+            ip = root / s / "images" / f"{s}-{i}.jpg"
+            cv2.imwrite(str(ip), np.full((60, 80, 3), 90, np.uint8))
+            (root / s / "labels" / f"{s}-{i}.txt").write_text(
+                f"{i % 2} 0.5 0.5 0.4 0.4\n")
+    return root
+
+
+def test_ekspor_roboflow_dipindai_dari_akarnya(lingkungan):
+    """
+    Regresi. Dulu menunjuk akar ekspor Roboflow membuat SELURUH gambar tampak
+    "belum dilabeli" — bukan karena anotasinya hilang, tapi karena `labels/`
+    ada satu tingkat lebih dalam dan tidak pernah dicari. Pada dataset 55 ribu
+    gambar, itu terbaca seolah seluruh pekerjaan pelabelan lenyap.
+    """
+    from app.services import scanner
+
+    root = _buat_ekspor_roboflow(lingkungan["roots"] / "rf-export")
+    items, names = scanner.scan(root)
+
+    assert len(items) == 6, [i["img"].name for i in items]
+    assert all(i["shapes"] for i in items), "ada gambar yang tidak terbaca anotasinya"
+    assert sorted({i["split"] for i in items}) == ["test", "train", "valid"]
+    # Nama kelas diambil dari data.yaml di akar, bukan angka indeks.
+    assert sorted({s["label"] for i in items for s in i["shapes"]}) == ["botol", "kaleng"]
+
+
+def test_nama_kelas_ditemukan_dari_data_yaml_induk(lingkungan):
+    """Membuka SATU split pun harus tetap memberi nama kelas yang benar."""
+    from app.services import scanner
+
+    root = _buat_ekspor_roboflow(lingkungan["roots"] / "rf-split")
+    items, names = scanner.scan(root / "train")
+    assert len(items) == 2
+    assert sorted({s["label"] for i in items for s in i["shapes"]}) == ["botol", "kaleng"]
+
+
+def test_classes_txt_masih_dipakai_kalau_tidak_ada_data_yaml(lingkungan):
+    from app.services import scanner
+
+    root = _buat_ekspor_roboflow(lingkungan["roots"] / "rf-txt", data_yaml=False)
+    (root / "classes.txt").write_text("botol\nkaleng\n")
+    items, _ = scanner.scan(root)
+    assert sorted({s["label"] for i in items for s in i["shapes"]}) == ["botol", "kaleng"]
+
+
+def test_folder_biasa_bersubfolder_test_tidak_dianggap_ekspor_bersplit(lingkungan):
+    """
+    Penjagaan arah sebaliknya: dataset labelme biasa yang kebetulan punya
+    subfolder bernama `test` tidak boleh tiba-tiba dibaca sebagai ekspor
+    bersplit — kalau itu terjadi, gambar di akarnya hilang dari pandangan.
+    """
+    from conftest import buat_dataset
+    from app.services import scanner
+
+    d = lingkungan["roots"] / "biasa"
+    buat_dataset(d, 3, 2)                       # 3 gambar di akar
+    buat_dataset(d / "test", 2, 1)              # plus subfolder bernama test
+
+    assert scanner.split_bersarang(d) == []
+    items, _ = scanner.scan(d)
+    assert len(items) == 5                      # akar DAN subfolder ikut terbaca
+
+
+def test_split_bersarang_menuntut_semua_split_berbentuk_yolo(lingkungan):
+    from app.services import scanner
+
+    root = lingkungan["roots"] / "setengah"
+    _buat_ekspor_roboflow(root, splits=("train",))
+    (root / "test").mkdir(parents=True)         # ada, tapi bukan YOLO
+    assert scanner.split_bersarang(root) == []
+
+
+def test_dimensi_dibaca_tanpa_mendekode_seluruh_gambar(lingkungan):
+    from app.services import scanner
+
+    ip = lingkungan["roots"] / "ds-alpha" / "ds-alpha-00.jpg"
+    assert scanner.dimensi(ip) == (60, 80)
+    # Berkas rusak dilaporkan None, bukan melempar galat.
+    rusak = lingkungan["tmp"] / "rusak.jpg"
+    rusak.write_bytes(b"bukan gambar")
+    assert scanner.dimensi(rusak) is None
+
+
+# ---------------------------------------------------------------- simpan YOLO
+
+def _buat_yolo(d, baris="0 0.5 0.5 0.4 0.4\n", kelas="botol\nkaleng\n"):
+    import cv2
+    import numpy as np
+
+    (d / "images").mkdir(parents=True, exist_ok=True)
+    (d / "labels").mkdir(parents=True, exist_ok=True)
+    ip = d / "images" / "a.jpg"
+    cv2.imwrite(str(ip), np.full((60, 80, 3), 60, np.uint8))
+    (d / "labels" / "a.txt").write_text(baris)
+    (d / "classes.txt").write_text(kelas)
+    return ip
+
+
+def _bentuk_di_kanvas(klien, ip):
+    html = klien.get(f"/label?path={ip}").text
+    m = re.search(r'id="data-awal"[^>]*>(.*?)</script>', html, re.S)
+    return json.loads(m.group(1))["shapes"]
+
+
+def test_suntingan_yolo_tidak_hilang_setelah_pindai_ulang(klien, lingkungan):
+    """
+    Regresi kehilangan data. Dulu menyimpan dataset YOLO hanya menulis .json di
+    sebelah gambar, sementara pemindai membaca labels/*.txt — sehingga aplikasi
+    melaporkan "Tersimpan" lalu pekerjaannya lenyap begitu dataset dipindai
+    ulang, tanpa pesan apa pun.
+    """
+    d = lingkungan["roots"] / "yolo-suntingan"
+    ip = _buat_yolo(d)
+    masuk(klien, "paul", PW_PAUL)
+    klien.post(f"/setsrc?path={d}")
+
+    b = _bentuk_di_kanvas(klien, ip)
+    assert b[0]["label"] == "botol"
+    b[0]["label"] = "kaleng"
+    b[0]["points"] = [[10.0, 10.0], [70.0, 50.0]]
+    r = klien.post("/api/simpan", json={"path": str(ip), "shapes": b, "flags": {}})
+    assert r.json()["ok"] is True
+
+    # Berkas YOLO-nya sendiri ikut berubah, bukan cuma .json di sebelahnya.
+    isi = (d / "labels" / "a.txt").read_text().strip()
+    assert isi.startswith("1 "), isi           # kelas jadi "kaleng" (indeks 1)
+    assert (d / "images" / "a.json").exists()  # cadangan tetap ditulis
+
+    klien.post("/rescan")
+    b2 = _bentuk_di_kanvas(klien, ip)
+    assert b2[0]["label"] == "kaleng"
+    assert b2[0]["points"][0][0] == pytest.approx(10.0, abs=0.01)
+
+
+def test_bbox_tetap_bbox_dan_poligon_tetap_poligon(klien, lingkungan):
+    """
+    Menyimpan tidak boleh mengubah JENIS berkas label. Dataset bbox yang
+    tiba-tiba tertulis dalam format segmentasi akan menggagalkan pipeline
+    latihan yang mengharapkan 5 kolom.
+    """
+    masuk(klien, "paul", PW_PAUL)
+
+    # Poligon sumber ditulis dengan cincin tertutup, sama seperti ekspor
+    # Roboflow — jadi jumlah kolomnya tetap setelah bulat-balik.
+    for nama, baris, kolom in (
+            ("yolo-bbox", "0 0.5 0.5 0.4 0.4\n", 5),
+            ("yolo-seg", "0 0.1 0.1 0.9 0.1 0.9 0.9 0.1 0.9 0.1 0.1\n", 11)):
+        d = lingkungan["roots"] / nama
+        ip = _buat_yolo(d, baris)
+        klien.post(f"/setsrc?path={d}")
+        b = _bentuk_di_kanvas(klien, ip)
+        klien.post("/api/simpan", json={"path": str(ip), "shapes": b, "flags": {}})
+        hasil = (d / "labels" / "a.txt").read_text().strip().split("\n")[0]
+        assert len(hasil.split()) == kolom, (nama, hasil)
+
+
+def test_group_id_dan_teks_bertahan_lewat_cadangan_json(klien, lingkungan):
+    """Format YOLO tidak punya tempat untuk keduanya; cadangan .json yang menyimpannya."""
+    d = lingkungan["roots"] / "yolo-catatan"
+    ip = _buat_yolo(d)
+    masuk(klien, "paul", PW_PAUL)
+    klien.post(f"/setsrc?path={d}")
+
+    b = _bentuk_di_kanvas(klien, ip)
+    b[0]["group_id"] = 7
+    b[0]["text"] = "perlu dicek lagi"
+    klien.post("/api/simpan", json={"path": str(ip), "shapes": b, "flags": {}})
+    klien.post("/rescan")
+
+    b2 = _bentuk_di_kanvas(klien, ip)
+    assert b2[0]["group_id"] == 7
+    assert b2[0]["text"] == "perlu dicek lagi"
+
+
+def test_cadangan_json_diabaikan_kalau_jumlah_bentuk_tidak_cocok(lingkungan):
+    """
+    Kalau .txt disunting dari luar sehingga jumlah bentuknya berbeda dari
+    cadangan, catatan lama TIDAK boleh dipasangkan asal-asalan ke bentuk yang
+    sebenarnya bukan pasangannya.
+    """
+    from app.services import scanner
+
+    d = lingkungan["roots"] / "yolo-tidak-cocok"
+    ip = _buat_yolo(d)
+    (d / "images" / "a.json").write_text(json.dumps({
+        "version": "0.4.36", "flags": {},
+        "shapes": [{"label": "botol", "shape_type": "rectangle",
+                    "points": [[1, 1], [2, 2]], "group_id": 9, "flags": {}},
+                   {"label": "botol", "shape_type": "rectangle",
+                    "points": [[3, 3], [4, 4]], "group_id": 9, "flags": {}}],
+        "imagePath": "a.jpg", "imageData": None,
+        "imageHeight": 60, "imageWidth": 80}))
+    items, _ = scanner.scan(d)                 # .txt hanya berisi 1 bentuk
+    assert len(items[0]["shapes"]) == 1
+    assert items[0]["shapes"][0].get("group_id") is None
+
+
+def test_bentuk_yang_tidak_muat_di_yolo_diberi_peringatan(klien, lingkungan):
+    d = lingkungan["roots"] / "yolo-titik"
+    ip = _buat_yolo(d)
+    masuk(klien, "paul", PW_PAUL)
+    klien.post(f"/setsrc?path={d}")
+
+    b = _bentuk_di_kanvas(klien, ip)
+    b.append({"label": "botol", "shape_type": "point", "points": [[30.0, 30.0]],
+              "text": "", "group_id": None, "flags": {}, "titipan": {}})
+    r = klien.post("/api/simpan", json={"path": str(ip), "shapes": b, "flags": {}})
+    j = r.json()
+    assert j["ok"] is True
+    assert any("tidak muat" in p for p in j["peringatan"]), j["peringatan"]
+    # Titiknya tetap ada di cadangan, hanya tidak ikut ke .txt.
+    assert len((d / "labels" / "a.txt").read_text().strip().splitlines()) == 1
+    cad = json.loads((d / "images" / "a.json").read_text())["shapes"]
+    assert [s["shape_type"] for s in cad] == ["rectangle", "point"]
+
+
+def test_baris_yang_tidak_disunting_ditulis_persis_seperti_aslinya(klien, lingkungan):
+    """
+    Menyimpan satu objek tidak boleh menyentuh objek lain di berkas yang sama.
+
+    Berkas YOLO di lapangan sering punya lebih dari 6 desimal (0.144853125).
+    Kalau setiap penyimpanan menulis ulang seluruh berkas dengan 6 desimal,
+    ketelitian objek yang tidak disunting siapa pun ikut terpangkas diam-diam.
+    Bedanya memang di bawah seperseratus piksel, tetapi berkas orang berubah
+    tanpa ada yang memintanya — dan itu terlihat sebagai baris berubah di git.
+    """
+    d = lingkungan["roots"] / "yolo-presisi"
+    ip = _buat_yolo(d, baris="0 0.144853125 0.3447296875 0.2 0.3\n"
+                             "1 0.5 0.5 0.4 0.4\n")
+    masuk(klien, "paul", PW_PAUL)
+    klien.post(f"/setsrc?path={d}")
+    sebelum = (d / "labels" / "a.txt").read_text()
+
+    b = _bentuk_di_kanvas(klien, ip)
+    assert len(b) == 2
+    # Sunting HANYA objek kedua.
+    b[1]["points"] = [[10.0, 10.0], [70.0, 50.0]]
+    klien.post("/api/simpan", json={"path": str(ip), "shapes": b, "flags": {}})
+
+    baris = (d / "labels" / "a.txt").read_text().splitlines()
+    assert baris[0] == sebelum.splitlines()[0], "baris yang tidak disunting ikut berubah"
+    assert baris[1] != sebelum.splitlines()[1], "baris yang disunting seharusnya berubah"
+
+
+def test_buka_lalu_simpan_tanpa_perubahan_tidak_mengubah_berkas(klien, lingkungan):
+    d = lingkungan["roots"] / "yolo-utuh"
+    asli = "0 0.144853125 0.3447296875 0.2 0.3\n1 0.29840686274509803 0.5 0.4 0.4\n"
+    ip = _buat_yolo(d, baris=asli)
+    masuk(klien, "paul", PW_PAUL)
+    klien.post(f"/setsrc?path={d}")
+
+    b = _bentuk_di_kanvas(klien, ip)
+    klien.post("/api/simpan", json={"path": str(ip), "shapes": b, "flags": {}})
+    assert (d / "labels" / "a.txt").read_text() == asli
+
+
+def test_kelas_di_luar_daftar_diberi_peringatan(klien, lingkungan):
+    d = lingkungan["roots"] / "yolo-kelas-baru"
+    ip = _buat_yolo(d)
+    masuk(klien, "paul", PW_PAUL)
+    klien.post(f"/setsrc?path={d}")
+
+    b = _bentuk_di_kanvas(klien, ip)
+    b[0]["label"] = "kelas-yang-belum-ada"
+    j = klien.post("/api/simpan",
+                   json={"path": str(ip), "shapes": b, "flags": {}}).json()
+    assert any("belum ada di daftar kelas" in p for p in j["peringatan"]), j
+    # Barisnya tidak ditulis sembarangan dengan indeks tebakan.
+    assert (d / "labels" / "a.txt").read_text().strip() == ""
+
+
+# ---------------------------------------------------------------- tipe bentuk
+
+def _tulis_enam_bentuk(lingkungan):
+    """Satu gambar berisi kelima tipe bentuk labelme yang punya titik tetap."""
+    import cv2
+    import numpy as np
+
+    d = lingkungan["roots"] / "ds-bentuk"
+    d.mkdir(parents=True, exist_ok=True)
+    ip = d / "b-00.jpg"
+    cv2.imwrite(str(ip), np.full((60, 80, 3), 60, np.uint8))
+    ip.with_suffix(".json").write_text(json.dumps({
+        "version": "0.4.36", "flags": {},
+        "shapes": [
+            {"label": "a", "shape_type": "rectangle", "points": [[10, 10], [50, 40]],
+             "group_id": None, "flags": {}},
+            {"label": "b", "shape_type": "point", "points": [[30, 30]],
+             "group_id": None, "flags": {}},
+            {"label": "c", "shape_type": "line", "points": [[5, 5], [70, 55]],
+             "group_id": None, "flags": {}},
+            {"label": "d", "shape_type": "circle", "points": [[40, 30], [55, 30]],
+             "group_id": None, "flags": {}},
+            {"label": "e", "shape_type": "linestrip",
+             "points": [[5, 50], [20, 20], [60, 50]], "group_id": None, "flags": {}},
+            {"label": "f", "shape_type": "polygon",
+             "points": [[20, 15], [60, 15], [60, 45]], "group_id": None, "flags": {}},
+        ],
+        "imagePath": ip.name, "imageData": None,
+        "imageHeight": 60, "imageWidth": 80,
+    }))
+    return d, ip
+
+
+def test_enam_tipe_bentuk_dibaca_pemindai(lingkungan):
+    from app.services import scanner
+
+    d, ip = _tulis_enam_bentuk(lingkungan)
+    sh, W, H = scanner.read_json(ip.with_suffix(".json"))
+    assert [s["type"] for s in sh] == [
+        "rectangle", "point", "line", "circle", "linestrip", "polygon"]
+    # `pts` siap gambar: rectangle jadi 4 sudut, circle jadi poligon.
+    assert len(sh[0]["pts"]) == 4
+    assert len(sh[3]["pts"]) == scanner.SISI_LINGKARAN
+    # `pts_asli` mempertahankan titik seperti di berkas.
+    assert sh[0]["pts_asli"] == [[10.0, 10.0], [50.0, 40.0]]
+    assert sh[3]["pts_asli"] == [[40.0, 30.0], [55.0, 30.0]]
+
+
+def test_rectangle_tetap_dua_titik_setelah_disimpan_ulang(klien, lingkungan):
+    """
+    Regresi kerusakan data. Dulu `read_json` memekarkan rectangle 2 titik jadi
+    4, kanvas menerima yang sudah dimekarkan, lalu menyimpannya kembali apa
+    adanya — sehingga rectangle di berkas jadi 4 titik. Berkas seperti itu
+    TIDAK BISA dibuka lagi di AnyLabeling desktop: shape.py:160 di sana
+    menuntut rectangle punya tepat 1 atau 2 titik.
+    """
+    d, ip = _tulis_enam_bentuk(lingkungan)
+    masuk(klien, "paul", PW_PAUL)
+    klien.post(f"/setsrc?path={d}")
+
+    html = klien.get(f"/label?path={ip}").text
+    m = re.search(r'id="data-awal"[^>]*>(.*?)</script>', html, re.S)
+    bentuk = json.loads(m.group(1))["shapes"]
+
+    # Yang dikirim ke kanvas sudah memakai titik asli, bukan yang dimekarkan.
+    dikirim = {b["shape_type"]: len(b["points"]) for b in bentuk}
+    assert dikirim == {"rectangle": 2, "point": 1, "line": 2, "circle": 2,
+                       "linestrip": 3, "polygon": 3}, dikirim
+
+    # Dan bulat-balik lewat penyimpanan tidak mengubah satu titik pun.
+    r = klien.post("/api/simpan",
+                   json={"path": str(ip), "shapes": bentuk, "flags": {}})
+    assert r.json()["ok"] is True, r.json()
+    sesudah = json.loads(ip.with_suffix(".json").read_text())["shapes"]
+    assert [s["shape_type"] for s in sesudah] == [
+        "rectangle", "point", "line", "circle", "linestrip", "polygon"]
+    assert sesudah[0]["points"] == [[10.0, 10.0], [50.0, 40.0]]
+    assert sesudah[3]["points"] == [[40.0, 30.0], [55.0, 30.0]]
+
+
+def test_rectangle_dimekarkan_dari_kanvas_dikembalikan_jadi_dua_titik(klien, lingkungan):
+    """Kanvas boleh keliru mengirim 4 titik; berkas tetap harus 2."""
+    d, ip = _tulis_enam_bentuk(lingkungan)
+    masuk(klien, "paul", PW_PAUL)
+    klien.post(f"/setsrc?path={d}")
+
+    r = klien.post("/api/simpan", json={"path": str(ip), "flags": {}, "shapes": [
+        {"label": "a", "shape_type": "rectangle",
+         "points": [[10, 10], [50, 10], [50, 40], [10, 40]],
+         "text": "", "group_id": None, "flags": {}, "titipan": {}}]})
+    assert r.json()["ok"] is True
+    s = json.loads(ip.with_suffix(".json").read_text())["shapes"][0]
+    assert s["points"] == [[10.0, 10.0], [50.0, 40.0]]
+
+
+def test_bentuk_tanpa_luas_tidak_dinilai_sebagai_mask_kecil(lingkungan):
+    from app.services import scanner
+
+    d, ip = _tulis_enam_bentuk(lingkungan)
+    sh, W, H = scanner.read_json(ip.with_suffix(".json"))
+    temuan = scanner.inspect(sh, W, H, has_ann=True)
+    # `point` luasnya nol; kalau ikut dinilai, tiap titik akan selalu dilaporkan
+    # sebagai "mask sangat kecil" dan temuan itu jadi kebisingan belaka.
+    assert "mask sangat kecil" not in temuan, temuan
 
 
 def test_unggah_tidak_bisa_keluar_folder_akun(klien, lingkungan):
