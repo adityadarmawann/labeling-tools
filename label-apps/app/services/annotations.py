@@ -17,6 +17,22 @@ class Menolak(Exception):
     """Operasi ditolak karena akan menghilangkan data."""
 
 
+def tulis_aman(p: Path, teks: str) -> None:
+    """
+    Tulis lewat berkas sementara lalu ganti nama, supaya proses yang terputus
+    di tengah penulisan tidak meninggalkan berkas anotasi setengah jadi. Berkas
+    setengah jadi lebih berbahaya daripada tidak ada berkas sama sekali: ia
+    tetap ikut terpindai, dan JSON yang terpotong terbaca sebagai anotasi rusak.
+    """
+    tmp = p.with_suffix(p.suffix + ".tmp")
+    try:
+        tmp.write_text(teks, encoding="utf-8")
+        tmp.replace(p)
+    except OSError:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
 def write_label_file(sess) -> list[str]:
     """
     Kumpulkan label yang sudah dipakai di folder + label tambahan dari setelan,
@@ -46,11 +62,11 @@ def mark_background(it: dict) -> Path:
     if "berkas anotasi rusak" in it["issues"]:
         raise Menolak("berkas anotasi rusak — periksa atau hapus manual dulu")
     jp = it["img"].with_suffix(".json")
-    jp.write_text(json.dumps({
+    tulis_aman(jp, json.dumps({
         "version": LABELME_VERSION, "flags": {}, "shapes": [],
         "imagePath": it["img"].name, "imageData": None,
         "imageHeight": it["H"], "imageWidth": it["W"],
-    }, ensure_ascii=False, indent=2), encoding="utf-8")
+    }, ensure_ascii=False, indent=2))
     it["shapes"] = []
     it["issues"] = ["latar (tanpa objek)"]
     return jp
