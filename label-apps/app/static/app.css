@@ -50,6 +50,10 @@ main{padding:20px 22px 60px}
   text-overflow:ellipsis}
 .labs{margin-top:5px;display:flex;gap:4px;flex-wrap:wrap}
 .lab{font-size:10.5px;padding:1px 6px;border-radius:3px;background:#eaeef3;color:#4a5a6b}
+/* Asal split pada ekspor bersplit. Perlu terlihat karena memperbaiki anotasi
+   di `valid` punya arti berbeda dari memperbaikinya di `train`. */
+.split{font-size:9.5px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;
+  padding:1px 5px;margin-right:5px;border-radius:3px;background:#dbe7f5;color:#2a5b8f}
 .iss{margin-top:6px;font-size:10.5px;color:var(--warn);line-height:1.35}
 .iss.stop{color:var(--stop)}
 .acts{display:flex;gap:6px;padding:0 11px 11px}

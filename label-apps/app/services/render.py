@@ -33,8 +33,16 @@ def render(item: dict, side: int):
     for s in item["shapes"]:
         col = cls_color(s["label"])[::-1]          # cv2 memakai BGR
         pts = s["pts"].astype(np.int32)
-        cv2.fillPoly(ov, [pts], col)
-        cv2.polylines(im, [pts], True, col, max(2, int(min(im.shape[:2]) / 200)))
+        tebal = max(2, int(min(im.shape[:2]) / 200))
+        # Titik, garis, dan polyline tidak punya bagian dalam: mengisinya
+        # menghasilkan bercak yang tidak ada di anotasinya.
+        if s["type"] == "point":
+            cv2.circle(im, tuple(pts[0]), max(3, tebal * 2), col, -1)
+        elif s["type"] in ("line", "linestrip"):
+            cv2.polylines(im, [pts], False, col, tebal)
+        else:
+            cv2.fillPoly(ov, [pts], col)
+            cv2.polylines(im, [pts], True, col, tebal)
     im = cv2.addWeighted(ov, OVERLAY_ALPHA, im, 1 - OVERLAY_ALPHA, 0)
     h, w = im.shape[:2]
     sc = side / max(h, w)

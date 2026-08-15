@@ -6,3 +6,8 @@ Jinja2==3.1.6
 python-multipart==0.0.32
 opencv-python==5.0.0.93
 numpy==2.5.2
+# Pillow dipakai membaca dimensi gambar dari headernya saja — jauh lebih cepat
+# daripada mendekode seluruh piksel hanya untuk dapat dua angka.
+Pillow==12.3.0
+# PyYAML membaca data.yaml ekspor Roboflow untuk mengambil nama kelas.
+PyYAML==6.0.3

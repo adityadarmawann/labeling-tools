@@ -74,11 +74,21 @@ def bentuk_untuk_kanvas(it: dict, mentah: dict) -> list[dict]:
         out.append({
             "label": "" if s["label"] is None else str(s["label"]),
             "shape_type": s["type"],
-            "points": [[float(x), float(y)] for x, y in s["pts"].tolist()],
-            "text": a.get("text", "") or "",
-            "group_id": a.get("group_id"),
-            "flags": a.get("flags") or {},
-            "titipan": {k: v for k, v in a.items() if k not in KUNCI_BENTUK},
+            # Titik ASLI, bukan yang sudah dimekarkan untuk digambar. Dulu di
+            # sini dipakai `s["pts"]`, sehingga rectangle 2 titik buatan
+            # AnyLabeling berubah jadi 4 titik lalu tersimpan begitu — dan
+            # berkasnya tidak bisa dibuka lagi di desktop, karena shape.py:160
+            # di sana menuntut rectangle tepat 1 atau 2 titik.
+            "points": s.get("pts_asli")
+                      or [[float(x), float(y)] for x, y in s["pts"].tolist()],
+            # Untuk dataset YOLO, group_id/teks/flag sudah digabungkan pemindai
+            # dari cadangan .json dengan penjagaan jumlah bentuk; nilai itu yang
+            # dipakai. Untuk labelme, diambil langsung dari berkasnya.
+            "text": s.get("text", a.get("text", "")) or "",
+            "group_id": s.get("group_id", a.get("group_id")),
+            "flags": s.get("flags") or a.get("flags") or {},
+            "titipan": s.get("titipan")
+                       or {k: v for k, v in a.items() if k not in KUNCI_BENTUK},
         })
     return out
 
@@ -188,13 +198,31 @@ async def api_simpan(request: Request, sess: Session = Depends(current_session_a
     for s in body.get("shapes", []):
         titik = [[float(x), float(y)] for x, y in s.get("points", [])]
         label = str(s.get("label", "")).strip()
-        jenis = "rectangle" if s.get("shape_type") == "rectangle" else "polygon"
+        jenis = s.get("shape_type") or "polygon"
+        if jenis not in scanner.JENIS_BENTUK:
+            jenis = "polygon"
         if not label:
             return {"ok": False, "error": "ada bentuk tanpa kelas — pilih kelasnya dulu"}
-        # Rectangle labelme hanya 2 titik (kiri-atas, kanan-bawah); poligon
-        # butuh minimal 3. Tanpa pembedaan ini rectangle akan terbuang diam-diam.
-        if len(titik) < (2 if jenis == "rectangle" else 3):
+        # Tiap tipe punya jumlah titik minimal sendiri (shape.py AnyLabeling):
+        # point 1, rectangle/circle/line/linestrip 2, polygon 3. Tanpa
+        # pembedaan ini, titik dan garis akan terbuang diam-diam.
+        if len(titik) < scanner.JENIS_BENTUK[jenis]:
             continue
+        # Rectangle dan circle SELALU disimpan 2 titik. Kanvas boleh mengirim
+        # bentuk yang sudah dimekarkan; yang menentukan isi berkas adalah
+        # konvensi labelme, bukan apa yang kebetulan mudah digambar.
+        if jenis == "rectangle" and len(titik) > 2:
+            xs = [p[0] for p in titik]
+            ys = [p[1] for p in titik]
+            titik = [[min(xs), min(ys)], [max(xs), max(ys)]]
+        elif jenis in ("circle", "line") and len(titik) > 2:
+            titik = titik[:2]
+        elif jenis == "point" and len(titik) > 1:
+            titik = titik[:1]
+        elif jenis == "polygon":
+            # Cincin ditutup di berkas, seperti AnyLabeling dan Roboflow.
+            # Kanvas memakainya terbuka; pembukaannya di scanner.read_json.
+            titik = scanner.tutup_cincin(titik)
         # Titipan dikembalikan lebih dulu supaya field milik kita tetap menang.
         bentuk.append({
             **(s.get("titipan") if isinstance(s.get("titipan"), dict) else {}),
@@ -230,17 +258,36 @@ async def api_simpan(request: Request, sess: Session = Depends(current_session_a
         tmp.unlink(missing_ok=True)
         return {"ok": False, "error": str(e)[:100]}
 
+    peringatan: list[str] = []
+    if it.get("yolo"):
+        # Dataset YOLO: berkas .txt itulah yang dibaca saat melatih, jadi dia
+        # yang harus ikut berubah. Tanpa ini, menyimpan dari web terasa
+        # berhasil tetapi hasilnya tidak pernah terpakai — dan hilang begitu
+        # dataset dipindai ulang.
+        indeks = {n: i for i, n in sess.names.items()}
+        try:
+            _, peringatan = scanner.tulis_yolo(
+                it["labels"], bentuk, it["W"], it["H"], indeks)
+        except OSError as e:
+            return {"ok": False, "error": f"gagal menulis label YOLO: {str(e)[:80]}"}
+
     # Perbarui keadaan sesi supaya grid dan panel Files ikut berubah tanpa
     # perlu memindai ulang seluruh folder.
     with sess.lock:
         try:
-            sh, W, H = scanner.read_json(jp)
-            it["shapes"] = sh
-            it["issues"] = scanner.inspect(sh, W or it["W"], H or it["H"], True)
+            if it.get("yolo"):
+                sh = scanner.read_yolo(it["labels"], it["W"], it["H"], sess.names)
+                scanner._gabung_cadangan(it["img"], sh)
+                it["shapes"] = sh
+                it["issues"] = scanner.inspect(sh, it["W"], it["H"], True)
+            else:
+                sh, W, H = scanner.read_json(jp)
+                it["shapes"] = sh
+                it["issues"] = scanner.inspect(sh, W or it["W"], H or it["H"], True)
         except Exception:
             it["issues"] = ["berkas anotasi rusak"]
         sess.drop_thumbs_for(it)
         annotations.write_label_file(sess)
 
     return {"ok": True, "n": len(bentuk), "issues": it["issues"],
-            "sev": scanner.severity(it)}
+            "sev": scanner.severity(it), "peringatan": peringatan}
