@@ -97,13 +97,24 @@ async def ekspor_ringkasan(format: str = "yolo-seg", split: str = "",
         return {"ok": False, "error": "belum ada dataset terbuka"}
     if format not in export.FORMAT:
         return {"ok": False, "error": f"format '{format}' tidak dikenal"}
+    # Kuncinya HANYA menyelimuti penyalinan daftarnya, tidak sampai ke await.
+    #
+    # sess.lock adalah threading.Lock, dan menahannya melewati await mematikan
+    # seluruh server: permintaan kedua memanggil acquire() di thread event loop,
+    # thread itu berhenti, dan pemegang kuncinya tidak akan pernah bisa
+    # dilanjutkan untuk melepasnya — karena yang melanjutkannya adalah event
+    # loop yang sudah berhenti itu. Servernya membeku di 0% CPU sampai
+    # direstart. Cukup dua permintaan ringkasan bertumpang, misalnya karena
+    # kotak rasio diubah selagi hitungan pertama masih jalan.
+    #
+    # `sess.names` dibawa serta supaya indeks kelas mengikuti urutan data.yaml
+    # dataset sumbernya, bukan diturunkan ulang dari label yang kebetulan ada
+    # di seleksi ini.
     with sess.lock:
-        # `sess.names` dibawa serta supaya indeks kelas mengikuti urutan
-        # data.yaml dataset sumbernya, bukan diturunkan ulang dari label yang
-        # kebetulan ada di seleksi ini.
-        r = await asyncio.to_thread(export.ringkasan, list(sess.items),
-                                    format == "yolo-seg",
-                                    export.baca_rasio(split), dict(sess.names))
+        items = list(sess.items)
+        names = dict(sess.names)
+    r = await asyncio.to_thread(export.ringkasan, items, format == "yolo-seg",
+                                export.baca_rasio(split), names)
     return {"ok": True, "format": export.FORMAT[format], **r}
 
 

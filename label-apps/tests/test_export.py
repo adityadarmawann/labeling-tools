@@ -506,3 +506,39 @@ def test_ringkasan_dataset_kosong_tidak_bagi_nol(tmp_path):
     r = ex.ringkasan([], True)
     assert r["gambar"] == 0
     assert all(v == 0.0 for v in r["persen"].values())
+
+
+def test_ringkasan_tidak_menahan_kunci_sesi_selama_menghitung(klien, lingkungan,
+                                                              monkeypatch):
+    """
+    Regresi, dan yang paling mahal sejauh ini: seluruh server pernah membeku
+    karenanya.
+
+    sess.lock adalah threading.Lock. Menahannya melewati `await` mematikan
+    server: permintaan kedua memanggil acquire() di thread event loop, thread
+    itu berhenti, dan pemegang kuncinya tidak akan pernah bisa dilanjutkan
+    untuk melepasnya — karena yang melanjutkannya justru event loop yang sudah
+    berhenti itu. Servernya membeku di 0% CPU sampai direstart.
+
+    Cukup dua permintaan ringkasan bertumpang untuk memicunya, misalnya karena
+    kotak rasio diubah selagi hitungan pertama masih jalan. Yang diuji di sini:
+    saat perhitungan berlangsung, kuncinya sudah dilepas.
+    """
+    from conftest import PW_PAUL, masuk
+    from app.services import export
+    from app.session import store
+
+    masuk(klien, "paul", PW_PAUL)
+    klien.post(f"/setsrc?path={lingkungan['roots'] / 'ds-alpha'}")
+    sess = next(iter(store._data.values()))
+
+    terkunci = []
+    asli = export.ringkasan
+
+    def rekam(*a, **k):
+        terkunci.append(sess.lock.locked())
+        return asli(*a, **k)
+
+    monkeypatch.setattr(export, "ringkasan", rekam)
+    assert klien.get("/api/ekspor/ringkasan?format=yolo-seg").json()["ok"] is True
+    assert terkunci == [False], "kunci sesi masih dipegang selagi menghitung"
