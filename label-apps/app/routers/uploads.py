@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, Request
 from ..config import ARSIP_EXT, Settings, get_settings
 from ..deps import current_session_api
 from ..security import safe_relpath, safe_slug
-from ..services import arsip, impor, scanner
+from ..services import arsip, impor, riwayat, scanner
 from ..session import Session
 
 router = APIRouter(tags=["uploads"])
@@ -139,7 +139,8 @@ async def impor_survei(path: str = "",
 
 @router.post("/impor")
 async def impor_dari_server(path: str = "", ds: str = "",
-                            sess: Session = Depends(current_session_api)):
+                            sess: Session = Depends(current_session_api),
+                            settings: Settings = Depends(get_settings)):
     """
     Salin dataset dari sebuah path di server ke folder unggahan akun ini.
 
@@ -160,6 +161,7 @@ async def impor_dari_server(path: str = "", ds: str = "",
 
     n = len(await asyncio.to_thread(sess.load, tujuan))
     peringatan = await asyncio.to_thread(scanner.periksa_kelengkapan, tujuan)
+    riwayat.catat(settings, sess.user, sumber.resolve(), "salin")
     return {"ok": True, "nama": nama, "dir": str(tujuan), "n": n,
             "disalin": hasil["berkas"], "dilewati": hasil["dilewati"],
             "bytes": hasil["bytes"], "peringatan": peringatan,

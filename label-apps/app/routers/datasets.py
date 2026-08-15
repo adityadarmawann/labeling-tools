@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse, Response
 
 from ..config import Settings, get_settings
 from ..deps import current_session, current_session_api, is_local, require_local
-from ..services import anylabeling, export, scanner
+from ..services import anylabeling, export, riwayat, scanner
 from ..session import Session
 from ..templating import templates
 
@@ -27,6 +27,7 @@ def picker_context(request: Request, sess: Session, settings: Settings,
         "datasets_root": settings.datasets_root,
         "max_upload_mb": settings.max_upload_mb,
         "max_zip_mb": settings.max_zip_mb,
+        "riwayat": riwayat.baca(settings, sess.user),
     }
 
 
@@ -40,7 +41,8 @@ async def picker(request: Request,
 
 @router.post("/setsrc")
 async def set_source(path: str = "",
-                     sess: Session = Depends(current_session_api)):
+                     sess: Session = Depends(current_session_api),
+                     settings: Settings = Depends(get_settings)):
     raw = (path or "").strip()
     if not raw:
         return {"ok": False, "error": "path masih kosong"}
@@ -50,7 +52,19 @@ async def set_source(path: str = "",
     n = len(await asyncio.to_thread(sess.load, d))
     if not n:
         return {"ok": False, "error": "tidak ada gambar terbaca di folder itu"}
+    riwayat.catat(settings, sess.user, d.resolve(), "buka")
     return {"ok": True, "dir": str(d.resolve()), "n": n}
+
+
+@router.post("/lupakan-path")
+async def lupakan_path(path: str = "",
+                       sess: Session = Depends(current_session_api),
+                       settings: Settings = Depends(get_settings)):
+    """Buang satu baris dari riwayat. Hanya catatannya — foldernya tidak
+    disentuh sama sekali, dan itu perlu dinyatakan supaya tombolnya tidak
+    terbaca sebagai 'hapus dataset'."""
+    riwayat.lupakan(settings, sess.user, (path or "").strip())
+    return {"ok": True}
 
 
 @router.post("/rescan")

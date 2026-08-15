@@ -158,6 +158,25 @@ document.addEventListener('click', ev => {
   setsrc(a.dataset.path);
 });
 
+// Riwayat path: sekali klik hanya MENGISI kotaknya, tidak langsung membuka.
+// Dua tombol di sebelahnya berbeda akibat (menyalin vs membuka di tempat),
+// jadi pilihan itu tetap harus dibuat sadar, bukan tersirat dari satu klik.
+document.addEventListener('click', async ev => {
+  const t = ev.target.closest && ev.target.closest('button.riw, button.lupa');
+  if (!t) return;
+  ev.preventDefault();
+  const p = t.dataset.path;
+  if (t.classList.contains('riw')) {
+    const box = document.getElementById('pathbox');
+    box.value = p;
+    box.focus();
+    toast('Path terisi — pilih menyalin atau membuka di tempat');
+    return;
+  }
+  const j = await post('/lupakan-path?path=' + encodeURIComponent(p));
+  if (j.ok) t.closest('.row').remove();
+});
+
 async function pickdir() {
   toast('Dialog terbuka di layar server...');
   try {

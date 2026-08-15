@@ -992,3 +992,71 @@ def test_impor_menolak_kalau_disk_hampir_penuh(lingkungan, monkeypatch):
                         lambda p: _shutil._ntuple_diskusage(100, 100, 1024))
     with pytest.raises(impor.ImporTolak, match="disk"):
         impor.impor_folder(sumber, lingkungan["tmp"] / "hasil5")
+
+
+def test_riwayat_path_diingat_lintas_sesi(klien, aplikasi, lingkungan):
+    """
+    Riwayat harus bertahan setelah proses restart — itu seluruh alasannya
+    ditulis ke berkas, bukan disimpan di sesi.
+    """
+    from app.services import riwayat
+    from conftest import buat_dataset, klien_baru
+    from app.session import store
+
+    masuk(klien, "paul", PW_PAUL)
+    src = buat_dataset(lingkungan["tmp"] / "riw" / "ds-riwayat", 2, 1)
+    assert klien.post(f"/setsrc?path={src}").json()["ok"] is True
+    assert str(src.resolve()) in klien.get("/pilih").text
+
+    # semua sesi dibuang, seperti restart
+    store._data.clear()
+    lain = klien_baru(aplikasi, "paul", PW_PAUL)
+    assert str(src.resolve()) in lain.get("/pilih").text
+
+    # milik akun lain tidak ikut terlihat
+    anggi = klien_baru(aplikasi, "anggi", PW_ANGGI)
+    assert str(src.resolve()) not in anggi.get("/pilih").text
+
+    # melupakan hanya membuang catatannya, foldernya tetap ada
+    assert lain.post(f"/lupakan-path?path={src.resolve()}").json()["ok"] is True
+    assert str(src.resolve()) not in lain.get("/pilih").text
+    assert src.is_dir() and len(list(src.glob("*.jpg"))) == 2
+
+
+def test_riwayat_menandai_folder_yang_sudah_hilang(lingkungan):
+    from app.config import get_settings
+    from app.services import riwayat
+
+    s = get_settings()
+    riwayat.catat(s, "paul", lingkungan["roots"] / "ds-alpha", "buka")
+    riwayat.catat(s, "paul", lingkungan["tmp"] / "sudah-dihapus", "salin")
+
+    d = riwayat.baca(s, "paul")
+    assert [r["cara"] for r in d] == ["salin", "buka"]      # terbaru di atas
+    assert d[0]["ada"] is False and d[1]["ada"] is True
+
+
+def test_riwayat_tidak_menumpuk_dan_tidak_ganda(lingkungan):
+    from app.config import get_settings
+    from app.services import riwayat
+
+    s = get_settings()
+    for i in range(riwayat.MAKS + 5):
+        riwayat.catat(s, "paul", f"/tmp/ds-{i}", "buka")
+    riwayat.catat(s, "paul", "/tmp/ds-3", "salin")          # yang lama dinaikkan
+
+    d = riwayat.baca(s, "paul")
+    assert len(d) == riwayat.MAKS
+    assert d[0]["path"] == "/tmp/ds-3"
+    assert len({r["path"] for r in d}) == len(d)
+
+
+def test_riwayat_rusak_tidak_menggagalkan_halaman(klien, lingkungan):
+    from app.config import get_settings
+    from app.services import riwayat
+
+    masuk(klien, "paul", PW_PAUL)
+    p = riwayat._berkas(get_settings(), "paul")
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text("{ ini bukan json")
+    assert klien.get("/pilih").status_code == 200
