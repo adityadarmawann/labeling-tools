@@ -26,6 +26,14 @@ async function send(url, opts) {
 
 const post = (url) => send(url, { method: 'POST' });
 
+// Teks dari server sering memuat nama berkas milik pemakai, dan nama berkas
+// boleh berisi '<'. Dipakai setiap kali teks itu masuk lewat innerHTML.
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = String(s == null ? '' : s);
+  return d.innerHTML;
+}
+
 // ---------------------------------------------------------------- papan periksa
 
 async function openIn(p, btn) {
@@ -75,6 +83,68 @@ async function setsrc(p) {
 
 function setsrcBox() {
   setsrc(document.getElementById('pathbox').value.trim());
+}
+
+/*
+ * Ambil dari folder di server = MENYALIN, bukan membuka di tempat.
+ *
+ * Bedanya menentukan: /setsrc membuka folder itu juga, sehingga menyunting
+ * berarti mengubah dataset aslinya. Di sini isinya disalin dulu ke ruang kerja
+ * pemakai, jadi menyunting dan menambah gambar tidak pernah menyentuh sumber.
+ * Ukurannya disurvei lebih dulu — menyalin beberapa GB tanpa pemberitahuan
+ * bukan kejutan yang menyenangkan.
+ */
+async function imporBox() {
+  const p = document.getElementById('pathbox').value.trim();
+  const note = document.getElementById('impornote');
+  if (!p) { toast('Path masih kosong'); return; }
+
+  note.textContent = 'Memeriksa isi folder…';
+  let s;
+  try {
+    s = await (await fetch('/api/impor/survei?path=' + encodeURIComponent(p))).json();
+  } catch (e) { note.textContent = ''; toast('Gagal menghubungi server'); return; }
+  if (!s.ok) { note.textContent = ''; toast(s.error); return; }
+
+  const mb = s.bytes / 1048576;
+  const ukuran = mb >= 1024 ? (mb / 1024).toFixed(1) + ' GB' : mb.toFixed(0) + ' MB';
+  const nama = prompt(
+    `Akan menyalin ${s.berkas} berkas (${ukuran}) ke ruang kerjamu.\n`
+    + `Folder asalnya tidak diubah sama sekali.\n\n`
+    + `Beri nama untuk salinan ini:`, s.nama_usul || '');
+  if (nama === null) { note.textContent = ''; return; }
+
+  note.textContent = `Menyalin ${s.berkas} berkas (${ukuran})… berkas besar perlu waktu.`;
+  try {
+    const j = await post('/impor?path=' + encodeURIComponent(p)
+                       + '&ds=' + encodeURIComponent(nama.trim() || s.nama_usul));
+    if (!j.ok) { note.textContent = j.error; toast(j.error); return; }
+
+    // Berkas yang terlewat dilaporkan, tidak didiamkan: salinan yang kurang
+    // beberapa gambar tetap terlihat berhasil, dan kekurangannya baru ketahuan
+    // jauh belakangan saat dataset dilatih.
+    const catatan = (j.peringatan || []).slice();
+    if (j.dilewati) {
+      const c = (j.contoh_dilewati || []).concat(j.bentrok || []);
+      const sebab = (j.bentrok || []).length
+        ? 'bukan gambar/anotasi, atau namanya bentrok' : 'bukan gambar/anotasi';
+      const mis = c.length ? ' — mis. ' + c.slice(0, 3).join(', ') : '';
+      catatan.push(`${j.dilewati} berkas dilewati (${sebab})${mis}`);
+    }
+    if (catatan.length) {
+      note.innerHTML = `<b>${j.disalin} berkas disalin, ${j.n} gambar terbaca — perlu dicek:</b><br>`
+        + catatan.map(x => '· ' + esc(x)).join('<br>')
+        + '<br><button class="btn pri" id="lanjut-impor">Lanjut ke grid</button>';
+      const b = document.getElementById('lanjut-impor');
+      if (b) b.onclick = () => { location.href = '/'; };
+      return;
+    }
+    toast(`${j.disalin} berkas disalin — membuka salinan`);
+    location.href = '/';
+  } catch (e) {
+    note.textContent = '';
+    toast('Gagal menghubungi server');
+  }
 }
 
 // Item dataset membawa path di data-path. Dipasang lewat delegasi supaya path

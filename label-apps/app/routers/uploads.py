@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, Request
 from ..config import ARSIP_EXT, Settings, get_settings
 from ..deps import current_session_api
 from ..security import safe_relpath, safe_slug
-from ..services import arsip, scanner
+from ..services import arsip, impor, scanner
 from ..session import Session
 
 router = APIRouter(tags=["uploads"])
@@ -124,6 +124,47 @@ async def unzip(ds: str = "", name: str = "",
     return {"ok": True, "n": hasil["ditulis"], "dilewati": hasil["dilewati"],
             "bytes": hasil["bytes"], "contoh_dilewati": hasil["contoh_dilewati"],
             "arsip_dihapus": True}
+
+
+@router.get("/api/impor/survei")
+async def impor_survei(path: str = "",
+                       sess: Session = Depends(current_session_api)):
+    """Berapa banyak dan berapa besar yang akan disalin — sebelum menyalin."""
+    d = Path((path or "").strip()).expanduser()
+    if not d.is_dir():
+        return {"ok": False, "error": "folder tidak ada di server"}
+    s = await asyncio.to_thread(impor.survei, d)
+    return {"ok": True, "nama_usul": safe_slug(d.name), **s}
+
+
+@router.post("/impor")
+async def impor_dari_server(path: str = "", ds: str = "",
+                            sess: Session = Depends(current_session_api)):
+    """
+    Salin dataset dari sebuah path di server ke folder unggahan akun ini.
+
+    Alur yang sama dengan unggah dari laptop, hanya sumbernya berbeda. Bedanya
+    dengan /setsrc penting: /setsrc membuka folder ITU JUGA, sehingga menyunting
+    berarti mengubah dataset aslinya. Di sini yang dibuka adalah SALINAN, dan
+    folder sumber tidak pernah ditulis sama sekali.
+    """
+    sumber = Path((path or "").strip()).expanduser()
+    nama = safe_slug(ds or sumber.name)
+    tujuan = sess.upload_dir(nama)
+    try:
+        hasil = await asyncio.to_thread(impor.impor_folder, sumber, tujuan)
+    except impor.ImporTolak as e:
+        return {"ok": False, "error": str(e)[:160]}
+    except OSError as e:
+        return {"ok": False, "error": f"gagal menyalin: {str(e)[:90]}"}
+
+    n = len(await asyncio.to_thread(sess.load, tujuan))
+    peringatan = await asyncio.to_thread(scanner.periksa_kelengkapan, tujuan)
+    return {"ok": True, "nama": nama, "dir": str(tujuan), "n": n,
+            "disalin": hasil["berkas"], "dilewati": hasil["dilewati"],
+            "bytes": hasil["bytes"], "peringatan": peringatan,
+            "contoh_dilewati": hasil["contoh_dilewati"],
+            "bentrok": hasil["bentrok"]}
 
 
 @router.post("/useupload")

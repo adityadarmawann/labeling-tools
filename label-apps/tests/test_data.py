@@ -886,3 +886,109 @@ def test_unggah_tidak_bisa_keluar_folder_akun(klien, lingkungan):
         if p.is_file():
             assert milik in p.parents, f"bocor keluar: {p}"
     assert not (unggahan.parent / "etc").exists()
+
+
+# ---------------------------------------------------- impor dari path di server
+
+def _sidik(d):
+    """Nama + ukuran + waktu ubah tiap berkas — untuk membuktikan folder utuh."""
+    import hashlib
+    h = hashlib.sha256()
+    for p in sorted(d.rglob("*")):
+        if p.is_file():
+            st = p.stat()
+            h.update(f"{p.relative_to(d)}|{st.st_size}|{st.st_mtime_ns}".encode())
+    return h.hexdigest()
+
+
+def test_impor_menyalin_dan_tidak_pernah_menyentuh_sumber(klien, lingkungan):
+    """
+    Janji utama fitur ini, dan satu-satunya alasan ia dipilih ketimbang
+    membuka folder di tempat: apa pun yang terjadi sesudahnya — menyunting,
+    menandai latar, menambah gambar — folder sumber tetap persis seperti semula.
+    """
+    import json as _json
+
+    from conftest import PW_PAUL, buat_dataset, masuk
+    masuk(klien, "paul", PW_PAUL)
+
+    sumber = buat_dataset(lingkungan["tmp"] / "sumber" / "asal-ku", 3, 2)
+    (sumber / "data.yaml").write_text("names: [botol, kaleng]\n")
+    sebelum = _sidik(sumber)
+
+    r = klien.post(f"/impor?path={sumber}&ds=salinanku").json()
+    assert r["ok"] is True, r
+    salinan = lingkungan["tmp"] / "unggahan" / "paul" / "salinanku"
+    assert r["disalin"] == 6                      # 3 gambar + 2 anotasi + yaml
+    assert (salinan / "data.yaml").exists()
+
+    # Sunting salinannya, lalu buktikan sumbernya tetap utuh.
+    ip = salinan / "asal-ku-00.jpg"
+    sh = _json.loads((salinan / "asal-ku-00.json").read_text())["shapes"]
+    sh[0]["label"] = "kaleng"
+    assert klien.post("/api/simpan", json={"path": str(ip), "shapes": sh,
+                                           "flags": {}}).json()["ok"] is True
+    assert _json.loads((salinan / "asal-ku-00.json").read_text(
+        ))["shapes"][0]["label"] == "kaleng"
+    assert _json.loads((sumber / "asal-ku-00.json").read_text(
+        ))["shapes"][0]["label"] == "botol"
+    assert _sidik(sumber) == sebelum, "folder sumber berubah — ini tidak boleh"
+
+
+def test_impor_menolak_tujuan_di_dalam_sumber(lingkungan):
+    """Tanpa penjagaan ini, penyalinan memakan hasil salinannya sendiri."""
+    from app.services import impor
+    from conftest import buat_dataset
+
+    sumber = buat_dataset(lingkungan["tmp"] / "s2", 2, 1)
+    with pytest.raises(impor.ImporTolak):
+        impor.impor_folder(sumber, sumber / "di-dalam")
+
+
+def test_impor_melewati_berkas_asing_dan_melaporkannya(lingkungan):
+    from app.services import impor
+    from conftest import buat_dataset
+
+    sumber = buat_dataset(lingkungan["tmp"] / "s3", 2, 1)
+    (sumber / "catatan.sh").write_text("rm -rf /")
+    (sumber / "besar.mp4").write_bytes(b"x" * 100)
+    tujuan = lingkungan["tmp"] / "hasil3"
+
+    h = impor.impor_folder(sumber, tujuan)
+    assert h["berkas"] == 3 and h["dilewati"] == 2
+    assert not (tujuan / "catatan.sh").exists()
+    assert sorted(h["contoh_dilewati"]) == ["besar.mp4", "catatan.sh"]
+    # Survei harus memakai aturan yang sama, kalau tidak taksirannya meleset.
+    assert impor.survei(sumber)["berkas"] == h["berkas"]
+
+
+def test_impor_tidak_menimpa_saat_nama_bentrok(lingkungan):
+    """
+    Dua nama berbeda bisa menyatu setelah disterilkan (spasi jadi '-').
+    Yang kedua dilewati dan dilaporkan; menimpanya berarti gambar hilang diam.
+    """
+    from app.services import impor
+
+    sumber = lingkungan["tmp"] / "s4"
+    sumber.mkdir()
+    (sumber / "foto a.jpg").write_bytes(b"pertama")
+    (sumber / "foto+a.jpg").write_bytes(b"kedua")
+    tujuan = lingkungan["tmp"] / "hasil4"
+
+    h = impor.impor_folder(sumber, tujuan)
+    assert h["berkas"] == 1 and h["dilewati"] == 1
+    assert len(h["bentrok"]) == 1
+    assert (tujuan / "foto-a.jpg").read_bytes() == b"pertama"
+
+
+def test_impor_menolak_kalau_disk_hampir_penuh(lingkungan, monkeypatch):
+    import shutil as _shutil
+
+    from app.services import impor
+    from conftest import buat_dataset
+
+    sumber = buat_dataset(lingkungan["tmp"] / "s5", 2, 1)
+    monkeypatch.setattr(_shutil, "disk_usage",
+                        lambda p: _shutil._ntuple_diskusage(100, 100, 1024))
+    with pytest.raises(impor.ImporTolak, match="disk"):
+        impor.impor_folder(sumber, lingkungan["tmp"] / "hasil5")

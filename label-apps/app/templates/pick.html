@@ -28,6 +28,23 @@
     <span class="mono">labels</span>.</p>
   {% if error %}<p class="bad" style="text-align:center">{{ error }}</p>{% endif %}
 
+  {# Tanpa baris ini, membuka dataset lewat path terasa seperti tidak terjadi
+     apa-apa: pathnya di luar daftar mana pun, jadi tidak ada jejaknya di
+     halaman ini walau datasetnya sebenarnya masih terbuka. #}
+  {% if sess.src %}
+  <div class="panel">
+    <h3>Sedang dibuka</h3>
+    <div class="row" style="align-items:baseline">
+      <div style="flex:1">
+        <b>{{ sess.src.name }}</b>
+        <span class="sub">· {{ sess.items | length }} gambar</span><br>
+        <span class="mono halus">{{ sess.src }}</span>
+      </div>
+      <a class="btn pri" href="/">Buka grid</a>
+    </div>
+  </div>
+  {% endif %}
+
   {% if datasets_root %}
   <div class="panel">
     <h3>Dataset tersedia</h3>
@@ -78,14 +95,31 @@
   </div>
 
   <div class="panel">
-    <h3>Path folder di server</h3>
+    <h3>Ambil dari folder di server</h3>
+    <p class="halus" style="margin:0 0 8px">
+      Sama seperti unggah dari laptop, hanya sumbernya folder di server ini.
+      Isinya <b>disalin</b> ke ruang kerjamu — folder aslinya tidak pernah
+      disentuh, jadi aman disunting dan ditambahi gambar.
+    </p>
     <div class="row">
       <div style="flex:1">
         <input id="pathbox" type="text"
                placeholder="/home/paul/computer-vision/datasets/nama-folder">
       </div>
-      <button class="cta" onclick="setsrcBox()">Buka</button>
+      <button class="cta" onclick="imporBox()">Salin ke ruang kerjaku</button>
     </div>
+    <p class="upnote" id="impornote"></p>
+
+    <details style="margin-top:8px">
+      <summary class="halus" style="cursor:pointer">Buka langsung tanpa menyalin</summary>
+      <p class="halus" style="margin:8px 0">
+        Lebih cepat dan tidak memakan disk, tetapi <b>menyunting akan mengubah
+        berkas di folder itu juga</b>. Pakai kalau cuma mau melihat-lihat.
+      </p>
+      <button class="cta" onclick="setsrcBox()"
+              style="background:transparent;color:var(--ink-dim);
+                     border:1px solid var(--line2)">Buka di tempat</button>
+    </details>
   </div>
 
   {% if local %}
