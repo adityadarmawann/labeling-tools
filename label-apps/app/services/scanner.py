@@ -544,7 +544,11 @@ def _scan_labelme(src: Path):
         H, W = d
         iss = ["berkas anotasi rusak"] if ip.stem in broken else ["belum dilabeli"]
         items.append({"img": ip, "shapes": [], "W": W, "H": H, "issues": iss})
-    return items, {}
+    # Dataset labelme boleh punya daftar kelas resmi juga (classes.txt atau
+    # data.yaml di folder yang sama). Kalau ada, daftar itu yang membuat kanvas
+    # bisa menahan salah ketik nama kelas, dan membuat indeks kelas saat
+    # mengekspor tetap stabil walau sebagian kelas kebetulan tidak terpakai.
+    return items, baca_nama_kelas(src)
 
 
 def _yolo_disini(d: Path) -> bool:

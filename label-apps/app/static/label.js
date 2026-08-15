@@ -1666,16 +1666,96 @@ el('flagbaru').addEventListener('keydown', ev => {
 });
 el('model').onchange = () => { if (S.prompt.length || S.kotak) jalankanSam(); };
 
+/*
+ * Penjaga salah ketik nama kelas.
+ *
+ * Tanpa ini, mengetik "Botol" pada dataset yang kelasnya "botol" langsung
+ * membuat kelas keenam tanpa peringatan apa pun. Baru ketahuan saat membuka
+ * data.yaml hasil ekspor — atau lebih buruk, saat model dilatih dan satu kelas
+ * cuma punya tiga contoh. Padanan `validate_label: exact` di AnyLabeling
+ * (label_widget.py:1542-1556), tetapi menahan alih-alih menolak mentah:
+ * kelas yang memang baru tetap bisa ditambahkan, hanya perlu disengaja.
+ */
+
+/** Jarak sunting Levenshtein, dibatasi supaya berhenti lebih awal. */
+function jarakNama(a, b, batas = 2) {
+  if (Math.abs(a.length - b.length) > batas) return batas + 1;
+  let baris = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    let prev = baris[0];
+    baris[0] = i;
+    let min = i;
+    for (let j = 1; j <= b.length; j++) {
+      const simpan = baris[j];
+      baris[j] = a[i - 1] === b[j - 1]
+        ? prev
+        : 1 + Math.min(prev, baris[j], baris[j - 1]);
+      prev = simpan;
+      if (baris[j] < min) min = baris[j];
+    }
+    if (min > batas) return batas + 1;      // tidak mungkin membaik lagi
+  }
+  return baris[b.length];
+}
+
+/** Kelas yang paling mirip dengan `v`, atau null kalau tidak ada yang dekat. */
+function kelasMirip(v) {
+  const p = v.toLowerCase();
+  const daftar = [...new Set([...(D.kelas_resmi || []), ...S.kelas])];
+  // Beda huruf besar-kecil saja itu tanda paling kuat, jadi didahulukan.
+  const sama = daftar.find(k => k.toLowerCase() === p && k !== v);
+  if (sama) return sama;
+  let terbaik = null, terdekat = 3;
+  for (const k of daftar) {
+    if (k === v) continue;
+    // Nama pendek terlalu mudah "mirip"; 1 huruf beda dari "cup" bisa jadi
+    // kelas yang benar-benar lain.
+    const batas = Math.min(k.length, v.length) >= 5 ? 2 : 1;
+    const d = jarakNama(p, k.toLowerCase(), batas);
+    if (d <= batas && d < terdekat) { terdekat = d; terbaik = k; }
+  }
+  return terbaik;
+}
+
+let kelasMenunggu = null;    // nama yang sudah diperingatkan, tinggal ditegaskan
+
+function pakaiKelas(v) {
+  if (!S.kelas.includes(v)) S.kelas.push(v);
+  S.kelas.sort();
+  S.label = v;
+  el('kelasbaru').value = '';
+  kelasMenunggu = null;
+  if (S.sel >= 0) { simpanUndo(); S.shapes[S.sel].label = v; tandaiKotor(); }
+  render();
+}
+
+el('kelasbaru').addEventListener('input', () => { kelasMenunggu = null; });
+
 el('kelasbaru').addEventListener('keydown', ev => {
   if (ev.key !== 'Enter') return;
   const v = ev.target.value.trim();
   if (!v) return;
-  if (!S.kelas.includes(v)) S.kelas.push(v);
-  S.kelas.sort();
-  S.label = v;
-  ev.target.value = '';
-  if (S.sel >= 0) { simpanUndo(); S.shapes[S.sel].label = v; tandaiKotor(); }
-  render();
+
+  // Sudah ada persis: langsung dipakai, tidak ada yang perlu ditanyakan.
+  if (S.kelas.includes(v) || (D.kelas_resmi || []).includes(v)) { pakaiKelas(v); return; }
+
+  // Sudah diperingatkan dan orangnya menekan Enter lagi: itu penegasan.
+  if (kelasMenunggu === v) { pakaiKelas(v); toast(`Kelas baru "${v}" ditambahkan`); return; }
+
+  const mirip = kelasMirip(v);
+  const resmi = D.kelas_resmi || [];
+  if (mirip) {
+    kelasMenunggu = v;
+    toast(`"${v}" mirip dengan "${mirip}" — salah ketik? `
+        + `Klik "${mirip}" di daftar, atau Enter lagi untuk tetap membuat "${v}".`);
+  } else if (resmi.length) {
+    kelasMenunggu = v;
+    toast(`"${v}" belum ada di daftar kelas dataset (${resmi.length} kelas). `
+        + `Enter lagi kalau memang kelas baru.`);
+  } else {
+    // Dataset tanpa daftar kelas resmi: tidak ada yang bisa dilanggar.
+    pakaiKelas(v);
+  }
 });
 
 el('prev').onclick = e => { e.preventDefault(); pindah(D.prev); };

@@ -243,6 +243,53 @@ def test_unggah_folder_mempertahankan_struktur_yolo(klien, lingkungan):
     assert len(items) == 2
 
 
+# ---------------------------------------------------------------- daftar kelas resmi
+
+def test_kelas_resmi_dibedakan_dari_kelas_yang_kebetulan_dipakai(klien, lingkungan):
+    """
+    Kanvas perlu tahu kelas mana yang DIDEKLARASIKAN dataset, bukan sekadar
+    yang sudah dipakai. Tanpa pembedaan itu, "Botol" hasil salah ketik langsung
+    tampak sah — begitu satu objek terlanjur diberi nama itu, dia jadi "kelas
+    yang sudah dipakai" dan tidak ada lagi yang bisa membedakannya dari kelas
+    sungguhan.
+    """
+    d = lingkungan["roots"] / "ds-resmi"
+    _buat_yolo(d, kelas="botol\nkaleng\nplastic-cup\n")
+    masuk(klien, "paul", PW_PAUL)
+    klien.post(f"/setsrc?path={d}")
+
+    html = klien.get("/label").text
+    m = re.search(r'id="data-awal"[^>]*>(.*?)</script>', html, re.S)
+    data = json.loads(m.group(1))
+    # Hanya "botol" yang benar-benar dipakai di anotasi...
+    assert data["kelas"] == ["botol"]
+    # ...tetapi ketiganya dideklarasikan dataset.
+    assert data["kelas_resmi"] == ["botol", "kaleng", "plastic-cup"]
+
+
+def test_dataset_labelme_dengan_classes_txt_juga_punya_kelas_resmi(lingkungan):
+    """Bukan cuma YOLO: folder labelme yang menyertakan classes.txt ikut terbaca."""
+    from conftest import buat_dataset
+    from app.services import scanner
+
+    d = lingkungan["roots"] / "labelme-resmi"
+    buat_dataset(d, 2, 2)
+    (d / "classes.txt").write_text("botol\nkaleng\ntetra\n")
+    _, names = scanner.scan(d)
+    assert [names[i] for i in sorted(names)] == ["botol", "kaleng", "tetra"]
+
+
+def test_dataset_tanpa_daftar_kelas_memberi_kelas_resmi_kosong(lingkungan):
+    """Tanpa daftar resmi, penjaga salah ketik memang tidak berlaku."""
+    from conftest import buat_dataset
+    from app.services import scanner
+
+    d = lingkungan["roots"] / "labelme-polos"
+    buat_dataset(d, 2, 2)
+    _, names = scanner.scan(d)
+    assert names == {}
+
+
 # ---------------------------------------------------------------- unggah .yaml & .zip
 
 def test_data_yaml_diterima_unggahan(klien, lingkungan):

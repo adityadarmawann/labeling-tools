@@ -189,7 +189,7 @@ aplikasi ini beserta prioritasnya.
 .venv/bin/python -m pytest
 ```
 
-99 tes: gerbang login, isolasi antar akun, sterilisasi nama berkas unggahan,
+102 tes: gerbang login, isolasi antar akun, sterilisasi nama berkas unggahan,
 penjagaan endpoint desktop, tandai latar, kecocokan angka chip dengan isi grid,
 paritas MobileSAM, bentuk keluaran ekspor, bulat-balik keenam tipe bentuk,
 pemindaian ekspor bersplit, penulisan balik label YOLO, pembagian split yang
@@ -206,11 +206,11 @@ justru bagian yang paling mudah salah:
 ```
 
 Menyalakan server sendiri di 127.0.0.1, menjalankan Chrome headless lewat CDP,
-lalu mengirim peristiwa mouse asli — 28 pemeriksaan: klik di sisi poligon,
+lalu mengirim peristiwa mouse asli — 35 pemeriksaan: klik di sisi poligon,
 Shift+klik di titik, klik ulang untuk membatalkan pilihan, menyeret objek,
 autosave yang benar-benar menulis ke disk, pembuatan keenam tipe bentuk,
 salin-tempel, grup, seret klik kanan beserta menu dua-pilihannya, kecerahan,
-dan pengurutan ulang panel Objects.
+pengurutan ulang panel Objects, dan penjaga salah ketik nama kelas.
 
 Satu aturan yang dijaga otomatis: **pengujian tidak boleh menulis apa pun ke
 dalam folder aplikasi.** Fixture `folder_aplikasi_tak_berubah` di

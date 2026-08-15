@@ -1378,14 +1378,14 @@ Ditemukan lewat pengecekan silang ini, bukan sebelumnya:
 
 | Hal | AnyLabeling | Dampak kalau tidak ada |
 |---|---|---|
-| **`validate_label: exact`** | label baru ditolak kalau tidak ada di daftar (`label_widget.py:1542-1556`) | Salah ketik nama kelas langsung membuat kelas baru tanpa peringatan. Untuk satu tim, ini penyebab dataset kotor yang paling sering |
+| **`validate_label: exact`** | label baru ditolak kalau tidak ada di daftar (`label_widget.py:1542-1556`) | ✅ **sudah** — ditahan, bukan ditolak mentah: nama di luar daftar resmi butuh Enter kedua, dan nama yang MIRIP kelas yang ada disebutkan langsung ("Botol" mirip "botol"). Kelas yang memang baru tetap bisa dibuat, hanya perlu disengaja |
 | **Flag per bentuk** | dinyalakan lewat `label_flags`, pola regex → daftar flag (`label_dialog.py:169-192`) | Datanya sudah dipertahankan bulat-balik, tetapi belum ada cara mengisinya. Panel Flags kita masih tingkat gambar saja |
 | `sort_labels` | daftar kelas bisa diurutkan atau diseret sendiri | Kecil |
 | `label_completion` | autocomplete `startswith`/`contains` di dialog label | Tidak berlaku: kelas dipilih dari panel, bukan diketik bebas |
 | `label_colors` | warna manual per kelas | Kecil; warna otomatis kita sudah konsisten |
 | `display_label_popup` | melewati dialog kalau sudah ada kelas terpilih | Tidak berlaku: alur kita memang memilih kelas lebih dulu |
 
-Dua yang pertama layak dipertimbangkan. Sisanya tidak berlaku atau kecil.
+Yang pertama sudah dikerjakan. Flag per bentuk masih menunggu keputusan; sisanya tidak berlaku atau kecil.
 
 ## H.5 Sengaja belum — di luar alur melabeli
 

@@ -39,6 +39,21 @@ def daftar_kelas(sess: Session) -> list[str]:
     return sorted(dipakai | set(sess.settings.extra_labels))
 
 
+def kelas_resmi(sess: Session) -> list[str]:
+    """
+    Daftar kelas yang DIDEKLARASIKAN dataset — dari data.yaml atau classes.txt.
+
+    Dibedakan dari `daftar_kelas`, yang hanya mengumpulkan nama yang kebetulan
+    sudah dipakai. Pembedaan itu yang memungkinkan kanvas menahan salah ketik:
+    tanpa daftar resmi, "Botol" dan "botol" sama-sama tampak sah karena
+    dua-duanya "sudah dipakai" begitu satu objek terlanjur diberi nama itu.
+
+    Kosong untuk dataset labelme yang memang tidak mendeklarasikan kelas; di
+    situ penahanan tidak berlaku dan hanya kemiripan nama yang diperingatkan.
+    """
+    return [str(n).strip() for _, n in sorted(sess.names.items()) if str(n).strip()]
+
+
 # Field tingkat atas dan per-bentuk yang memang milik kita. Sisanya dianggap
 # titipan AnyLabeling dan harus dikembalikan apa adanya saat menyimpan.
 KUNCI_ATAS = {"version", "flags", "shapes", "imagePath", "imageData",
@@ -117,6 +132,7 @@ async def halaman(request: Request, path: str = "",
         "prev_path": str(prev_it["img"].resolve()) if prev_it else "",
         "next_path": str(next_it["img"].resolve()) if next_it else "",
         "kelas": daftar_kelas(sess),
+        "kelas_resmi": kelas_resmi(sess),
         "bentuk": bentuk_untuk_kanvas(it, mentah),
         "flags_gambar": mentah.get("flags") or {},
         "berkas": berkas,

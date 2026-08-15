@@ -58,6 +58,7 @@ def siapkan():
     cv2.imwrite(str(ip), im)
     # Poligon 4 titik yang seluruhnya jauh dari tepi, supaya tiap sisi dan
     # titiknya pasti berada di dalam area kanvas yang terlihat.
+    (ds / "classes.txt").write_text("botol\nkaleng\nplastic-cup\n")
     ip.with_suffix(".json").write_text(json.dumps({
         "version": "0.4.36", "flags": {},
         "shapes": [{"label": "botol", "shape_type": "polygon",
@@ -289,6 +290,7 @@ def jalankan(d, ip):
     d.js("S.shapes.pop(); S.kotor=false; render();")
 
     jalankan_bentuk(d, jp)
+    jalankan_kelas(d)
 
 
 def jalankan_bentuk(d, jp):
@@ -413,6 +415,50 @@ def jalankan_bentuk(d, jp):
     d.js("pindahkanObjek(0, 2);")
     urut = d.js("JSON.stringify(S.shapes.map(s=>s.label))")
     cek("urutan objek bisa dipindah", urut == '["b","c","a"]', f"{urut}")
+
+
+def jalankan_kelas(d):
+    """Penjaga salah ketik nama kelas."""
+    print("  -- penjaga nama kelas --")
+    resmi = d.js("JSON.stringify(D.kelas_resmi)")
+    cek("daftar kelas resmi sampai ke kanvas",
+        resmi == '["botol","kaleng","plastic-cup"]', f"{resmi}")
+
+    def ketik(v, enter=2):
+        d.js("el('kelasbaru').focus(); el('kelasbaru').value='';")
+        d.js(f"el('kelasbaru').value={v!r};"
+             "el('kelasbaru').dispatchEvent(new Event('input',{bubbles:true}));")
+        for _ in range(enter):
+            d.js("el('kelasbaru').dispatchEvent(new KeyboardEvent('keydown',"
+                 "{key:'Enter',bubbles:true}));")
+        return d.js("JSON.stringify(S.kelas)")
+
+    # salah ketik ditahan pada Enter pertama
+    d.js("S.kelas = ['botol','kaleng','plastic-cup']; S.sel=-1; S.terpilih=[];")
+    hasil = ketik("Botol", enter=1)
+    cek("salah huruf besar DITAHAN di Enter pertama",
+        "Botol" not in json.loads(hasil), hasil)
+    cek("pesannya menyebut kelas yang mirip",
+        "botol" in (d.js("el('t').textContent") or ""), d.js("el('t').textContent"))
+
+    # Enter kedua = penegasan, kelas tetap bisa dibuat
+    d.js("el('kelasbaru').dispatchEvent(new KeyboardEvent('keydown',"
+         "{key:'Enter',bubbles:true}));")
+    cek("Enter kedua tetap membolehkan (langkah disengaja)",
+        "Botol" in json.loads(d.js("JSON.stringify(S.kelas)")))
+
+    # kelas yang memang baru: tetap ditahan sekali karena ada daftar resmi
+    d.js("S.kelas = ['botol','kaleng','plastic-cup'];")
+    hasil = ketik("kardus", enter=1)
+    cek("kelas benar-benar baru ditahan sekali", "kardus" not in json.loads(hasil), hasil)
+    hasil = ketik("kardus", enter=2)
+    cek("lalu bisa ditambahkan", "kardus" in json.loads(hasil), hasil)
+
+    # kelas yang sudah ada: langsung dipakai tanpa ditahan
+    d.js("S.kelas = ['botol','kaleng','plastic-cup'];")
+    ketik("kaleng", enter=1)
+    cek("kelas yang sudah ada langsung dipakai", d.js("S.label") == "kaleng",
+        f"label={d.js('S.label')}")
 
 
 if __name__ == "__main__":
