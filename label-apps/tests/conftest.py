@@ -78,7 +78,9 @@ def buat_dataset(d: Path, n_img: int, n_ann: int) -> Path:
     """Dataset labelme kecil: n_img gambar, n_ann di antaranya punya anotasi."""
     d.mkdir(parents=True, exist_ok=True)
     for i in range(n_img):
-        im = np.full((60, 80, 3), 40 + i * 20, np.uint8)
+        # Dibungkus modulo: tanpa itu numpy menolak di gambar ke-11 ke atas,
+        # dan tes yang perlu dataset besar tidak bisa memakai pembantu ini.
+        im = np.full((60, 80, 3), (40 + i * 20) % 256, np.uint8)
         cv2.circle(im, (30 + i * 5, 30), 15, (30, 200, 160), -1)
         ip = d / f"{d.name}-{i:02d}.jpg"
         cv2.imwrite(str(ip), im)

@@ -106,8 +106,9 @@
         <input id="pathbox" type="text"
                placeholder="/home/paul/computer-vision/datasets/nama-folder">
       </div>
-      <button class="cta" onclick="imporBox()">Salin ke ruang kerjaku</button>
+      <button class="cta" id="btn-impor" onclick="imporBox()">Salin ke ruang kerjaku</button>
     </div>
+    <div class="prog" id="prog-impor"><i id="fill-impor"></i></div>
     <p class="upnote" id="impornote"></p>
 
     {# Path dataset di server panjang, dan salah satu huruf di tengahnya bisa

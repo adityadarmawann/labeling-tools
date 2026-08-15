@@ -137,6 +137,19 @@ async def impor_survei(path: str = "",
     return {"ok": True, "nama_usul": safe_slug(d.name), **s}
 
 
+@router.get("/api/impor/kemajuan")
+async def impor_kemajuan(sess: Session = Depends(current_session_api)):
+    """
+    Sudah berapa banyak yang tersalin.
+
+    Penyalinan berjalan di thread terpisah sementara permintaan /impor
+    menggantung sampai selesai, jadi kemajuannya tidak bisa ikut di balasan
+    permintaan itu. Ditanyakan lewat permintaan terpisah — dan itu bisa
+    dilayani justru karena penyalinannya tidak menahan event loop.
+    """
+    return {"ok": True, **impor.kemajuan(sess.user)}
+
+
 @router.post("/impor")
 async def impor_dari_server(path: str = "", ds: str = "",
                             sess: Session = Depends(current_session_api),
@@ -153,15 +166,19 @@ async def impor_dari_server(path: str = "", ds: str = "",
     nama = safe_slug(ds or sumber.name)
     tujuan = sess.upload_dir(nama)
     try:
-        hasil = await asyncio.to_thread(impor.impor_folder, sumber, tujuan)
+        hasil = await asyncio.to_thread(impor.impor_folder, sumber, tujuan,
+                                        kunci=sess.user)
     except impor.ImporTolak as e:
+        impor.catat_maju(sess.user, tahap="gagal")
         return {"ok": False, "error": str(e)[:160]}
     except OSError as e:
+        impor.catat_maju(sess.user, tahap="gagal")
         return {"ok": False, "error": f"gagal menyalin: {str(e)[:90]}"}
 
     n = len(await asyncio.to_thread(sess.load, tujuan))
     peringatan = await asyncio.to_thread(scanner.periksa_kelengkapan, tujuan)
     riwayat.catat(settings, sess.user, sumber.resolve(), "salin")
+    impor.catat_maju(sess.user, tahap="selesai")
     return {"ok": True, "nama": nama, "dir": str(tujuan), "n": n,
             "disalin": hasil["berkas"], "dilewati": hasil["dilewati"],
             "bytes": hasil["bytes"], "peringatan": peringatan,

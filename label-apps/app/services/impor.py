@@ -16,6 +16,7 @@ adalah disk; harga tautan adalah kepercayaan yang tidak bisa dijamin.
 from __future__ import annotations
 
 import shutil
+import threading
 from pathlib import Path
 
 from ..security import safe_relpath
@@ -24,9 +25,36 @@ from ..security import safe_relpath
 # penuh membuat seluruh mesin bermasalah, bukan cuma aplikasi ini.
 SISA_MIN_BYTE = 5 * 1024 ** 3
 
+# Sesering apa kemajuan diperbarui. Menulis tiap berkas membuat penyalinan
+# berebut kunci ribuan kali tanpa satu pun mata sempat melihat bedanya.
+LAPOR_TIAP = 25
+
 
 class ImporTolak(Exception):
     """Impor tidak bisa dijalankan — pesannya untuk dibaca pemakai."""
+
+
+# ------------------------------------------------------------------- kemajuan
+#
+# Penyalinan berjalan di thread terpisah sementara permintaannya menggantung,
+# jadi kemajuannya tidak bisa dikirim lewat balasan permintaan itu sendiri.
+# Disimpan di sini supaya permintaan lain bisa menanyakannya. Di memori saja:
+# kemajuan yang tidak selamat dari restart tidak merugikan siapa pun, karena
+# penyalinannya juga tidak.
+
+_maju: dict[str, dict] = {}
+_kunci_maju = threading.Lock()
+
+
+def catat_maju(kunci: str, **nilai) -> None:
+    if kunci:
+        with _kunci_maju:
+            _maju.setdefault(kunci, {}).update(nilai)
+
+
+def kemajuan(kunci: str) -> dict:
+    with _kunci_maju:
+        return dict(_maju.get(kunci) or {})
 
 
 def _didalam(anak: Path, induk: Path) -> bool:
@@ -63,7 +91,7 @@ def survei(sumber: Path) -> dict:
     return {"berkas": n, "bytes": byte, "dilewati": dilewati}
 
 
-def impor_folder(sumber: Path, tujuan: Path, *, batal=None) -> dict:
+def impor_folder(sumber: Path, tujuan: Path, *, batal=None, kunci: str = "") -> dict:
     """
     Salin isi `sumber` ke `tujuan`, struktur foldernya dipertahankan.
 
@@ -73,8 +101,11 @@ def impor_folder(sumber: Path, tujuan: Path, *, batal=None) -> dict:
 
     `batal` adalah fungsi tanpa argumen yang mengembalikan True kalau proses
     harus dihentikan; berkas yang sedang ditulis dibersihkan lebih dulu.
+
+    `kunci` menyalakan pelaporan kemajuan — lihat catat_maju di atas.
     """
     sumber, tujuan = Path(sumber), Path(tujuan)
+    catat_maju(kunci, tahap="survei", berkas=0, bytes=0, total=0, total_bytes=0)
     if not sumber.is_dir():
         raise ImporTolak("folder sumber tidak ada di server")
     if _didalam(tujuan, sumber):
@@ -92,6 +123,7 @@ def impor_folder(sumber: Path, tujuan: Path, *, batal=None) -> dict:
             f"perlu {s['bytes'] / 1073741824:.1f} GB sementara sisa disk "
             f"{sisa / 1073741824:.1f} GB — terlalu mepet")
 
+    catat_maju(kunci, tahap="salin", total=s["berkas"], total_bytes=s["bytes"])
     ditulis = dilewati = 0
     byte = 0
     dipakai: set[str] = set()
@@ -132,9 +164,15 @@ def impor_folder(sumber: Path, tujuan: Path, *, batal=None) -> dict:
             tmp.replace(dest)
             ditulis += 1
             byte += dest.stat().st_size
+            if ditulis % LAPOR_TIAP == 0:
+                catat_maju(kunci, berkas=ditulis, bytes=byte)
         except OSError:
             tmp.unlink(missing_ok=True)
             dilewati += 1
 
+    # Tahap berikutnya (memindai isi salinan) dikerjakan pemanggil dan bisa
+    # selama penyalinannya sendiri, jadi perpindahannya perlu terlihat —
+    # kalau tidak, bilah progres berhenti penuh dan tampak menggantung.
+    catat_maju(kunci, tahap="pindai", berkas=ditulis, bytes=byte)
     return {"berkas": ditulis, "dilewati": dilewati, "bytes": byte,
             "sumber": str(sumber), "contoh_dilewati": contoh, "bentrok": bentrok}

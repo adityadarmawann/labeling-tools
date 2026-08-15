@@ -114,10 +114,50 @@ async function imporBox() {
     + `Beri nama untuk salinan ini:`, s.nama_usul || '');
   if (nama === null) { note.textContent = ''; return; }
 
-  note.textContent = `Menyalin ${s.berkas} berkas (${ukuran})… berkas besar perlu waktu.`;
+  const tombol = document.getElementById('btn-impor');
+  const bar = document.getElementById('prog-impor');
+  const isi = document.getElementById('fill-impor');
+  // Dimatikan selama berjalan: menekan dua kali memulai penyalinan kedua ke
+  // folder tujuan yang sama, dan keduanya lalu berebut berkas yang sama.
+  if (tombol) { tombol.disabled = true; tombol.textContent = 'Menyalin…'; }
+  bar.setAttribute('data-on', '');
+  isi.style.width = '0%';
+  note.textContent = `Menyalin ${s.berkas} berkas (${ukuran})…`;
+
+  // Penyalinan berjalan di thread terpisah di server sementara permintaan
+  // /impor di bawah menggantung sampai selesai, jadi kemajuannya ditanyakan
+  // lewat permintaan terpisah. Tanpa ini penyalinan 22 ribu berkas tampak
+  // seperti halaman yang macet.
+  const pantau = setInterval(async () => {
+    let k;
+    try { k = await (await fetch('/api/impor/kemajuan')).json(); } catch (e) { return; }
+    if (!k || !k.tahap) return;
+    if (k.tahap === 'pindai') {
+      isi.style.width = '100%';
+      bar.dataset.tahap = 'pindai';
+      note.textContent =
+        `${s.berkas.toLocaleString('id-ID')} berkas tersalin — memindai isinya…`;
+      return;
+    }
+    if (k.tahap !== 'salin') return;
+    const persen = k.total ? Math.min(100, k.berkas / k.total * 100) : 0;
+    isi.style.width = persen.toFixed(1) + '%';
+    note.textContent = `${k.berkas.toLocaleString('id-ID')} dari `
+      + `${k.total.toLocaleString('id-ID')} berkas · `
+      + `${(k.bytes / 1048576).toFixed(0)} MB · ${persen.toFixed(0)}%`;
+  }, 500);
+
+  const beres = () => {
+    clearInterval(pantau);
+    bar.removeAttribute('data-on');
+    delete bar.dataset.tahap;
+    if (tombol) { tombol.disabled = false; tombol.textContent = 'Salin ke ruang kerjaku'; }
+  };
+
   try {
     const j = await post('/impor?path=' + encodeURIComponent(p)
                        + '&ds=' + encodeURIComponent(nama.trim() || s.nama_usul));
+    beres();
     if (!j.ok) { note.textContent = j.error; toast(j.error); return; }
 
     // Berkas yang terlewat dilaporkan, tidak didiamkan: salinan yang kurang
@@ -142,6 +182,7 @@ async function imporBox() {
     toast(`${j.disalin} berkas disalin — membuka salinan`);
     location.href = '/';
   } catch (e) {
+    beres();
     note.textContent = '';
     toast('Gagal menghubungi server');
   }

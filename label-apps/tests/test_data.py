@@ -1060,3 +1060,48 @@ def test_riwayat_rusak_tidak_menggagalkan_halaman(klien, lingkungan):
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text("{ ini bukan json")
     assert klien.get("/pilih").status_code == 200
+
+
+def test_impor_melaporkan_kemajuannya_selagi_menyalin(klien, lingkungan):
+    """
+    Tanpa laporan ini penyalinan 22 ribu berkas tampak seperti halaman macet.
+    Yang diuji: angkanya benar-benar bergerak selama penyalinan, bukan cuma
+    terisi di akhir.
+    """
+    from app.services import impor
+    from conftest import buat_dataset
+
+    sumber = buat_dataset(lingkungan["tmp"] / "s6", impor.LAPOR_TIAP * 3, 0)
+    jejak = []
+
+    asli = impor.catat_maju
+
+    def rekam(kunci, **n):
+        asli(kunci, **n)
+        jejak.append(impor.kemajuan(kunci))
+
+    impor.catat_maju = rekam
+    try:
+        h = impor.impor_folder(sumber, lingkungan["tmp"] / "hasil6", kunci="paul")
+    finally:
+        impor.catat_maju = asli
+
+    tahap = [j["tahap"] for j in jejak]
+    assert tahap[0] == "survei" and tahap[-1] == "pindai"
+    salin = [j for j in jejak if j["tahap"] == "salin"]
+    assert len(salin) >= 3, tahap                     # benar-benar bertahap
+    assert [j["berkas"] for j in salin] == sorted(j["berkas"] for j in salin)
+    assert salin[-1]["total"] == h["berkas"]
+    assert impor.kemajuan("paul")["berkas"] == h["berkas"]
+    assert impor.kemajuan("akun-lain") == {}          # tidak bocor antarakun
+
+
+def test_rute_kemajuan_bisa_ditanyakan_terpisah(klien, lingkungan):
+    from app.services import impor
+
+    masuk(klien, "paul", PW_PAUL)
+    impor.catat_maju("paul", tahap="salin", berkas=7, total=10,
+                     bytes=99, total_bytes=200)
+    r = klien.get("/api/impor/kemajuan").json()
+    assert r == {"ok": True, "tahap": "salin", "berkas": 7, "total": 10,
+                 "bytes": 99, "total_bytes": 200}
