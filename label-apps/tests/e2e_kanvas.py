@@ -775,6 +775,31 @@ def jalankan_panel(d):
     cek("memilih objek mengembalikan panel ke catatan objek",
         d.js("document.getElementById('teksjudul').textContent") == "Object Text")
 
+    # -------- tema: gelap benar-benar mengubah warna, dan tersimpan
+    bg = lambda: d.js("getComputedStyle(document.body).backgroundColor")
+    ink = lambda: d.js("getComputedStyle(document.body).color")
+    d.js("pasangTema('light')"); time.sleep(0.15)
+    bg_terang, ink_terang = bg(), ink()
+    d.js("pasangTema('dark')"); time.sleep(0.15)
+    bg_gelap, ink_gelap = bg(), ink()
+    cek("tema gelap mengubah latar DAN warna teks",
+        bg_gelap != bg_terang and ink_gelap != ink_terang,
+        "latar %s -> %s | teks %s -> %s" % (bg_terang, bg_gelap, ink_terang, ink_gelap))
+    cek("pilihan tema tersimpan",
+        d.js("localStorage.getItem('labelapp_tema')") == "dark")
+    cek("tema 'sistem' tidak menstempel apa pun",
+        (d.js("pasangTema('system')") is None
+         or True) and d.js("document.documentElement.dataset.theme") in (None, ""),
+        "data-theme=%r" % d.js("document.documentElement.dataset.theme"))
+
+    # Latar tidak boleh transparan di tema mana pun: halaman akan meminjam
+    # warna dasar host dan teksnya bisa berakhir di atas latar tema lain.
+    for t in ("light", "dark"):
+        d.js(f"pasangTema('{t}')"); time.sleep(0.1)
+        cek(f"latar body jelas di tema {t}",
+            "rgba(0, 0, 0, 0)" not in bg() and bg() != "transparent", bg())
+    d.js("pasangTema('system')")
+
 
 
 if __name__ == "__main__":

@@ -34,6 +34,7 @@ FORMAT = {
     "yolo": "YOLO detection (bounding box)",
     "coco": "COCO (satu instances.json)",
     "voc": "Pascal VOC (satu .xml per gambar)",
+    "createml": "CreateML (Apple, satu _annotations.createml.json)",
 }
 
 # Versi yang ditulis di berkas keluaran, sama dengan AnyLabeling 0.4.36.
@@ -481,6 +482,51 @@ def coco_dict(items: list[dict], nama_dataset: str,
     return d
 
 
+def createml_list(items: list[dict], nama_berkas: dict | None = None) -> list[dict]:
+    """
+    Satu bagian dataset -> daftar CreateML (Apple Create ML object detection).
+
+    Bentuknya: satu entri per gambar, `annotations` berisi kotak dengan
+    `coordinates` = {x, y, width, height}.
+
+    **x dan y adalah TITIK TENGAH kotak, bukan sudut kiri-atas.** Ini satu-satunya
+    tempat kita sengaja menyimpang dari AnyLabeling, dan alasannya bukan selera:
+    `export_to_createml` di sana (export_formats.py:400-434) menulis `x_min` dan
+    `y_min`, sehingga setiap kotak yang dibaca Create ML bergeser setengah lebar
+    ke kiri dan setengah tinggi ke atas. Berkasnya tetap termuat tanpa galat —
+    yang salah cuma letak seluruh kotaknya, dan itu baru ketahuan setelah model
+    dilatih dan hasilnya meleset.
+
+    Seperti COCO dan VOC, hanya rectangle dan polygon yang punya arti di sini;
+    poligon diringkas jadi kotak pembungkusnya.
+    """
+    out = []
+    for it in items:
+        nama = (nama_berkas or {}).get(id(it), it["img"].name)
+        anotasi = []
+        for s in it["shapes"]:
+            if s["type"] not in ("rectangle", "polygon"):
+                continue
+            label = "" if s["label"] is None else str(s["label"]).strip()
+            if not label:
+                continue
+            pts = s["pts"].tolist()
+            xs = [q[0] for q in pts]
+            ys = [q[1] for q in pts]
+            xmin, xmax = min(xs), max(xs)
+            ymin, ymax = min(ys), max(ys)
+            lebar, tinggi = xmax - xmin, ymax - ymin
+            anotasi.append({
+                "label": label,
+                "coordinates": {
+                    "x": xmin + lebar / 2, "y": ymin + tinggi / 2,
+                    "width": lebar, "height": tinggi,
+                },
+            })
+        out.append({"image": nama, "annotations": anotasi})
+    return out
+
+
 # ---------------------------------------------------------------- arsip
 
 def zip_dataset(items: list[dict], nama: str, format: str,
@@ -491,7 +537,7 @@ def zip_dataset(items: list[dict], nama: str, format: str,
         return zip_yolo(items, nama, format == "yolo-seg", sertakan_gambar,
                         rasio, names)
 
-    if format not in ("coco", "voc"):
+    if format not in ("coco", "voc", "createml"):
         raise ValueError(f"format '{format}' tidak dikenal")
 
     bagian = bagi_split(items, rasio)
@@ -520,6 +566,9 @@ def zip_dataset(items: list[dict], nama: str, format: str,
                     g["file_name"] = nama_dipakai[id(it)]
                 z.writestr(f"{split}/_annotations.coco.json",
                            json.dumps(d, indent=2))
+            elif format == "createml":
+                z.writestr(f"{split}/_annotations.createml.json",
+                           json.dumps(createml_list(daftar, nama_dipakai), indent=2))
             else:
                 for it in daftar:
                     berkas = nama_dipakai[id(it)]

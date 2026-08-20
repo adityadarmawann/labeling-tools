@@ -6,12 +6,28 @@
 <title>{{ it.img.name }} — anotasi</title>
 <link rel="stylesheet" href="/static/app.css">
 <link rel="stylesheet" href="/static/label.css">
+<script>
+/* Sama seperti di base.html: tema dipasang sebelum CSS sempat melukis, supaya
+   halaman tidak berkedip terang lebih dulu. Halaman ini berdiri sendiri, tidak
+   mewarisi base.html, jadi potongannya memang ada dua tempat. */
+(function () {
+  try {
+    var t = localStorage.getItem('labelapp_tema');
+    if (t === 'dark' || t === 'light') document.documentElement.dataset.theme = t;
+  } catch (e) { /* mode privat */ }
+})();
+</script>
 </head>
 <body class="lab">
 
 <div class="lab-top">
   <a class="chip" href="/">Grid</a>
   <a class="chip" href="/pilih">Ganti dataset</a>
+  <select class="chip tema" id="tema" title="Tema tampilan" aria-label="Tema tampilan">
+    <option value="system">Tema: sistem</option>
+    <option value="light">Tema: terang</option>
+    <option value="dark">Tema: gelap</option>
+  </select>
   <span class="lab-mode" id="modeinfo">Mode: <b>+Point</b></span>
   <span class="lab-hint">Pintasan: <b>Q</b> +Point · <b>E</b> −Point · <b>F</b> Finish ·
     <b>C</b> Clear · <b>P</b> poligon · <b>R</b> rectangle · <b>V</b> sunting ·

@@ -1,4 +1,11 @@
 {# Baris identitas akun, sama di semua halaman setelah login. #}
 <span class="spacer"></span>
 <span class="who">masuk sebagai <b>{{ sess.user }}</b></span>
+{# Tiga keadaan, sama seperti menu Theme AnyLabeling: ikut sistem, terang,
+   gelap. Pilihannya per peramban, jadi tiap orang bebas berbeda. #}
+<select class="chip tema" id="tema" title="Tema tampilan" aria-label="Tema tampilan">
+  <option value="system">Tema: sistem</option>
+  <option value="light">Tema: terang</option>
+  <option value="dark">Tema: gelap</option>
+</select>
 <a class="chip" href="/logout">Keluar</a>

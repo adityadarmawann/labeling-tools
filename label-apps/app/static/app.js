@@ -34,6 +34,31 @@ function esc(s) {
   return d.innerHTML;
 }
 
+/*
+ * Tema tampilan — padanan menu Theme (label_widget.py:715-750).
+ *
+ * "sistem" sengaja TIDAK menstempel apa pun ke <html>: pada keadaan itu yang
+ * menentukan adalah prefers-color-scheme, dan stempel apa pun justru
+ * mengunci pilihan sistemnya.
+ */
+const KUNCI_TEMA = 'labelapp_tema';
+
+function pasangTema(nilai) {
+  if (nilai === 'dark' || nilai === 'light') document.documentElement.dataset.theme = nilai;
+  else delete document.documentElement.dataset.theme;
+  try { localStorage.setItem(KUNCI_TEMA, nilai); } catch (e) { /* mode privat */ }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const s = document.getElementById('tema');
+  if (!s) return;
+  let awal = 'system';
+  try { awal = localStorage.getItem(KUNCI_TEMA) || 'system'; } catch (e) { /* abai */ }
+  s.value = awal;
+  pasangTema(awal);
+  s.onchange = () => pasangTema(s.value);
+});
+
 // ---------------------------------------------------------------- papan periksa
 
 async function openIn(p, btn) {

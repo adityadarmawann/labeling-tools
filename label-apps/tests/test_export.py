@@ -667,3 +667,42 @@ def test_nama_berkas_bentrok_tidak_saling_menimpa(tmp_path):
     assert len(nama) == 2 and len(set(nama)) == 2, nama
     for g in j["images"]:
         assert f"train/{g['file_name']}" in z.namelist()
+
+
+def test_createml_koordinat_adalah_titik_tengah(tmp_path):
+    """
+    Create ML menuntut x,y = TITIK TENGAH kotak.
+
+    `export_to_createml` di AnyLabeling (export_formats.py:400-434) menulis
+    x_min/y_min, sehingga setiap kotak bergeser setengah lebar ke kiri dan
+    setengah tinggi ke atas. Berkasnya tetap termuat tanpa galat — yang salah
+    cuma letak seluruh kotaknya, dan itu baru ketahuan setelah model dilatih.
+    """
+    items, names = scanner.scan(_dataset_kaya(tmp_path / "ds"))
+    z = _zip(items, names, "createml")
+    nm = next(n for n in z.namelist() if n.endswith("_annotations.createml.json"))
+    daftar = json.loads(z.read(nm))
+    assert daftar and all("image" in g and "annotations" in g for g in daftar)
+
+    # rectangle [[60,10],[110,70]] -> lebar 50, tinggi 60, pusat (85, 40)
+    kotak = [a for g in daftar for a in g["annotations"] if a["label"] == "tetra"][0]
+    c = kotak["coordinates"]
+    assert (c["width"], c["height"]) == (50, 60)
+    assert (c["x"], c["y"]) == (85, 40), c
+
+    # poligon [[5,5],[50,5],[50,60]] -> kotak pembungkus (5,5)-(50,60),
+    # lebar 45, tinggi 55, pusat (27.5, 32.5)
+    poli = [a for g in daftar for a in g["annotations"] if a["label"] == "botol"][0]
+    c = poli["coordinates"]
+    assert (c["width"], c["height"]) == (45, 55)
+    assert (c["x"], c["y"]) == (27.5, 32.5), c
+
+    # `point` tidak punya arti di format kotak
+    assert not [a for g in daftar for a in g["annotations"] if a["label"] == "penanda"]
+
+    # gambarnya ikut, dan namanya cocok dengan yang ada di ZIP
+    for split in ("train", "valid", "test"):
+        n2 = f"{split}/_annotations.createml.json"
+        if n2 in z.namelist():
+            for g in json.loads(z.read(n2)):
+                assert f"{split}/{g['image']}" in z.namelist()
