@@ -68,6 +68,10 @@ class Settings:
     open_mode: str = "file"          # "file" | "dir"
     lock_labels: bool = False
     extra_labels: list[str] = field(default_factory=list)
+    # Flag tingkat gambar yang SELALU ditawarkan di tiap gambar, padanan
+    # `flags:` di anylabeling_config.yaml (label_widget.py:202-203). Tanpa
+    # daftar tetap, nama flag harus diketik ulang persis di tiap gambar.
+    flags: list[str] = field(default_factory=list)
     # Nama akun yang dimasuki otomatis TANPA password. Hanya berlaku untuk
     # permintaan dari mesin itu sendiri — lihat deps.sesi_otomatis.
     autologin: str = ""
@@ -120,5 +124,6 @@ def get_settings() -> Settings:
         open_mode="dir" if _get("OPEN_MODE") == "dir" else "file",
         lock_labels=_bool("LOCK_LABELS"),
         extra_labels=_read_labels(_path("LABELS_FILE")),
+        flags=_read_labels(_path("FLAGS_FILE")),
         autologin=_get("DEV_AUTOLOGIN"),
     )

@@ -40,7 +40,11 @@
       <label><input type="checkbox" data-panel="lab-auto" checked> Bar Auto Labeling</label>
       <div class="menu-pisah"></div>
       <div class="menu-judul">Tampilan</div>
-      <label><input type="checkbox" id="v-poligon" checked> Tampilkan semua poligon</label>
+      <!-- Dua AKSI, bukan satu centang — padanan Hide Polygons / Show Polygons
+           (label_widget.py:538-551), yang keduanya bekerja dengan mengubah
+           centang tampil/sembunyi tiap objek di panel Objects. -->
+      <button type="button" class="menu-aksi" id="v-tampilsemua">Tampilkan semua objek</button>
+      <button type="button" class="menu-aksi" id="v-sembunyisemua">Sembunyikan semua objek</button>
       <label title="Nama kelas di atas tiap bentuk. Ini tambahan kita; AnyLabeling tidak punya."><input type="checkbox" id="v-kelas" checked> Tulis nama kelas di atas bentuk</label>
       <label title="Show Texts di AnyLabeling: menampilkan CATATAN objek (isi Text Editor), bukan nama kelasnya."><input type="checkbox" id="v-teks"> Tulis catatan objek di atas bentuk</label>
       <label><input type="checkbox" id="v-grup"> Tampilkan grup bentuk</label>
@@ -122,7 +126,7 @@
 
   <div class="lab-side">
     <div class="pan" id="pan-teks">
-      <h3>Text Editor</h3>
+      <h3>Text Editor · <span id="teksjudul">Object Text</span></h3>
       <textarea id="teks" rows="3"
         placeholder="Pilih objek dulu, lalu tulis catatannya di sini"></textarea>
       <p class="halus" id="teksinfo">Belum ada objek terpilih</p>
@@ -169,6 +173,7 @@
       <h3>Files <span class="ct">{{ posisi[0] }}/{{ posisi[1] }}</span></h3>
       <input id="cari" type="text" placeholder="Search Filename">
       <div class="file-list" id="berkas"></div>
+      <p class="halus" id="berkasinfo"></p>
     </div>
   </div>
 </div>
@@ -197,6 +202,7 @@
     "W": it.W, "H": it.H,
     "shapes": bentuk,
     "flags_gambar": flags_gambar,
+    "teks_gambar": teks_gambar,
     "kelas": kelas,
     "kelas_resmi": kelas_resmi,
     "berkas": berkas,

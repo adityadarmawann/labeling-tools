@@ -36,7 +36,10 @@ const S = {
   seret: null,
   kursor: null,      // posisi kursor dalam koordinat gambar, untuk garis silang
   undo: [],
-  flags: { ...(D.flags_gambar || {}) },   // flag tingkat gambar, seperti panel Flags AnyLabeling
+  flags: { ...(D.flags_gambar || {}) },
+  // Catatan tingkat GAMBAR, berbeda dari catatan per objek
+  // (other_data["image_text"], label_widget.py:1699).
+  teksGambar: D.teks_gambar || '',
   hover: null,       // { i, v } vertex atau bentuk di bawah kursor
   sisi: null,        // { i, e, titik } sisi terdekat, untuk add_point_to_edge
   kotor: false,
@@ -45,7 +48,7 @@ const S = {
   seretKanan: null,
   cerah: 1, kontras: 1,   // faktor tampilan, 1 = normal
   // Setelan menu View. Namanya mengikuti menu View AnyLabeling.
-  v: { poligon: true, teks: false, grup: false, isi: true, silang: true,
+  v: { teks: false, grup: false, isi: true, silang: true,
        namaKelas: true, tanyaKelas: true, labelTerakhir: true, zoomTetap: false,
        autosave: true, keepPrev: false },
 };
@@ -158,11 +161,9 @@ function gambarSekarang() {
     if (perluFilter) g.filter = 'none';
   }
 
-  if (S.v.poligon) {
-    S.shapes.forEach((s, i) => {
-      if (!s.sembunyi) gambarBentuk(s, S.terpilih.includes(i));
-    });
-  }
+  S.shapes.forEach((s, i) => {
+    if (terlihat(s)) gambarBentuk(s, S.terpilih.includes(i));
+  });
 
   if (S.v.grup) gambarPenandaGrup();
   if (S.pratinjau) gambarPratinjau(S.pratinjau);
@@ -185,7 +186,7 @@ function gambarSekarang() {
 function gambarPenandaGrup() {
   const grup = new Map();
   S.shapes.forEach((s, i) => {
-    if (s.group_id == null || s.sembunyi) return;
+    if (s.group_id == null || !terlihat(s)) return;
     if (!grup.has(s.group_id)) grup.set(s.group_id, []);
     grup.get(s.group_id).push(i);
   });
@@ -211,6 +212,16 @@ function gambarPenandaGrup() {
     g.restore();
   });
 }
+
+/*
+ * Padanan Canvas.is_visible (canvas.py:204-206). SATU sumber kebenaran, dan
+ * ia menggerbangi penggambaran SEKALIGUS seluruh uji sentuh.
+ *
+ * Dulu penyembunyian hanya mematikan penggambaran, sementara pemilihan dan
+ * sorotan memeriksa hal lain — sehingga bentuk yang tidak terlihat masih bisa
+ * diklik dan DISERET. Perubahan yang tidak kasatmata, langsung diautosave.
+ */
+function terlihat(s) { return !s.sembunyi; }
 
 function jalur(p) {
   g.beginPath();
@@ -504,7 +515,7 @@ function sorotDi(gx, gy) {
   const r = EPSILON / S.zoom;
   for (let i = S.shapes.length - 1; i >= 0; i--) {
     const s = S.shapes[i];
-    if (s.sembunyi || !S.v.poligon) continue;
+    if (!terlihat(s)) continue;
     const v = vertexTerdekatPada(s, gx, gy, r);
     if (v !== null) return { hover: { i, v }, sisi: null, jenis: 'titik', s };
     const e = sisiTerdekatPada(s, gx, gy, r);
@@ -517,7 +528,7 @@ function sorotDi(gx, gy) {
 function dekatVertex(gx, gy) {
   const r = EPSILON / S.zoom;
   for (let i = S.shapes.length - 1; i >= 0; i--) {
-    if (S.shapes[i].sembunyi) continue;
+    if (!terlihat(S.shapes[i])) continue;
     const v = vertexTerdekatPada(S.shapes[i], gx, gy, r);
     if (v !== null) return { i, v };
   }
@@ -533,7 +544,7 @@ function dekatSisi(gx, gy) {
     // Padanan Shape.can_add_point(): HANYA polygon dan linestrip yang boleh
     // disisipi titik. Rectangle dan circle bentuknya ditentukan 2 titik, dan
     // point tidak punya sisi.
-    if (s.sembunyi || !DAPAT_SISIP.has(s.shape_type)) continue;
+    if (!terlihat(s) || !DAPAT_SISIP.has(s.shape_type)) continue;
     const p = s.points;
     // Sisi penutup (titik terakhir -> pertama) hanya ada pada bentuk tertutup;
     // linestrip terbuka, jadi sisinya satu lebih sedikit.
@@ -652,7 +663,7 @@ const adaTerpilih = () => S.terpilih.length;
 
 function bentukDi(gx, gy) {
   for (let i = S.shapes.length - 1; i >= 0; i--) {
-    if (!S.shapes[i].sembunyi && didalam(S.shapes[i], gx, gy)) return i;
+    if (terlihat(S.shapes[i]) && didalam(S.shapes[i], gx, gy)) return i;
   }
   return -1;
 }
@@ -1990,6 +2001,33 @@ function renderObjek() {
     if (s.group_id != null) b.textContent += ` · g${s.group_id}`;
     d.appendChild(b);
     d.onclick = ev => { pilihBentuk(i, ev.ctrlKey); setMode('edit'); render(); };
+    // item_double_clicked -> edit_label (label_widget.py:214)
+    d.ondblclick = ev => {
+      ev.preventDefault();
+      pilihBentuk(i, false);
+      setMode('edit');
+      render();
+      ubahKelasTerpilih();
+    };
+    // customContextMenuRequested -> menus.label_list, isinya Edit Label +
+    // Delete (label_widget.py:801). Dulu klik kanan di sini memunculkan menu
+    // peramban, dan satu-satunya jalan mengubah kelas dari daftar adalah
+    // memutar lewat kanvas.
+    d.oncontextmenu = ev => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      pilihBentuk(i, false);
+      setMode('edit');
+      render();
+      pasangMenu(ev.clientX, ev.clientY, [
+        ['judul', s.label || '(tanpa kelas)'],
+        ['aksi', 'Ubah kelas', 'Ctrl+E', true, ubahKelasTerpilih, false],
+        ['aksi', s.sembunyi ? 'Tampilkan' : 'Sembunyikan', '', true,
+         () => { s.sembunyi = !s.sembunyi; render(); }, false],
+        ['pisah'],
+        ['aksi', 'Hapus objek', 'Del', true, hapusTerpilih, true],
+      ]);
+    };
 
     /*
      * Urutan objek bisa diubah dengan menyeret, seperti LabelListWidget yang
@@ -2018,40 +2056,98 @@ function renderObjek() {
     };
     box.appendChild(d);
   });
+  // scroll_to_item (label_widget.py:1645-1647). Tanpa ini, pada gambar berisi
+  // puluhan objek, memilih objek di kanvas menyorot baris yang berada di luar
+  // layar — orang mengira tidak terjadi apa-apa.
+  const aktif = box.querySelector('.obj[data-on]');
+  if (aktif) aktif.scrollIntoView({ block: 'nearest' });
 }
+
+/*
+ * Daftar berkas.
+ *
+ * Dibatasi MAKS_BERKAS baris. QListWidget di AnyLabeling hanya menggambar baris
+ * yang terlihat; di sini tiap baris adalah simpul DOM sungguhan, dan daftarnya
+ * dibangun ulang pada SETIAP huruf yang diketik di kotak cari. Pada dataset
+ * puluhan ribu gambar itu membuat halaman berat sejak dimuat dan tersendat saat
+ * mengetik. Yang dipotong selalu dikatakan jumlahnya — daftar yang diam-diam
+ * terpotong lebih buruk daripada daftar yang mengaku terpotong.
+ */
+const MAKS_BERKAS = 300;
 
 function renderBerkas() {
   const box = el('berkas');
   const q = el('cari').value.trim().toLowerCase();
   box.innerHTML = '';
-  D.berkas.filter(f => !q || f.nama.toLowerCase().includes(q)).forEach(f => {
+  const cocok = D.berkas.filter(f => !q || f.nama.toLowerCase().includes(q));
+  // Berkas yang sedang dibuka selalu ikut ditampilkan walau di luar potongan,
+  // supaya penanda "sedang dibuka" tidak pernah hilang dari daftar.
+  const tampil = cocok.slice(0, MAKS_BERKAS);
+  if (!tampil.some(f => f.path === D.path)) {
+    const ini = cocok.find(f => f.path === D.path);
+    if (ini) tampil.push(ini);
+  }
+  tampil.forEach(f => {
     const a = document.createElement('a');
     a.className = 'fitem';
     a.href = '/label?path=' + encodeURIComponent(f.path);
     a.dataset.sev = f.sev;
     if (f.path === D.path) a.setAttribute('data-on', '');
-    a.innerHTML = '<i></i><span></span>' + (f.n ? `<b>${f.n}</b>` : '');
-    a.querySelector('span').textContent = f.nama;
+    const i = document.createElement('i');
+    const sp = document.createElement('span');
+    sp.textContent = f.nama;
+    a.append(i, sp);
+    if (f.split) {
+      const t = document.createElement('em');
+      t.className = 'fsplit';
+      t.textContent = f.split;
+      a.appendChild(t);
+    }
+    if (f.n) {
+      const b = document.createElement('b');
+      b.textContent = f.n;
+      a.appendChild(b);
+    }
     a.onclick = e => {
       if (S.kotor && !confirm('Ada perubahan belum disimpan. Tinggalkan?')) e.preventDefault();
     };
     box.appendChild(a);
   });
+  const sisa = cocok.length - Math.min(cocok.length, MAKS_BERKAS);
+  const info = el('berkasinfo');
+  if (sisa > 0) {
+    info.textContent = `${sisa.toLocaleString('id-ID')} berkas lagi tidak `
+      + `ditampilkan — pakai kotak cari di atas untuk mempersempit.`;
+  } else {
+    info.textContent = `${cocok.length.toLocaleString('id-ID')} berkas`;
+  }
 }
 
 /* Panel Text Editor: terikat ke objek terpilih. Isinya masuk field `text`
    pada .json — field yang sama dipakai AnyLabeling, jadi catatan yang ditulis
    di sini terbaca di desktop dan sebaliknya. */
+/*
+ * Satu panel melayani DUA tingkat catatan, seperti shape_text_changed
+ * (label_widget.py:1692-1700): ada objek terpilih -> catatan objek itu; tidak
+ * ada -> catatan tingkat GAMBAR (other_data["image_text"]). Judul panelnya ikut
+ * berganti, sama seperti label "Object Text" / "Image Text" di sana.
+ *
+ * Dulu panelnya sekadar dimatikan saat tidak ada yang terpilih, sehingga
+ * catatan tingkat gambar yang dibuat di desktop tidak pernah terlihat dari web
+ * dan tidak bisa dibuat dari web.
+ */
 function renderTeks() {
-  const ta = el('teks'), info = el('teksinfo');
+  const ta = el('teks'), info = el('teksinfo'), judul = el('teksjudul');
+  ta.disabled = false;
   if (S.sel < 0) {
-    ta.value = ''; ta.disabled = true;
-    info.textContent = 'Belum ada objek terpilih';
+    if (document.activeElement !== ta) ta.value = S.teksGambar || '';
+    judul.textContent = 'Image Text';
+    info.textContent = 'Catatan untuk gambar ini (tanpa objek terpilih)';
     return;
   }
   const s = S.shapes[S.sel];
-  ta.disabled = false;
   if (document.activeElement !== ta) ta.value = s.text || '';
+  judul.textContent = 'Object Text';
   info.textContent = `Catatan untuk objek "${s.label || 'tanpa kelas'}"`;
 }
 
@@ -2114,6 +2210,9 @@ async function simpan(diam = false) {
           flags: s.flags || {}, titipan: s.titipan || {},
         })),
         flags: S.flags,
+        // Catatan tingkat gambar ikut dikirim supaya bisa DISUNTING dari web,
+        // bukan sekadar terbawa lewat jalur field asing.
+        teks_gambar: S.teksGambar,
       }),
     });
     const j = await r.json();
@@ -2171,8 +2270,8 @@ el('btn-zout').onclick = () => zoomDi(1 / 1.25, c.width / 2, c.height / 2);
 el('cari').oninput = renderBerkas;
 el('btn-dup').onclick = duplikatTerpilih;
 el('teks').oninput = () => {
-  if (S.sel < 0) return;
-  S.shapes[S.sel].text = el('teks').value;
+  if (S.sel < 0) S.teksGambar = el('teks').value;
+  else S.shapes[S.sel].text = el('teks').value;
   tandaiKotor();
 };
 el('flagbaru').addEventListener('keydown', ev => {
@@ -2454,7 +2553,7 @@ function muatView() {
   let d = {};
   try { d = JSON.parse(localStorage.getItem(VKUNCI)) || {}; } catch (e) { /* abai */ }
   Object.assign(S.v, d.v || {});
-  const peta = { 'v-poligon': 'poligon', 'v-teks': 'teks', 'v-grup': 'grup',
+  const peta = { 'v-teks': 'teks', 'v-grup': 'grup',
                  'v-kelas': 'namaKelas',
                  'v-isi': 'isi', 'v-silang': 'silang',
                  'v-tanyakelas': 'tanyaKelas',
@@ -2473,6 +2572,24 @@ function muatView() {
     cb.onchange = () => { terapkanPanel(p, cb.checked); simpanView(); };
   });
 }
+
+/*
+ * toggle_polygons (label_widget.py:2069-2073): mengubah centang SETIAP objek di
+ * panel Objects, bukan menyalakan sebuah saringan tersendiri. Karena itulah di
+ * AnyLabeling ia dua aksi terpisah, bukan satu centang — dan karena itu pula
+ * objek yang disembunyikan satu-satu bisa dikembalikan sekaligus. Dulu di sini
+ * tidak ada padanannya sama sekali: yang sudah disembunyikan hanya bisa
+ * dimunculkan satu per satu.
+ */
+function tampilkanSemuaObjek(tampil) {
+  S.shapes.forEach(s => { s.sembunyi = !tampil; });
+  if (!tampil) { S.hover = null; S.sisi = null; petunjuk(null); }
+  render();
+  toast(tampil ? 'Semua objek ditampilkan' : 'Semua objek disembunyikan');
+}
+
+el('v-tampilsemua').onclick = () => tampilkanSemuaObjek(true);
+el('v-sembunyisemua').onclick = () => tampilkanSemuaObjek(false);
 
 const menuView = el('menu-view');
 el('view-tombol').onclick = ev => {

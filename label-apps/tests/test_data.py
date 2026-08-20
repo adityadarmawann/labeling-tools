@@ -1391,3 +1391,85 @@ def test_titik_di_luar_gambar_dikurung_saat_menyimpan(klien, lingkungan):
                                            "flags": {}}).json()["ok"] is True
     p = _json.loads(ip.with_suffix(".json").read_text())["shapes"][0]["points"]
     assert all(0 <= x <= 120 and 0 <= y <= 100 for x, y in p), p
+
+
+# ------------------------------------ paritas panel: flag bawaan & catatan gambar
+
+def test_flag_bawaan_dataset_selalu_ditawarkan(klien, lingkungan, monkeypatch):
+    """
+    label_widget.py:2187-2192 — daftar flag dari setelan SELALU tampil dengan
+    nilai false, lalu ditimpa isi berkas. Tanpa daftar tetap, nama flag harus
+    diketik ulang persis di tiap gambar dan satu salah ketik diam-diam membuat
+    dua flag yang berbeda.
+    """
+    import json as _json
+
+    from app.config import get_settings
+
+    berkas = lingkungan["tmp"] / "flags.txt"
+    berkas.write_text("buram\nterhalang\n")
+    monkeypatch.setenv("LABELAPP_FLAGS_FILE", str(berkas))
+    get_settings.cache_clear()
+
+    masuk(klien, "paul", PW_PAUL)
+    d, ip = _dataset_satu(lingkungan["tmp"], BENTUK_UJI)
+    klien.post(f"/setsrc?path={d}")
+    html = klien.get(f"/label?path={ip}").text
+    data = _json.loads(re.search(r'id="data-awal"[^>]*>(.*?)</script>',
+                                 html, re.S).group(1))
+    assert data["flags_gambar"] == {"buram": False, "terhalang": False}
+
+    # nilai di berkas menang atas bawaan
+    _json_bentuk(ip, BENTUK_UJI)
+    isi = _json.loads(ip.with_suffix(".json").read_text())
+    isi["flags"] = {"buram": True}
+    ip.with_suffix(".json").write_text(_json.dumps(isi))
+    klien.post("/rescan")
+    html = klien.get(f"/label?path={ip}").text
+    data = _json.loads(re.search(r'id="data-awal"[^>]*>(.*?)</script>',
+                                 html, re.S).group(1))
+    assert data["flags_gambar"] == {"buram": True, "terhalang": False}
+
+
+def test_catatan_tingkat_gambar_bisa_dibaca_dan_ditulis(klien, lingkungan):
+    """other_data["image_text"] (label_widget.py:1699) — catatan untuk GAMBAR,
+    berbeda dari catatan per objek. Dulu terbawa tetapi tidak bisa dilihat
+    maupun diubah dari web."""
+    import json as _json
+
+    masuk(klien, "paul", PW_PAUL)
+    d, ip = _dataset_satu(lingkungan["tmp"], BENTUK_UJI)
+    jp = ip.with_suffix(".json")
+    isi = _json.loads(jp.read_text())
+    isi["image_text"] = "foto dari batch pagi"
+    jp.write_text(_json.dumps(isi))
+    klien.post(f"/setsrc?path={d}")
+
+    html = klien.get(f"/label?path={ip}").text
+    data = _json.loads(re.search(r'id="data-awal"[^>]*>(.*?)</script>',
+                                 html, re.S).group(1))
+    assert data["teks_gambar"] == "foto dari batch pagi"
+
+    r = klien.post("/api/simpan", json={
+        "path": str(ip), "shapes": [], "flags": {},
+        "teks_gambar": "diganti dari web"})
+    assert r.json()["ok"] is True
+    assert _json.loads(jp.read_text())["image_text"] == "diganti dari web"
+
+
+def test_daftar_berkas_membawa_penanda_split(klien, lingkungan):
+    """Pada ekspor Roboflow nama berkas yang sama muncul di train/valid/test;
+    tanpa penandanya barisnya tampak kembar dan orang tidak tahu mana yang
+    sedang dibuka."""
+    import json as _json
+
+    masuk(klien, "paul", PW_PAUL)
+    proyek = _proyek_bersplit(lingkungan["tmp"] / "unggahan" / "paul" / "psplit",
+                              n=(2, 1, 1))
+    klien.post("/useupload?ds=psplit")
+    ip = proyek / "train" / "images" / "train0.jpg"
+    html = klien.get(f"/label?path={ip}").text
+    data = _json.loads(re.search(r'id="data-awal"[^>]*>(.*?)</script>',
+                                 html, re.S).group(1))
+    split = sorted({b["split"] for b in data["berkas"]})
+    assert split == ["test", "train", "valid"], split

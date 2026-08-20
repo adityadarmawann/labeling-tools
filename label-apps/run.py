@@ -75,6 +75,11 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--labels", type=Path,
                    help="berkas berisi kelas tambahan (satu per baris) yang "
                         "belum pernah dipakai di dataset.")
+    g.add_argument("--flags", type=Path,
+                   help="berkas berisi flag tingkat gambar (satu per baris) "
+                        "yang selalu ditawarkan di setiap gambar, padanan "
+                        "`flags:` di anylabeling_config.yaml. Tanpa ini, nama "
+                        "flag harus diketik ulang persis di tiap gambar.")
     g.add_argument("--lock-labels", action="store_true",
                    help="tolak label di luar daftar. Aktifkan setelah "
                         "taksonomi kelas final.")
@@ -89,6 +94,7 @@ def to_environ(a: argparse.Namespace) -> None:
         "UPLOADS_ROOT": a.uploads_root,
         "DEFAULT_SRC": a.src,
         "LABELS_FILE": a.labels,
+        "FLAGS_FILE": a.flags,
         "MAX_UPLOAD_MB": a.max_upload_mb,
         "ANYLABELING": a.anylabeling,
         "OPEN_MODE": a.open_mode,

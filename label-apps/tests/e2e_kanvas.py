@@ -293,6 +293,7 @@ def jalankan(d, ip):
     jalankan_kelas(d)
     jalankan_dialog(d)
     jalankan_kanvas(d)
+    jalankan_panel(d)
 
 
 def jalankan_bentuk(d, jp):
@@ -682,6 +683,98 @@ def jalankan_kanvas(d):
         d.js("S.terpilih.length") == 0 and d.js("S.sel") == -1
         and d.js("S.hover") is None,
         "terpilih=%s sel=%s" % (d.js("JSON.stringify(S.terpilih)"), d.js("S.sel")))
+def jalankan_panel(d):
+    """Paritas panel: keterlihatan, gulir ke terpilih, catatan dua tingkat."""
+    print("  -- paritas panel --")
+
+    d.js("S.v.tanyaKelas = false; S.label = 'botol'; S.draft = null;"
+         " S.shapes.length = 0;"
+         " S.shapes.push({label:'a', shape_type:'polygon',"
+         " points:[[5,5],[40,5],[40,40]], text:'', group_id:null, flags:{}, titipan:{}});"
+         " S.terpilih=[]; S.sel=-1; S.kotor=false; setMode('edit'); render();")
+
+    # -------- bentuk tersembunyi tidak bisa disorot maupun dipilih
+    x, y = d.layar(20, 15)
+    d.kirim("Input.dispatchMouseEvent", type="mouseMoved", x=x, y=y,
+            button="none", buttons=0)
+    time.sleep(0.15)
+    cek("bentuk terlihat bisa disorot", d.js("S.hover !== null"),
+        "hover=%s" % d.js("JSON.stringify(S.hover)"))
+
+    d.js("S.shapes[0].sembunyi = true; render();")
+    d.kirim("Input.dispatchMouseEvent", type="mouseMoved", x=x + 3, y=y + 3,
+            button="none", buttons=0)
+    time.sleep(0.15)
+    cek("bentuk tersembunyi TIDAK bisa disorot", d.js("S.hover") is None,
+        "hover=%s" % d.js("JSON.stringify(S.hover)"))
+
+    d.klik(x, y)
+    cek("bentuk tersembunyi TIDAK bisa dipilih dan diseret",
+        d.js("S.terpilih.length") == 0,
+        "terpilih=%s" % d.js("JSON.stringify(S.terpilih)"))
+
+    # -------- "Tampilkan semua objek" mengembalikan yang disembunyikan
+    d.js("document.getElementById('v-tampilsemua').click()")
+    time.sleep(0.2)
+    cek("Tampilkan semua objek mengembalikan yang disembunyikan",
+        d.js("!!S.shapes[0].sembunyi") is False,
+        "sembunyi=%s" % d.js("S.shapes[0].sembunyi"))
+
+    d.js("document.getElementById('v-sembunyisemua').click()")
+    time.sleep(0.2)
+    cek("Sembunyikan semua objek bekerja", d.js("S.shapes[0].sembunyi") is True,
+        "sembunyi=%s" % d.js("S.shapes[0].sembunyi"))
+    d.js("document.getElementById('v-tampilsemua').click()")
+    time.sleep(0.15)
+
+    # -------- daftar objek menggulir ke objek yang dipilih di kanvas
+    d.js("S.shapes.length = 0;"
+         " for (let i = 0; i < 40; i++)"
+         "   S.shapes.push({label:'k'+i, shape_type:'polygon',"
+         "     points:[[5,5],[40,5],[40,40]], text:'', group_id:null,"
+         "     flags:{}, titipan:{}});"
+         " S.terpilih=[]; S.sel=-1; render();")
+    d.js("pilihBentuk(38, false); render();")
+    time.sleep(0.25)
+    terlihat = d.js("(function(){"
+                    " const b = document.getElementById('objek');"
+                    " const a = b.querySelector('.obj[data-on]');"
+                    " if (!a) return 'tidak ada baris terpilih';"
+                    " const rb = b.getBoundingClientRect(), ra = a.getBoundingClientRect();"
+                    " return (ra.bottom > rb.top - 1 && ra.top < rb.bottom + 1)"
+                    "        ? 'terlihat' : 'di luar layar'; })()")
+    cek("daftar objek menggulir ke objek terpilih", terlihat == "terlihat",
+        "hasil=%s" % terlihat)
+
+    # -------- klik ganda di daftar objek membuka dialog ubah kelas
+    d.js("S.v.tanyaKelas = true;")
+    d.js("(function(){ const a = document.querySelectorAll('#objek .obj')[3];"
+         " a.dispatchEvent(new MouseEvent('dblclick', {bubbles:true})); })()")
+    time.sleep(0.3)
+    cek("klik ganda di daftar objek membuka dialog kelas",
+        bool(d.js("!document.getElementById('dlg').hidden")))
+    d.js("document.getElementById('dlg-batal').click()")
+    time.sleep(0.15)
+
+    # -------- catatan tingkat gambar saat tidak ada objek terpilih
+    d.js("S.sel = -1; S.terpilih = []; render();")
+    cek("panel teks beralih ke catatan tingkat gambar",
+        d.js("document.getElementById('teksjudul').textContent") == "Image Text"
+        and d.js("document.getElementById('teks').disabled") is False,
+        "judul=%s" % d.js("document.getElementById('teksjudul').textContent"))
+
+    d.js("(function(){ const t = document.getElementById('teks');"
+         " t.value = 'catatan untuk gambar'; t.dispatchEvent(new Event('input')); })()")
+    time.sleep(0.15)
+    cek("mengetik saat tak ada objek mengisi catatan GAMBAR",
+        d.js("S.teksGambar") == "catatan untuk gambar"
+        and d.js("S.shapes.every(s => !s.text)"),
+        "teksGambar=%r" % d.js("S.teksGambar"))
+
+    d.js("pilihBentuk(0, false); render();")
+    cek("memilih objek mengembalikan panel ke catatan objek",
+        d.js("document.getElementById('teksjudul').textContent") == "Object Text")
+
 
 
 if __name__ == "__main__":

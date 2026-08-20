@@ -129,8 +129,12 @@ async def halaman(request: Request, path: str = "",
         i = items.index(it)
         prev_it = items[i - 1] if i > 0 else None
         next_it = items[i + 1] if i < len(items) - 1 else None
+        # `split` ikut dikirim: pada ekspor Roboflow, nama berkas yang sama bisa
+        # muncul di train/valid/test sebagai baris yang tampak kembar, dan
+        # tanpa penandanya orang tidak tahu mana yang sedang dibuka.
         berkas = [{"nama": x["img"].name, "path": str(x["img"].resolve()),
-                   "n": len(x["shapes"]), "sev": scanner.severity(x)} for x in items]
+                   "n": len(x["shapes"]), "sev": scanner.severity(x),
+                   "split": x.get("split", "")} for x in items]
 
     return templates.TemplateResponse(request, "label.html", {
         "sess": sess,
@@ -142,7 +146,15 @@ async def halaman(request: Request, path: str = "",
         "kelas": daftar_kelas(sess),
         "kelas_resmi": kelas_resmi(sess),
         "bentuk": bentuk_untuk_kanvas(it, mentah),
-        "flags_gambar": mentah.get("flags") or {},
+        # Flag bawaan selalu tampil dengan nilai false lalu ditimpa isi berkas —
+        # persis label_widget.py:2187-2192. Tanpa daftar bawaan, nama flag harus
+        # diketik ulang persis di tiap gambar dan satu salah ketik diam-diam
+        # membuat dua flag berbeda.
+        "flags_gambar": {**dict.fromkeys(sess.settings.flags, False),
+                         **(mentah.get("flags") or {})},
+        # other_data["image_text"] (label_widget.py:1699): catatan tingkat
+        # GAMBAR, berbeda dari catatan per objek.
+        "teks_gambar": mentah.get("image_text") or "",
         "berkas": berkas,
         "sam": autolabel.info(),
     })
@@ -287,6 +299,8 @@ async def api_simpan(request: Request, sess: Session = Depends(current_session_a
         "imageHeight": it["H"],
         "imageWidth": it["W"],
     }
+    if "teks_gambar" in body:
+        isi["image_text"] = str(body.get("teks_gambar") or "")
     tmp = jp.with_suffix(".json.tmp")
     try:
         tmp.write_text(json.dumps(isi, ensure_ascii=False, indent=2), encoding="utf-8")
