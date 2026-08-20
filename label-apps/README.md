@@ -36,9 +36,14 @@ aplikasi desktop masing-masing.
   Roboflow, diverifikasi termuat oleh ultralytics 8.4 sebagai dataset
   segmentasi. Split asli dataset dipertahankan, dan saat membagi sendiri
   augmentasi dari satu foto tidak pernah terpisah antar split
-- **Empat format ekspor**, masing-masing dengan tata letak yang benar-benar
+- **Deteksi satu gambar penuh lewat prompt teks** — sebut nama kelasnya
+  (`botol, kaleng, tetra`), semua yang cocok langsung jadi objek. Lewat
+  YOLO-World XL (keluaran kotak) atau SAM 3 (keluaran poligon); bobotnya
+  diunduh sekali, dan ukurannya disebutkan sebelum tombolnya ditekan. Satu
+  Ctrl+Z membatalkan seluruh deteksi
+- **Lima format ekspor**, masing-masing dengan tata letak yang benar-benar
   bisa dibaca alatnya. YOLO memakai `<split>/images/` + `<split>/labels/`;
-  COCO dan Pascal VOC menaruh gambar SEJAJAR berkas anotasinya karena
+  COCO, Pascal VOC, dan CreateML menaruh gambar SEJAJAR berkas anotasinya karena
   `file_name` dan `filename` di kedua format itu diselesaikan relatif terhadap
   letak berkas anotasi. `category_id` COCO dihitung sekali untuk seluruh
   dataset mengikuti urutan `data.yaml`, jadi id yang sama berarti kelas yang
@@ -314,6 +319,9 @@ Hal-hal yang jelas dibutuhkan kalau dipakai satu tim penuh, dan belum dikerjakan
   yang sama dan saling menimpa anotasi latar
 - **Jejak audit** — tidak ada catatan siapa mengubah apa dan kapan
 - **Peran** — semua akun punya hak yang sama
-- **Ekspor CreateML**, **model selain MobileSAM**, **prompt teks**, serta
-  **ganti bahasa dan tema** — di luar alur melabeli, menyusul kemudian
-  (lihat H.2 di [AUDIT-ANYLABELING.md](AUDIT-ANYLABELING.md))
+- **Ganti bahasa** — AnyLabeling punya menu Bahasa karena pemakainya
+  internasional. Di sini tidak dikerjakan atas keputusan sadar: seluruh tim
+  berbahasa Indonesia, sementara biayanya sekitar 400 teks yang harus
+  diterjemahkan dan setiap perubahan teks ke depan jadi dua kali kerja.
+  Tema tetap ada (terang/gelap/ikut sistem)
+- **Pembagian tugas dan penguncian antar-anggota** — lihat butir pertama
