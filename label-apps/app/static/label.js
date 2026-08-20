@@ -1383,6 +1383,85 @@ function tutupDraft() {
   });
 }
 
+// ---------------------------------------------------------- deteksi dari teks
+
+/*
+ * Sebut nama kelasnya, seluruh gambar dipindai sekaligus.
+ *
+ * Hasilnya LANGSUNG jadi objek, tidak lewat dialog kelas satu per satu — kelas
+ * tiap objek sudah ditentukan oleh kata yang memicunya, dan menanyakannya lagi
+ * untuk tiga puluh objek sekaligus bukan bantuan. Sama seperti
+ * new_shapes_from_auto_labeling di AnyLabeling, yang juga memasukkan hasilnya
+ * apa adanya. Semuanya masuk dalam SATU langkah urungkan, jadi satu Ctrl+Z
+ * membatalkan seluruh deteksi kalau hasilnya tidak sesuai.
+ */
+(() => {
+  const tombol = el('teks-jalan');
+  if (!tombol) return;
+  const kotak = el('teks-kelas');
+  const pilih = el('teks-model');
+  const info = el('teks-info');
+
+  function biaya() {
+    const o = pilih.selectedOptions[0];
+    if (!o) return '';
+    return o.dataset.terunduh === '1'
+      ? ''
+      : `model ini perlu diunduh dulu, ±${o.dataset.unduh} MB (sekali saja)`;
+  }
+  pilih.onchange = () => { info.textContent = biaya(); };
+  info.textContent = biaya();
+
+  tombol.onclick = async () => {
+    const teks = kotak.value.trim();
+    if (!teks) { toast('Tulis dulu nama kelas yang dicari'); kotak.focus(); return; }
+    const o = pilih.selectedOptions[0];
+    if (o && o.dataset.terunduh !== '1' &&
+        !confirm(`Model "${o.textContent}" belum ada di server dan perlu diunduh `
+               + `sekitar ${o.dataset.unduh} MB. Unduhannya sekali saja, tapi `
+               + `deteksi pertama akan lama. Lanjutkan?`)) return;
+
+    tombol.disabled = true;
+    const semula = tombol.textContent;
+    tombol.textContent = 'Mendeteksi…';
+    info.textContent = o && o.dataset.terunduh !== '1'
+      ? 'mengunduh model dulu — ini bisa beberapa menit' : 'memindai gambar…';
+    try {
+      const j = await send('/api/deteksi', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          path: D.path, teks, model: pilih.value,
+          ambang: parseFloat(el('teks-ambang').value) || 0.1 }),
+      });
+      if (!j.ok) { info.textContent = ''; toast(j.error); return; }
+      if (!j.bentuk.length) { info.textContent = ''; toast('Tidak ada yang cocok'); return; }
+
+      simpanUndo();
+      j.bentuk.forEach(b => {
+        S.shapes.push({ label: b.label, shape_type: b.shape_type,
+                        points: b.points, text: '', group_id: null,
+                        flags: {}, titipan: {} });
+        if (!S.kelas.includes(b.label)) S.kelas.push(b.label);
+      });
+      S.kelas.sort();
+      S.sel = S.shapes.length - 1;
+      S.terpilih = [S.sel];
+      tandaiKotor();
+      render();
+      info.textContent = `${j.n} objek ditemukan — Ctrl+Z membatalkan semuanya`;
+      toast(`${j.n} objek ditambahkan dari "${teks}"`);
+      if (o) o.dataset.terunduh = '1';
+    } catch (e) {
+      info.textContent = '';
+      toast('Gagal menghubungi server');
+    } finally {
+      tombol.disabled = false;
+      tombol.textContent = semula;
+    }
+  };
+})();
+
 // ---------------------------------------------------------------- dialog kelas
 
 /*

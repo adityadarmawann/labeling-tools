@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request, Response
@@ -209,6 +210,46 @@ async def api_sam(request: Request, sess: Session = Depends(current_session_api)
 
     return {"ok": True, "points": u.points, "bbox": u.bbox,
             "model": u.model, "dari_cache": u.dari_cache}
+
+
+@router.post("/api/deteksi")
+async def api_deteksi(request: Request, sess: Session = Depends(current_session_api)):
+    """
+    Prompt TEKS: sebutkan nama kelasnya, seluruh gambar dipindai sekaligus.
+
+    Menjawab dua hal yang di AnyLabeling terpisah — prompt teks SAM 3 dan
+    tombol Run yang melabeli satu gambar penuh — karena di sini keduanya satu
+    jalur kode.
+
+    Bobot modelnya diunduh sendiri oleh osam saat pertama dipakai, dan itu bisa
+    ratusan MB sampai beberapa GB. Karena itu permintaan ini bisa menggantung
+    lama pada pemakaian pertama; ukurannya sudah disebutkan di antarmuka
+    sebelum tombolnya ditekan.
+    """
+    body = await request.json()
+    it = sess.find(body.get("path", ""))
+    if not it:
+        return {"ok": False, "error": "berkas tidak dikenal di dataset ini"}
+
+    model = body.get("model") or "yoloworld:latest"
+    teks = body.get("teks") or []
+    if isinstance(teks, str):
+        teks = [t for t in re.split(r"[,\n]", teks)]
+    ambang = min(max(float(body.get("ambang", 0.1)), 0.01), 0.95)
+    maks = min(max(int(body.get("maks", 100)), 1), 500)
+    eps = min(max(float(body.get("eps", autolabel.EPSILON_ANYLABELING)), 0.0005), 0.05)
+    try:
+        temuan = await asyncio.to_thread(autolabel.dari_teks, it["img"], teks,
+                                         model, ambang, maks, eps)
+    except TidakAdaObjek as e:
+        return {"ok": False, "error": str(e)}
+    except Exception as e:                       # unduhan gagal, model rusak, dst.
+        return {"ok": False, "error": f"{type(e).__name__}: {str(e)[:160]}"}
+
+    return {"ok": True, "model": model, "n": len(temuan),
+            "bentuk": [{"label": t.label, "shape_type": t.shape_type,
+                        "points": t.points, "skor": round(t.skor, 3)}
+                       for t in temuan]}
 
 
 @router.post("/api/simpan")

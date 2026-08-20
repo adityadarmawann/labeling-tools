@@ -1473,3 +1473,90 @@ def test_daftar_berkas_membawa_penanda_split(klien, lingkungan):
                                  html, re.S).group(1))
     split = sorted({b["split"] for b in data["berkas"]})
     assert split == ["test", "train", "valid"], split
+
+
+# ------------------------------------------------ deteksi lewat prompt teks
+
+def test_deteksi_teks_mengembalikan_banyak_objek(klien, lingkungan, monkeypatch):
+    """
+    Jalur prompt teks: sebut nama kelasnya, seluruh gambar dipindai sekaligus.
+
+    Modelnya diganti boneka supaya yang diuji adalah plumbingnya — penguraian
+    permintaan, batas nilai, dan bentuk balasannya — tanpa menarik unduhan
+    ratusan MB ke mesin yang menjalankan tes.
+    """
+    from app.services import autolabel
+
+    masuk(klien, "paul", PW_PAUL)
+    d, ip = _dataset_satu(lingkungan["tmp"], BENTUK_UJI)
+    klien.post(f"/setsrc?path={d}")
+
+    dipanggil = {}
+
+    def boneka(img, teks, model, ambang, maks, eps):
+        dipanggil.update(teks=teks, model=model, ambang=ambang, maks=maks)
+        return [
+            autolabel.Temuan("botol", [[1, 1], [9, 1], [9, 9]], (1, 1, 9, 9),
+                             0.91, "polygon"),
+            autolabel.Temuan("kaleng", [[20, 20], [40, 40]], (20, 20, 40, 40),
+                             0.77, "rectangle"),
+        ]
+
+    monkeypatch.setattr(autolabel, "dari_teks", boneka)
+    r = klien.post("/api/deteksi", json={
+        "path": str(ip), "teks": "botol, kaleng\ntetra", "model": "yoloworld:latest",
+        "ambang": 0.3, "maks": 50}).json()
+
+    assert r["ok"] is True and r["n"] == 2
+    assert [b["label"] for b in r["bentuk"]] == ["botol", "kaleng"]
+    assert [b["shape_type"] for b in r["bentuk"]] == ["polygon", "rectangle"]
+    assert r["bentuk"][0]["skor"] == 0.91
+    # teks dipisah dengan koma DAN baris baru
+    assert dipanggil["teks"] == ["botol", " kaleng", "tetra"]
+    assert dipanggil["ambang"] == 0.3 and dipanggil["maks"] == 50
+
+
+def test_deteksi_teks_membatasi_nilai_yang_di_luar_akal(klien, lingkungan,
+                                                        monkeypatch):
+    from app.services import autolabel
+
+    masuk(klien, "paul", PW_PAUL)
+    d, ip = _dataset_satu(lingkungan["tmp"], BENTUK_UJI)
+    klien.post(f"/setsrc?path={d}")
+
+    dilihat = {}
+
+    def boneka(img, teks, model, ambang, maks, eps):
+        dilihat.update(ambang=ambang, maks=maks)
+        return [autolabel.Temuan("botol", [[1, 1], [9, 9]], (1, 1, 9, 9), 1.0,
+                                 "rectangle")]
+
+    monkeypatch.setattr(autolabel, "dari_teks", boneka)
+    klien.post("/api/deteksi", json={"path": str(ip), "teks": "botol",
+                                     "ambang": 99, "maks": 99999})
+    assert dilihat["ambang"] == 0.95 and dilihat["maks"] == 500
+    klien.post("/api/deteksi", json={"path": str(ip), "teks": "botol",
+                                     "ambang": -5, "maks": 0})
+    assert dilihat["ambang"] == 0.01 and dilihat["maks"] == 1
+
+
+def test_deteksi_teks_menolak_model_yang_bukan_model_teks(lingkungan):
+    from app.services import autolabel
+
+    d, ip = _dataset_satu(lingkungan["tmp"], BENTUK_UJI)
+    with pytest.raises(autolabel.TidakAdaObjek, match="tidak menerima prompt teks"):
+        autolabel.dari_teks(ip, ["botol"], "mobilesam")
+    with pytest.raises(autolabel.TidakAdaObjek, match="belum ada nama kelas"):
+        autolabel.dari_teks(ip, ["  ", ""], "yoloworld:latest")
+
+
+def test_info_melaporkan_model_teks_beserta_ukuran_unduhannya():
+    """Antarmuka harus bisa mengatakan biayanya SEBELUM tombolnya ditekan —
+    3,4 GB bukan sesuatu yang boleh dimulai diam-diam."""
+    from app.services import autolabel
+
+    teks = {t["model"]: t for t in autolabel.info()["teks"]}
+    assert set(teks) == {"yoloworld:latest", "sam3:latest"}
+    assert teks["yoloworld:latest"]["unduh_mb"] == 641
+    assert teks["sam3:latest"]["unduh_mb"] == 3412
+    assert all(isinstance(t["terunduh"], bool) for t in teks.values())

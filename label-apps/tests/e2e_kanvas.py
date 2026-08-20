@@ -35,6 +35,12 @@ PORT, CDP = 8044, 9333
 
 lolos, gagal = [], []
 
+# Blok mana yang dijalankan. Tanpa argumen: semuanya. Dengan argumen, misalnya
+#     .venv/bin/python tests/e2e_kanvas.py panel kanvas
+# hanya blok itu — seluruh berkas ini butuh beberapa menit, dan menunggu semuanya
+# hanya untuk memeriksa satu blok membuat orang berhenti menjalankannya.
+BLOK = set(sys.argv[1:])
+
 
 def cek(nama, syarat, detail=""):
     (lolos if syarat else gagal).append(nama)
@@ -73,11 +79,27 @@ class Cdp:
     def __init__(self, ws):
         self.ws, self.n = ws, 0
 
+    # Batas tunggu tiap perintah. Tanpa ini, satu dialog peramban yang menahan
+    # halaman (confirm/alert/prompt) membuat Runtime.evaluate tidak pernah
+    # dijawab, dan seluruh berkas uji menggantung sampai dibunuh dari luar —
+    # tanpa satu baris pun yang memberi tahu perintah mana penyebabnya.
+    BATAS_DETIK = 20
+
     def kirim(self, metode, **params):
         self.n += 1
         self.ws.send(json.dumps({"id": self.n, "method": metode, "params": params}))
+        batas = time.time() + self.BATAS_DETIK
         while True:
-            pesan = json.loads(self.ws.recv())
+            sisa = batas - time.time()
+            if sisa <= 0:
+                raise RuntimeError(
+                    f"{metode} tidak dijawab dalam {self.BATAS_DETIK} detik — "
+                    f"biasanya karena dialog peramban (confirm/alert) menahan "
+                    f"halaman. params={str(params)[:120]}")
+            try:
+                pesan = json.loads(self.ws.recv(timeout=sisa))
+            except TimeoutError:
+                continue
             if pesan.get("id") == self.n:
                 if "error" in pesan:
                     raise RuntimeError(f"{metode}: {pesan['error']}")
@@ -289,11 +311,14 @@ def jalankan(d, ip):
         len(json.loads(jp.read_text())["shapes"]) == len(isi_baru["shapes"]))
     d.js("S.shapes.pop(); S.kotor=false; render();")
 
-    jalankan_bentuk(d, jp)
-    jalankan_kelas(d)
-    jalankan_dialog(d)
-    jalankan_kanvas(d)
-    jalankan_panel(d)
+    for nama, fn in (("bentuk", lambda: jalankan_bentuk(d, jp)),
+                     ("kelas", lambda: jalankan_kelas(d)),
+                     ("dialog", lambda: jalankan_dialog(d)),
+                     ("kanvas", lambda: jalankan_kanvas(d)),
+                     ("panel", lambda: jalankan_panel(d))):
+        if BLOK and nama not in BLOK:
+            continue
+        fn()
 
 
 def jalankan_bentuk(d, jp):
@@ -799,6 +824,54 @@ def jalankan_panel(d):
         cek(f"latar body jelas di tema {t}",
             "rgba(0, 0, 0, 0)" not in bg() and bg() != "transparent", bg())
     d.js("pasangTema('system')")
+
+    # -------- deteksi dari prompt teks
+    # fetch dibonekakan: yang diuji plumbing antarmukanya, bukan modelnya —
+    # menarik 641 MB di tengah tes bukan sesuatu yang boleh terjadi diam-diam.
+    d.js("""
+      window.__fetchAsli = window.fetch;
+      window.fetch = function (u, o) {
+        if (String(u).indexOf('/api/deteksi') === 0) {
+          return Promise.resolve(new Response(JSON.stringify({
+            ok: true, model: 'yoloworld:latest', n: 2, bentuk: [
+              {label:'botol',  shape_type:'polygon',
+               points:[[5,5],[30,5],[30,30]], skor:0.9},
+              {label:'kaleng', shape_type:'rectangle',
+               points:[[40,40],[70,70]], skor:0.8}]}),
+            {status: 200, headers: {'Content-Type': 'application/json'}}));
+        }
+        return window.__fetchAsli(u, o);
+      };
+    """)
+    # confirm/alert/prompt bawaan peramban MENAHAN halaman, dan CDP lalu menunggu
+    # balasan Runtime.evaluate yang tidak akan pernah datang. Dimatikan di sini
+    # supaya tes berakhir dengan pesan, bukan menggantung; batas 20 detik di
+    # kirim() adalah jaring terakhirnya.
+    d.js("window.confirm = () => true; window.alert = () => {};")
+    # Bobot ditandai sudah ada, supaya yang diuji jalur deteksinya — bukan
+    # peringatan unduhan.
+    d.js("[...document.querySelectorAll('#teks-model option')]"
+         ".forEach(o => o.dataset.terunduh = '1')")
+    d.js("S.shapes.length = 0; S.terpilih = []; S.sel = -1; S.kotor = false;"
+         " document.getElementById('teks-kelas').value = 'botol, kaleng';"
+         " render();")
+    d.js("document.getElementById('teks-jalan').click()")
+    time.sleep(0.6)
+    cek("deteksi teks menambahkan semua objek yang ditemukan",
+        d.js("S.shapes.length") == 2
+        and d.js("JSON.stringify(S.shapes.map(s => s.label))") == '["botol","kaleng"]',
+        "n=%s label=%s" % (d.js("S.shapes.length"),
+                           d.js("JSON.stringify(S.shapes.map(s => s.label))")))
+    cek("tipe bentuk mengikuti yang dikembalikan model",
+        d.js("JSON.stringify(S.shapes.map(s => s.shape_type))")
+        == '["polygon","rectangle"]')
+    cek("kelas baru dari hasil deteksi masuk daftar kelas",
+        bool(d.js("S.kelas.includes('botol') && S.kelas.includes('kaleng')")))
+    d.js("urungkan()")
+    time.sleep(0.2)
+    cek("satu Ctrl+Z membatalkan SELURUH deteksi",
+        d.js("S.shapes.length") == 0, "n=%s" % d.js("S.shapes.length"))
+    d.js("window.fetch = window.__fetchAsli;")
 
 
 

@@ -364,3 +364,12 @@ body.lab {
   text-transform:uppercase; color:var(--ink-faint); border:1px solid var(--line2);
   border-radius:3px; padding:0 4px; margin-left:auto; flex:0 0 auto}
 #berkasinfo{margin:6px 2px 0; font-size:11px; color:var(--ink-faint)}
+
+/* Bar prompt teks: satu baris di bawah bar Auto Labeling. */
+#bar-teks input[type=text]{flex:1 1 260px; min-width:180px; padding:5px 9px;
+  font-size:12.5px; border:1px solid var(--line2); border-radius:5px;
+  background:var(--raised); color:var(--ink)}
+#bar-teks input[type=number]{width:70px; padding:5px 7px; font-size:12.5px;
+  border:1px solid var(--line2); border-radius:5px;
+  background:var(--raised); color:var(--ink)}
+#teks-info{white-space:nowrap}

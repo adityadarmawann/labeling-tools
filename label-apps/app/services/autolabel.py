@@ -45,6 +45,20 @@ MODEL_DIIZINKAN = {
     "sam2:small",
 }
 
+# Model yang menerima PROMPT TEKS: sebutkan nama kelasnya, lalu seluruh gambar
+# dipindai sekaligus. Ini padanan dua hal di AnyLabeling yang ternyata satu
+# jalur kode di sini — prompt teks SAM3 (segment_anything.py:318-352) dan tombol
+# Run yang melabeli satu gambar penuh (auto_labeling.py:83-84).
+#
+# Keduanya perlu unduhan besar pada pemakaian pertama, dan angkanya disebutkan
+# di antarmuka supaya tidak ada kejutan: osam mengunduhnya sendiri ke
+# ~/.cache/osam saat pertama dipanggil.
+MODEL_TEKS = {
+    "yoloworld:latest": {"nama": "YOLO-World XL", "unduh_mb": 641,
+                         "bentuk": "rectangle"},
+    "sam3:latest": {"nama": "SAM 3", "unduh_mb": 3412, "bentuk": "polygon"},
+}
+
 # Ukuran kanvas encoder. Nilai (tinggi, lebar) ini diambil apa adanya dari
 # SegmentAnythingONNX AnyLabeling (`self.input_size`), bukan dipilih sendiri:
 # hasil segmentasi bergantung padanya. Diuji berdampingan — dengan padding
@@ -88,6 +102,17 @@ class Usulan:
     bbox: tuple[int, int, int, int]
     model: str
     dari_cache: bool
+
+
+@dataclass
+class Temuan:
+    """Satu objek yang ditemukan dari prompt teks."""
+
+    label: str
+    points: list[list[float]]
+    bbox: tuple[int, int, int, int]
+    skor: float
+    shape_type: str
 
 
 # ---------------------------------------------------------------- MobileSAM
@@ -348,13 +373,94 @@ def dari_titik(img: Path, titik, label=None, model: str = MODEL_DEFAULT,
     return _segment(img, titik, label, model, eps)
 
 
+def dari_teks(img: Path, teks: list[str], model: str = "yoloworld:latest",
+              ambang: float = 0.1, maks: int = 100,
+              eps: float = EPSILON_ANYLABELING) -> list[Temuan]:
+    """
+    Sebutkan nama kelasnya, seluruh gambar dipindai sekaligus.
+
+    Mengembalikan SEMUA objek yang cocok, masing-masing dengan nama kelas yang
+    memicunya. Berbeda dari jalur prompt titik/kotak yang selalu mengembalikan
+    satu objek.
+
+    Jalur ini TIDAK memakai cache embedding: embedding yang disimpan di sana
+    milik encoder SAM berprompt-geometri, sedangkan model teks memakai encoder
+    lain dan bahkan bentuk keluaran yang lain. Memakai ulang cache-nya akan
+    memberi hasil yang salah tanpa satu pun galat.
+    """
+    if model not in MODEL_TEKS:
+        raise TidakAdaObjek(f"model '{model}' tidak menerima prompt teks")
+    teks = [str(t).strip() for t in teks if str(t).strip()]
+    if not teks:
+        raise TidakAdaObjek("belum ada nama kelas yang dicari")
+
+    import osam.apis
+    import osam.types
+
+    bgr = cv2.imread(str(img))
+    if bgr is None:
+        raise TidakAdaObjek("gambar tidak bisa dibaca")
+    rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+
+    with _KUNCI:            # sesi model global, harus diserialkan
+        r = osam.apis.generate(osam.types.GenerateRequest(
+            model=model, image=rgb,
+            prompt=osam.types.Prompt(texts=teks, score_threshold=float(ambang),
+                                     max_annotations=int(maks))))
+
+    out: list[Temuan] = []
+    for a in r.annotations or []:
+        bb = a.bounding_box
+        if bb is None:
+            continue
+        kotak = (int(bb.xmin), int(bb.ymin), int(bb.xmax), int(bb.ymax))
+        # Mask dipakai kalau modelnya memberi mask (SAM 3); kalau tidak, yang
+        # ada hanya kotak (YOLO-World), dan itu memang bentuk keluarannya.
+        titik = None
+        if a.mask is not None:
+            poly = mask_ke_poligon(a.mask, (kotak[0], kotak[1]), eps)
+            if poly is not None:
+                titik = poly.tolist()
+        jenis = "polygon" if titik else "rectangle"
+        if titik is None:
+            titik = [[kotak[0], kotak[1]], [kotak[2], kotak[3]]]
+        out.append(Temuan(label=a.text or teks[0], points=titik, bbox=kotak,
+                          skor=float(a.score or 0.0), shape_type=jenis))
+    if not out:
+        raise TidakAdaObjek("tidak ada objek yang cocok dengan nama kelas itu")
+    return out
+
+
 def info() -> dict:
     """Keadaan mesin, untuk ditampilkan di antarmuka."""
     d = dir_model()
     ada = bool(list(d.glob("*encoder*.onnx")) and list(d.glob("*decoder*.onnx")))
     return {"default": MODEL_DEFAULT, "tersedia": sorted(MODEL_DIIZINKAN),
             "mobilesam_siap": ada, "dir_model": str(d),
-            "provider": _sesi_mobilesam.provider if _sesi_mobilesam else None}
+            "provider": _sesi_mobilesam.provider if _sesi_mobilesam else None,
+            # Model teks dilaporkan terpisah beserta ukuran unduhannya dan
+            # apakah bobotnya sudah ada, supaya antarmuka bisa mengatakan
+            # biayanya SEBELUM orang menekan tombolnya.
+            "teks": [{"model": m, **d2, "terunduh": _sudah_terunduh(m)}
+                     for m, d2 in sorted(MODEL_TEKS.items())]}
+
+
+def _sudah_terunduh(model: str) -> bool:
+    """
+    Bobot model itu sudah ada di cache atau belum.
+
+    Ditanyakan ke osam sendiri lewat get_modified_at(), yang mengembalikan None
+    selama bobotnya belum lengkap. Sempat ditebak dengan melihat apakah folder
+    cache berisi sesuatu — tebakan itu menjawab "sudah" untuk SEMUA model begitu
+    satu model mana pun pernah diunduh, yaitu persis jenis klaim keliru yang
+    membuat antarmuka berbohong.
+    """
+    try:
+        import osam.apis
+        k = osam.apis.get_model_type_by_name(model)
+        return k.get_modified_at() is not None
+    except Exception:
+        return False
 
 
 def kosongkan_cache() -> None:

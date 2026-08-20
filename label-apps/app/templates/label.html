@@ -134,6 +134,27 @@
       <span class="lab-pesan" id="pesan"></span>
     </div>
 
+    {# Prompt teks: sebut nama kelasnya, seluruh gambar dipindai sekaligus.
+       Menjawab dua hal yang di AnyLabeling terpisah — prompt teks SAM 3
+       (segment_anything.py:318-352) dan tombol Run yang melabeli satu gambar
+       penuh (auto_labeling.py:83-84). #}
+    <div class="lab-auto" id="bar-teks">
+      <span class="lbl">Cari</span>
+      <input id="teks-kelas" type="text" autocomplete="off"
+             placeholder="nama kelas dipisah koma, mis. botol, kaleng, tetra">
+      <select id="teks-model">
+        {% for t in sam.teks %}
+        <option value="{{ t.model }}" data-unduh="{{ t.unduh_mb }}"
+                data-terunduh="{{ 1 if t.terunduh else 0 }}"
+                data-bentuk="{{ t.bentuk }}">{{ t.nama }}</option>
+        {% endfor %}
+      </select>
+      <span class="lbl">Ambang</span>
+      <input id="teks-ambang" type="number" min="0.01" max="0.95" step="0.05" value="0.1">
+      <button class="ab" id="teks-jalan">Deteksi seluruh gambar</button>
+      <span class="lab-pesan" id="teks-info"></span>
+    </div>
+
     <div class="lab-canvas" id="wrap">
       <canvas id="c"></canvas>
       <div class="lab-busy" id="busy">SAM bekerja…</div>
