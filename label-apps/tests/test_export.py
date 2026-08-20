@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import io
 import json
+import re
 import zipfile
 
 import cv2
@@ -542,3 +543,127 @@ def test_ringkasan_tidak_menahan_kunci_sesi_selama_menghitung(klien, lingkungan,
     monkeypatch.setattr(export, "ringkasan", rekam)
     assert klien.get("/api/ekspor/ringkasan?format=yolo-seg").json()["ok"] is True
     assert terkunci == [False], "kunci sesi masih dipegang selagi menghitung"
+
+
+# ------------------------------------------- tata letak & kategori COCO / VOC
+
+def _dataset_kaya(d, n=6, W=120, H=100):
+    """Dataset dengan data.yaml, dan satu kelas yang HANYA dipakai pada `point`
+    sehingga tidak pernah ikut diekspor ke COCO/VOC."""
+    d.mkdir(parents=True, exist_ok=True)
+    for i in range(n):
+        p = d / f"g{i}.jpg"
+        cv2.imwrite(str(p), np.full((H, W, 3), 60, np.uint8))
+        p.with_suffix(".json").write_text(json.dumps({
+            "version": "0.4.36", "flags": {}, "imagePath": p.name,
+            "imageHeight": H, "imageWidth": W, "imageData": None, "shapes": [
+                {"label": "botol", "shape_type": "polygon",
+                 "points": [[5, 5], [50, 5], [50, 60]]},
+                {"label": "penanda", "shape_type": "point", "points": [[10, 10]]},
+                {"label": "tetra", "shape_type": "rectangle",
+                 "points": [[60, 10], [110, 70]]},
+            ]}))
+    (d / "data.yaml").write_text("names: [botol, kaleng, mlp, tetra]\n")
+    return d
+
+
+def _zip(items, names, fmt, rasio="50,25,25"):
+    return zipfile.ZipFile(io.BytesIO(ex.zip_dataset(
+        items, "uji", fmt, True, ex.baca_rasio(rasio), names)))
+
+
+def test_coco_file_name_bisa_ditemukan_di_sebelah_json(tmp_path):
+    """
+    `file_name` di COCO berisi nama berkas saja dan diselesaikan relatif
+    terhadap letak berkas anotasi. Dulu JSON-nya di `train/` sementara gambarnya
+    di `train/images/`, jadi loader COCO mana pun mencari berkas yang tidak ada —
+    ekspornya tidak bisa dipakai sama sekali.
+    """
+    items, names = scanner.scan(_dataset_kaya(tmp_path / "ds"))
+    z = _zip(items, names, "coco")
+    isi = set(z.namelist())
+    ada_anotasi = 0
+    for split in ("train", "valid", "test"):
+        nm = f"{split}/_annotations.coco.json"
+        if nm not in isi:
+            continue
+        j = json.loads(z.read(nm))
+        ada_anotasi += len(j["annotations"])
+        for g in j["images"]:
+            assert f"{split}/{g['file_name']}" in isi, (split, g["file_name"])
+    assert ada_anotasi > 0, "tidak ada anotasi sama sekali — ujinya tidak bermakna"
+
+
+def test_coco_category_id_sama_di_semua_split_dan_ikut_data_yaml(tmp_path):
+    """Dulu kategori diturunkan dari label yang kebetulan ada DI SPLIT ITU,
+    padahal dictnya dibuat per split — `category_id` yang sama berarti kelas
+    berbeda di train/ dan valid/, dan datasetnya tidak bisa digabung lagi."""
+    items, names = scanner.scan(_dataset_kaya(tmp_path / "ds"))
+    z = _zip(items, names, "coco")
+    kat = {}
+    for split in ("train", "valid", "test"):
+        nm = f"{split}/_annotations.coco.json"
+        if nm in z.namelist():
+            kat[split] = {c["id"]: c["name"] for c in json.loads(z.read(nm))["categories"]}
+    assert len(kat) >= 2
+    assert len({str(v) for v in kat.values()}) == 1, kat
+    # urutan data.yaml yang dipakai, bukan abjad label yang kebetulan ada
+    satu = next(iter(kat.values()))
+    assert [satu[i] for i in (1, 2, 3, 4)] == ["botol", "kaleng", "mlp", "tetra"]
+
+
+def test_kelas_yang_hanya_dipakai_bentuk_tak_diekspor_tidak_menggeser_id(tmp_path):
+    """Anotasi COCO hanya ditulis untuk rectangle dan polygon. Kelas yang cuma
+    dipakai pada `point` karena itu tidak boleh menempati id di tengah dan
+    menggeser kelas sesudahnya (cacat export_formats.py:249-255, sengaja tidak
+    ditiru)."""
+    items, names = scanner.scan(_dataset_kaya(tmp_path / "ds"))
+    z = _zip(items, names, "coco")
+    nm = next(n for n in z.namelist() if n.endswith("_annotations.coco.json"))
+    j = json.loads(z.read(nm))
+    peta = {c["name"]: c["id"] for c in j["categories"]}
+    assert peta["botol"] == 1 and peta["tetra"] == 4
+    assert peta["penanda"] > 4, peta          # ditaruh di belakang, bukan disisipkan
+    dipakai = {a["category_id"] for a in j["annotations"]}
+    assert peta["penanda"] not in dipakai
+
+
+def test_voc_xml_ada_di_sebelah_gambarnya_dan_tanpa_path_server(tmp_path):
+    """`<path>` dulu berisi path ABSOLUT di server: tidak berguna di komputer
+    lain, dan membocorkan susunan folder mesin ini ke berkas yang diunduh."""
+    items, names = scanner.scan(_dataset_kaya(tmp_path / "ds"))
+    z = _zip(items, names, "voc")
+    isi = set(z.namelist())
+    xml = [n for n in isi if n.endswith(".xml")]
+    assert xml
+    for n in xml:
+        split = n.split("/")[0]
+        x = z.read(n).decode()
+        assert str(tmp_path) not in x, "path server bocor ke XML"
+        assert f"<folder>{split}</folder>" in x, x[:200]
+        nama = re.search(r"<filename>(.*?)</filename>", x).group(1)
+        assert f"<path>{split}/{nama}</path>" in x
+        assert f"{split}/{nama}" in isi, "gambarnya tidak ada di sebelah XML-nya"
+
+
+def test_nama_berkas_bentrok_tidak_saling_menimpa(tmp_path):
+    """Dua gambar bernama sama dari subfolder berbeda bertemu di satu folder
+    setelah diratakan. Menimpanya berarti satu gambar hilang dan satu baris
+    anotasi menunjuk gambar yang salah."""
+    d = tmp_path / "ds2"
+    for sub in ("a", "b"):
+        (d / sub).mkdir(parents=True)
+        p = d / sub / "sama.jpg"
+        cv2.imwrite(str(p), np.full((100, 120, 3), 60, np.uint8))
+        p.with_suffix(".json").write_text(json.dumps({
+            "version": "0.4.36", "flags": {}, "imagePath": p.name,
+            "imageHeight": 100, "imageWidth": 120, "imageData": None, "shapes": [
+                {"label": "botol", "shape_type": "polygon",
+                 "points": [[5, 5], [50, 5], [50, 60]]}]}))
+    items, names = scanner.scan(d)
+    z = _zip(items, names, "coco", rasio="100,0,0")
+    j = json.loads(z.read("train/_annotations.coco.json"))
+    nama = sorted(g["file_name"] for g in j["images"])
+    assert len(nama) == 2 and len(set(nama)) == 2, nama
+    for g in j["images"]:
+        assert f"train/{g['file_name']}" in z.namelist()

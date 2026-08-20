@@ -11,3 +11,12 @@ numpy==2.5.2
 Pillow==12.3.0
 # PyYAML membaca data.yaml ekspor Roboflow untuk mengambil nama kelas.
 PyYAML==6.0.3
+# Pelabelan otomatis. Keduanya diimpor MALAS di dalam fungsi (autolabel.py:110
+# dan :273), jadi ketidakhadirannya tidak menggagalkan server — ia hanya
+# mematikan seluruh SAM, dan galatnya baru muncul sebagai ModuleNotFoundError
+# saat klik SAM pertama. Karena itu keduanya harus tercatat di sini: pemasangan
+# bersih yang mengikuti README tidak boleh menghasilkan fitur yang mati diam.
+onnxruntime==1.28.0
+# osam menyediakan EfficientSAM dan SAM 2 tanpa perlu mengurus berkas ONNX
+# sendiri; MobileSAM tetap lewat onnxruntime langsung.
+osam==0.5.0

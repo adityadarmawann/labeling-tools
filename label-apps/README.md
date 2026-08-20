@@ -36,6 +36,13 @@ aplikasi desktop masing-masing.
   Roboflow, diverifikasi termuat oleh ultralytics 8.4 sebagai dataset
   segmentasi. Split asli dataset dipertahankan, dan saat membagi sendiri
   augmentasi dari satu foto tidak pernah terpisah antar split
+- **Empat format ekspor**, masing-masing dengan tata letak yang benar-benar
+  bisa dibaca alatnya. YOLO memakai `<split>/images/` + `<split>/labels/`;
+  COCO dan Pascal VOC menaruh gambar SEJAJAR berkas anotasinya karena
+  `file_name` dan `filename` di kedua format itu diselesaikan relatif terhadap
+  letak berkas anotasi. `category_id` COCO dihitung sekali untuk seluruh
+  dataset mengikuti urutan `data.yaml`, jadi id yang sama berarti kelas yang
+  sama di `train/`, `valid/`, dan `test/`
 - **Tombol "Perbaiki di AnyLabeling"** — hanya aktif untuk akses dari mesin
   server, karena jendela Qt-nya muncul di layar server
 

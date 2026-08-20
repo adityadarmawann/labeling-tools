@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import io
 import json
-import os.path as osp
 import re
 import xml.etree.ElementTree as ET
 import zipfile
@@ -323,19 +322,29 @@ def ringkasan(items: list[dict], segmentasi: bool, rasio=RASIO_BAWAAN,
 
 # ---------------------------------------------------------------- Pascal VOC
 
-def voc_xml(it: dict) -> str:
+def voc_xml(it: dict, split: str = "", berkas: str = "") -> str:
     """
     Satu gambar -> XML Pascal VOC.
 
     Struktur, urutan elemen, dan `toprettyxml(indent="  ")` mengikuti
     `export_to_pascal_voc`. Koordinat ditulis `str(int(...))` — dipotong, bukan
     dibulatkan, sama seperti di sana.
+
+    `folder` dan `path` menunjuk LETAK DI DALAM ZIP, bukan letak berkasnya di
+    server. Menulis path absolut server ke dalam berkas yang diunduh orang lain
+    bukan cuma tidak berguna — ia membocorkan susunan folder mesin ini, dan
+    membuat XML-nya tidak bisa dipakai di komputer mana pun selain di sini.
     """
     p: Path = it["img"]
+    nama_berkas = berkas or p.name
+    # Tanpa split (dipakai langsung, di luar jalur ZIP), dipakai NAMA folder
+    # induknya — tetap relatif dan tetap memberi tahu asalnya, tanpa membocorkan
+    # susunan folder server.
+    folder = split or p.parent.name
     ann = ET.Element("annotation")
-    ET.SubElement(ann, "folder").text = osp.dirname(str(p))
-    ET.SubElement(ann, "filename").text = p.name
-    ET.SubElement(ann, "path").text = str(p)
+    ET.SubElement(ann, "folder").text = folder
+    ET.SubElement(ann, "filename").text = nama_berkas
+    ET.SubElement(ann, "path").text = f"{folder}/{nama_berkas}" if folder else nama_berkas
     ET.SubElement(ET.SubElement(ann, "source"), "database").text = "Unknown"
     size = ET.SubElement(ann, "size")
     ET.SubElement(size, "width").text = str(it["W"])
@@ -396,13 +405,30 @@ def _luas_poligon_coco(pts) -> float:
 
 
 def coco_dict(items: list[dict], nama_dataset: str,
-              names: dict | None = None) -> dict:
-    """Seluruh dataset -> satu dict COCO. Kategori dan id mengikuti aslinya:
-    label unik terurut, `id` mulai 1, `supercategory` "none"."""
-    label = sorted({str(s["label"]) for it in items for s in it["shapes"]
-                    if s["label"] is not None})
+              names: dict | None = None, kelas: dict | None = None) -> dict:
+    """
+    Satu bagian dataset -> satu dict COCO.
+
+    `kelas` adalah peta label -> indeks yang dihitung SEKALI untuk seluruh
+    dataset, lalu dipakai sama persis di tiap split. Dua cacat sekaligus
+    tertutup karenanya, dan keduanya juga ada di AnyLabeling
+    (export_formats.py:249-255) sehingga sengaja tidak ditiru:
+
+      1. Kategori dulu diturunkan dari label yang kebetulan ada DI SPLIT ITU,
+         padahal `export_to_coco` dipanggil per split. Akibatnya `category_id`
+         yang sama berarti kelas yang berbeda di train/ dan valid/, dan dataset
+         hasil ekspor tidak bisa digabungkan lagi.
+      2. Kategori dulu dikumpulkan dari SELURUH bentuk tanpa menyaring tipenya,
+         padahal anotasinya hanya ditulis untuk rectangle dan polygon. Satu
+         kelas yang cuma dipakai pada `point` atau `line` karena itu menempati
+         satu id dan menggeser seluruh id sesudahnya.
+
+    Parameter `names` dulu diterima tetapi tidak pernah dipakai di sini — jalur
+    YOLO sudah memakainya lewat peta_kelas, COCO tidak ikut.
+    """
+    peta_idx = kelas if kelas is not None else peta_kelas(items, names)
     kategori = [{"id": i + 1, "name": l, "supercategory": "none"}
-                for i, l in enumerate(label)]
+                for l, i in sorted(peta_idx.items(), key=lambda kv: kv[1])]
     peta = {c["name"]: c["id"] for c in kategori}
 
     d = {
@@ -442,9 +468,12 @@ def coco_dict(items: list[dict], nama_dataset: str,
                 luas = _luas_poligon_coco(pts)
                 bbox = [xmin, ymin, xmax - xmin, ymax - ymin]
 
+            nama_kelas = str(s["label"]).strip() if s["label"] is not None else ""
+            if nama_kelas not in peta:
+                continue          # bentuk tanpa kelas tidak punya kategori
             d["annotations"].append({
                 "id": id_anotasi, "image_id": id_gambar,
-                "category_id": peta[str(s["label"])],
+                "category_id": peta[nama_kelas],
                 "segmentation": segmentasi, "area": luas,
                 "bbox": bbox, "iscrowd": 0,
             })
@@ -462,23 +491,62 @@ def zip_dataset(items: list[dict], nama: str, format: str,
         return zip_yolo(items, nama, format == "yolo-seg", sertakan_gambar,
                         rasio, names)
 
+    if format not in ("coco", "voc"):
+        raise ValueError(f"format '{format}' tidak dikenal")
+
     bagian = bagi_split(items, rasio)
+    # Dihitung SEKALI untuk seluruh dataset, lalu dipakai sama di tiap split.
+    kelas = peta_kelas(items, names)
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for split in SPLIT:
-            z.writestr(f"{split}/images/", "")
+            z.writestr(f"{split}/", "")
         for split, daftar in bagian.items():
+            # Gambar mendarat SEJAJAR dengan berkas anotasinya, tidak di dalam
+            # subfolder images/. Ini bukan selera tata letak: `file_name` di COCO
+            # dan `filename` di VOC berisi nama berkas saja, dan keduanya
+            # diselesaikan relatif terhadap letak berkas anotasi. Dengan gambar
+            # di `train/images/` sementara JSON-nya di `train/`, loader COCO mana
+            # pun mencari `train/xxx.jpg` yang tidak ada — ekspornya tidak bisa
+            # dipakai sama sekali. AnyLabeling menaruh keduanya di satu folder
+            # (export_worker.py:417-426), begitu juga Roboflow.
+            nama_dipakai = {}
+            for it in daftar:
+                nama_dipakai[id(it)] = _nama_unik(nama_dipakai, it["img"].name)
             if format == "coco":
-                # Nama berkas mengikuti ekspor Roboflow: _annotations.coco.json
-                # di dalam folder split-nya.
+                d = coco_dict(daftar, nama, names, kelas)
+                # `file_name` harus memakai nama yang benar-benar ditulis ke ZIP.
+                for g, it in zip(d["images"], daftar):
+                    g["file_name"] = nama_dipakai[id(it)]
                 z.writestr(f"{split}/_annotations.coco.json",
-                           json.dumps(coco_dict(daftar, nama, names), indent=2))
-            elif format == "voc":
-                for it in daftar:
-                    z.writestr(f"{split}/{it['img'].stem}.xml", voc_xml(it))
+                           json.dumps(d, indent=2))
             else:
-                raise ValueError(f"format '{format}' tidak dikenal")
+                for it in daftar:
+                    berkas = nama_dipakai[id(it)]
+                    z.writestr(f"{split}/{Path(berkas).stem}.xml",
+                               voc_xml(it, split, berkas))
             if sertakan_gambar:
                 for it in daftar:
-                    z.write(it["img"], f"{split}/images/{it['img'].name}")
+                    z.write(it["img"], f"{split}/{nama_dipakai[id(it)]}")
     return buf.getvalue()
+
+
+def _nama_unik(sudah: dict, nama: str) -> str:
+    """
+    Nama berkas yang belum terpakai di split ini.
+
+    Dua gambar bernama sama dari subfolder berbeda akan bertemu di satu folder
+    setelah diratakan. Menimpanya berarti satu gambar hilang dan satu baris
+    anotasi menunjuk gambar yang salah — keduanya tanpa pesan apa pun.
+    """
+    terpakai = set(sudah.values())
+    if nama not in terpakai:
+        return nama
+    batang, titik, ekor = nama.rpartition(".")
+    if not titik:
+        batang, ekor = nama, ""
+    for i in range(2, 100000):
+        calon = f"{batang}-{i}" + (f".{ekor}" if ekor else "")
+        if calon not in terpakai:
+            return calon
+    raise ValueError("terlalu banyak berkas senama dalam satu split")
