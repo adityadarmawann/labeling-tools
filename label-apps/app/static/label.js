@@ -107,6 +107,15 @@ function muatKeLayar() {
   gambar();
 }
 
+/* Fit Width (label_widget.py:623-630, Ctrl+Shift+F). Untuk gambar tinggi-sempit,
+   muat-jendela membuang seluruh lebar layar. */
+function muatKeLebar() {
+  S.zoom = (c.width / D.W) * 0.96;
+  S.panx = (c.width - D.W * S.zoom) / 2;
+  S.pany = 0;
+  gambar();
+}
+
 function zoomDi(faktor, cx, cy) {
   const gx = keGambarX(cx), gy = keGambarY(cy);
   S.zoom = Math.min(Math.max(S.zoom * faktor, 0.05), 40);
@@ -921,8 +930,13 @@ window.addEventListener('mouseup', ev => {
     }
     gambar();
   } else if (s.jenis.startsWith('kotak')) {
-    const x0 = keGambarX(Math.min(s.x0, s.x1)), y0 = keGambarY(Math.min(s.y0, s.y1));
-    const x1 = keGambarX(Math.max(s.x0, s.x1)), y1 = keGambarY(Math.max(s.y0, s.y1));
+    // Dikurung ke dalam gambar, sama seperti titik, poligon, dan lingkaran.
+    // AnyLabeling mencapainya dengan memproyeksikan posisi seret ke tepi pixmap
+    // (canvas.py:288-291). Tanpa ini `.json` menyimpan koordinat di luar gambar
+    // sementara penulisan YOLO mengurungnya — satu gambar menghasilkan dua
+    // bentuk yang berbeda di dua berkas.
+    const x0 = kurungX(keGambarX(Math.min(s.x0, s.x1))), y0 = kurungY(keGambarY(Math.min(s.y0, s.y1)));
+    const x1 = kurungX(keGambarX(Math.max(s.x0, s.x1))), y1 = kurungY(keGambarY(Math.max(s.y0, s.y1)));
     if (Math.abs(x1 - x0) <= 3 || Math.abs(y1 - y0) <= 3) {
       toast('Kotaknya terlalu kecil');
     } else if (s.jenis === 'kotakmanual') {
@@ -1165,8 +1179,21 @@ function tutupDraft() {
  * SATU TITIK, bukan seluruh objek — salah di sini berarti orang kehilangan
  * pekerjaan karena menekan tombol yang di aplikasi sebelahnya aman.
  */
+/*
+ * Di AnyLabeling pemetaan tombol ini adalah metode Canvas (canvas.py:1089),
+ * jadi ia hanya berlaku saat kanvas yang memegang fokus dan dock Text Editor
+ * menelan tombolnya sendiri. Di peramban pendengarnya menempel di window, jadi
+ * pengecualian itu harus ditulis sendiri — dan TEXTAREA sempat tertinggal.
+ * Akibatnya saat mengetik catatan objek: spasi tidak bisa diketik, Backspace
+ * membuang TITIK BENTUK alih-alih huruf, dan Delete menghapus objeknya.
+ */
+function sedangMengetik(t) {
+  return t && (t.tagName === 'INPUT' || t.tagName === 'SELECT'
+               || t.tagName === 'TEXTAREA' || t.isContentEditable);
+}
+
 window.addEventListener('keydown', ev => {
-  if (ev.target.tagName === 'INPUT' || ev.target.tagName === 'SELECT') return;
+  if (sedangMengetik(ev.target)) return;
   if (ev.key === ' ') { spasi = true; ev.preventDefault(); return; }
 
   if (ev.ctrlKey && ev.shiftKey && ev.key.toLowerCase() === 'p') {
@@ -1190,7 +1217,21 @@ window.addEventListener('keydown', ev => {
     }
     return;
   }
-  if (ev.ctrlKey) {
+  /*
+   * Ctrl+Shift diperiksa LEBIH DULU dan terpisah. Sebelumnya blok Ctrl di bawah
+   * tidak pernah menengok shiftKey, sehingga Ctrl+Shift+D — yang di AnyLabeling
+   * berarti "gambar berikutnya" — jatuh ke penggandaan objek, lalu autosave
+   * menuliskan gandaannya ke berkas tanpa satu pun tanda.
+   */
+  if (ev.ctrlKey && ev.shiftKey) {
+    const sk = ev.key.toLowerCase();
+    if (sk === 'd') { ev.preventDefault(); pindah(D.next); }
+    else if (sk === 'a') { ev.preventDefault(); pindah(D.prev); }
+    else if (sk === 'f') { ev.preventDefault(); muatKeLebar(); }
+    else if (sk === 's') { ev.preventDefault(); simpan(); }
+    return;
+  }
+  if (ev.ctrlKey && !ev.shiftKey) {
     const ck = ev.key.toLowerCase();
     if (ck === 'z') { ev.preventDefault(); urungkan(); }
     else if (ck === 's') { ev.preventDefault(); simpan(); }
@@ -1202,6 +1243,14 @@ window.addEventListener('keydown', ev => {
     else if (ev.key === '0') { ev.preventDefault(); zoomAsli(); }
     else if (ev.key === '+' || ev.key === '=') { ev.preventDefault(); zoomDi(1.25, c.width / 2, c.height / 2); }
     else if (ev.key === '-') { ev.preventDefault(); zoomDi(1 / 1.25, c.width / 2, c.height / 2); }
+    else if (ck === 'p') {
+      // Keep Previous Annotation (label_widget.py:387-394). Ditahan juga supaya
+      // dialog cetak peramban tidak terbuka di tengah pekerjaan.
+      ev.preventDefault();
+      const kb = el('v-keepprev');
+      if (kb) { kb.checked = !kb.checked; kb.dispatchEvent(new Event('change')); }
+      toast('Pertahankan anotasi sebelumnya: ' + (kb && kb.checked ? 'nyala' : 'mati'));
+    }
     return;
   }
 
@@ -1385,7 +1434,7 @@ function duplikatTerpilih() {
   const baru = [];
   S.terpilih.forEach(i => {
     const s = S.shapes[i];
-    S.shapes.push({ ...s, points: s.points.map(p => [p[0] + 8, p[1] + 8]) });
+    S.shapes.push({ ...s, points: s.points.map(p => [kurungX(p[0] + 8), kurungY(p[1] + 8)]) });
     baru.push(S.shapes.length - 1);
   });
   S.terpilih = baru;

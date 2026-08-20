@@ -58,8 +58,12 @@ def kelas_resmi(sess: Session) -> list[str]:
 # titipan AnyLabeling dan harus dikembalikan apa adanya saat menyimpan.
 KUNCI_ATAS = {"version", "flags", "shapes", "imagePath", "imageData",
               "imageHeight", "imageWidth"}
-KUNCI_BENTUK = {"label", "text", "points", "group_id", "shape_type", "flags",
-                "description"}
+# `description` SENGAJA tidak ada di sini. Ia milik labelme 5.x dan
+# X-AnyLabeling, kanvas kita tidak pernah menyuntingnya, jadi biarkan ia lewat
+# jalur titipan seperti field asing lainnya. Dulu ia terdaftar di sini —
+# dikeluarkan dari titipan, lalu tidak pernah ditulis kembali — sehingga seluruh
+# deskripsi per objek hilang pada penyimpanan pertama dari web.
+KUNCI_BENTUK = {"label", "text", "points", "group_id", "shape_type", "flags"}
 
 
 def baca_mentah(jp: Path) -> dict:
@@ -85,7 +89,11 @@ def bentuk_untuk_kanvas(it: dict, mentah: dict) -> list[dict]:
     asli = mentah.get("shapes") or []
     out = []
     for i, s in enumerate(it["shapes"]):
-        a = asli[i] if i < len(asli) and isinstance(asli[i], dict) else {}
+        # Nomor urut DI BERKAS, bukan di daftar hasil pindai. Pemindai boleh
+        # melewati bentuk yang tidak bisa digambar, dan begitu itu terjadi kedua
+        # nomor tidak lagi sama.
+        j = s.get("idx", i)
+        a = asli[j] if j < len(asli) and isinstance(asli[j], dict) else {}
         out.append({
             "label": "" if s["label"] is None else str(s["label"]),
             "shape_type": s["type"],
@@ -211,8 +219,16 @@ async def api_simpan(request: Request, sess: Session = Depends(current_session_a
         return {"ok": False, "error": "berkas tidak dikenal di dataset ini"}
 
     bentuk = []
+    W, H = it["W"], it["H"]
     for s in body.get("shapes", []):
-        titik = [[float(x), float(y)] for x, y in s.get("points", [])]
+        # Dikurung ke dalam gambar di sini juga, bukan hanya di kanvas.
+        # Penulisan YOLO (scanner.tulis_yolo) selalu mengurung, jadi titik di
+        # luar gambar membuat `.json` dan `.txt` menyimpan bentuk yang berbeda
+        # untuk gambar yang sama. Menyamakannya di satu tempat lebih murah
+        # daripada menjaga setiap jalur gambar di kanvas tidak pernah lalai.
+        titik = [[min(max(float(x), 0.0), float(W)),
+                  min(max(float(y), 0.0), float(H))]
+                 for x, y in s.get("points", [])]
         label = str(s.get("label", "")).strip()
         jenis = s.get("shape_type") or "polygon"
         if jenis not in scanner.JENIS_BENTUK:
@@ -252,6 +268,11 @@ async def api_simpan(request: Request, sess: Session = Depends(current_session_a
 
     jp: Path = it["img"].with_suffix(".json")
     lama = baca_mentah(jp)
+    # Bentuk yang tidak pernah sampai ke kanvas dikembalikan apa adanya. Ia tidak
+    # bisa digambar, tetapi tetap milik orang yang membuatnya — dan penyimpanan
+    # ini menulis ulang SELURUH daftar bentuk, jadi tanpa dikembalikan ia hilang
+    # permanen tanpa pemakainya pernah menyentuhnya.
+    bentuk += scanner.bentuk_terlewat(lama)
     isi = {
         # Field tingkat atas yang bukan milik kita (mis. sumber kustom) ikut
         # dipertahankan, begitu juga imageData kalau berkasnya memang menanam

@@ -1283,3 +1283,111 @@ def test_tambah_menolak_jenis_berkas_yang_bukan_gambar_atau_anotasi(klien,
     for nama in ("catatan.sh", "data.yaml", "arsip.zip"):
         assert klien.put(f"/tambah?name={nama}",
                          content=b"x" * 20).json()["ok"] is False, nama
+
+
+# ------------------------------------- paritas AnyLabeling: keutuhan per bentuk
+
+def _json_bentuk(ip, shapes, W=120, H=100):
+    import json as _json
+    ip.with_suffix(".json").write_text(_json.dumps({
+        "version": "0.4.36", "flags": {}, "imagePath": ip.name,
+        "imageHeight": H, "imageWidth": W, "imageData": None, "shapes": shapes}))
+
+
+def _dataset_satu(tmp, shapes, W=120, H=100):
+    import cv2
+    import numpy as np
+    d = tmp / "satu"
+    d.mkdir(parents=True, exist_ok=True)
+    ip = d / "uji.jpg"
+    cv2.imwrite(str(ip), np.full((H, W, 3), 60, np.uint8))
+    _json_bentuk(ip, shapes, W, H)
+    return d, ip
+
+
+BENTUK_UJI = [
+    # Poligon 2 titik: tipenya sah tapi titiknya kurang, jadi pemindai
+    # melewatinya — dan dulu itulah yang menggeser semua bentuk sesudahnya.
+    {"label": "rusak", "shape_type": "polygon", "points": [[1, 1], [2, 2]],
+     "group_id": 7, "flags": {"sulit": True}, "text": "catatan RUSAK"},
+    {"label": "botol", "shape_type": "polygon", "points": [[5, 5], [50, 5], [50, 60]],
+     "group_id": 3, "flags": {"pecah": True}, "text": "catatan BOTOL",
+     "description": "deskripsi BOTOL"},
+    {"label": "kaleng", "shape_type": "polygon", "points": [[60, 5], [110, 5], [110, 60]],
+     "group_id": 9, "flags": {"penyok": True}, "text": "catatan KALENG",
+     "description": "deskripsi KALENG"},
+]
+
+
+def test_field_per_bentuk_tidak_bergeser_saat_ada_bentuk_dilewati(lingkungan):
+    """
+    Regresi paling mahal di jalur data.
+
+    Bentuk dibaca lewat dua jalur lalu dipasangkan. Dulu pasangannya memakai
+    nomor urut HASIL PINDAI, padahal pemindai boleh melewati bentuk yang tidak
+    bisa digambar — sehingga satu bentuk terlewat membuat group_id, catatan, dan
+    flag seluruh bentuk sesudahnya menempel ke objek yang salah, dan milik
+    bentuk terakhir hilang.
+    """
+    from app.routers import annotate
+    from app.services import scanner
+
+    d, ip = _dataset_satu(lingkungan["tmp"], BENTUK_UJI)
+    items, _ = scanner.scan(d)
+    it = items[0]
+    assert len(it["shapes"]) == 2, "poligon 2 titik memang harus dilewati"
+
+    kanvas = annotate.bentuk_untuk_kanvas(it, annotate.baca_mentah(ip.with_suffix(".json")))
+    oleh = {b["label"]: b for b in kanvas}
+    assert oleh["botol"]["group_id"] == 3
+    assert oleh["botol"]["text"] == "catatan BOTOL"
+    assert oleh["botol"]["flags"] == {"pecah": True}
+    assert oleh["kaleng"]["group_id"] == 9
+    assert oleh["kaleng"]["text"] == "catatan KALENG"
+    assert oleh["kaleng"]["flags"] == {"penyok": True}
+
+
+def test_description_bertahan_saat_disimpan_ulang_dari_web(klien, lingkungan):
+    """`description` milik labelme 5.x / X-AnyLabeling. Kanvas kita tidak
+    menyuntingnya, jadi ia harus lewat jalur titipan — dulu ia diklaim sebagai
+    milik kita, dikeluarkan dari titipan, lalu tidak pernah ditulis kembali."""
+    import json as _json
+
+    from app.routers import annotate
+    from app.services import scanner
+
+    masuk(klien, "paul", PW_PAUL)
+    d, ip = _dataset_satu(lingkungan["tmp"], BENTUK_UJI)
+    klien.post(f"/setsrc?path={d}")
+
+    items, _ = scanner.scan(d)
+    kanvas = annotate.bentuk_untuk_kanvas(
+        items[0], annotate.baca_mentah(ip.with_suffix(".json")))
+    r = klien.post("/api/simpan", json={"path": str(ip), "shapes": kanvas,
+                                        "flags": {}})
+    assert r.json()["ok"] is True
+
+    sesudah = _json.loads(ip.with_suffix(".json").read_text())["shapes"]
+    oleh = {s["label"]: s for s in sesudah}
+    assert oleh["botol"]["description"] == "deskripsi BOTOL"
+    assert oleh["kaleng"]["description"] == "deskripsi KALENG"
+    # dan bentuk yang dilewati pemindai tidak ikut terhapus
+    assert "rusak" in oleh, [s["label"] for s in sesudah]
+    assert oleh["rusak"]["text"] == "catatan RUSAK"
+
+
+def test_titik_di_luar_gambar_dikurung_saat_menyimpan(klien, lingkungan):
+    """`.json` dan `.txt` harus menyimpan bentuk yang sama. Penulisan YOLO
+    selalu mengurung, jadi kalau `.json` tidak, satu gambar punya dua bentuk."""
+    import json as _json
+
+    masuk(klien, "paul", PW_PAUL)
+    d, ip = _dataset_satu(lingkungan["tmp"], BENTUK_UJI)
+    klien.post(f"/setsrc?path={d}")
+
+    liar = [{"label": "botol", "shape_type": "polygon", "flags": {},
+             "points": [[-30, -12], [500, 5], [50, 900]]}]
+    assert klien.post("/api/simpan", json={"path": str(ip), "shapes": liar,
+                                           "flags": {}}).json()["ok"] is True
+    p = _json.loads(ip.with_suffix(".json").read_text())["shapes"][0]["points"]
+    assert all(0 <= x <= 120 and 0 <= y <= 100 for x, y in p), p

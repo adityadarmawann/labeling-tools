@@ -259,7 +259,7 @@ def read_json(jp: Path):
     d = json.loads(Path(jp).read_text(encoding="utf-8"))
     W, H = d.get("imageWidth"), d.get("imageHeight")
     shapes = []
-    for s in d.get("shapes", []):
+    for i, s in enumerate(d.get("shapes", [])):
         pts = s.get("points") or []
         jenis = s.get("shape_type") or "polygon"
         if jenis not in JENIS_BENTUK or len(pts) < JENIS_BENTUK[jenis]:
@@ -268,10 +268,35 @@ def read_json(jp: Path):
         # diubah, dan penutupannya dipasang lagi saat menulis.
         if jenis == "polygon":
             pts = buka_cincin(pts)
-        shapes.append({"label": s.get("label"), "type": jenis,
+        # `idx` adalah nomor urut bentuk ini DI BERKAS, bukan di daftar hasil.
+        # Keduanya berbeda begitu ada satu bentuk yang dilewati di atas, dan
+        # pemanggil yang memasangkan bentuk dengan barisan aslinya harus memakai
+        # nomor ini. Dulu dipakai nomor urut hasil, sehingga satu bentuk yang
+        # dilewati membuat group_id, catatan, dan flag SELURUH bentuk sesudahnya
+        # menempel ke objek yang salah.
+        shapes.append({"label": s.get("label"), "type": jenis, "idx": i,
                        "pts": np.array(untuk_menggambar(jenis, pts), np.float32),
                        "pts_asli": [[float(x), float(y)] for x, y in pts]})
     return shapes, W, H
+
+
+def bentuk_terlewat(mentah: dict) -> list[dict]:
+    """
+    Bentuk di berkas yang TIDAK sampai ke kanvas, apa adanya.
+
+    Bentuk seperti ini tidak bisa digambar (tipenya asing, atau titiknya kurang
+    dari minimum tipenya), tetapi ia tetap milik orang yang membuatnya. Tanpa
+    dikembalikan saat menyimpan, ia hilang permanen pada penyimpanan pertama
+    dari web — padahal pemakainya tidak pernah menyentuhnya.
+    """
+    out = []
+    for s in mentah.get("shapes") or []:
+        if not isinstance(s, dict):
+            continue
+        jenis = s.get("shape_type") or "polygon"
+        if jenis not in JENIS_BENTUK or len(s.get("points") or []) < JENIS_BENTUK[jenis]:
+            out.append(s)
+    return out
 
 
 def read_yolo(tp: Path, W: int, H: int, names: dict):
