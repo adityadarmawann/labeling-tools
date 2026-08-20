@@ -46,7 +46,7 @@ const S = {
   cerah: 1, kontras: 1,   // faktor tampilan, 1 = normal
   // Setelan menu View. Namanya mengikuti menu View AnyLabeling.
   v: { poligon: true, teks: false, grup: false, isi: true, silang: true,
-       tanyaKelas: true, labelTerakhir: true, zoomTetap: false,
+       namaKelas: true, tanyaKelas: true, labelTerakhir: true, zoomTetap: false,
        autosave: true, keepPrev: false },
 };
 
@@ -130,7 +130,21 @@ function zoomDi(faktor, cx, cy) {
 
 // ---------------------------------------------------------------- gambar
 
+/*
+ * Gambar ulang dibatasi satu bingkai layar, meniru _update_interval = 0.016 di
+ * canvas.py:96-97. Setiap gerakan tetikus dulu memicu penggambaran penuh; pada
+ * gambar 4080 piksel dengan banyak poligon itu terasa berat. Permintaan yang
+ * datang di tengah bingkai tidak dibuang, hanya digabung ke bingkai berikutnya.
+ */
+let bingkaiMenunggu = false;
+
 function gambar() {
+  if (bingkaiMenunggu) return;
+  bingkaiMenunggu = true;
+  requestAnimationFrame(() => { bingkaiMenunggu = false; gambarSekarang(); });
+}
+
+function gambarSekarang() {
   g.clearRect(0, 0, c.width, c.height);
   if (img.complete && img.naturalWidth) {
     g.imageSmoothingEnabled = S.zoom < 4;
@@ -150,6 +164,7 @@ function gambar() {
     });
   }
 
+  if (S.v.grup) gambarPenandaGrup();
   if (S.pratinjau) gambarPratinjau(S.pratinjau);
   if (S.salinanSeret) gambarBayanganSalinan();
   if (S.draft) gambarDraft(S.draft);
@@ -159,6 +174,42 @@ function gambar() {
   S.prompt.forEach(p => titikPrompt(p));
   if (S.sisi) gambarSisiDisorot(S.sisi);
   if (S.kursor && S.v.silang) garisSilang(S.kursor);
+}
+
+/*
+ * Penanda grup, meniru canvas.py:757-801: satu kotak PUTUS-PUTUS #EEEEEE
+ * membungkus seluruh anggota grup, dan titik berwarna di pusat tiap anggota.
+ * Dulu di sini hanya ada tulisan "grup N" di atas tiap bentuk, sehingga anggota
+ * satu grup tidak pernah terlihat sebagai satu kesatuan.
+ */
+function gambarPenandaGrup() {
+  const grup = new Map();
+  S.shapes.forEach((s, i) => {
+    if (s.group_id == null || s.sembunyi) return;
+    if (!grup.has(s.group_id)) grup.set(s.group_id, []);
+    grup.get(s.group_id).push(i);
+  });
+  grup.forEach((anggota, gid) => {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    const w = warna('grup:' + gid, 1);
+    anggota.forEach(i => {
+      const p = titikTampil(S.shapes[i]);
+      const xs = p.map(a => a[0]), ys = p.map(a => a[1]);
+      const a0 = Math.min(...xs), b0 = Math.min(...ys);
+      const a1 = Math.max(...xs), b1 = Math.max(...ys);
+      x0 = Math.min(x0, a0); y0 = Math.min(y0, b0);
+      x1 = Math.max(x1, a1); y1 = Math.max(y1, b1);
+      bulatan((a0 + a1) / 2, (b0 + b1) / 2, 3.5, w, w);
+    });
+    if (!isFinite(x0)) return;
+    g.save();
+    g.setLineDash([5, 4]);
+    g.strokeStyle = '#EEEEEE';
+    g.lineWidth = 1;
+    g.strokeRect(keLayarX(x0), keLayarY(y0),
+                 (x1 - x0) * S.zoom, (y1 - y0) * S.zoom);
+    g.restore();
+  });
 }
 
 function jalur(p) {
@@ -200,19 +251,31 @@ function gambarBentuk(s, terpilih) {
   g.stroke();
   gambarTeksBentuk(s, p);
   if (terpilih) {
-    // Yang digambar adalah titik yang BISA DISERET, yaitu titik tersimpan —
-    // bukan hasil pemekaran. Untuk circle itu berarti dua: pusat dan tepi.
-    const seret = s.shape_type === 'circle' ? s.points : p;
-    seret.forEach(([x, y], v) => bulatan(x, y, UKURAN_TITIK / 2,
+    // Titik TERSIMPAN untuk semua tipe, bukan hasil pemekaran — di AnyLabeling
+    // vertexnya digambar `for i in range(len(self.points))` (shape.py:165-167).
+    // Rectangle karena itu punya DUA pegangan, bukan empat. Dulu di sini
+    // dipakai titik yang sudah dimekarkan, sehingga rectangle menampilkan empat
+    // pegangan padahal hanya dua yang bisa diseret, dan penanda titik terpilih
+    // menyorot sudut yang salah karena indeksnya beda ruang.
+    s.points.forEach(([x, y], v) => bulatan(x, y, UKURAN_TITIK / 2,
       v === S.selv ? '#fff' : ISI_VERTEX, GARIS_PILIH));
   }
 }
 
-/** Nama kelas dan grup di atas bentuk, kalau menu View menyalakannya. */
+/**
+ * Tulisan di atas bentuk.
+ *
+ * "Show Texts" di AnyLabeling menggambar shape.text — isi Text Editor — bukan
+ * nama kelas (canvas.py:832-855). Dulu saklar itu di sini menampilkan nama
+ * kelas, sehingga catatan per objek yang justru dijaga bolak-balik tidak pernah
+ * terlihat di kanvas. Nama kelas tetap bisa ditampilkan, tetapi lewat saklarnya
+ * sendiri — itu tambahan kita, bukan bawaan AnyLabeling.
+ */
 function gambarTeksBentuk(s, p) {
-  if (!S.v.teks && !S.v.grup) return;
+  if (!S.v.teks && !S.v.grup && !S.v.namaKelas) return;
   const bagian = [];
-  if (S.v.teks) bagian.push(s.label || '(tanpa kelas)');
+  if (S.v.namaKelas) bagian.push(s.label || '(tanpa kelas)');
+  if (S.v.teks && s.text) bagian.push(s.text);
   if (S.v.grup && s.group_id != null) bagian.push('grup ' + s.group_id);
   if (!bagian.length) return;
   const xs = p.map(a => a[0]), ys = p.map(a => a[1]);
@@ -389,22 +452,74 @@ function garisSilang(k) {
   g.lineWidth = 1;
   g.setLineDash([5, 4]);
   g.beginPath();
-  g.moveTo(0, y); g.lineTo(c.width, y);
-  g.moveTo(x, 0); g.lineTo(x, c.height);
+  // Membentang sepanjang gambar, bukan sepanjang kanvas (canvas.py:866-873).
+  const x0 = keLayarX(0), x1 = keLayarX(D.W);
+  const y0 = keLayarY(0), y1 = keLayarY(D.H);
+  g.moveTo(x0, y); g.lineTo(x1, y);
+  g.moveTo(x, y0); g.lineTo(x, y1);
   g.stroke();
   g.setLineDash([]);
 }
 
 // ---------------------------------------------------------------- hit test
 
+/* Padanan Shape.nearest_vertex (shape.py:234-245): JARAK sesungguhnya, dan
+   yang dikembalikan adalah titik TERDEKAT. Dulu daerah tangkapnya kotak
+   (di sudutnya 1,41x lebih longgar) dan yang menang titik ber-indeks terkecil,
+   bukan yang paling dekat — terasa saat dua titik berdempetan. */
+function vertexTerdekatPada(s, gx, gy, r) {
+  let terbaik = null, jarakMin = Infinity;
+  for (let v = 0; v < s.points.length; v++) {
+    const d = Math.hypot(s.points[v][0] - gx, s.points[v][1] - gy);
+    if (d <= r && d < jarakMin) { jarakMin = d; terbaik = v; }
+  }
+  return terbaik;
+}
+
+function sisiTerdekatPada(s, gx, gy, r) {
+  if (!DAPAT_SISIP.has(s.shape_type)) return null;
+  const p = s.points;
+  const nSisi = TERTUTUP.has(s.shape_type) ? p.length : p.length - 1;
+  for (let j = 0; j < nSisi; j++) {
+    const a = p[j], b = p[(j + 1) % p.length];
+    const dx = b[0] - a[0], dy = b[1] - a[1];
+    const pj = dx * dx + dy * dy;
+    if (pj === 0) continue;
+    let t = ((gx - a[0]) * dx + (gy - a[1]) * dy) / pj;
+    t = Math.min(Math.max(t, 0), 1);
+    const cx = a[0] + t * dx, cy = a[1] + t * dy;
+    if (Math.hypot(gx - cx, gy - cy) < r) return { e: j, titik: [cx, cy] };
+  }
+  return null;
+}
+
+/*
+ * Satu penelusuran untuk semua sorotan — meniru urutan canvas.py:351-395:
+ * bentuk ditelusuri DARI ATAS, dan untuk TIAP bentuk diuji titik -> sisi ->
+ * isi, lalu berhenti. Dulu ketiganya ditelusuri sebagai tiga sapuan terpisah,
+ * sehingga titik milik bentuk di bawah mengalahkan isi bentuk yang ada di
+ * atasnya.
+ */
+function sorotDi(gx, gy) {
+  const r = EPSILON / S.zoom;
+  for (let i = S.shapes.length - 1; i >= 0; i--) {
+    const s = S.shapes[i];
+    if (s.sembunyi || !S.v.poligon) continue;
+    const v = vertexTerdekatPada(s, gx, gy, r);
+    if (v !== null) return { hover: { i, v }, sisi: null, jenis: 'titik', s };
+    const e = sisiTerdekatPada(s, gx, gy, r);
+    if (e) return { hover: null, sisi: { i, e: e.e, titik: e.titik }, jenis: 'sisi', s };
+    if (didalam(s, gx, gy)) return { hover: { i, v: -1 }, sisi: null, jenis: 'isi', s };
+  }
+  return { hover: null, sisi: null, jenis: null, s: null };
+}
+
 function dekatVertex(gx, gy) {
   const r = EPSILON / S.zoom;
   for (let i = S.shapes.length - 1; i >= 0; i--) {
     if (S.shapes[i].sembunyi) continue;
-    const p = S.shapes[i].points;
-    for (let v = 0; v < p.length; v++) {
-      if (Math.abs(p[v][0] - gx) < r && Math.abs(p[v][1] - gy) < r) return { i, v };
-    }
+    const v = vertexTerdekatPada(S.shapes[i], gx, gy, r);
+    if (v !== null) return { i, v };
   }
   return null;
 }
@@ -456,15 +571,27 @@ function tambahTitikDiSisi() {
 
 /* Padanan move_by_keyboard: panah menggeser objek terpilih sejauh MOVE_SPEED,
    tetap terkurung di dalam gambar. */
+/*
+ * move_by_keyboard (canvas.py:1081-1086) menggeser SELURUH bentuk terpilih,
+ * bukan hanya satu. Riwayat urungkan dicatat sekali saat tombolnya DILEPAS
+ * (keyReleaseEvent, canvas.py:1119-1126) — dulu setiap keydown mencatat, jadi
+ * menahan panah satu detik mendorong puluhan entri dan menghapus seluruh
+ * riwayat sebelumnya.
+ */
+let geserBerjalan = false;
+
 function geserDenganPanah(dx, dy) {
-  if (S.sel < 0) { toast('Pilih objeknya dulu'); return; }
-  const p = S.shapes[S.sel].points;
-  const xs = p.map(a => a[0]), ys = p.map(a => a[1]);
+  const idx = adaTerpilih() ? S.terpilih : (S.sel >= 0 ? [S.sel] : []);
+  if (!idx.length) { toast('Pilih objeknya dulu'); return; }
+  const semua = idx.flatMap(i => S.shapes[i].points);
+  const xs = semua.map(a => a[0]), ys = semua.map(a => a[1]);
   dx = Math.min(Math.max(dx, -Math.min(...xs)), D.W - Math.max(...xs));
   dy = Math.min(Math.max(dy, -Math.min(...ys)), D.H - Math.max(...ys));
   if (!dx && !dy) return;
-  simpanUndo();
-  S.shapes[S.sel].points = p.map(a => [a[0] + dx, a[1] + dy]);
+  if (!geserBerjalan) { simpanUndo(); geserBerjalan = true; }
+  idx.forEach(i => {
+    S.shapes[i].points = S.shapes[i].points.map(a => [a[0] + dx, a[1] + dy]);
+  });
   tandaiKotor();
   render();
 }
@@ -591,9 +718,17 @@ const JENIS_DARI_MODE = { poly: 'polygon', kotak: 'rectangle', circle: 'circle',
 const NAMA_JENIS = { polygon: 'Poligon', rectangle: 'Rectangle', circle: 'Circle',
                      line: 'Line', linestrip: 'LineStrip', point: 'Point' };
 
+/* set_editing (canvas.py:234-239): berpindah ke mode menggambar melepas
+   sorotan DAN pilihan. Tanpa itu, bentuk yang masih terpilih ikut bereaksi
+   terhadap panah dan Delete padahal orang sudah beralih menggambar. */
 function setMode(m) {
   S.mode = m;
   S.draft = null;
+  if (m !== 'edit') {
+    S.hover = null; S.sisi = null; S.selv = -1;
+    S.sel = -1; S.terpilih = [];
+    petunjuk(null);
+  }
   document.querySelectorAll('.tool[data-mode]').forEach(b => {
     b.toggleAttribute('data-on', b.dataset.mode === m);
   });
@@ -734,7 +869,12 @@ c.addEventListener('mousedown', ev => {
 
     if (v) {
       simpanUndo();
-      pilihBentuk(v.i, false);
+      // select_shape_point (canvas.py:579-581): kalau ada vertex tersorot,
+      // yang terjadi HANYA penyorotan titiknya — selected_shapes tidak
+      // disentuh. Dulu di sini seleksi ditimpa, sehingga menggeser satu titik
+      // membubarkan seleksi jamak yang baru saja disusun dengan Ctrl+klik.
+      if (!S.terpilih.includes(v.i)) pilihBentuk(v.i, false);
+      else S.sel = v.i;
       S.selv = v.v;
       S.seret = { jenis: 'vertex', i: v.i, v: v.v };
       render();
@@ -881,17 +1021,50 @@ c.addEventListener('mousemove', ev => {
   }
   if (S.draft) S.draft.hover = [gx, gy];
   if (S.mode === 'edit') {
-    const v = dekatVertex(gx, gy);
-    S.hover = v || (bentukDi(gx, gy) >= 0 ? { i: bentukDi(gx, gy), v: -1 } : null);
-    S.sisi = v ? null : dekatSisi(gx, gy);
+    const h = sorotDi(gx, gy);
+    S.hover = h.hover;
+    S.sisi = h.sisi;
+    petunjuk(h);
   } else {
     S.hover = null;
     S.sisi = null;
+    petunjuk(null);
   }
   gambar();
 });
 
-c.addEventListener('mouseleave', () => { S.kursor = null; gambar(); });
+/*
+ * Kursor dan teks petunjuk menurut apa yang ada di bawahnya — canvas.py memasang
+ * lima keadaan kursor beserta tooltipnya (canvas.py:364-393). Tanpa ini, tiga
+ * jalan pintas terbaik di kanvas kita — sisip titik di sisi, Shift+klik hapus
+ * titik, seret bentuk — sudah ada di kode tetapi tidak punya satu pun isyarat,
+ * jadi tidak akan pernah ditemukan sendiri oleh pemakai.
+ */
+function petunjuk(h) {
+  const n = el('petunjuk');
+  if (!h || !h.jenis) { c.style.cursor = ''; n.textContent = ''; return; }
+  if (h.jenis === 'titik') {
+    c.style.cursor = 'pointer';
+    n.textContent = 'Seret memindahkan titik · Shift+klik menghapusnya';
+  } else if (h.jenis === 'sisi') {
+    c.style.cursor = 'copy';
+    n.textContent = 'Klik menyisipkan titik di sisi ini';
+  } else {
+    c.style.cursor = 'grab';
+    n.textContent = `Seret memindahkan objek "${h.s.label || 'tanpa kelas'}"`;
+  }
+}
+
+// leaveEvent (canvas.py:195-198): sorotan dibersihkan saat kursor meninggalkan
+// kanvas. Dulu S.hover dan S.sisi dibiarkan, sehingga sorotan tepi tertinggal di
+// layar dan butir menu "Sisip titik" tetap hidup di lokasi yang sudah basi.
+c.addEventListener('mouseleave', () => {
+  S.kursor = null;
+  S.hover = null;
+  S.sisi = null;
+  petunjuk(null);
+  gambar();
+});
 
 window.addEventListener('mouseup', ev => {
   if (S.seretKanan) {
@@ -949,7 +1122,33 @@ window.addEventListener('mouseup', ev => {
   }
 });
 
-c.addEventListener('dblclick', () => { if (S.mode === 'poly') tutupDraft(); });
+/*
+ * Klik ganda menutup bentuk (canvas.py:557-569). Dua hal yang dulu terlewat:
+ * (1) klik kedua sudah menambah satu titik lewat mousedown, jadi titik itu
+ *     harus DICABUT lebih dulu — di sana `self.current.pop_point()` tepat
+ *     sebelum finalise(). Tanpa itu poligon selalu berakhir dengan sepasang
+ *     titik nyaris bertumpuk.
+ * (2) syaratnya can_close_shape(), yang tidak memeriksa create_mode — jadi
+ *     linestrip pun bisa diakhiri dengan klik ganda, bukan hanya poligon.
+ */
+c.addEventListener('dblclick', () => {
+  if (!S.draft) return;
+  const jenis = S.draft.jenis || 'polygon';
+  if (!DAPAT_SISIP.has(jenis)) return;          // polygon & linestrip saja
+  // AnyLabeling mencabut satu titik tanpa syarat, karena Qt menjamin klik
+  // ganda menghasilkan TEPAT satu mousePressEvent tambahan (canvas.py:561-568).
+  // DOM tidak menjamin itu: sebagian jalur mengirim dua mousedown, sebagian
+  // satu. Jadi yang dicabut di sini adalah titik yang benar-benar KEMBAR —
+  // hasilnya sama dengan AnyLabeling saat dua mousedown datang, dan tidak
+  // memakan titik yang disengaja saat cuma satu yang datang.
+  const t = S.draft.points;
+  while (t.length > JENIS_BENTUK[jenis] && t.length > 1) {
+    const a = t[t.length - 1], b = t[t.length - 2];
+    if (Math.hypot(a[0] - b[0], a[1] - b[1]) > 1e-6) break;
+    t.pop();
+  }
+  tutupDraft();
+});
 
 /*
  * Klik kanan mengikuti canvas.py AnyLabeling:
@@ -1056,12 +1255,19 @@ function pasangMenu(x, y, isi, batal) {
  */
 c.addEventListener('contextmenu', ev => ev.preventDefault());
 
+/** Padanan undo_last_point (canvas.py:1153-1163): cabut titik terakhir dari
+    bentuk yang sedang digambar; kalau habis, draftnya sekalian dibuang. */
+function cabutTitikTerakhir() {
+  if (!S.draft || !S.draft.points.length) return;
+  S.draft.points.pop();
+  if (!S.draft.points.length) S.draft = null;
+  gambar();
+}
+
 /** Klik kanan tanpa seret — perilaku lama, tidak berubah. */
 function klikKanan(ev) {
   if (S.draft && S.draft.points.length) {
-    S.draft.points.pop();               // mencabut titik terakhir
-    if (!S.draft.points.length) S.draft = null;
-    gambar();
+    cabutTitikTerakhir();
     return;
   }
   if (S.mode !== 'edit' && S.prompt.length) {
@@ -1126,9 +1332,24 @@ document.addEventListener('click', ev => {
 window.addEventListener('blur', tutupMenu);
 wrap.addEventListener('wheel', tutupMenu, { passive: true });
 
+/*
+ * wheelEvent (canvas.py:1067-1079): TEPAT Ctrl memperbesar, selain itu
+ * menggulir — horizontal dari delta.x, vertikal dari delta.y. Dulu roda apa pun
+ * memperbesar dan tidak pernah ada penggeseran, sehingga refleks menggulir
+ * gambar besar justru mengubah zoom.
+ */
 wrap.addEventListener('wheel', ev => {
   ev.preventDefault();
-  zoomDi(ev.deltaY < 0 ? 1.15 : 1 / 1.15, ev.offsetX, ev.offsetY);
+  if (ev.ctrlKey) {
+    zoomDi(ev.deltaY < 0 ? 1.15 : 1 / 1.15, ev.offsetX, ev.offsetY);
+    return;
+  }
+  // Shift+roda menggeser mendatar, mengikuti kebiasaan peramban; roda polos
+  // menggeser tegak. Keduanya jadi padanan scroll_request.
+  if (ev.shiftKey) S.panx -= ev.deltaY;
+  else { S.panx -= ev.deltaX; S.pany -= ev.deltaY; }
+  S.zoomManual = true;
+  gambar();
 }, { passive: false });
 
 /** Sahkan bentuk bertitik-banyak yang sedang digambar (padanan finalise). */
@@ -1447,7 +1668,17 @@ window.addEventListener('keydown', ev => {
   }
   if (ev.ctrlKey && !ev.shiftKey) {
     const ck = ev.key.toLowerCase();
-    if (ck === 'z') { ev.preventDefault(); urungkan(); }
+    if (ck === 'z') {
+      ev.preventDefault();
+      // Saat sedang menggambar, Ctrl+Z mencabut TITIK TERAKHIR, bukan
+      // membatalkan suntingan sebelumnya. AnyLabeling memisahkannya lewat
+      // enable/disable timbal balik (label_widget.py:1433-1441): selama
+      // menggambar, `undo` mati dan `undo_last_point` hidup. Dulu di sini
+      // keduanya satu jalur, sehingga refleks Ctrl+Z di tengah poligon memutar
+      // balik objek yang sudah jadi — perubahan yang tidak diminta dan tidak
+      // terlihat karena perhatian ada di poligon yang sedang digambar.
+      if (S.draft) cabutTitikTerakhir(); else urungkan();
+    }
     else if (ck === 's') { ev.preventDefault(); simpan(); }
     else if (ck === 'f') { ev.preventDefault(); muatKeLayar(); }
     else if (ck === 'e') { ev.preventDefault(); ubahKelasTerpilih(); }
@@ -1491,6 +1722,8 @@ window.addEventListener('keydown', ev => {
 
 window.addEventListener('keyup', ev => {
   if (ev.key === ' ') spasi = false;
+  // Satu tahanan panah = satu langkah urungkan.
+  if (ev.key.startsWith('Arrow')) geserBerjalan = false;
   // Snapping menyala lagi begitu Alt dilepas (canvas.py:1116-1118).
   if (!ev.altKey && S.altDitekan) { S.altDitekan = false; gambar(); }
 });
@@ -2222,6 +2455,7 @@ function muatView() {
   try { d = JSON.parse(localStorage.getItem(VKUNCI)) || {}; } catch (e) { /* abai */ }
   Object.assign(S.v, d.v || {});
   const peta = { 'v-poligon': 'poligon', 'v-teks': 'teks', 'v-grup': 'grup',
+                 'v-kelas': 'namaKelas',
                  'v-isi': 'isi', 'v-silang': 'silang',
                  'v-tanyakelas': 'tanyaKelas',
                  'v-labelterakhir': 'labelTerakhir', 'v-zoomtetap': 'zoomTetap',

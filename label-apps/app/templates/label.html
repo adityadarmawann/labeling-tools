@@ -41,7 +41,8 @@
       <div class="menu-pisah"></div>
       <div class="menu-judul">Tampilan</div>
       <label><input type="checkbox" id="v-poligon" checked> Tampilkan semua poligon</label>
-      <label><input type="checkbox" id="v-teks"> Tulis kelas di atas bentuk</label>
+      <label title="Nama kelas di atas tiap bentuk. Ini tambahan kita; AnyLabeling tidak punya."><input type="checkbox" id="v-kelas" checked> Tulis nama kelas di atas bentuk</label>
+      <label title="Show Texts di AnyLabeling: menampilkan CATATAN objek (isi Text Editor), bukan nama kelasnya."><input type="checkbox" id="v-teks"> Tulis catatan objek di atas bentuk</label>
       <label><input type="checkbox" id="v-grup"> Tampilkan grup bentuk</label>
       <label><input type="checkbox" id="v-isi" checked> Isi poligon saat digambar</label>
       <label><input type="checkbox" id="v-silang" checked> Garis bantu silang</label>
@@ -174,6 +175,10 @@
 
 <div class="lab-bawah">
   <span id="status">Siap</span>
+  <!-- Slot tersendiri untuk petunjuk "apa yang bisa dilakukan di bawah kursor",
+       padanan setStatusTip di canvas.py. Dipisah dari #status supaya gerakan
+       tetikus tidak menghapus pesan seperti "Tersimpan". -->
+  <span id="petunjuk" class="lab-petunjuk"></span>
   <span class="spacer"></span>
   <span class="mono" id="koord">—</span>
   <span class="mono">{{ it.W }}×{{ it.H }}</span>

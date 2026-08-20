@@ -292,6 +292,7 @@ def jalankan(d, ip):
     jalankan_bentuk(d, jp)
     jalankan_kelas(d)
     jalankan_dialog(d)
+    jalankan_kanvas(d)
 
 
 def jalankan_bentuk(d, jp):
@@ -581,6 +582,107 @@ def jalankan_dialog(d):
     time.sleep(0.15)
     cek("klik ulang kelas yang sama melepas pilihannya", d.js("S.label") == "",
         "kelas aktif=%r" % d.js("S.label"))
+def jalankan_kanvas(d):
+    """Paritas kanvas: roda, Ctrl+Z saat menggambar, klik ganda, panah."""
+    print("  -- paritas kanvas --")
+
+    def roda(dy, ctrl=False):
+        x, y = d.layar(40, 30)
+        d.kirim("Input.dispatchMouseEvent", type="mouseWheel", x=x, y=y,
+                deltaX=0, deltaY=dy, modifiers=2 if ctrl else 0)
+        time.sleep(0.2)
+
+    # -------- Ctrl+roda memperbesar, roda polos menggeser
+    d.js("S.v.tanyaKelas = false; S.label = 'botol'; S.draft = null;"
+         " S.shapes.length = 0; S.terpilih = []; S.sel = -1;"
+         " setMode('edit'); muatKeLayar(); render();")
+    z0, px0 = d.js("S.zoom"), d.js("S.panx")
+    roda(-120, ctrl=True)
+    cek("Ctrl+roda memperbesar", d.js("S.zoom") > z0,
+        "%.3f -> %.3f" % (z0, d.js("S.zoom")))
+
+    d.js("muatKeLayar();")
+    z1, py1 = d.js("S.zoom"), d.js("S.pany")
+    roda(120, ctrl=False)
+    cek("roda polos menggeser, bukan memperbesar",
+        abs(d.js("S.zoom") - z1) < 1e-9 and d.js("S.pany") != py1,
+        "zoom %.3f pany %.1f -> %.1f" % (d.js("S.zoom"), py1, d.js("S.pany")))
+
+    # -------- Ctrl+Z saat menggambar mencabut TITIK, bukan objek sebelumnya
+    d.js("S.shapes.length = 0;"
+         " S.shapes.push({label:'botol', shape_type:'polygon',"
+         " points:[[5,5],[40,5],[40,40]], text:'', group_id:null, flags:{},"
+         " titipan:{}}); S.sel=-1; S.terpilih=[]; setMode('poly'); render();")
+    for gx, gy in ((10, 60), (30, 62), (50, 60)):
+        d.klik(*d.layar(gx, gy))
+    cek("draft terisi 3 titik", d.js("S.draft && S.draft.points.length") == 3,
+        "n=%s" % d.js("S.draft && S.draft.points.length"))
+    d.kirim("Input.dispatchKeyEvent", type="rawKeyDown", key="z",
+            windowsVirtualKeyCode=90, nativeVirtualKeyCode=90, modifiers=2)
+    d.kirim("Input.dispatchKeyEvent", type="keyUp", key="z",
+            windowsVirtualKeyCode=90, nativeVirtualKeyCode=90, modifiers=2)
+    time.sleep(0.2)
+    cek("Ctrl+Z saat menggambar mencabut titik terakhir",
+        d.js("S.draft && S.draft.points.length") == 2,
+        "n=%s" % d.js("S.draft && S.draft.points.length"))
+    cek("objek yang sudah jadi TIDAK ikut hilang", d.js("S.shapes.length") == 1,
+        "n=%s" % d.js("S.shapes.length"))
+
+    # -------- klik ganda tidak menyisakan titik kembar
+    d.js("S.draft = null; S.shapes.length = 0; setMode('poly'); render();")
+    for gx, gy in ((10, 10), (60, 12), (58, 48)):
+        d.klik(*d.layar(gx, gy))
+    # Klik keempat memakai d.klik (jalur yang sama dengan tiga klik di atas),
+    # lalu klik kedua dari pasangan klik-ganda dikirim dengan clickCount=2 —
+    # persis urutan yang dihasilkan peramban saat orang mengklik dua kali.
+    x, y = d.layar(20, 45)
+    d.klik(x, y)
+    d.mouse("mousePressed", x, y, klik=2)
+    time.sleep(0.08)
+    d.mouse("mouseReleased", x, y, klik=2)
+    time.sleep(0.4)
+    # Yang diuji adalah SIFATNYA, bukan jumlah titiknya: aliran klik sintetis CDP
+    # tidak sama dengan peramban sungguhan (satu mousedown tidak terkirim, satu
+    # lagi datang dengan detail=2), jadi menuntut angka persis berarti menguji
+    # harness-nya, bukan aplikasinya. Yang penting: poligonnya tertutup, dan
+    # tidak ada titik kembar berdempetan — cacat yang jadi alasan perbaikan ini.
+    n_titik = d.js("S.shapes[0] && S.shapes[0].points.length")
+    kembar = d.js("(function(){"
+                  " const t = S.shapes[0] ? S.shapes[0].points : [];"
+                  " for (let i = 1; i < t.length; i++)"
+                  "   if (Math.hypot(t[i][0]-t[i-1][0], t[i][1]-t[i-1][1]) < 1e-6)"
+                  "     return true;"
+                  " return false; })()")
+    cek("klik ganda menutup poligon tanpa titik kembar",
+        d.js("S.shapes.length") == 1 and n_titik >= 3 and kembar is False,
+        "n=%s titik=%s kembar=%s" % (d.js("S.shapes.length"), n_titik, kembar))
+
+    # -------- panah menggeser SELURUH bentuk terpilih
+    d.js("S.shapes.length = 0;"
+         " S.shapes.push({label:'a', shape_type:'polygon',"
+         " points:[[10,10],[30,10],[30,30]], text:'', group_id:null, flags:{}, titipan:{}});"
+         " S.shapes.push({label:'b', shape_type:'polygon',"
+         " points:[[50,50],[70,50],[70,70]], text:'', group_id:null, flags:{}, titipan:{}});"
+         " S.terpilih=[0,1]; S.sel=0; setMode('edit'); render();")
+    ax0 = d.js("S.shapes[0].points[0][0]")
+    bx0 = d.js("S.shapes[1].points[0][0]")
+    for tipe in ("rawKeyDown", "keyUp"):
+        d.kirim("Input.dispatchKeyEvent", type=tipe, key="ArrowRight",
+                windowsVirtualKeyCode=39, nativeVirtualKeyCode=39)
+    time.sleep(0.25)
+    cek("panah menggeser SEMUA objek terpilih",
+        d.js("S.shapes[0].points[0][0]") > ax0
+        and d.js("S.shapes[1].points[0][0]") > bx0,
+        "a %.1f->%.1f  b %.1f->%.1f" % (ax0, d.js("S.shapes[0].points[0][0]"),
+                                        bx0, d.js("S.shapes[1].points[0][0]")))
+
+    # -------- beralih ke mode menggambar melepas pilihan
+    d.js("setMode('poly')")
+    cek("beralih menggambar melepas pilihan dan sorotan",
+        d.js("S.terpilih.length") == 0 and d.js("S.sel") == -1
+        and d.js("S.hover") is None,
+        "terpilih=%s sel=%s" % (d.js("JSON.stringify(S.terpilih)"), d.js("S.sel")))
+
 
 if __name__ == "__main__":
     sys.exit(main())
