@@ -47,7 +47,8 @@
       <label><input type="checkbox" id="v-silang" checked> Garis bantu silang</label>
       <div class="menu-pisah"></div>
       <div class="menu-judul">Perilaku</div>
-      <label><input type="checkbox" id="v-labelterakhir" checked> Pakai kelas terakhir otomatis</label>
+      <label title="Setiap objek baru menanyakan kelasnya lewat dialog, seperti AnyLabeling."><input type="checkbox" id="v-tanyakelas" checked> Tanya kelas tiap objek baru</label>
+      <label title="Kalau dialog dimatikan, kelas objek baru diambil dari kelas terakhir yang dipakai."><input type="checkbox" id="v-labelterakhir" checked> Pakai kelas terakhir otomatis</label>
       <label><input type="checkbox" id="v-zoomtetap"> Pertahankan zoom saat pindah gambar</label>
       {# Padanan "Keep Previous Annotation" (Ctrl+P). Bawaannya mati, sama
          seperti keep_prev: false di AnyLabeling — dengan simpan otomatis,
@@ -119,7 +120,7 @@
   </div>
 
   <div class="lab-side">
-    <div class="pan">
+    <div class="pan" id="pan-teks">
       <h3>Text Editor</h3>
       <textarea id="teks" rows="3"
         placeholder="Pilih objek dulu, lalu tulis catatannya di sini"></textarea>
@@ -200,5 +201,32 @@
 </script>
 <script src="/static/app.js"></script>
 <script src="/static/label.js"></script>
+
+<!-- Dialog kelas — padanan label_dialog.py. Muncul setiap objek baru selesai
+     digambar, persis seperti AnyLabeling: kelas, Group ID, dan flag per objek
+     diisi di satu tempat. Membatalkannya MEMBUANG bentuknya
+     (label_widget.py:1961 undo_last_line). -->
+<div class="dlg" id="dlg" hidden>
+  <div class="dlg-kotak" role="dialog" aria-modal="true" aria-labelledby="dlg-judul">
+    <h3 id="dlg-judul">Kelas untuk objek ini</h3>
+    <div class="dlg-baris">
+      <input id="dlg-teks" type="text" autocomplete="off" spellcheck="false"
+             placeholder="Ketik nama kelas">
+      <input id="dlg-grup" type="text" inputmode="numeric" autocomplete="off"
+             placeholder="Group ID">
+    </div>
+    <div class="dlg-daftar" id="dlg-daftar"></div>
+    <div class="dlg-flags" id="dlg-flags"></div>
+    <div class="dlg-baris">
+      <input id="dlg-flagbaru" type="text" autocomplete="off"
+             placeholder="tambah flag untuk objek ini, lalu Enter">
+    </div>
+    <p class="dlg-galat" id="dlg-galat"></p>
+    <div class="dlg-tombol">
+      <button type="button" class="btn" id="dlg-batal">Batal (buang bentuk)</button>
+      <button type="button" class="btn pri" id="dlg-ok">Simpan</button>
+    </div>
+  </div>
+</div>
 </body>
-</html> id="pan-teks"
+</html>

@@ -18,7 +18,12 @@ const D = JSON.parse(document.getElementById('data-awal').textContent);
 const S = {
   shapes: D.shapes.map(s => ({ ...s, points: s.points.map(p => [p[0], p[1]]) })),
   kelas: D.kelas.slice(),
-  label: D.kelas[0] || '',
+  // KOSONG di awal, seperti unique_label_list AnyLabeling yang mulai tanpa
+  // seleksi (label_widget.py:1914-1917). Dulu diisi kelas pertama abjad, dan
+  // karena pindah gambar memuat ulang halaman, nilai itu selalu direset ke
+  // situ — orang yang lupa mengklik ulang melabeli objek dengan kelas yang
+  // sama sekali tidak ia maksud, tanpa satu pun peringatan.
+  label: '',
   mode: 'p+',
   sel: -1,           // bentuk utama terpilih (untuk Text Editor & vertex)
   terpilih: [],      // SEMUA bentuk terpilih; Ctrl+klik menambah/mengurangi
@@ -41,7 +46,8 @@ const S = {
   cerah: 1, kontras: 1,   // faktor tampilan, 1 = normal
   // Setelan menu View. Namanya mengikuti menu View AnyLabeling.
   v: { poligon: true, teks: false, grup: false, isi: true, silang: true,
-       labelTerakhir: true, zoomTetap: false, autosave: true, keepPrev: false },
+       tanyaKelas: true, labelTerakhir: true, zoomTetap: false,
+       autosave: true, keepPrev: false },
 };
 
 const c = document.getElementById('c');
@@ -81,11 +87,6 @@ const UKURAN_TITIK = 8;
 const EPSILON = 10.0;
 const MOVE_SPEED = 5.0;
 
-function bentukBaru(jenis, titik) {
-  return { label: S.label, shape_type: jenis, points: titik,
-           text: '', group_id: null, flags: {}, titipan: {} };
-}
-
 // ---------------------------------------------------------------- transform
 
 const keLayarX = x => x * S.zoom + S.panx;
@@ -101,6 +102,7 @@ const keGambarY = y => (y - S.pany) / S.zoom;
 function ukur() { c.width = wrap.clientWidth; c.height = wrap.clientHeight; }
 
 function muatKeLayar() {
+  S.zoomManual = false;
   S.zoom = Math.min(c.width / D.W, c.height / D.H) * 0.96;
   S.panx = (c.width - D.W * S.zoom) / 2;
   S.pany = (c.height - D.H * S.zoom) / 2;
@@ -110,6 +112,7 @@ function muatKeLayar() {
 /* Fit Width (label_widget.py:623-630, Ctrl+Shift+F). Untuk gambar tinggi-sempit,
    muat-jendela membuang seluruh lebar layar. */
 function muatKeLebar() {
+  S.zoomManual = false;
   S.zoom = (c.width / D.W) * 0.96;
   S.panx = (c.width - D.W * S.zoom) / 2;
   S.pany = 0;
@@ -117,6 +120,7 @@ function muatKeLebar() {
 }
 
 function zoomDi(faktor, cx, cy) {
+  S.zoomManual = true;             // sejak ini, ubah ukuran jendela tidak memaskan ulang
   const gx = keGambarX(cx), gy = keGambarY(cy);
   S.zoom = Math.min(Math.max(S.zoom * faktor, 0.05), 40);
   S.panx = cx - gx * S.zoom;
@@ -667,10 +671,8 @@ function bersihkanPrompt() {
 }
 
 /** Sahkan pratinjau jadi objek — setara Finish Object (f) di AnyLabeling. */
-function finishObject() {
+async function finishObject() {
   if (!S.pratinjau) { toast('Belum ada pratinjau. Klik objeknya dulu.'); return; }
-  if (!S.label) { toast('Pilih kelas dulu di panel Labels'); return; }
-  simpanUndo();
   let titik = S.pratinjau.points;
   let jenis = 'polygon';
   if (el('output').value === 'rectangle') {
@@ -678,14 +680,13 @@ function finishObject() {
     titik = [[Math.min(...xs), Math.min(...ys)], [Math.max(...xs), Math.max(...ys)]];
     jenis = 'rectangle';
   }
-  S.shapes.push(bentukBaru(jenis, titik));
-  S.sel = S.shapes.length - 1;
+  const b = await sahkanBentuk(jenis, titik);
+  if (!b) return;                       // dialog dibatalkan -> pratinjau tetap
   S.prompt = [];
   S.kotak = null;
   S.pratinjau = null;
   el('ab-finish').removeAttribute('data-siap');
-  tandaiKotor();
-  pesan(`Objek disahkan sebagai "${S.label}"`);
+  pesan(`Objek disahkan sebagai "${b.label}"`);
   render();
 }
 
@@ -761,13 +762,7 @@ c.addEventListener('mousedown', ev => {
 
   // `point`: satu klik = satu objek (canvas.py:454-455).
   if (S.mode === 'point') {
-    if (!S.label) { toast('Pilih kelas dulu di panel Labels'); return; }
-    simpanUndo();
-    S.shapes.push(bentukBaru('point', [[kurungX(gx), kurungY(gy)]]));
-    S.sel = S.shapes.length - 1;
-    S.terpilih = [S.sel];
-    tandaiKotor();
-    render();
+    sahkanBentuk('point', [[kurungX(gx), kurungY(gy)]]);
     return;
   }
 
@@ -917,16 +912,9 @@ window.addEventListener('mouseup', ev => {
     const ex = keGambarX(s.x1), ey = keGambarY(s.y1);
     if (Math.hypot(ex - cx, ey - cy) * S.zoom <= 4) {
       toast('Lingkarannya terlalu kecil');
-    } else if (!S.label) {
-      toast('Pilih kelas dulu');
     } else {
-      simpanUndo();
-      S.shapes.push(bentukBaru('circle',
-        [[kurungX(cx), kurungY(cy)], [kurungX(ex), kurungY(ey)]]));
-      S.sel = S.shapes.length - 1;
-      S.terpilih = [S.sel];
-      tandaiKotor();
-      render();
+      sahkanBentuk('circle',
+        [[kurungX(cx), kurungY(cy)], [kurungX(ex), kurungY(ey)]]);
     }
     gambar();
   } else if (s.jenis.startsWith('kotak')) {
@@ -942,14 +930,7 @@ window.addEventListener('mouseup', ev => {
     } else if (s.jenis === 'kotakmanual') {
       // Rectangle manual (R): langsung jadi objek, tanpa SAM — persis
       // create_rectangle di AnyLabeling.
-      if (!S.label) { toast('Pilih kelas dulu'); }
-      else {
-        simpanUndo();
-        S.shapes.push(bentukBaru('rectangle', [[x0, y0], [x1, y1]]));
-        S.sel = S.shapes.length - 1;
-        tandaiKotor();
-        render();
-      }
+      sahkanBentuk('rectangle', [[x0, y0], [x1, y1]]);
     } else {
       S.prompt = [];
       S.kotak = [x0, y0, x1, y1];
@@ -1159,16 +1140,249 @@ function tutupDraft() {
     toast(`${NAMA_JENIS[jenis]} perlu minimal ${minimal} titik`);
     return;
   }
-  if (!S.label) { toast('Pilih kelas dulu'); return; }
-  simpanUndo();
   // `line` disimpan tepat 2 titik; klik berlebih diabaikan, bukan disimpan.
   const titik = jenis === 'line' ? S.draft.points.slice(0, 2) : S.draft.points;
-  S.shapes.push(bentukBaru(jenis, titik));
+  const draft = S.draft;
+  S.draft = null;
+  render();
+  sahkanBentuk(jenis, titik).then(b => {
+    // Dibatalkan: bentuknya dibuang, persis undo_last_line di AnyLabeling.
+    if (!b) { S.draft = draft; render(); }
+  });
+}
+
+// ---------------------------------------------------------------- dialog kelas
+
+/*
+ * Padanan LabelDialog (widgets/label_dialog.py) beserta pemanggilnya new_shape
+ * (label_widget.py:1909-1961).
+ *
+ * Alur AnyLabeling: GAMBAR DULU, dialognya yang bertanya. Panel Labels hanya
+ * memberi nilai awal kotak teks, bukan pengganti dialog. Dulu aplikasi ini
+ * membalik alurnya — kelas wajib dipilih sebelum menggambar, dan bentuknya
+ * DITOLAK kalau belum. Akibat sampingannya lebih besar daripada rasa tidak
+ * nyaman: karena dialog itulah satu-satunya tempat mengisi group_id dan flag
+ * per objek, keduanya tidak punya titik masuk sama sekali.
+ *
+ * Membatalkan dialog membuang bentuknya, sama seperti undo_last_line di sana.
+ */
+
+const KUNCI_KELAS_TERAKHIR = 'labelapp_kelas_terakhir';
+
+/** Padanan LabelDialog._last_label. Di AnyLabeling ia hidup di objek dialog;
+    di sini pindah gambar memuat ulang halaman, jadi harus dititipkan. */
+function kelasTerakhir() {
+  try { return sessionStorage.getItem(KUNCI_KELAS_TERAKHIR) || ''; }
+  catch (e) { return ''; }
+}
+function simpanKelasTerakhir(v) {
+  try { sessionStorage.setItem(KUNCI_KELAS_TERAKHIR, v); } catch (e) { /* mode privat */ }
+}
+
+/** Semua kelas yang boleh dipilih: yang resmi dari data.yaml lebih dulu, lalu
+    yang sudah dipakai di folder ini. Panel dan dialog memakai daftar yang sama. */
+function semuaKelas() {
+  return [...new Set([...(D.kelas_resmi || []), ...S.kelas])];
+}
+
+/*
+ * `^[^ \t].+` — utils.qt.label_validator di AnyLabeling: tidak boleh diawali
+ * spasi atau tab, dan minimal dua karakter.
+ */
+function namaKelasSah(v) {
+  return /^[^ \t].+/.test(v);
+}
+
+let dlgSelesai = null;          // resolve() dialog yang sedang terbuka
+
+/**
+ * Tanyakan kelas, group id, dan flag untuk satu objek.
+ * Mengembalikan {label, group_id, flags} atau null kalau dibatalkan.
+ */
+function tanyaKelas({ label = '', group_id = null, flags = {}, judul = 'Kelas untuk objek ini' } = {}) {
+  const kotak = el('dlg');
+  const teks = el('dlg-teks');
+  const grup = el('dlg-grup');
+  const galat = el('dlg-galat');
+  el('dlg-judul').textContent = judul;
+  galat.textContent = '';
+  teks.value = label || '';
+  grup.value = group_id === null || group_id === undefined ? '' : String(group_id);
+  el('dlg-flagbaru').value = '';
+
+  let flagSekarang = { ...flags };
+
+  function gambarFlags() {
+    const box = el('dlg-flags');
+    box.innerHTML = '';
+    Object.keys(flagSekarang).sort().forEach(k => {
+      const l = document.createElement('label');
+      const c = document.createElement('input');
+      c.type = 'checkbox';
+      c.checked = !!flagSekarang[k];
+      c.onchange = () => { flagSekarang[k] = c.checked; };
+      const sp = document.createElement('span');
+      sp.textContent = k;
+      l.append(c, sp);
+      box.appendChild(l);
+    });
+  }
+
+  function gambarDaftar() {
+    const box = el('dlg-daftar');
+    const resmi = new Set(D.kelas_resmi || []);
+    const ketik = teks.value.trim().toLowerCase();
+    box.innerHTML = '';
+    semuaKelas()
+      .filter(k => !ketik || k.toLowerCase().startsWith(ketik))
+      .forEach(k => {
+        const d = document.createElement('div');
+        d.className = 'it';
+        if (k === teks.value.trim()) d.setAttribute('data-on', '');
+        const i = document.createElement('i');
+        i.style.background = warna(k, 1);
+        const sp = document.createElement('span');
+        sp.textContent = k;
+        d.append(i, sp);
+        if (resmi.has(k)) {
+          const r = document.createElement('span');
+          r.className = 'resmi';
+          r.textContent = 'data.yaml';
+          d.appendChild(r);
+        }
+        // Satu klik mengisi kotak teks (label_selected), klik ganda langsung
+        // menyimpan (label_double_clicked -> validate).
+        d.onclick = () => { teks.value = k; gambarDaftar(); teks.focus(); };
+        d.ondblclick = () => { teks.value = k; setuju(); };
+        box.appendChild(d);
+      });
+  }
+
+  // Pelengkapan sebaris, mode "startswith" bawaan AnyLabeling
+  // (configs/anylabeling_config.yaml:63). Yang diketik tetap yang menentukan;
+  // sisanya cuma tersorot dan hilang begitu diketik lagi.
+  let hapusTerakhir = false;
+  teks.oninput = () => {
+    const v = teks.value;
+    if (!hapusTerakhir && v) {
+      const cocok = semuaKelas().find(
+        k => k.toLowerCase().startsWith(v.toLowerCase()) && k.length > v.length);
+      if (cocok) {
+        teks.value = cocok;
+        teks.setSelectionRange(v.length, cocok.length);
+      }
+    }
+    hapusTerakhir = false;
+    galat.textContent = '';
+    gambarDaftar();
+  };
+  teks.onkeydown = ev => {
+    if (ev.key === 'Backspace' || ev.key === 'Delete') hapusTerakhir = true;
+    // Panah Atas/Bawah menelusuri daftar dari dalam kotak teks
+    // (LabelQLineEdit.keyPressEvent).
+    if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+      ev.preventDefault();
+      const daftar = [...el('dlg-daftar').querySelectorAll('.it span:first-of-type')]
+        .map(x => x.textContent);
+      if (!daftar.length) return;
+      const i = daftar.indexOf(teks.value.trim());
+      const n = ev.key === 'ArrowDown'
+        ? (i < 0 ? 0 : Math.min(i + 1, daftar.length - 1))
+        : (i < 0 ? daftar.length - 1 : Math.max(i - 1, 0));
+      teks.value = daftar[n];
+      gambarDaftar();
+    }
+  };
+  el('dlg-flagbaru').onkeydown = ev => {
+    if (ev.key !== 'Enter') return;
+    ev.preventDefault();
+    const v = ev.target.value.trim();
+    if (!v) return;
+    flagSekarang[v] = true;
+    ev.target.value = '';
+    gambarFlags();
+  };
+
+  function setuju() {
+    const v = teks.value.trim();
+    // validate() di AnyLabeling hanya menerima teks tidak kosong; validator
+    // kotaknya yang menolak nama yang diawali spasi atau cuma satu huruf.
+    if (!v) { galat.textContent = 'Nama kelas belum diisi.'; teks.focus(); return; }
+    if (!namaKelasSah(v)) {
+      galat.textContent = 'Nama kelas minimal dua karakter dan tidak boleh diawali spasi.';
+      teks.focus(); return;
+    }
+    const pesanGuard = periksaKelas(v);
+    if (pesanGuard) { galat.textContent = pesanGuard; teks.focus(); return; }
+    const g = grup.value.trim();
+    if (g && !/^\d+$/.test(g)) {
+      galat.textContent = 'Group ID hanya boleh angka.'; grup.focus(); return;
+    }
+    tutupDialog({ label: v, group_id: g === '' ? null : parseInt(g, 10),
+                  flags: flagSekarang });
+  }
+
+  el('dlg-ok').onclick = setuju;
+  el('dlg-batal').onclick = () => tutupDialog(null);
+
+  gambarFlags();
+  gambarDaftar();
+  kotak.hidden = false;
+  teks.focus();
+  teks.setSelectionRange(0, teks.value.length);
+  return new Promise(res => { dlgSelesai = res; });
+}
+
+function tutupDialog(hasil) {
+  el('dlg').hidden = true;
+  const res = dlgSelesai;
+  dlgSelesai = null;
+  if (res) res(hasil);
+}
+
+const dialogTerbuka = () => !el('dlg').hidden;
+
+// Enter menyimpan, Escape membatalkan — dan keduanya ditangkap di fase penangkap
+// supaya tidak pernah sampai ke pintasan kanvas.
+window.addEventListener('keydown', ev => {
+  if (!dialogTerbuka()) return;
+  if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); tutupDialog(null); }
+  else if (ev.key === 'Enter' && ev.target.id !== 'dlg-flagbaru') {
+    ev.preventDefault(); ev.stopPropagation(); el('dlg-ok').click();
+  }
+}, true);
+
+/*
+ * Padanan new_shape (label_widget.py:1909-1961): satu-satunya pintu bentuk baru
+ * masuk ke dataset. Semua mode menggambar mengalir ke sini supaya aturan
+ * kelasnya cuma ada di satu tempat.
+ */
+async function sahkanBentuk(jenis, titik) {
+  const dipanel = S.label;
+  let hasil = null;
+
+  if (!S.v.tanyaKelas && dipanel) {
+    // Kelas sudah dipilih di panel dan dialog dimatikan -> langsung pakai,
+    // seperti AnyLabeling saat display_label_popup mati.
+    hasil = { label: dipanel, group_id: null, flags: {} };
+  } else if (!S.v.tanyaKelas && S.v.labelTerakhir && kelasTerakhir()) {
+    hasil = { label: kelasTerakhir(), group_id: null, flags: {} };
+  } else {
+    hasil = await tanyaKelas({ label: dipanel || kelasTerakhir() });
+  }
+  if (!hasil) return null;              // dibatalkan -> bentuknya dibuang
+
+  simpanUndo();
+  const b = { label: hasil.label, shape_type: jenis, points: titik, text: '',
+              group_id: hasil.group_id, flags: hasil.flags || {}, titipan: {} };
+  S.shapes.push(b);
   S.sel = S.shapes.length - 1;
   S.terpilih = [S.sel];
-  S.draft = null;
+  if (!S.kelas.includes(hasil.label)) { S.kelas.push(hasil.label); S.kelas.sort(); }
+  simpanKelasTerakhir(hasil.label);
   tandaiKotor();
   render();
+  return b;
 }
 
 // ---------------------------------------------------------------- papan tombol
@@ -1413,16 +1627,30 @@ function hapusTitikTerpilih() {
   hapusTitikDi(S.sel, S.selv);
 }
 
-/** Ctrl+E: ubah kelas objek terpilih. */
-function ubahKelasTerpilih() {
+/**
+ * Ctrl+E: ubah kelas objek terpilih — padanan edit_label (label_widget.py:1558).
+ *
+ * Memakai dialog yang sama dengan objek baru, jadi group_id, flag per objek,
+ * dan penjaga salah ketik berlaku di sini juga. Dulu jalur ini cuma prompt()
+ * bawaan peramban tanpa satu pun pemeriksaan.
+ */
+async function ubahKelasTerpilih() {
   if (S.sel < 0) { toast('Pilih objeknya dulu'); return; }
-  // Kalau beberapa terpilih, semuanya diganti sekaligus.
-  const v = (prompt('Kelas untuk objek ini:', S.shapes[S.sel].label) || '').trim();
-  if (!v) return;
+  const s0 = S.shapes[S.sel];
+  const hasil = await tanyaKelas({
+    label: s0.label, group_id: s0.group_id, flags: s0.flags || {},
+    judul: S.terpilih.length > 1
+      ? `Ubah ${S.terpilih.length} objek terpilih` : 'Ubah kelas objek ini' });
+  if (!hasil) return;
+  const v = hasil.label;
   simpanUndo();
+  // group_id dan flag hanya dikenakan ke objek utama; menyeragamkannya ke
+  // seluruh seleksi akan menghapus grup yang berbeda-beda tanpa diminta.
+  s0.group_id = hasil.group_id;
+  s0.flags = hasil.flags || {};
+  simpanKelasTerakhir(v);
   (adaTerpilih() ? S.terpilih : [S.sel]).forEach(i => { S.shapes[i].label = v; });
   if (!S.kelas.includes(v)) { S.kelas.push(v); S.kelas.sort(); }
-  S.label = v;
   tandaiKotor();
   render();
 }
@@ -1453,20 +1681,29 @@ function zoomAsli() {
 function renderKelas() {
   const box = el('kelas');
   box.innerHTML = '';
-  if (!S.kelas.length) {
+  // Kelas resmi dataset (data.yaml / classes.txt) ikut tampil. Dulu daftar ini
+  // hanya berisi kelas yang KEBETULAN sudah terpakai, sehingga dataset YOLO
+  // yang belum dianotasi membuka panel kosong padahal nama kelasnya ada di
+  // data.yaml — dan seluruhnya harus diketik ulang dengan tangan.
+  const daftar = semuaKelas();
+  if (!daftar.length) {
     box.innerHTML = '<div class="obj-kosong">Belum ada kelas — tulis di bawah.</div>';
   }
-  S.kelas.forEach(k => {
+  const resmi = new Set(D.kelas_resmi || []);
+  daftar.forEach(k => {
     const d = document.createElement('div');
     d.className = 'kelas';
     if (k === S.label) d.setAttribute('data-on', '');
-    d.innerHTML = `<i style="background:${warna(k, 1)}"></i><span></span>`;
-    d.querySelector('span').textContent = k;
-    d.onclick = () => {
-      S.label = k;
-      if (S.sel >= 0) { simpanUndo(); S.shapes[S.sel].label = k; tandaiKotor(); }
-      render();
-    };
+    const i = document.createElement('i');
+    i.style.background = warna(k, 1);
+    const sp = document.createElement('span');
+    sp.textContent = k;
+    d.append(i, sp);
+    if (resmi.has(k)) d.title = 'kelas resmi dataset (data.yaml)';
+    // Klik ulang melepas pilihan, seperti Esc / klik area kosong pada
+    // EscapableQListWidget (escapable_qlist_widget.py:5-10). Tanpa keadaan
+    // "belum memilih kelas", tidak ada rem terhadap pelabelan yang salah.
+    d.onclick = () => { S.label = (S.label === k) ? '' : k; render(); };
     box.appendChild(d);
   });
 }
@@ -1674,6 +1911,7 @@ async function pindah(path) {
     return;
   }
   titipUntukKeepPrev();
+  titipZoom();
   location.href = '/label?path=' + encodeURIComponent(path);
 }
 
@@ -1768,13 +2006,46 @@ function kelasMirip(v) {
 
 let kelasMenunggu = null;    // nama yang sudah diperingatkan, tinggal ditegaskan
 
+/**
+ * Periksa nama kelas. Mengembalikan pesan peringatan, atau '' kalau boleh.
+ *
+ * Dipakai oleh SEMUA jalur pemberian kelas — dialog objek baru, Ctrl+E, dan
+ * kotak "kelas baru" di panel. Dulu penjaganya hanya terpasang di kotak panel,
+ * sehingga Ctrl+E — jalur tercepat mengubah kelas — justru satu-satunya yang
+ * tanpa pengaman, dan mengetik "Botol" di sana langsung membuat kelas keenam.
+ *
+ * Menahan, bukan menolak: menegaskan sekali lagi tetap membuat kelasnya.
+ */
+function periksaKelas(v) {
+  if (S.kelas.includes(v) || (D.kelas_resmi || []).includes(v)) { kelasMenunggu = null; return ''; }
+  if (kelasMenunggu === v) { kelasMenunggu = null; return ''; }
+  const mirip = kelasMirip(v);
+  const resmi = D.kelas_resmi || [];
+  if (mirip) {
+    kelasMenunggu = v;
+    return `"${v}" mirip dengan "${mirip}" — salah ketik? Tegaskan sekali lagi kalau memang kelas baru.`;
+  }
+  if (resmi.length) {
+    kelasMenunggu = v;
+    return `"${v}" belum ada di daftar ${resmi.length} kelas dataset. Tegaskan sekali lagi kalau memang kelas baru.`;
+  }
+  return '';                       // dataset tanpa daftar resmi: tidak ada yang dilanggar
+}
+
+/*
+ * Pilih kelas untuk bentuk BERIKUTNYA. Objek yang sedang terpilih sengaja tidak
+ * disentuh: di AnyLabeling panel Labels sama sekali tidak punya jalur ke bentuk
+ * yang sudah ada — tooltipnya sendiri berbunyi "Select label to start
+ * annotating for it" (label_widget.py:227-229). Dulu memilih kelas di sini
+ * diam-diam melabeli ulang objek yang masih terpilih dari pekerjaan sebelumnya,
+ * lalu autosave menuliskannya. Untuk mengubah objek yang ada, pakai Ctrl+E.
+ */
 function pakaiKelas(v) {
   if (!S.kelas.includes(v)) S.kelas.push(v);
   S.kelas.sort();
   S.label = v;
   el('kelasbaru').value = '';
   kelasMenunggu = null;
-  if (S.sel >= 0) { simpanUndo(); S.shapes[S.sel].label = v; tandaiKotor(); }
   render();
 }
 
@@ -1785,33 +2056,33 @@ el('kelasbaru').addEventListener('keydown', ev => {
   const v = ev.target.value.trim();
   if (!v) return;
 
-  // Sudah ada persis: langsung dipakai, tidak ada yang perlu ditanyakan.
-  if (S.kelas.includes(v) || (D.kelas_resmi || []).includes(v)) { pakaiKelas(v); return; }
-
-  // Sudah diperingatkan dan orangnya menekan Enter lagi: itu penegasan.
-  if (kelasMenunggu === v) { pakaiKelas(v); toast(`Kelas baru "${v}" ditambahkan`); return; }
-
-  const mirip = kelasMirip(v);
-  const resmi = D.kelas_resmi || [];
-  if (mirip) {
-    kelasMenunggu = v;
-    toast(`"${v}" mirip dengan "${mirip}" — salah ketik? `
-        + `Klik "${mirip}" di daftar, atau Enter lagi untuk tetap membuat "${v}".`);
-  } else if (resmi.length) {
-    kelasMenunggu = v;
-    toast(`"${v}" belum ada di daftar kelas dataset (${resmi.length} kelas). `
-        + `Enter lagi kalau memang kelas baru.`);
-  } else {
-    // Dataset tanpa daftar kelas resmi: tidak ada yang bisa dilanggar.
-    pakaiKelas(v);
+  if (!namaKelasSah(v)) {
+    toast('Nama kelas minimal dua karakter dan tidak boleh diawali spasi.');
+    return;
   }
+  const pesanGuard = periksaKelas(v);
+  if (pesanGuard) { toast(pesanGuard); return; }
+  pakaiKelas(v);
 });
 
 el('prev').onclick = e => { e.preventDefault(); pindah(D.prev); };
 el('next').onclick = e => { e.preventDefault(); pindah(D.next); };
-window.addEventListener('resize', () => { ukur(); gambar(); });
+window.addEventListener('resize', () => {
+  // resizeEvent -> adjust_scale() di AnyLabeling: selama bukan zoom manual,
+  // gambar dipaskan ulang. Tanpa ini, membuka/menutup panel membuat gambar
+  // tidak lagi muat dan sebagiannya keluar area tanpa cara mudah kembali.
+  ukur();
+  if (S.zoomManual) gambar(); else muatKeLayar();
+});
 
-img.onload = () => { ukur(); muatKeLayar(); render(); pesan(`${D.nama} siap`); };
+img.onload = () => {
+  ukur();
+  // Zoom dipertahankan hanya kalau setelannya menyala; kalau tidak, kembali
+  // muat-jendela seperti biasa.
+  if (!pakaiZoomTitipan()) muatKeLayar();
+  render();
+  pesan(`${D.nama} siap`);
+};
 img.onerror = () => { pesan('Gambar gagal dimuat'); toast('Gambar gagal dimuat'); };
 img.src = '/gambar?path=' + encodeURIComponent(D.path);
 
@@ -1914,6 +2185,33 @@ function simpanView() {
   localStorage.setItem(VKUNCI, JSON.stringify({ v: S.v, panel }));
 }
 
+/*
+ * keep_prev_scale (label_widget.py:606-612). Di AnyLabeling zoom per gambar
+ * disimpan di memori aplikasi; di sini pindah gambar memuat ulang halaman, jadi
+ * nilainya dititipkan. Sebelumnya kotak centangnya sama sekali tidak pernah
+ * dibaca — menyalakannya tidak mengubah apa pun.
+ */
+const KUNCI_ZOOM = 'labelapp_zoom_tetap';
+
+function titipZoom() {
+  if (!S.v.zoomTetap) return;
+  try {
+    sessionStorage.setItem(KUNCI_ZOOM, JSON.stringify(
+      { zoom: S.zoom, panx: S.panx, pany: S.pany }));
+  } catch (e) { /* mode privat */ }
+}
+
+function pakaiZoomTitipan() {
+  if (!S.v.zoomTetap) return false;
+  try {
+    const d = JSON.parse(sessionStorage.getItem(KUNCI_ZOOM) || 'null');
+    if (!d || !d.zoom) return false;
+    S.zoom = d.zoom; S.panx = d.panx; S.pany = d.pany;
+    gambar();
+    return true;
+  } catch (e) { return false; }
+}
+
 function terapkanPanel(id, tampil) {
   const n = el(id);
   if (n) n.hidden = !tampil;
@@ -1925,6 +2223,7 @@ function muatView() {
   Object.assign(S.v, d.v || {});
   const peta = { 'v-poligon': 'poligon', 'v-teks': 'teks', 'v-grup': 'grup',
                  'v-isi': 'isi', 'v-silang': 'silang',
+                 'v-tanyakelas': 'tanyaKelas',
                  'v-labelterakhir': 'labelTerakhir', 'v-zoomtetap': 'zoomTetap',
                  'v-autosave': 'autosave', 'v-keepprev': 'keepPrev' };
   for (const [id, kunci] of Object.entries(peta)) {

@@ -291,13 +291,17 @@ def jalankan(d, ip):
 
     jalankan_bentuk(d, jp)
     jalankan_kelas(d)
+    jalankan_dialog(d)
 
 
 def jalankan_bentuk(d, jp):
     """Enam tipe bentuk, salin-tempel, grup, dan seret klik kanan."""
     print("  -- tipe bentuk --")
-    d.js("S.label = S.kelas[0] || 'botol'; S.shapes.length = 0;"
-         " S.terpilih=[]; S.sel=-1; S.kotor=false; render();")
+    # Dialog kelas dimatikan untuk blok ini — setara display_label_popup: false
+    # di AnyLabeling, sehingga bentuk langsung memakai kelas panel. Dialognya
+    # sendiri diuji terpisah di jalankan_dialog().
+    d.js("S.v.tanyaKelas = false; S.label = S.kelas[0] || 'botol';"
+         " S.shapes.length = 0; S.terpilih=[]; S.sel=-1; S.kotor=false; render();")
 
     # -------- point: satu klik satu objek
     d.js("setMode('point')")
@@ -460,6 +464,123 @@ def jalankan_kelas(d):
     cek("kelas yang sudah ada langsung dipakai", d.js("S.label") == "kaleng",
         f"label={d.js('S.label')}")
 
+
+def jalankan_dialog(d):
+    """
+    Dialog kelas — padanan label_dialog.py + new_shape (label_widget.py:1909).
+
+    Diuji lewat peristiwa mouse dan papan tombol sungguhan, bukan dengan
+    memanggil tanyaKelas() langsung, supaya alur "gambar dulu, dialog yang
+    bertanya" ikut teruji apa adanya.
+    """
+    print("  -- dialog kelas --")
+    TERBUKA = "!document.getElementById('dlg').hidden"
+    TEKS = "document.getElementById('dlg-teks')"
+    GRUP = "document.getElementById('dlg-grup')"
+
+    def tunggu_dialog(terbuka=True, batas=40):
+        for _ in range(batas):
+            if bool(d.js(TERBUKA)) is terbuka:
+                return True
+            time.sleep(0.05)
+        return False
+
+    def tombol(nama):
+        d.js("document.getElementById('dlg-" + nama + "').click()")
+        time.sleep(0.2)
+
+    def gambar_poligon():
+        d.js("S.v.tanyaKelas = true; S.label = ''; S.draft = null;"
+             " S.shapes.length = 0; S.terpilih = []; S.sel = -1;"
+             " S.kotor = false; setMode('poly'); render();")
+        for gx, gy in ((10, 10), (60, 12), (58, 48)):
+            d.klik(*d.layar(gx, gy))
+        for tipe in ("rawKeyDown", "keyUp"):
+            d.kirim("Input.dispatchKeyEvent", type=tipe, key="Enter",
+                    windowsVirtualKeyCode=13, nativeVirtualKeyCode=13)
+        time.sleep(0.2)
+
+    # -------- dialog muncul walau tidak ada kelas yang dipilih lebih dulu
+    gambar_poligon()
+    cek("bentuk selesai memunculkan dialog kelas", tunggu_dialog(True))
+    cek("bentuknya belum masuk sebelum dialog dijawab",
+        d.js("S.shapes.length") == 0, "n=%s" % d.js("S.shapes.length"))
+
+    # -------- isi kelas + group id, lalu Simpan
+    d.js(TEKS + ".value = 'kaleng'; " + GRUP + ".value = '7';")
+    tombol("ok")
+    cek("Simpan membuat objek dengan kelas dari dialog",
+        d.js("S.shapes.length") == 1 and d.js("S.shapes[0].label") == "kaleng",
+        "n=%s label=%s" % (d.js("S.shapes.length"),
+                           d.js("S.shapes[0] && S.shapes[0].label")))
+    cek("group id dari dialog ikut tersimpan",
+        d.js("S.shapes[0].group_id") == 7,
+        "group_id=%s" % d.js("S.shapes[0] && S.shapes[0].group_id"))
+    cek("dialog tertutup setelah Simpan", tunggu_dialog(False))
+
+    # -------- Batal membuang bentuknya (undo_last_line, label_widget.py:1961)
+    gambar_poligon()
+    tunggu_dialog(True)
+    tombol("batal")
+    cek("Batal membuang bentuknya, tidak menyimpannya",
+        d.js("S.shapes.length") == 0, "n=%s" % d.js("S.shapes.length"))
+
+    # -------- Escape sama dengan Batal, dan tidak bocor ke pintasan kanvas
+    gambar_poligon()
+    tunggu_dialog(True)
+    for tipe in ("rawKeyDown", "keyUp"):
+        d.kirim("Input.dispatchKeyEvent", type=tipe, key="Escape",
+                windowsVirtualKeyCode=27, nativeVirtualKeyCode=27)
+    time.sleep(0.25)
+    cek("Escape menutup dialog dan membuang bentuknya",
+        not d.js(TERBUKA) and d.js("S.shapes.length") == 0,
+        "terbuka=%s n=%s" % (d.js(TERBUKA), d.js("S.shapes.length")))
+
+    # -------- nama satu huruf ditolak validator ^[^ \t].+
+    gambar_poligon()
+    tunggu_dialog(True)
+    d.js(TEKS + ".value = 'x';")
+    tombol("ok")
+    galat = d.js("document.getElementById('dlg-galat').textContent")
+    cek("nama satu huruf ditolak dialog", bool(d.js(TERBUKA)) and bool(galat),
+        "galat=%s" % galat)
+    tombol("batal")
+
+    # -------- Ctrl+E memakai dialog yang sama, terisi nilai objeknya
+    d.js("S.shapes.length = 0;"
+         " S.shapes.push({label:'botol', shape_type:'polygon',"
+         " points:[[5,5],[40,5],[40,40]], text:'', group_id:3, flags:{},"
+         " titipan:{}}); S.sel = 0; S.terpilih = [0]; setMode('edit'); render();")
+    d.js("ubahKelasTerpilih()")
+    cek("Ctrl+E membuka dialog yang sama", tunggu_dialog(True))
+    cek("dialog terisi kelas dan group id objeknya",
+        d.js(TEKS + ".value") == "botol" and d.js(GRUP + ".value") == "3",
+        "teks=%s grup=%s" % (d.js(TEKS + ".value"), d.js(GRUP + ".value")))
+    tombol("batal")
+
+    # -------- kelas resmi data.yaml tampil di panel walau belum terpakai
+    nama_panel = ("[...document.querySelectorAll('#kelas .kelas span')]"
+                  ".map(x => x.textContent)")
+    cek("kelas resmi dataset tampil di panel Labels",
+        bool(d.js(nama_panel + ".includes('plastic-cup')")),
+        d.js("JSON.stringify(" + nama_panel + ")"))
+
+    # -------- klik kelas di panel TIDAK mengubah objek yang sedang terpilih
+    d.js("S.shapes.length = 0;"
+         " S.shapes.push({label:'botol', shape_type:'polygon',"
+         " points:[[5,5],[40,5],[40,40]], text:'', group_id:null, flags:{},"
+         " titipan:{}}); S.sel = 0; S.terpilih = [0]; S.label = ''; render();")
+    klik_kelas = ("[...document.querySelectorAll('#kelas .kelas')]"
+                  ".find(x => x.textContent.trim() === 'kaleng').click()")
+    d.js(klik_kelas)
+    time.sleep(0.15)
+    cek("memilih kelas di panel tidak melabeli ulang objek terpilih",
+        d.js("S.shapes[0].label") == "botol" and d.js("S.label") == "kaleng",
+        "label objek=%s kelas aktif=%s" % (d.js("S.shapes[0].label"), d.js("S.label")))
+    d.js(klik_kelas)
+    time.sleep(0.15)
+    cek("klik ulang kelas yang sama melepas pilihannya", d.js("S.label") == "",
+        "kelas aktif=%r" % d.js("S.label"))
 
 if __name__ == "__main__":
     sys.exit(main())
