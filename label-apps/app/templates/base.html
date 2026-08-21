@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{% block title %}Periksa anotasi{% endblock %}</title>
-<link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="{{ statik('app.css') }}">
 <script>
 /* Dipasang sebelum CSS sempat melukis. Tanpa ini, halaman berkedip terang
    sepersekian detik sebelum tema gelap terpasang — dan kedipan itu justru
@@ -20,6 +20,6 @@
 <body>
 {% block body %}{% endblock %}
 <div class="toast" id="t"></div>
-<script src="/static/app.js"></script>
+<script src="{{ statik('app.js') }}"></script>
 </body>
 </html>

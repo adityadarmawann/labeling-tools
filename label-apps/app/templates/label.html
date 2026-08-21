@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{{ it.img.name }} — anotasi</title>
-<link rel="stylesheet" href="/static/app.css">
-<link rel="stylesheet" href="/static/label.css">
+<link rel="stylesheet" href="{{ statik('app.css') }}">
+<link rel="stylesheet" href="{{ statik('label.css') }}">
 <script>
 /* Sama seperti di base.html: tema dipasang sebelum CSS sempat melukis, supaya
    halaman tidak berkedip terang lebih dulu. Halaman ini berdiri sendiri, tidak
@@ -397,8 +397,8 @@
   </div>
 </div>
 
-<script src="/static/app.js"></script>
-<script src="/static/label.js"></script>
+<script src="{{ statik('app.js') }}"></script>
+<script src="{{ statik('label.js') }}"></script>
 
 </body>
 </html>

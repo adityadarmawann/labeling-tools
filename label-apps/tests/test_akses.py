@@ -285,3 +285,53 @@ def test_autologin_akun_tidak_ada_ditolak(aplikasi, monkeypatch):
         assert r.status_code == 303 and r.headers["location"] == "/login"
     finally:
         get_settings.cache_clear()
+
+
+def test_berkas_static_dirujuk_dengan_cap_versi(klien):
+    """
+    Regresi. Berkas static dikirim tanpa Cache-Control, jadi peramban menebak
+    sendiri berapa lama ia boleh menyimpannya — dan tebakannya sering "lama".
+    Akibatnya halaman memuat HTML terbaru bersama JavaScript LAMA: tombol baru
+    muncul tetapi diam saja saat diklik. Cap versi dari waktu-ubah berkasnya
+    membuat URL-nya berubah sendiri setiap kali isinya berubah.
+    """
+    import re
+
+    from conftest import PW_PAUL, masuk
+
+    masuk(klien, "paul", PW_PAUL)
+    html = klien.get("/pilih").text
+    rujukan = re.findall(r'(?:href|src)="(/static/[^"]+)"', html)
+    assets = [u for u in rujukan if u.split("?")[0].endswith((".js", ".css"))]
+    assert assets, rujukan
+    for u in assets:
+        assert re.search(r"\?v=[0-9a-f]+$", u), f"tanpa cap versi: {u}"
+        # dan berkasnya tetap bisa diambil dengan cap itu
+        assert klien.get(u).status_code == 200, u
+
+
+def test_cap_versi_berubah_saat_berkasnya_berubah(tmp_path, monkeypatch):
+    """Cap yang tidak pernah berubah sama saja dengan tidak ada cap.
+
+    Dikerjakan pada berkas di tmp_path, bukan pada berkas aplikasi: penjaga di
+    conftest melarang tes menyentuh folder aplikasi, dan larangan itu benar —
+    mengubah waktu-ubah app.js dari dalam tes akan merembet ke tes lain.
+    """
+    import os
+    import re
+
+    from app import templating
+
+    berkas = tmp_path / "app.js"
+    berkas.write_text("// uji\n")
+    monkeypatch.setattr(templating, "STATIC_DIR", tmp_path)
+
+    awal = templating.statik("app.js")
+    assert re.match(r"^/static/app\.js\?v=[0-9a-f]+$", awal), awal
+
+    st = berkas.stat()
+    os.utime(berkas, (st.st_mtime + 60, st.st_mtime + 60))
+    assert templating.statik("app.js") != awal, "cap tidak berubah padahal berkasnya berubah"
+
+    # berkas yang tidak ada tidak boleh menggagalkan render halaman
+    assert templating.statik("tidak-ada.js").endswith("?v=0")
