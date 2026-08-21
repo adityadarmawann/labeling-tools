@@ -974,6 +974,31 @@ def jalankan_potret(d):
                  " return (r.left < 0 || r.right > innerWidth)"
                  "        ? `left=${r.left|0} right=${r.right|0} lebar=${innerWidth}` : ''; })()")
     cek("dropdown kelas tidak terpotong tepi layar", luber == "", luber)
+
+    # Keadaan tercentang & segmen aktif: di situlah gaya khusus bisa gagal
+    # diam-diam, karena bawaannya (tidak tercentang) selalu terlihat benar.
+    d.js("""
+      document.querySelectorAll('#kelas-isi input[type=checkbox]')
+        .forEach(c => { c.checked = true; });
+      const dan = document.querySelector('#kelas-isi input[value=dan]');
+      dan.checked = true; dan.dispatchEvent(new Event('change', {bubbles:true}));
+    """)
+    time.sleep(0.35)
+    simpan("grid-kelas-tercentang")
+    aktif = d.js("[...document.querySelectorAll('.seg-opt')]"
+                 ".filter(o => o.hasAttribute('data-on')).length")
+    cek("tepat satu segmen ditandai aktif", aktif == 1, "jumlah=%s" % aktif)
+    ket = d.js("[...document.querySelectorAll('#kelas-isi [data-ket]')]"
+               ".filter(n => !n.hidden).map(n => n.dataset.ket).join(',')")
+    cek("keterangan ikut segmen yang aktif, bukan yang lama", ket == "dan",
+        "tampil=%r" % ket)
+    tanda = d.js("(function(){ const cb = document.querySelector("
+                 "'#kelas-isi input:checked ~ .cb');"
+                 " if (!cb) return 'tidak ada .cb setelah input tercentang';"
+                 " const g = getComputedStyle(cb, '::after');"
+                 " return g.transform && g.transform !== 'none' ? '' : 'centang tak tergambar';"
+                 " })()")
+    cek("kotak centang menampilkan tanda saat tercentang", tanda == "", tanda)
     d.js("location.href = '/label?path=' + encodeURIComponent(%r)" % str(d.gambar)
          if hasattr(d, "gambar") else "history.back()")
     time.sleep(1.2)

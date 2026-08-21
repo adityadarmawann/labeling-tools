@@ -146,21 +146,30 @@
           <input type="hidden" name="f" value="{{ flt }}">
           {% if urut and urut != 'nama' %}<input type="hidden" name="s" value="{{ urut }}">{% endif %}
           {% if cari %}<input type="hidden" name="q" value="{{ cari }}">{% endif %}
-          {# Satu pasang pilihan yang mengubah aturan untuk SELURUH centang di
-             bawahnya. Alternatifnya — kelompok centang ketiga khusus "DAN" —
-             akan menggandakan daftar kelas di layar, dan orang harus menebak
-             beda kedua salinannya. #}
-          <span class="menu-judul">Aturan</span>
-          <label class="kelas-baris aturan">
-            <input type="radio" name="m" value="atau"
-                   {% if mode != 'dan' %}checked{% endif %}>
-            <span>Cocok <b>salah satu</b> pilihan</span></label>
-          <label class="kelas-baris aturan">
-            <input type="radio" name="m" value="dan"
-                   {% if mode == 'dan' %}checked{% endif %}>
-            <span>Harus punya <b>semuanya</b> dalam satu gambar</span></label>
-          <span class="menu-pisah"></span>
-          <span class="menu-judul">Pilihan</span>
+          {# Kontrol tersegmen, bukan dua radio bertumpuk: keduanya adalah dua
+             sisi dari SATU pilihan, dan bentuk ini menyatakannya tanpa perlu
+             dibaca. Sebagai dua baris radio, kalimat panjangnya membungkus dan
+             lingkarannya melayang di tengah blok dua baris. #}
+          <div class="seg" role="radiogroup" aria-label="Aturan penggabungan">
+            <label class="seg-opt">
+              <input type="radio" name="m" value="atau"
+                     {% if mode != 'dan' %}checked{% endif %}>
+              <span>Salah satu</span></label>
+            <label class="seg-opt">
+              <input type="radio" name="m" value="dan"
+                     {% if mode == 'dan' %}checked{% endif %}>
+              <span>Semuanya</span></label>
+          </div>
+          {# Kedua kalimat ada di DOM dan ditukar seketika saat segmen diklik.
+             Kalau hanya dirender server, keterangannya baru berubah setelah
+             Terapkan ditekan — dan sampai saat itu ia menyatakan kebalikan
+             dari segmen yang tampak aktif. #}
+          <p class="seg-ket">
+            <span data-ket="atau"{% if mode == 'dan' %} hidden{% endif %}>Gambar cukup punya
+              <b>salah satu</b> pilihan yang dicentang.</span>
+            <span data-ket="dan"{% if mode != 'dan' %} hidden{% endif %}>Gambar harus punya
+              <b>semua</b> pilihan yang dicentang, dalam satu gambar.</span>
+          </p>
           {# Keadaan "tanpa kelas" ikut di dropdown ini, bukan di kotak terpisah:
              "botol atau latar" adalah satu pertanyaan. Latar = sengaja
              dikosongkan (padanan Mark Null di Roboflow); Belum dilabeli =
@@ -168,28 +177,26 @@
           <div class="kelas-daftar kelas-tanpa">
             <label class="kelas-baris">
               <input type="checkbox" name="x" value="latar"
-                     {% if 'latar' in tanpa %}checked{% endif %}>
+                     {% if 'latar' in tanpa %}checked{% endif %}><span class="cb"></span>
               <i style="background:var(--latar)"></i>
               <span>{{ tanpa_nama['latar'] }}</span><b>{{ n_bg }}</b></label>
             <label class="kelas-baris">
               <input type="checkbox" name="x" value="unlab"
-                     {% if 'unlab' in tanpa %}checked{% endif %}>
+                     {% if 'unlab' in tanpa %}checked{% endif %}><span class="cb"></span>
               <i style="background:var(--stop)"></i>
               <span>{{ tanpa_nama['unlab'] }}</span><b>{{ n_stop }}</b></label>
           </div>
-          <span class="menu-pisah"></span>
           <div class="kelas-daftar">
             {%- for k, n in kelas_hitung.items() %}
             <label class="kelas-baris">
               <input type="checkbox" name="c" value="{{ k }}"
-                     {% if k in kelas %}checked{% endif %}>
+                     {% if k in kelas %}checked{% endif %}><span class="cb"></span>
               <i style="background:{{ k | warnakelas }}"></i>
               <span>{{ k }}</span><b>{{ n }}</b></label>
             {%- else %}
             <span class="menu-catatan">Belum ada kelas terpakai di dataset ini.</span>
             {%- endfor %}
           </div>
-          <span class="menu-pisah"></span>
           <span class="kelas-aksi">
             <button class="chip pri" type="submit">Terapkan</button>
             <a class="chip" href="{{ tautan(val_c=[], val_x=[], val_m='atau') }}">Bersihkan</a>

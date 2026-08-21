@@ -414,6 +414,27 @@ document.addEventListener('DOMContentLoaded', () => {
     m.toggleAttribute('data-buka');
   };
   m.addEventListener('click', ev => ev.stopPropagation());
+
+  // Penanda `data-on` pada segmen yang aktif. Dipasang lewat JS, bukan
+  // selektor :has(), supaya tampilannya tidak bergantung pada dukungan
+  // peramban terhadap :has() — yang belum lama ada.
+  const seg = [...m.querySelectorAll('.seg-opt')];
+  const tandai = () => {
+    let aktif = 'atau';
+    seg.forEach(o => {
+      const c = o.querySelector('input');
+      o.toggleAttribute('data-on', c.checked);
+      if (c.checked) aktif = c.value;
+    });
+    // Keterangannya ikut berubah seketika. Tanpa ini ia baru menyusul setelah
+    // Terapkan ditekan, dan sampai saat itu isinya berlawanan dengan segmen
+    // yang tampak aktif.
+    m.querySelectorAll('[data-ket]').forEach(n => {
+      n.hidden = n.dataset.ket !== aktif;
+    });
+  };
+  seg.forEach(o => o.querySelector('input').addEventListener('change', tandai));
+  tandai();
   document.addEventListener('click', ev => {
     if (!m.contains(ev.target)) m.removeAttribute('data-buka');
   });
