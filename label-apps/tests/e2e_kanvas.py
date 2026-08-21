@@ -957,6 +957,10 @@ def jalankan_potret(d):
         f.write_bytes(base64.b64decode(r["data"]))
         print(f"     {f}  ({f.stat().st_size // 1024} kB)")
 
+    # Alamat halaman label disimpan, bukan diandalkan lewat history.back():
+    # begitu ada satu lompatan tambahan di grid, "back" mendarat di tempat lain
+    # dan langkah panduan di bawah gagal dengan pesan yang tidak menjelaskan apa-apa.
+    asal = d.js("location.href")
     d.js("document.getElementById('panduan').hidden = true;"
          " S.v.tanyaKelas = false; render();")
     time.sleep(0.3)
@@ -1010,8 +1014,24 @@ def jalankan_potret(d):
                  " return g.transform && g.transform !== 'none' ? '' : 'centang tak tergambar';"
                  " })()")
     cek("kotak centang menampilkan tanda saat tercentang", tanda == "", tanda)
-    d.js("location.href = '/label?path=' + encodeURIComponent(%r)" % str(d.gambar)
-         if hasattr(d, "gambar") else "history.back()")
+
+    # Keadaan setelah saringannya benar-benar dipakai. Dulu di sinilah tiap
+    # kelas tercentang muncul lagi sebagai chip di samping tombolnya.
+    kelas_ada = d.js(
+        "[...document.querySelectorAll("
+        "  '#kelas-isi .kelas-daftar:not(.kelas-tanpa) .kelas-baris input')]"
+        ".slice(0, 2).map(c => 'c=' + encodeURIComponent(c.value)).join('&')")
+    d.js("location.href = '/?' + %r" % kelas_ada)
+    time.sleep(1.2)
+    simpan("grid-kelas-terpakai")
+    n_chip = d.js("document.querySelectorAll('#menu-kelas ~ a.chip[data-on]').length")
+    cek("tidak ada chip saringan tambahan di samping tombol", n_chip == 0,
+        "jumlah=%s" % n_chip)
+    lbl = d.js("document.getElementById('kelas-tombol').textContent.trim()")
+    cek("tombolnya sendiri yang menyebut apa yang tersaring",
+        "Semua kelas" not in lbl, "label=%r" % lbl)
+    print("     label tombol: %r" % lbl)
+    d.js("location.href = %r" % asal)
     time.sleep(1.2)
 
     d.js("document.getElementById('btn-panduan').click()")

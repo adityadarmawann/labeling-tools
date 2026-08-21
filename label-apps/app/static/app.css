@@ -312,3 +312,7 @@ input:focus{outline:0;border-color:var(--ok)}
 .chip.pri{background:var(--ok);color:var(--on-ink);border-color:var(--ok);
   font-weight:600}
 .chip.pri:hover{filter:brightness(1.08);color:var(--on-ink)}
+/* Tombol saringan kelas: nama kelas bisa sangat panjang, jadi dipotong dengan
+   elipsis alih-alih memanjangkan barnya. Nama lengkapnya ada di tooltip. */
+.chip.kelas-tombol{max-width:250px;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;vertical-align:middle}

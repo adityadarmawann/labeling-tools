@@ -138,9 +138,19 @@
   {%- set n_pilih = (kelas | length) + (tanpa | length) %}
   <div class="bar" style="padding-top:0">
     <span class="menu menu-kiri" id="menu-kelas">
-      <button class="chip" id="kelas-tombol"{% if kelas or tanpa %} data-on{% endif %}>
-        {%- if n_pilih %}{{ n_pilih }} dipilih{% if mode == 'dan' %} · semuanya{% endif %}
-        {%- else %}Semua kelas{% endif %} ▾</button>
+      <button class="chip kelas-tombol" id="kelas-tombol"
+              {%- if kelas or tanpa %} data-on
+              title="{{ pilihan_nama | join(', ') }}
+                     {{- ' — harus punya semuanya' if mode == 'dan' }}"{% endif %}>
+        {#- Tombolnya kini satu-satunya penanda keadaan saringan, jadi ia yang
+            harus menyebutkan isinya. Sebelumnya keadaan itu diulang lagi sebagai
+            deretan chip di sebelahnya — mengulang isi dropdown di luar
+            dropdownnya, dan pada nama kelas panjang deretannya memenuhi satu
+            baris penuh. -#}
+        {%- if not pilihan_nama %}Semua kelas
+        {%- elif pilihan_nama | length == 1 %}{{ pilihan_nama[0] }}
+        {%- else %}{{ pilihan_nama | length }} pilihan{% if mode == 'dan' %} · semuanya{% endif %}
+        {%- endif %} ▾</button>
       <span class="menu-isi" id="kelas-isi">
         <form method="get" action="/">
           <input type="hidden" name="f" value="{{ flt }}">
@@ -204,19 +214,6 @@
         </form>
       </span>
     </span>
-    {%- if mode == 'dan' and n_pilih > 1 %}
-    <a class="chip" data-on href="{{ tautan(val_m='atau') }}"
-       title="Klik untuk kembali ke: cocok salah satu">harus punya semuanya ×</a>
-    {%- endif %}
-    {%- for k in tanpa %}
-    <a class="chip" data-on href="{{ tautan(val_x=tanpa | reject('equalto', k) | list) }}"
-       title="Klik untuk membuang dari saringan">{{ tanpa_nama[k] }} ×</a>
-    {%- endfor %}
-    {%- for k in kelas %}
-    <a class="chip" data-on href="{{ tautan(val_c=kelas | reject('equalto', k) | list) }}"
-       title="Klik untuk membuang kelas ini dari saringan">{{ k }}{% if k not in kelas_hitung %}
-       <b title="kelas ini tidak ada di dataset yang sedang dibuka">?</b>{% endif %} ×</a>
-    {%- endfor %}
   </div>
 </header>
 

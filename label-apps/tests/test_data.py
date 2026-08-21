@@ -1848,6 +1848,30 @@ def test_saringan_kelas_mode_dan_menuntut_semuanya_dalam_satu_gambar(klien,
     assert len(_grid_nama(klien, f="all", c=["botol", "kaleng"], m="zzz")) == 3
 
 
+def test_saringan_kelas_tidak_menumpuk_chip_di_samping_tombolnya(klien, lingkungan,
+                                                                 tmp_path):
+    """Keadaan saringan disebut sekali saja, di tombolnya sendiri.
+
+    Dulu tiap kelas tercentang juga muncul sebagai chip terpisah di sebelah
+    tombol. Pada nama kelas panjang — mis. kahf_skinergizing_facewash_50ml —
+    dua centang saja sudah memenuhi satu baris penuh, mengulang isi dropdown
+    di luar dropdownnya. Mencabut satu pilihan tetap bisa: buka dropdownnya
+    dan lepas centangnya.
+    """
+    masuk(klien, "paul", PW_PAUL)
+    d = _ds_dua_kelas(tmp_path)
+    klien.post(f"/setsrc?path={d}")
+    html = klien.get("/?c=botol&c=kaleng&m=dan&x=latar").text
+    bar = html[html.index('id="menu-kelas"'):]
+    bar = bar[:bar.index("</div>")]
+    assert "\u00d7</a>" not in bar, "chip saringan muncul lagi di samping tombol"
+    # tapi keadaannya tetap terbaca, bukan hilang diam-diam
+    tombol = bar[bar.index('id="kelas-tombol"'):bar.index("</button>")]
+    # x=latar sengaja gugur di mode "semuanya", jadi dua, bukan tiga
+    assert "2 pilihan" in tombol and "semuanya" in tombol
+    assert "botol, kaleng" in tombol, "nama yang dicentang hilang dari tooltip"
+
+
 def test_mode_dan_tidak_menawarkan_latar_dan_belum_dilabeli(klien, lingkungan):
     """
     Keputusan yang diubah setelah dipakai.

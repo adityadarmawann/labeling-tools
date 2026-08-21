@@ -198,6 +198,9 @@ async def index(request: Request, f: str = "all",
         "flt": f,
         "kelas": kelas,
         "tanpa": tanpa,
+        # Nama tampil dari seluruh yang tercentang, dihitung di sini supaya
+        # templatnya tidak perlu menggabungkan dua daftar yang bentuknya beda.
+        "pilihan_nama": [TANPA_KELAS[t][0] for t in tanpa] + list(kelas),
         "mode": mode,
         "tanpa_nama": {k: v[0] for k, v in TANPA_KELAS.items()},
         "total": len(items),
