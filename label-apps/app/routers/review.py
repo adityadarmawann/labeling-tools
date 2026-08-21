@@ -80,7 +80,7 @@ def _urutkan(items: list[dict], urut: str) -> list[dict]:
     return sorted(items, key=nama)
 
 
-def _filter(items: list[dict], flt: str, kelas, tanpa=()) -> list[dict]:
+def _filter(items: list[dict], flt: str, kelas, tanpa=(), mode="atau") -> list[dict]:
     if flt == "issue":
         items = [i for i in items if i["issues"] and i["shapes"]]
     elif flt == "bg":
@@ -109,9 +109,23 @@ def _filter(items: list[dict], flt: str, kelas, tanpa=()) -> list[dict]:
         # dengan DAN atau ATAU.
         pilih = set(kelas)
         sev_pilih = {TANPA_KELAS[t][1] for t in tanpa if t in TANPA_KELAS}
-        items = [i for i in items
-                 if any(str(s["label"]) in pilih for s in i["shapes"])
-                 or scanner.severity(i) in sev_pilih]
+
+        def cocok(it):
+            ada = {str(s["label"]) for s in it["shapes"]}
+            sev = scanner.severity(it)
+            if mode == "dan":
+                # SEMUA yang dicentang harus terpenuhi pada gambar yang sama.
+                # Aturannya berlaku seragam, termasuk untuk Latar dan Belum
+                # dilabeli — dan itu berarti mencentang sebuah kelas bersama
+                # Latar memberi nol hasil, karena gambar berobjek menurut
+                # definisinya bukan latar. Itu jawaban yang BENAR, dan penunjuk
+                # "0 dari N gambar tampil" yang menjelaskannya. Membuat
+                # pengecualian diam-diam di sini justru membuat aturannya tidak
+                # bisa diterangkan dalam satu kalimat.
+                return pilih <= ada and all(sev == s for s in sev_pilih)
+            return bool(pilih & ada) or sev in sev_pilih
+
+        items = [i for i in items if cocok(i)]
     return items
 
 
@@ -131,6 +145,9 @@ async def index(request: Request, f: str = "all",
                 # dari `c` supaya tidak mungkin bentrok dengan kelas yang
                 # kebetulan bernama "latar" atau "unlab".
                 tanpa_q: list[str] = Query([], alias="x"),
+                # Aturan penggabungan centang: "atau" (bawaan, seperti Roboflow)
+                # atau "dan" (semuanya harus ada dalam satu gambar).
+                mode_q: str = Query("atau", alias="m"),
                 sess: Session = Depends(current_session),
                 settings: Settings = Depends(get_settings)):
     # Belum memilih dataset -> tampilkan pemilih, bukan grid kosong.
@@ -157,7 +174,8 @@ async def index(request: Request, f: str = "all",
     # hasilnya nol, dan penunjuk "0 dari N gambar tampil" yang menjelaskannya.
     kelas = list(dict.fromkeys(k for k in kelas_q if k))
     tanpa = [t for t in dict.fromkeys(tanpa_q) if t in TANPA_KELAS]
-    tampil = _filter(items, f, kelas, tanpa)
+    mode = "dan" if mode_q == "dan" else "atau"
+    tampil = _filter(items, f, kelas, tanpa, mode)
     if cari:
         pola = cari.lower()
         tampil = [it for it in tampil if pola in it["img"].name.lower()]
@@ -176,6 +194,7 @@ async def index(request: Request, f: str = "all",
         "flt": f,
         "kelas": kelas,
         "tanpa": tanpa,
+        "mode": mode,
         "tanpa_nama": {k: v[0] for k, v in TANPA_KELAS.items()},
         "total": len(items),
         "n_warn": sum(1 for s in sev if s == "warn"),

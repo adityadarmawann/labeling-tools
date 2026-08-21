@@ -263,3 +263,7 @@ input:focus{outline:0;border-color:var(--ok)}
 .chip.pri{background:var(--ok);color:var(--on-ink);border-color:var(--ok);
   font-weight:600}
 .kelas-tanpa .kelas-baris span{font-style:italic}
+/* Pilihan aturan (salah satu / semuanya) di dropdown saringan. */
+.kelas-baris.aturan{font-style:normal}
+.kelas-baris.aturan span{flex:1;white-space:normal}
+.kelas-baris.aturan b{color:var(--ink);font-weight:600;font-size:12.5px}

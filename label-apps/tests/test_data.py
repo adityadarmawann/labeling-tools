@@ -1568,7 +1568,9 @@ def test_info_melaporkan_model_teks_beserta_ukuran_unduhannya():
 def _grid_nama(klien, **q):
     """Nama berkas yang tampil di grid, sesuai urutan tampilnya."""
     import urllib.parse
-    url = "/?" + urllib.parse.urlencode(q) if q else "/"
+    # doseq=True: nilai berupa daftar jadi parameter berulang (?c=a&c=b),
+    # bukan satu string "['a', 'b']" yang tidak berarti apa-apa di server.
+    url = "/?" + urllib.parse.urlencode(q, doseq=True) if q else "/"
     html = klien.get(url).text
     return re.findall(r'<div class="fn mono">(?:<span class="split">[^<]*</span>)?([^<]+)</div>',
                       html)
@@ -1802,3 +1804,58 @@ def test_pilihan_latar_bertahan_saat_saringan_lain_diklik(klien, lingkungan):
     html = klien.get("/?f=all&x=latar&s=label-baru").text
     assert html.count("x=latar") >= 3, "pilihan latar tidak dibawa tautan lain"
     assert 'name="s" value="label-baru"' in html
+
+
+def _ds_dua_kelas(tmp):
+    """Empat gambar: botol saja, kaleng saja, keduanya, dan tanpa objek."""
+    import cv2
+    import numpy as np
+    d = tmp / "duakelas"
+    d.mkdir(parents=True, exist_ok=True)
+    isi = {"a-botol": ["botol"], "b-kaleng": ["kaleng"],
+           "c-dua": ["botol", "kaleng"], "d-kosong": []}
+    for i, (nama, labels) in enumerate(isi.items()):
+        p = d / f"{nama}.jpg"
+        cv2.imwrite(str(p), np.full((60, 80, 3), 40 + i * 30, np.uint8))
+        p.with_suffix(".json").write_text(json.dumps({
+            "version": "0.4.36", "flags": {}, "imagePath": p.name,
+            "imageHeight": 60, "imageWidth": 80, "imageData": None,
+            "shapes": [{"label": l, "shape_type": "polygon",
+                        "points": [[5, 5], [70, 5], [70, 50]]} for l in labels]}))
+    return d
+
+
+def test_saringan_kelas_mode_dan_menuntut_semuanya_dalam_satu_gambar(klien,
+                                                                     lingkungan):
+    """
+    Mencentang dua kelas bisa berarti dua hal yang sangat berbeda:
+    "ada botol ATAU ada kaleng", atau "ada botol DAN kaleng di gambar yang
+    sama". Keduanya dibutuhkan, jadi aturannya bisa dipilih.
+    """
+    masuk(klien, "paul", PW_PAUL)
+    d = _ds_dua_kelas(lingkungan["tmp"])
+    klien.post(f"/setsrc?path={d}")
+
+    assert _grid_nama(klien, f="all", c=["botol", "kaleng"]) == \
+        ["a-botol.jpg", "b-kaleng.jpg", "c-dua.jpg"]
+    assert _grid_nama(klien, f="all", c=["botol", "kaleng"], m="dan") == ["c-dua.jpg"]
+
+    # satu kelas: kedua aturan memberi hasil yang sama
+    assert _grid_nama(klien, f="all", c=["botol"], m="dan") == \
+        _grid_nama(klien, f="all", c=["botol"])
+
+    # nilai mode asing dianggap "atau", bukan menggagalkan halaman
+    assert len(_grid_nama(klien, f="all", c=["botol", "kaleng"], m="zzz")) == 3
+
+
+def test_mode_dan_dengan_latar_memberi_nol_bukan_diam_diam_diabaikan(klien,
+                                                                     lingkungan):
+    """Gambar berobjek menurut definisinya bukan latar, jadi "punya botol DAN
+    latar" memang nol. Mengabaikan salah satu centang diam-diam akan memberi
+    hasil yang terlihat masuk akal padahal bukan yang diminta."""
+    masuk(klien, "paul", PW_PAUL)
+    d = _ds_dua_kelas(lingkungan["tmp"])
+    klien.post(f"/setsrc?path={d}")
+    assert _grid_nama(klien, f="all", c=["botol"], x="latar", m="dan") == []
+    # dengan aturan "salah satu", keduanya digabung seperti biasa
+    assert len(_grid_nama(klien, f="all", c=["botol"], x="unlab")) == 2
