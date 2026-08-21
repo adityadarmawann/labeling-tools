@@ -1655,3 +1655,74 @@ def test_grid_urutan_tak_dikenal_kembali_ke_bawaan(klien, lingkungan):
     d = _dataset_berwaktu(lingkungan["tmp"], {"aaa": 300, "bbb": 100, "ccc": 200})
     klien.post(f"/setsrc?path={d}")
     assert _grid_nama(klien, s="tidak-ada-urutan-ini") == ["aaa.jpg", "bbb.jpg", "ccc.jpg"]
+
+
+def test_saringan_kelas_bisa_beberapa_sekaligus(klien, lingkungan):
+    """
+    Sebelumnya hanya satu kelas. Sekarang beberapa, dengan arti "punya SALAH
+    SATU dari ini" — sama seperti filter Classes di Roboflow.
+    """
+    masuk(klien, "paul", PW_PAUL)
+    klien.post(f"/setsrc?path={lingkungan['roots'] / 'ds-alpha'}")
+
+    satu = klien.get("/?f=all&c=botol").text.count('class="card"')
+    dua = klien.get("/?f=all&c=botol&c=kaleng").text.count('class="card"')
+    assert satu == 1
+    assert dua == 2, "dua kelas harus menampilkan gabungan keduanya"
+    # tautan lama dengan satu kelas tetap bekerja seperti dulu
+    assert klien.get("/?f=all&c=kaleng").text.count('class="card"') == 1
+
+
+def test_saringan_kelas_asing_tetap_dipakai_bukan_diabaikan(klien, lingkungan):
+    """Membuang kelas yang tidak dikenal membuat saringan diam-diam tidak
+    berlaku, dan grid menampilkan SEMUANYA — terlihat seperti saringan yang
+    bekerja padahal tidak."""
+    masuk(klien, "paul", PW_PAUL)
+    klien.post(f"/setsrc?path={lingkungan['roots'] / 'ds-alpha'}")
+    html = klien.get("/?f=all&c=tidak-ada").text
+    assert html.count('class="card"') == 0
+    assert "0 dari 4 gambar tampil" in html
+
+
+def test_dropdown_kelas_membawa_urutan_dan_pencarian(klien, lingkungan):
+    """Menerapkan saringan kelas tidak boleh diam-diam mengembalikan urutan."""
+    masuk(klien, "paul", PW_PAUL)
+    klien.post(f"/setsrc?path={lingkungan['roots'] / 'ds-alpha'}")
+    html = klien.get("/?f=all&s=label-baru&q=alpha").text
+    # form dropdown membawa keduanya sebagai field tersembunyi
+    assert 'name="s" value="label-baru"' in html
+    assert 'name="q" value="alpha"' in html
+
+
+def test_warna_kelas_sama_antara_server_dan_kanvas_dan_tidak_acak(lingkungan):
+    """
+    `hash()` bawaan Python diacak ulang tiap proses, jadi warna kelas berubah
+    setiap server dinyalakan ulang dan tidak pernah cocok dengan kanvas — walau
+    komentar di label.js selama ini menyatakan sebaliknya.
+    """
+    import subprocess
+    import sys
+
+    from app.services.render import cls_color, hash_kelas, warna_kelas
+
+    # nilainya tetap, tidak bergantung pada proses
+    keluar = subprocess.run(
+        [sys.executable, "-c",
+         "import sys; sys.path.insert(0, '.');"
+         "from app.services.render import warna_kelas; print(warna_kelas('botol'))"],
+        capture_output=True, text=True, cwd=str(__import__("pathlib").Path(__file__).parent.parent))
+    assert keluar.stdout.strip() == warna_kelas("botol"), keluar.stderr[-300:]
+
+    # cocok dengan hashKode di label.js: h = (h*31 + kode) | 0, lalu abs
+    def js_hash(t):
+        h = 0
+        for ch in t:
+            h = (h * 31 + ord(ch)) & 0xFFFFFFFF
+            if h >= 0x80000000:
+                h -= 0x100000000
+        return abs(h)
+
+    for nama in ("botol", "kaleng", "plastic-cup", "kahf_extradry_deodorant_45ml"):
+        assert hash_kelas(nama) == js_hash(nama), nama
+    assert warna_kelas("botol") == "hsl(185, 62%, 55%)"
+    assert cls_color("botol") == (69, 200, 211)

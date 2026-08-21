@@ -71,7 +71,7 @@ def _urutkan(items: list[dict], urut: str) -> list[dict]:
     return sorted(items, key=nama)
 
 
-def _filter(items: list[dict], flt: str, kelas: str | None) -> list[dict]:
+def _filter(items: list[dict], flt: str, kelas) -> list[dict]:
     if flt == "issue":
         items = [i for i in items if i["issues"] and i["shapes"]]
     elif flt == "unlab":
@@ -81,13 +81,17 @@ def _filter(items: list[dict], flt: str, kelas: str | None) -> list[dict]:
         # dipakai "tanpa objek", jumlah di chip tidak sama dengan isi grid.
         items = [i for i in items if scanner.severity(i) == "stop"]
     if kelas:
+        # Beberapa kelas sekaligus, dengan arti "punya SALAH SATU dari ini" —
+        # sama seperti filter Classes di Roboflow. Arti "punya SEMUANYA" jarang
+        # dibutuhkan dan mudah disalahpahami, jadi tidak dipakai.
+        pilih = set(kelas)
         items = [i for i in items
-                 if any(str(s["label"]) == kelas for s in i["shapes"])]
+                 if any(str(s["label"]) in pilih for s in i["shapes"])]
     return items
 
 
 @router.get("/", response_class=HTMLResponse)
-async def index(request: Request, f: str = "all", c: str | None = None,
+async def index(request: Request, f: str = "all",
                 # Alias dipakai supaya URL-nya tetap pendek (?s=&q=) tanpa nama
                 # `s` dan `q` masuk ke ruang nama fungsi ini — di bawah ada
                 # `for s in it["shapes"]` yang akan MENIMPA parameternya, dan
@@ -95,6 +99,9 @@ async def index(request: Request, f: str = "all", c: str | None = None,
                 # gambar berlabel.
                 urut_q: str = Query(URUT_BAWAAN, alias="s"),
                 cari_q: str = Query("", alias="q"),
+                # Boleh muncul berkali-kali: ?c=botol&c=kaleng. Satu nilai tetap
+                # bekerja seperti sebelumnya, jadi tautan lama tidak rusak.
+                kelas_q: list[str] = Query([], alias="c"),
                 sess: Session = Depends(current_session),
                 settings: Settings = Depends(get_settings)):
     # Belum memilih dataset -> tampilkan pemilih, bukan grid kosong.
@@ -115,7 +122,12 @@ async def index(request: Request, f: str = "all", c: str | None = None,
 
     urut = urut_q if urut_q in URUT else URUT_BAWAAN
     cari = (cari_q or "").strip()
-    tampil = _filter(items, f, c)
+    # Kelas yang tidak dikenal SENGAJA dipertahankan, bukan dibuang. Membuangnya
+    # membuat saringan diam-diam tidak berlaku dan grid menampilkan semuanya —
+    # terlihat seperti saringan yang bekerja padahal tidak. Dibiarkan apa adanya,
+    # hasilnya nol, dan penunjuk "0 dari N gambar tampil" yang menjelaskannya.
+    kelas = list(dict.fromkeys(k for k in kelas_q if k))
+    tampil = _filter(items, f, kelas)
     if cari:
         pola = cari.lower()
         tampil = [it for it in tampil if pola in it["img"].name.lower()]
@@ -132,7 +144,7 @@ async def index(request: Request, f: str = "all", c: str | None = None,
         "severity": scanner.severity,
         "strip": sev[:STRIP_MAX],
         "flt": f,
-        "kelas": c,
+        "kelas": kelas,
         "total": len(items),
         "n_warn": sum(1 for s in sev if s == "warn"),
         "n_stop": sum(1 for s in sev if s == "stop"),

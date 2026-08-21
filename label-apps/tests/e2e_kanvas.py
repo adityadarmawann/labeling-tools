@@ -962,6 +962,22 @@ def jalankan_potret(d):
     time.sleep(0.3)
     simpan("halaman")
 
+    # Grid: baris urutkan/cari dan dropdown kelas
+    d.js("location.href = '/'")
+    time.sleep(1.2)
+    simpan("grid")
+    d.js("document.getElementById('kelas-tombol').click()")
+    time.sleep(0.4)
+    simpan("grid-kelas")
+    luber = d.js("(function(){ const r = document.getElementById('kelas-isi')"
+                 ".getBoundingClientRect();"
+                 " return (r.left < 0 || r.right > innerWidth)"
+                 "        ? `left=${r.left|0} right=${r.right|0} lebar=${innerWidth}` : ''; })()")
+    cek("dropdown kelas tidak terpotong tepi layar", luber == "", luber)
+    d.js("location.href = '/label?path=' + encodeURIComponent(%r)" % str(d.gambar)
+         if hasattr(d, "gambar") else "history.back()")
+    time.sleep(1.2)
+
     d.js("document.getElementById('btn-panduan').click()")
     time.sleep(0.5)
     simpan("panduan")

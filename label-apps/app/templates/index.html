@@ -7,9 +7,10 @@
 {% macro tautan(val_f=none, val_c=none, val_s=none, val_q=none) -%}
 {%- set ff = val_f if val_f is not none else flt -%}
 {%- set cc = val_c if val_c is not none else kelas -%}
+{%- if cc is string -%}{%- set cc = [cc] if cc else [] -%}{%- endif -%}
 {%- set ss = val_s if val_s is not none else urut -%}
 {%- set qq = val_q if val_q is not none else cari -%}
-?f={{ ff }}{% if cc %}&c={{ cc | urlquote }}{% endif %}
+?f={{ ff }}{% for k in cc %}&c={{ k | urlquote }}{% endfor %}
 {%- if ss and ss != 'nama' %}&s={{ ss }}{% endif %}
 {%- if qq %}&q={{ qq | urlquote }}{% endif %}
 {%- endmacro %}
@@ -122,12 +123,43 @@
     <span class="path mono">{{ n_tampil }} dari {{ total }} gambar tampil</span>
   </form>
 
+  {# Saringan kelas: dropdown bercentang, bisa memilih beberapa sekaligus —
+     bentuknya mengikuti filter Classes di Roboflow. Sebelumnya deretan chip
+     yang hanya bisa satu kelas. Jumlah objek tiap kelas tetap terlihat, jadi
+     tidak ada keterangan yang hilang. #}
   <div class="bar" style="padding-top:0">
-    <a class="chip"{% if not kelas %} data-on{% endif %}
-       href="{{ tautan(val_c='') }}">semua kelas</a>
-    {%- for k, n in kelas_hitung.items() %}
-    <a class="chip"{% if kelas == k %} data-on{% endif %}
-       href="{{ tautan(val_c=k) }}">{{ k }} <b>{{ n }}</b></a>
+    <span class="menu menu-kiri" id="menu-kelas">
+      <button class="chip" id="kelas-tombol"{% if kelas %} data-on{% endif %}>
+        {%- if kelas %}{{ kelas | length }} kelas dipilih{% else %}Semua kelas{% endif %} ▾</button>
+      <span class="menu-isi" id="kelas-isi">
+        <form method="get" action="/">
+          <input type="hidden" name="f" value="{{ flt }}">
+          {% if urut and urut != 'nama' %}<input type="hidden" name="s" value="{{ urut }}">{% endif %}
+          {% if cari %}<input type="hidden" name="q" value="{{ cari }}">{% endif %}
+          <span class="menu-judul">Tampilkan gambar yang punya salah satu kelas ini</span>
+          <div class="kelas-daftar">
+            {%- for k, n in kelas_hitung.items() %}
+            <label class="kelas-baris">
+              <input type="checkbox" name="c" value="{{ k }}"
+                     {% if k in kelas %}checked{% endif %}>
+              <i style="background:{{ k | warnakelas }}"></i>
+              <span>{{ k }}</span><b>{{ n }}</b></label>
+            {%- else %}
+            <span class="menu-catatan">Belum ada kelas terpakai di dataset ini.</span>
+            {%- endfor %}
+          </div>
+          <span class="menu-pisah"></span>
+          <span class="kelas-aksi">
+            <button class="chip pri" type="submit">Terapkan</button>
+            <a class="chip" href="{{ tautan(val_c=[]) }}">Bersihkan</a>
+          </span>
+        </form>
+      </span>
+    </span>
+    {%- for k in kelas %}
+    <a class="chip" data-on href="{{ tautan(val_c=kelas | reject('equalto', k) | list) }}"
+       title="Klik untuk membuang kelas ini dari saringan">{{ k }}{% if k not in kelas_hitung %}
+       <b title="kelas ini tidak ada di dataset yang sedang dibuka">?</b>{% endif %} ×</a>
     {%- endfor %}
   </div>
 </header>

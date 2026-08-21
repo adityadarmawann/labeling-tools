@@ -402,6 +402,23 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 });
 
+/*
+ * Menu saringan kelas. Klik di DALAM menunya tidak menutupnya — memilih tiga
+ * kelas mustahil kalau menunya hilang begitu centang pertama disentuh.
+ */
+(() => {
+  const m = document.getElementById('menu-kelas');
+  if (!m) return;
+  document.getElementById('kelas-tombol').onclick = ev => {
+    ev.stopPropagation();
+    m.toggleAttribute('data-buka');
+  };
+  m.addEventListener('click', ev => ev.stopPropagation());
+  document.addEventListener('click', ev => {
+    if (!m.contains(ev.target)) m.removeAttribute('data-buka');
+  });
+})();
+
 // ---------------------------------------------------------------- menu Ekspor
 
 // Ringkasan diminta saat menu dibuka, bukan saat halaman dimuat: menghitung

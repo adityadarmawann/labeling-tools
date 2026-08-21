@@ -18,9 +18,34 @@ JPEG_QUALITY = 86
 OVERLAY_ALPHA = 0.34
 
 
+def hash_kelas(nama) -> int:
+    """
+    Hash nama kelas yang SAMA PERSIS dengan hashKode di label.js.
+
+    `hash()` bawaan Python tidak bisa dipakai: untuk string ia diacak ulang
+    setiap proses (PYTHONHASHSEED), sehingga warna sebuah kelas berubah tiap
+    kali server dinyalakan ulang — dan tidak pernah sama dengan warna di kanvas,
+    walau komentar di label.js selama ini menyatakan sebaliknya.
+    """
+    h = 0
+    for ch in str(nama):
+        h = (h * 31 + ord(ch)) & 0xFFFFFFFF
+    if h >= 0x80000000:            # kembalikan ke rentang bertanda 32-bit
+        h -= 0x100000000
+    return abs(h)
+
+
+def warna_kelas(nama) -> str:
+    """Warna kelas sebagai string CSS, sama dengan `warna()` di kanvas."""
+    return f"hsl({hash_kelas(nama) % 997 / 997 * 360:.0f}, 62%, 55%)"
+
+
 def cls_color(key) -> tuple[int, int, int]:
-    h = (abs(hash(str(key))) % 997) / 997.0
-    r, g, b = colorsys.hsv_to_rgb(h, 0.78, 0.92)
+    """Warna kelas sebagai RGB, untuk menggambar overlay thumbnail."""
+    h = (hash_kelas(key) % 997) / 997.0
+    # HSL 62%/55%, sama dengan yang dipakai kanvas — bukan HSV, supaya
+    # warnanya benar-benar sama dan bukan sekadar bernuansa mirip.
+    r, g, b = colorsys.hls_to_rgb(h, 0.55, 0.62)
     return int(r * 255), int(g * 255), int(b * 255)
 
 

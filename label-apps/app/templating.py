@@ -11,6 +11,8 @@ from urllib.parse import quote
 
 from fastapi.templating import Jinja2Templates
 
+from .services.render import warna_kelas
+
 TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
 
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
@@ -50,3 +52,5 @@ templates.env.filters["imgpath"] = imgpath
 templates.env.filters["urlquote"] = quote
 # Dipakai sebagai fungsi di templat: {{ statik("label.js") }}
 templates.env.globals["statik"] = statik
+# Warna kelas di templat, rumusnya sama dengan kanvas dan thumbnail.
+templates.env.filters["warnakelas"] = warna_kelas
