@@ -479,3 +479,47 @@ def test_kemandirian_melaporkan_jumlah_sesi_di_valid():
     assert r["valid"]["n_sesi"] == 2 and r["valid"]["n"] == 20
 
 
+
+
+def test_stempel_waktu_massal_tidak_dikira_sesi_pemotretan(tmp_path):
+    """Tidak semua gambar datang dari kamera sendiri.
+
+    Bundel unduhan dan berkas hasil penamaan massal sering memakai satu
+    stempel waktu yang sama untuk seluruh isinya — waktu mengunduhnya, bukan
+    waktu memotretnya. Dipercaya begitu saja, seluruh dataset jadi satu grup
+    tak-terpisahkan dan hasilnya train 100% / valid 0 / test 0.
+
+    Berkas TANPA stempel waktu sudah lama bekerja benar (tiap gambar jadi
+    grupnya sendiri, isi gambar yang menjaga). Yang berstempel massal harus
+    berakhir sama.
+    """
+    import cv2
+
+    rng = np.random.default_rng(1)
+
+    def potret():
+        kecil = rng.integers(40, 215, (6, 6, 3), dtype=np.uint8)
+        return cv2.resize(kecil, (240, 240), interpolation=cv2.INTER_CUBIC)
+
+    def jalankan(nama):
+        d = tmp_path / str(abs(hash(nama[0])) % 10000)
+        d.mkdir(parents=True, exist_ok=True)
+        items = []
+        for n in nama:
+            p = d / n
+            cv2.imwrite(str(p), potret())
+            items.append({"img": p, "shapes": [{"label": "kahf"}]})
+        return split.rencanakan(items, (0.8, 0.1, 0.1))
+
+    r = jalankan([f"IMG_20260630_101500_{i:03d}.jpg" for i in range(120)])
+    assert r["jumlah"]["valid"] and r["jumlah"]["test"], r["jumlah"]
+    for s, target in (("train", 80), ("valid", 10), ("test", 10)):
+        assert abs(r["persen"][s] - target) < 5, r["persen"]
+    assert any("stempel waktu yang sama" in w for w in r["peringatan"])
+
+    # Sesi pemotretan sungguhan JANGAN ikut dipecah: yang membedakan hanyalah
+    # ukurannya terhadap seluruh dataset.
+    r2 = jalankan([f"IMG_202607{1 + s // 24:02d}_{s % 24:02d}{k:02d}00.jpg"
+                   for s in range(24) for k in range(5)])
+    assert r2["n_sesi"] == 24, r2["n_sesi"]
+    assert not any("stempel waktu yang sama" in w for w in r2["peringatan"])

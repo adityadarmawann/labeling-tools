@@ -683,6 +683,32 @@ def rencanakan(items: list[dict], rasio=(0.8, 0.1, 0.1), *,
     peta_sesi: dict[str, list[int]] = defaultdict(list)
     for i, s in enumerate(sesi):
         peta_sesi[s].append(i)
+
+    # Stempel waktu yang memuat sebagian besar dataset BUKAN sesi pemotretan.
+    #
+    # Tidak semua gambar datang dari kamera sendiri. Bundel unduhan, ekspor
+    # ulang, dan berkas yang diberi nama massal sering memakai satu stempel
+    # waktu yang sama untuk seluruh isinya — waktu mengunduhnya, bukan waktu
+    # memotretnya. Dipercaya begitu saja, seluruh dataset jadi satu grup
+    # tak-terpisahkan: terukur train 100%, valid 0, test 0.
+    #
+    # Sesi pemotretan sungguhan tidak pernah sebesar itu (paragon: terbesar
+    # 13,9%). Jadi grup sebesar ini dipecah jadi per-gambar, dan
+    # perlindungannya diserahkan sepenuhnya ke pemeriksaan isi gambar —
+    # persis seperti berkas tanpa stempel waktu, yang memang sudah bekerja.
+    batch = [k for k, v in peta_sesi.items() if n and len(v) / n > MAKS_GRUP]
+    if batch:
+        n_batch = sum(len(peta_sesi[k]) for k in batch)
+        for k in batch:
+            for i in peta_sesi.pop(k):
+                sesi[i] = f"file:{items[i]['img'].name}"
+                peta_sesi[sesi[i]].append(i)
+        peringatan.append(
+            f"{n_batch} gambar memakai satu stempel waktu yang sama persis. "
+            f"Itu ciri berkas hasil unduhan atau penamaan massal, bukan sesi "
+            f"pemotretan — jadi stempelnya diabaikan dan yang menjaga "
+            f"seluruhnya pemeriksaan isi gambar.")
+
     grup = list(peta_sesi.values())
     besar = max((len(g) for g in grup), default=0)
 
