@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 
 import pytest
@@ -1560,3 +1561,97 @@ def test_info_melaporkan_model_teks_beserta_ukuran_unduhannya():
     assert teks["yoloworld:latest"]["unduh_mb"] == 641
     assert teks["sam3:latest"]["unduh_mb"] == 3412
     assert all(isinstance(t["terunduh"], bool) for t in teks.values())
+
+
+# ------------------------------------------------- urutkan & cari di grid
+
+def _grid_nama(klien, **q):
+    """Nama berkas yang tampil di grid, sesuai urutan tampilnya."""
+    import urllib.parse
+    url = "/?" + urllib.parse.urlencode(q) if q else "/"
+    html = klien.get(url).text
+    return re.findall(r'<div class="fn mono">(?:<span class="split">[^<]*</span>)?([^<]+)</div>',
+                      html)
+
+
+def _dataset_berwaktu(tmp, jeda):
+    """Dataset labelme yang waktu-ubah anotasinya sengaja dibuat berbeda."""
+    import cv2
+    import numpy as np
+    d = tmp / "urut"
+    d.mkdir(parents=True, exist_ok=True)
+    for i, (nama, geser) in enumerate(jeda.items()):
+        p = d / f"{nama}.jpg"
+        cv2.imwrite(str(p), np.full((60, 80, 3), 40 + i * 30, np.uint8))
+        p.with_suffix(".json").write_text(json.dumps({
+            "version": "0.4.36", "flags": {}, "imagePath": p.name,
+            "imageHeight": 60, "imageWidth": 80, "imageData": None,
+            "shapes": [{"label": "botol", "shape_type": "polygon",
+                        "points": [[5, 5], [70, 5], [70, 50]]}] * (i + 1)}))
+        t = 1_700_000_000 + geser
+        os.utime(p.with_suffix(".json"), (t, t))
+    return d
+
+
+def test_grid_bisa_diurutkan_menurut_waktu_dilabeli(klien, lingkungan):
+    """
+    Yang paling sering dibutuhkan: melabeli beberapa gambar, kembali ke grid,
+    dan langsung melihat hasilnya di depan.
+    """
+    masuk(klien, "paul", PW_PAUL)
+    d = _dataset_berwaktu(lingkungan["tmp"], {"aaa": 300, "bbb": 100, "ccc": 200})
+    klien.post(f"/setsrc?path={d}")
+
+    assert _grid_nama(klien) == ["aaa.jpg", "bbb.jpg", "ccc.jpg"]          # bawaan: abjad
+    assert _grid_nama(klien, s="label-baru") == ["aaa.jpg", "ccc.jpg", "bbb.jpg"]
+    assert _grid_nama(klien, s="label-lama") == ["bbb.jpg", "ccc.jpg", "aaa.jpg"]
+    assert _grid_nama(klien, s="nama-turun") == ["ccc.jpg", "bbb.jpg", "aaa.jpg"]
+
+
+def test_grid_urutan_waktu_ikut_berubah_setelah_menyimpan(klien, lingkungan):
+    """Waktu label dibaca dari disk tiap render, bukan dibekukan saat memindai —
+    kalau dibekukan, urutan 'terbaru dilabeli' tidak berubah sampai dipindai
+    ulang, dan justru itu yang membuatnya tidak berguna."""
+    masuk(klien, "paul", PW_PAUL)
+    d = _dataset_berwaktu(lingkungan["tmp"], {"aaa": 300, "bbb": 100, "ccc": 200})
+    klien.post(f"/setsrc?path={d}")
+    assert _grid_nama(klien, s="label-baru")[0] == "aaa.jpg"
+
+    # bbb baru saja disimpan lewat kanvas -> harus naik ke depan, tanpa rescan
+    ip = d / "bbb.jpg"
+    r = klien.post("/api/simpan", json={
+        "path": str(ip), "flags": {},
+        "shapes": [{"label": "kaleng", "shape_type": "polygon",
+                    "points": [[5, 5], [70, 5], [70, 50]], "flags": {}}]})
+    assert r.json()["ok"] is True
+    assert _grid_nama(klien, s="label-baru")[0] == "bbb.jpg"
+
+
+def test_grid_urut_objek_dan_cari_nama(klien, lingkungan):
+    masuk(klien, "paul", PW_PAUL)
+    d = _dataset_berwaktu(lingkungan["tmp"], {"aaa": 300, "bbb": 100, "ccc": 200})
+    klien.post(f"/setsrc?path={d}")
+    # jumlah objeknya 1, 2, 3 sesuai urutan pembuatan
+    assert _grid_nama(klien, s="objek-banyak") == ["ccc.jpg", "bbb.jpg", "aaa.jpg"]
+    assert _grid_nama(klien, s="objek-sedikit") == ["aaa.jpg", "bbb.jpg", "ccc.jpg"]
+    assert _grid_nama(klien, q="bb") == ["bbb.jpg"]
+    assert _grid_nama(klien, q="ZZZ") == []
+
+
+def test_grid_urutan_bertahan_saat_saringan_diklik(klien, lingkungan):
+    """Mengklik chip saringan tidak boleh diam-diam mengembalikan urutan ke
+    bawaan — orang akan menyangka daftarnya yang berubah, bukan urutannya."""
+    masuk(klien, "paul", PW_PAUL)
+    d = _dataset_berwaktu(lingkungan["tmp"], {"aaa": 300, "bbb": 100, "ccc": 200})
+    klien.post(f"/setsrc?path={d}")
+    html = klien.get("/?s=label-baru&q=b").text
+    for potongan in ("s=label-baru", "q=b"):
+        assert html.count(potongan) >= 3, f"{potongan} tidak dibawa tautan saringan"
+
+
+def test_grid_urutan_tak_dikenal_kembali_ke_bawaan(klien, lingkungan):
+    """Nilai asing di URL tidak boleh menggagalkan halaman."""
+    masuk(klien, "paul", PW_PAUL)
+    d = _dataset_berwaktu(lingkungan["tmp"], {"aaa": 300, "bbb": 100, "ccc": 200})
+    klien.post(f"/setsrc?path={d}")
+    assert _grid_nama(klien, s="tidak-ada-urutan-ini") == ["aaa.jpg", "bbb.jpg", "ccc.jpg"]

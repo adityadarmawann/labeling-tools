@@ -500,7 +500,7 @@ def _scan_yolo(src: Path, names: dict | None = None):
         sh = read_yolo(tp, W, H, names)
         _gabung_cadangan(ip, sh)
         items.append({"img": ip, "shapes": sh, "W": W, "H": H, "yolo": True,
-                      "labels": tp,
+                      "labels": tp, "ann": tp,
                       "issues": inspect(sh, W, H, tp.exists())})
     return items, names
 
@@ -556,7 +556,7 @@ def _scan_labelme(src: Path):
         if not ip:
             continue
         seen.add(ip.resolve())
-        items.append({"img": ip, "shapes": sh, "W": W, "H": H,
+        items.append({"img": ip, "shapes": sh, "W": W, "H": H, "ann": jp,
                       "issues": inspect(sh, W, H, True)})
 
     # gambar yang belum punya anotasi sama sekali
@@ -568,7 +568,8 @@ def _scan_labelme(src: Path):
             continue
         H, W = d
         iss = ["berkas anotasi rusak"] if ip.stem in broken else ["belum dilabeli"]
-        items.append({"img": ip, "shapes": [], "W": W, "H": H, "issues": iss})
+        items.append({"img": ip, "shapes": [], "W": W, "H": H,
+                      "ann": ip.with_suffix(".json"), "issues": iss})
     # Dataset labelme boleh punya daftar kelas resmi juga (classes.txt atau
     # data.yaml di folder yang sama). Kalau ada, daftar itu yang membuat kanvas
     # bisa menahan salah ketik nama kelas, dan membuat indeks kelas saat
@@ -638,6 +639,25 @@ def scan(src: Path):
         items, names = _scan_labelme(src)
     items.sort(key=lambda it: (it.get("split", ""), it["img"].name))
     return items, names
+
+
+def waktu_label(it: dict) -> float:
+    """
+    Kapan anotasi gambar ini terakhir ditulis, sebagai detik epoch. 0 kalau
+    belum pernah dilabeli.
+
+    Dibaca dari disk SETIAP dipanggil, bukan disimpan saat memindai. Itu
+    disengaja: orang melabeli beberapa gambar lalu kembali ke grid untuk melihat
+    hasilnya, dan nilai yang dibekukan saat pindai tidak akan berubah sampai
+    dipindai ulang — persis membuat urutan "terbaru dilabeli" tidak berguna.
+    """
+    a = it.get("ann")
+    if not a:
+        return 0.0
+    try:
+        return a.stat().st_mtime
+    except OSError:
+        return 0.0
 
 
 def count_images(d: Path, cap: int = 2000) -> tuple[int, bool]:

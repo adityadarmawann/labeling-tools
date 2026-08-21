@@ -1,10 +1,22 @@
 {% extends "base.html" %}
 {% block title %}Periksa anotasi{% endblock %}
 
+{# Setiap tautan saringan membawa urutan dan pencarian yang sedang aktif.
+   Tanpa itu, mengklik satu chip diam-diam mengembalikan urutan ke bawaan —
+   dan orang menyangka daftarnya yang berubah, bukan urutannya. #}
+{% macro tautan(val_f=none, val_c=none, val_s=none, val_q=none) -%}
+{%- set ff = val_f if val_f is not none else flt -%}
+{%- set cc = val_c if val_c is not none else kelas -%}
+{%- set ss = val_s if val_s is not none else urut -%}
+{%- set qq = val_q if val_q is not none else cari -%}
+?f={{ ff }}{% if cc %}&c={{ cc | urlquote }}{% endif %}
+{%- if ss and ss != 'nama' %}&s={{ ss }}{% endif %}
+{%- if qq %}&q={{ qq | urlquote }}{% endif %}
+{%- endmacro %}
+
 {% macro chip(nama, val, jumlah) -%}
-{%- set q = '?f=' ~ val ~ ('&c=' ~ (kelas | urlquote) if kelas else '') -%}
-<a class="chip"{% if flt == val %} data-on{% endif %} href="{{ q }}">{{ nama }}
-  <b>{{ jumlah }}</b></a>
+<a class="chip"{% if flt == val %} data-on{% endif %}
+   href="{{ tautan(val_f=val) }}">{{ nama }} <b>{{ jumlah }}</b></a>
 {%- endmacro %}
 
 {% block body %}
@@ -90,11 +102,32 @@
     </span>
   </div>
 
+  {# Baris urutkan & cari. Ditaruh di barisnya sendiri supaya baris saringan di
+     atas tidak makin padat. Keduanya bekerja lewat URL, jadi hasilnya bisa
+     ditandai (bookmark) dan dibagikan apa adanya. #}
+  <form class="bar bar-urut" method="get" action="/">
+    <input type="hidden" name="f" value="{{ flt }}">
+    {% if kelas %}<input type="hidden" name="c" value="{{ kelas }}">{% endif %}
+    <label class="urut-lbl" for="urut">Urutkan</label>
+    <select class="chip" id="urut" name="s" onchange="this.form.submit()">
+      {%- for k, v in urut_pilihan.items() %}
+      <option value="{{ k }}"{% if urut == k %} selected{% endif %}>{{ v }}</option>
+      {%- endfor %}
+    </select>
+    <input class="cari-nama" type="search" id="cari" name="q" value="{{ cari }}"
+           placeholder="Cari nama berkas…" autocomplete="off">
+    <button class="chip" type="submit">Cari</button>
+    {% if cari %}<a class="chip" href="{{ tautan(val_q='') }}">Hapus pencarian</a>{% endif %}
+    <span class="spacer"></span>
+    <span class="path mono">{{ n_tampil }} dari {{ total }} gambar tampil</span>
+  </form>
+
   <div class="bar" style="padding-top:0">
-    <a class="chip"{% if not kelas %} data-on{% endif %} href="?f={{ flt }}">semua kelas</a>
+    <a class="chip"{% if not kelas %} data-on{% endif %}
+       href="{{ tautan(val_c='') }}">semua kelas</a>
     {%- for k, n in kelas_hitung.items() %}
     <a class="chip"{% if kelas == k %} data-on{% endif %}
-       href="?f={{ flt }}&c={{ k | urlquote }}">{{ k }} <b>{{ n }}</b></a>
+       href="{{ tautan(val_c=k) }}">{{ k }} <b>{{ n }}</b></a>
     {%- endfor %}
   </div>
 </header>

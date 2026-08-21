@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import asyncio
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from ..config import Settings, get_settings
@@ -19,6 +19,56 @@ router = APIRouter(tags=["review"])
 
 THUMB_MIN, THUMB_MAX = 32, 2000
 STRIP_MAX = 400          # tick di strip kesehatan dataset
+
+
+# Pilihan urutan. Kunci dipakai di URL, nilainya yang tampil di menu.
+URUT = {
+    "nama": "Nama berkas (A→Z)",
+    "nama-turun": "Nama berkas (Z→A)",
+    "label-baru": "Terbaru dilabeli",
+    "label-lama": "Terlama dilabeli",
+    "gambar-baru": "Gambar terbaru ditambahkan",
+    "gambar-lama": "Gambar terlama ditambahkan",
+    "objek-banyak": "Objek terbanyak",
+    "objek-sedikit": "Objek tersedikit",
+}
+URUT_BAWAAN = "nama"
+
+
+def _urutkan(items: list[dict], urut: str) -> list[dict]:
+    """
+    Urutkan hasil saringan.
+
+    Waktu label dibaca dari disk di sini, bukan diambil dari hasil pindai:
+    orang melabeli beberapa gambar lalu kembali ke grid untuk melihat hasilnya,
+    dan nilai yang dibekukan saat memindai tidak akan berubah sampai dipindai
+    ulang — persis membuat "Terbaru dilabeli" tidak berguna.
+
+    Nama berkas selalu jadi kunci kedua supaya urutannya tetap sama di antara
+    gambar yang nilainya seri; tanpa itu, grid bisa berubah urutan sendiri tiap
+    kali dimuat ulang.
+    """
+    nama = lambda it: it["img"].name.lower()          # noqa: E731
+    if urut == "nama-turun":
+        return sorted(items, key=nama, reverse=True)
+    if urut in ("label-baru", "label-lama"):
+        w = {id(it): scanner.waktu_label(it) for it in items}
+        return sorted(items, key=lambda it: (-w[id(it)], nama(it))) if urut == "label-baru" \
+            else sorted(items, key=lambda it: (w[id(it)], nama(it)))
+    if urut in ("gambar-baru", "gambar-lama"):
+        def mtime(it):
+            try:
+                return it["img"].stat().st_mtime
+            except OSError:
+                return 0.0
+        w = {id(it): mtime(it) for it in items}
+        return sorted(items, key=lambda it: (-w[id(it)], nama(it))) if urut == "gambar-baru" \
+            else sorted(items, key=lambda it: (w[id(it)], nama(it)))
+    if urut == "objek-banyak":
+        return sorted(items, key=lambda it: (-len(it["shapes"]), nama(it)))
+    if urut == "objek-sedikit":
+        return sorted(items, key=lambda it: (len(it["shapes"]), nama(it)))
+    return sorted(items, key=nama)
 
 
 def _filter(items: list[dict], flt: str, kelas: str | None) -> list[dict]:
@@ -38,6 +88,13 @@ def _filter(items: list[dict], flt: str, kelas: str | None) -> list[dict]:
 
 @router.get("/", response_class=HTMLResponse)
 async def index(request: Request, f: str = "all", c: str | None = None,
+                # Alias dipakai supaya URL-nya tetap pendek (?s=&q=) tanpa nama
+                # `s` dan `q` masuk ke ruang nama fungsi ini — di bawah ada
+                # `for s in it["shapes"]` yang akan MENIMPA parameternya, dan
+                # akibatnya bukan urutan yang salah melainkan TypeError saat ada
+                # gambar berlabel.
+                urut_q: str = Query(URUT_BAWAAN, alias="s"),
+                cari_q: str = Query("", alias="q"),
                 sess: Session = Depends(current_session),
                 settings: Settings = Depends(get_settings)):
     # Belum memilih dataset -> tampilkan pemilih, bukan grid kosong.
@@ -55,10 +112,23 @@ async def index(request: Request, f: str = "all", c: str | None = None,
             kelas_hitung[k] = kelas_hitung.get(k, 0) + 1
 
     sev = [scanner.severity(i) for i in items]
+
+    urut = urut_q if urut_q in URUT else URUT_BAWAAN
+    cari = (cari_q or "").strip()
+    tampil = _filter(items, f, c)
+    if cari:
+        pola = cari.lower()
+        tampil = [it for it in tampil if pola in it["img"].name.lower()]
+    tampil = _urutkan(tampil, urut)
+
     return templates.TemplateResponse(request, "index.html", {
         "sess": sess,
         "local": is_local(request),
-        "items": _filter(items, f, c),
+        "items": tampil,
+        "urut": urut,
+        "urut_pilihan": URUT,
+        "cari": cari,
+        "n_tampil": len(tampil),
         "severity": scanner.severity,
         "strip": sev[:STRIP_MAX],
         "flt": f,
