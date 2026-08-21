@@ -125,7 +125,7 @@ async def ekspor_ringkasan(format: str = "yolo-seg", split: str = "",
 
 @router.get("/ekspor")
 async def ekspor(format: str = "yolo-seg", gambar: int = 1, split: str = "",
-                 sess: Session = Depends(current_session)):
+                 tanda: str = "", sess: Session = Depends(current_session)):
     """
     Unduh dataset sebagai ZIP bertata letak ultralytics.
 
@@ -147,10 +147,22 @@ async def ekspor(format: str = "yolo-seg", gambar: int = 1, split: str = "",
                                    bool(gambar), export.baca_rasio(split), names,
                                    sess.rencana_split)
     berkas = f"{nama}-{format}.zip"
-    return Response(data, media_type="application/zip", headers={
+    r = Response(data, media_type="application/zip", headers={
         "Content-Disposition": f'attachment; filename="{berkas}"',
         "Content-Length": str(len(data)),
     })
+    # Penanda "byte-nya sudah mulai mengalir", dibaca browser lewat cookie.
+    #
+    # Unduhan lewat <a href> tidak punya kejadian yang bisa ditunggu JS: begitu
+    # diklik, tidak ada apa pun yang memberi tahu bahwa servernya sedang
+    # bekerja. Padahal ZIP paragon 1,27 GB butuh 33 detik untuk dibentuk, dan
+    # dataset 11 ribu gambar sekitar 13 menit. Selama itu tombolnya tampak
+    # rusak. Cookie ini menandai balasannya sudah dikirim, sehingga JS bisa
+    # berhenti menampilkan "menyiapkan".
+    if tanda:
+        r.set_cookie("unduh_siap", str(tanda), max_age=120, path="/",
+                     samesite="lax")
+    return r
 
 
 # ============================================================

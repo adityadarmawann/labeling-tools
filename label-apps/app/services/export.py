@@ -23,6 +23,7 @@ import io
 import json
 import re
 import xml.etree.ElementTree as ET
+from collections import Counter
 import zipfile
 from pathlib import Path
 from xml.dom import minidom
@@ -284,6 +285,9 @@ def zip_yolo(items: list[dict], nama_dataset: str, segmentasi: bool,
     buf = io.BytesIO()
     n_objek = 0
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("SPLIT-INFO.txt", catatan_split(
+            items, bagian, rencana, nama_dataset,
+            "yolo-seg" if segmentasi else "yolo", rasio))
         for split, daftar in bagian.items():
             for it in daftar:
                 p: Path = it["img"]
@@ -552,6 +556,63 @@ def createml_list(items: list[dict], nama_berkas: dict | None = None) -> list[di
 
 # ---------------------------------------------------------------- arsip
 
+def catatan_split(items: list[dict], bagian: dict, rencana: dict | None,
+                  nama: str, format: str, rasio) -> str:
+    """
+    Isi berkas SPLIT-INFO.txt yang ikut ke dalam ZIP.
+
+    ZIP yang sudah tersimpan berbulan-bulan tidak menyisakan jejak APA PUN
+    tentang cara membelahnya. Setahun lagi, melihat dua berkas ZIP dari
+    dataset yang sama, tidak ada cara membedakan mana yang dibelah anti-bocor
+    dan mana yang sekadar per nama berkas kecuali menebak dari tanggalnya.
+
+    Karena itu keterangannya ikut masuk ke dalam ZIP, bukan cuma tampil di
+    layar saat mengunduh.
+    """
+    b = [f"Dataset : {nama}",
+         f"Format  : {FORMAT.get(format, format)}",
+         f"Diminta : {' : '.join(f'{x:.0%}'[:-1] for x in rasio)}", ""]
+    tot = sum(len(v) for v in bagian.values()) or 1
+    for s in SPLIT:
+        n = len(bagian[s])
+        kc = Counter()
+        for it in bagian[s]:
+            kc.update(str(x.get("label")) for x in it.get("shapes") or [])
+        b.append(f"{s:6s} {n:7,} gambar ({100.0 * n / tot:5.1f}%)  "
+                 f"{sum(kc.values()):7,} objek")
+    b.append("")
+
+    if not rencana:
+        b += ["SPLITTING: cepat, berbasis nama berkas.", "",
+              "Isi gambar TIDAK diperiksa. Dua foto yang sama bisa berada di",
+              "train dan valid sekaligus, dan angka validasi dari dataset ini",
+              "bisa lebih tinggi daripada kemampuan model yang sebenarnya."]
+        return "\n".join(b) + "\n"
+
+    r = rencana
+    k = r.get("kalibrasi") or {}
+    m = r.get("kemandirian") or {}
+    b += ["SPLITTING: anti-bocor (per sesi pemotretan + pemeriksaan isi gambar).",
+          "",
+          f"Sesi terdeteksi   : {r.get('n_sesi'):,} (kunci per-{r.get('granularitas')})",
+          f"Sesi terbesar     : {r.get('grup_terbesar'):,} gambar "
+          f"({r.get('grup_terbesar_pct', 0):.1f}%)",
+          f"Tanpa stempel wkt : {r.get('tanpa_stempel', 0):,}",
+          f"Ambang kemiripan  : {r.get('ambang')} dari 256 bit"
+          + (f" (diukur dari {k.get('contoh')} foto dataset ini)" if k else ""),
+          f"Dipindah ke train : valid {r.get('dipindah', {}).get('valid', 0):,}, "
+          f"test {r.get('dipindah', {}).get('test', 0):,}", ""]
+    for s in ("valid", "test"):
+        d = m.get(s) or {}
+        if d.get("kemandirian") is not None:
+            b.append(f"{s:6s} kemandirian {d['kemandirian']:.2f}x, "
+                     f"dari {d.get('n_sesi', 0):,} sesi pemotretan")
+    if r.get("peringatan"):
+        b += ["", f"CATATAN ({len(r['peringatan'])}):"]
+        b += [f"  {i}. {w}" for i, w in enumerate(r["peringatan"], 1)]
+    return "\n".join(b) + "\n"
+
+
 def zip_dataset(items: list[dict], nama: str, format: str,
                 sertakan_gambar: bool = True, rasio=RASIO_BAWAAN,
                 names: dict | None = None, rencana: dict | None = None) -> bytes:
@@ -571,6 +632,8 @@ def zip_dataset(items: list[dict], nama: str, format: str,
     kelas = peta_kelas(items, names)
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("SPLIT-INFO.txt", catatan_split(
+            items, bagian, rencana, nama, format, rasio))
         for split in SPLIT:
             z.writestr(f"{split}/", "")
         for split, daftar in bagian.items():

@@ -464,6 +464,42 @@ document.addEventListener('DOMContentLoaded', () => {
   const kotak = ['s-train', 's-valid', 's-test'].map(i => document.getElementById(i));
   const rasio = () => kotak.map(k => k.value || '0').join(',');
 
+  // Menunggui unduhan yang tidak punya kejadian sendiri.
+  //
+  // <a href> tidak memberi tahu apa pun setelah diklik. ZIP dibentuk di server
+  // lebih dulu (paragon 1,27 GB butuh 33 detik; 11 ribu gambar sekitar 13
+  // menit), dan selama itu layar diam sehingga tombolnya tampak rusak. Server
+  // menaruh cookie saat balasannya dikirim, dan cookie itu yang ditunggu.
+  const unduhInfo = document.getElementById('unduh-pakai');
+  let unduhAsli = '';
+  function tungguiUnduhan(a) {
+    const tanda = String(Date.now());
+    const u = new URL(a.href, location.origin);
+    u.searchParams.set('tanda', tanda);
+    a.href = u.pathname + '?' + u.searchParams.toString();
+    if (!unduhInfo) return;
+    if (!unduhAsli) unduhAsli = unduhInfo.innerHTML;
+    unduhInfo.innerHTML = '<b>Menyiapkan ZIP…</b> jangan tutup tab ini';
+    const mulai = Date.now();
+    const pantau = setInterval(() => {
+      const siap = document.cookie.includes('unduh_siap=' + tanda);
+      const lewat = (Date.now() - mulai) / 1000;
+      if (siap) {
+        clearInterval(pantau);
+        document.cookie = 'unduh_siap=; Max-Age=0; path=/';
+        unduhInfo.innerHTML = `<b>ZIP siap</b>, unduhan dimulai `
+          + `(${lewat.toFixed(0)} dtk)`;
+        setTimeout(() => { unduhInfo.innerHTML = unduhAsli; }, 8000);
+      } else if (lewat > 1800) {
+        clearInterval(pantau);
+        unduhInfo.innerHTML = '<b>Belum selesai setelah 30 menit.</b> '
+          + 'Periksa log server.';
+      } else if (lewat > 3) {
+        unduhInfo.innerHTML = `<b>Menyiapkan ZIP…</b> ${lewat.toFixed(0)} dtk`;
+      }
+    }, 500);
+  }
+
   // Tautan unduh membawa rasio yang sedang diketik, supaya angka di layar dan
   // isi ZIP selalu cocok.
   function perbaruiTautan() {
@@ -526,7 +562,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // Tanpa ini, orang menjalankan splitting lalu tidak yakin apakah ZIP
       // yang diunduh benar-benar memakainya.
       const up = document.getElementById('unduh-pakai');
-      if (up) {
+      if (up && !up.textContent.includes('ZIP')) {
         up.innerHTML = j.rencana
           ? 'memakai <b>hasil splitting</b> di bawah'
           : 'memakai pembagian cepat berbasis nama berkas';
@@ -720,6 +756,10 @@ document.addEventListener('DOMContentLoaded', () => {
     sUlang.hidden = true;
     muatRingkasan();
   };
+
+  m.querySelectorAll('a.unduh').forEach(a => {
+    a.addEventListener('click', () => tungguiUnduhan(a));
+  });
 
   let sudah = false;
   tombol.onclick = ev => {

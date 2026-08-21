@@ -595,3 +595,57 @@ def test_rasio_diubah_sesudahnya_tidak_diam_diam_mengubah_isi_zip(klien,
                 if x.startswith(f"{s}/images/") and x.endswith(".jpg"))
          for s in split.SPLIT}
     assert n == r["split"] == j["jumlah"], (n, r["split"], j["jumlah"])
+
+
+def test_zip_membawa_catatan_cara_membelahnya(klien, lingkungan, tmp_path):
+    """ZIP harus bisa menjelaskan dirinya sendiri.
+
+    Berbulan-bulan kemudian, melihat dua berkas ZIP dari dataset yang sama,
+    tidak ada cara membedakan mana yang dibelah anti-bocor dan mana yang
+    sekadar per nama berkas. Keterangan yang cuma tampil di layar saat
+    mengunduh tidak menolong siapa pun setelah tabnya ditutup.
+    """
+    import io
+    import zipfile
+    from tests.test_data import masuk, PW_PAUL
+
+    masuk(klien, "paul", PW_PAUL)
+    d = _ds_bersesi(tmp_path, n_sesi=12, per_sesi=6)
+    klien.post(f"/setsrc?path={d}")
+
+    def info(fmt):
+        z = zipfile.ZipFile(io.BytesIO(klien.get(f"/ekspor?format={fmt}").content))
+        return z.read("SPLIT-INFO.txt").decode()
+
+    sebelum = info("yolo-seg")
+    assert "SPLITTING: cepat" in sebelum
+    assert "TIDAK diperiksa" in sebelum
+
+    j = klien.post("/api/split/jalankan?split=80,10,10").json()
+    for fmt in ("yolo-seg", "yolo", "coco", "voc", "createml"):
+        t = info(fmt)
+        assert "SPLITTING: anti-bocor" in t, fmt
+        assert f"Ambang kemiripan  : {j['ambang']}" in t, fmt
+        assert f"Sesi terdeteksi   : {j['n_sesi']:,}" in t, fmt
+        # angkanya harus sama dengan isi ZIP-nya sendiri
+        for s in split.SPLIT:
+            assert f"{s:6s} {j['jumlah'][s]:7,} gambar" in t, (fmt, s)
+
+
+def test_unduhan_menandai_balasannya_supaya_bisa_ditunggu(klien, lingkungan,
+                                                          tmp_path):
+    """Unduhan lewat <a href> tidak punya kejadian yang bisa ditunggu JS.
+
+    Tanpa penanda ini, 33 detik pembentukan ZIP paragon (1,27 GB) berlalu
+    tanpa satu pun tanda di layar, dan tombolnya tampak rusak.
+    """
+    from tests.test_data import masuk, PW_PAUL
+
+    masuk(klien, "paul", PW_PAUL)
+    d = _ds_bersesi(tmp_path, n_sesi=4, per_sesi=3)
+    klien.post(f"/setsrc?path={d}")
+    r = klien.get("/ekspor?format=yolo-seg&tanda=uji123")
+    assert "unduh_siap=uji123" in r.headers.get("set-cookie", "")
+    # tanpa tanda, tidak ada cookie yang ditinggalkan
+    r2 = klien.get("/ekspor?format=yolo-seg")
+    assert "unduh_siap" not in r2.headers.get("set-cookie", "")
