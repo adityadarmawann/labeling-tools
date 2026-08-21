@@ -116,6 +116,7 @@ FASE = {
     "kalibrasi": "Mengukur ambang kemiripan dataset ini",
     "bagi": "Membagikan ke train/valid/test",
     "bersih": "Memindahkan kembaran keluar dari valid/test",
+    "nilai": "Menilai kemandirian valid dan test",
     "selesai": "Selesai",
 }
 
@@ -428,8 +429,92 @@ def kalibrasi_ambang(items: list[dict], sidik: dict[int, np.ndarray],
         "contoh": dipakai, "pasangan": len(pos), "pasangan_beda": len(neg),
         "kembaran_p99": t_pos, "kembaran_maks": int(max(pos)),
         "beda_p1": t_neg, "terpisah": terpisah,
+        # Median dipakai sebagai patokan "jarak wajar" oleh nilai_kemandirian.
+        "beda_median": float(np.median(neg)) if neg else None,
         "dipakai": ambang, "cadangan": AMBANG_KEMBAR,
     }
+
+
+# ============================================================
+# SEBERAPA MANDIRI VALID/TEST
+# ============================================================
+
+def jarak_terdekat(acuan: dict[int, np.ndarray],
+                   uji: dict[int, np.ndarray]) -> np.ndarray:
+    """Jarak tiap gambar `uji` ke gambar `acuan` yang PALING MIRIP."""
+    if not acuan or not uji:
+        return np.array([], dtype=np.int32)
+    A = np.array(list(acuan.values()), dtype=np.uint8)
+    B = np.array(list(uji.values()), dtype=np.uint8)
+    lebar = min(len(A), 32_768)
+    tinggi = max(1, SEL_PER_PETAK // max(lebar, 1))
+    out = np.full(len(B), 1 << 30, dtype=np.int32)
+    for i in range(0, len(B), tinggi):
+        sub = B[i:i + tinggi]
+        for j in range(0, len(A), lebar):
+            d = _BIT[np.bitwise_xor(sub[:, None, :], A[j:j + lebar][None, :, :])].sum(2)
+            out[i:i + len(sub)] = np.minimum(out[i:i + len(sub)], d.min(1))
+    return out
+
+
+def nilai_kemandirian(sidik: dict[int, np.ndarray], hasil: dict[str, list[int]],
+                      sesi: list[str], contoh: int = 200) -> dict:
+    """
+    Seberapa mandiri valid/test dari train, dibanding patokan yang setara.
+
+    Kebocoran nol tidak berarti angka validasinya bisa dipercaya. Nol hanya
+    berarti tidak ada yang melewati ambang; gambar valid masih bisa duduk
+    tepat di atasnya — mirip, tapi tidak cukup mirip untuk dipindahkan.
+
+    **Patokannya harus setara.** Versi pertama membandingkan jarak-terdekat
+    gambar valid ke train dengan MEDIAN pasangan acak. Itu keliru: minimum
+    atas ratusan gambar memang selalu jauh di bawah median pasangan acak,
+    jadi skornya pasti di bawah 1 dan makin kecil setiap train membesar —
+    artefak, bukan ukuran. Terbukti terbalik saat diuji: dataset yang seluruh
+    fotonya nyaris sama justru mendapat skor LEBIH TINGGI.
+
+    Yang dipakai sekarang: jarak-terdekat gambar TRAIN ke train lain dari
+    sesi berbeda. Dua-duanya minimum atas kumpulan yang sama, jadi bisa
+    dibandingkan.
+
+        ~1,0  valid semandiri satu gambar train terhadap sesi train lain
+        <1,0  valid lebih mirip train daripada train mirip dirinya sendiri
+    """
+    out: dict = {}
+    train = [i for i in hasil["train"] if i in sidik]
+    if not train:
+        return out
+
+    # Patokan: ambil sebagian train, cari tetangga terdekatnya di train yang
+    # SESINYA BERBEDA. Sesi yang sama sengaja dibuang — gambar sesesi memang
+    # nyaris kembar, dan memasukkannya membuat patokannya terlalu kecil.
+    langkah = max(1, len(train) // max(contoh, 1))
+    cuplik = train[::langkah][:contoh]
+    dasar: list[int] = []
+    A = np.array([sidik[i] for i in train], dtype=np.uint8)
+    sesi_train = np.array([sesi[i] for i in train])
+    for i in cuplik:
+        beda = sesi_train != sesi[i]
+        if not beda.any():
+            continue
+        d = _BIT[np.bitwise_xor(A[beda], sidik[i][None, :])].sum(1)
+        dasar.append(int(d.min()))
+    patokan = float(np.median(dasar)) if dasar else None
+    out["patokan"] = patokan
+    out["patokan_n"] = len(dasar)
+
+    acuan = {i: sidik[i] for i in train}
+    for split in ("valid", "test"):
+        uji = {i: sidik[i] for i in hasil[split] if i in sidik}
+        bagian = {"n": len(uji), "n_sesi": len({sesi[i] for i in hasil[split]})}
+        d = jarak_terdekat(acuan, uji)
+        if len(d):
+            bagian["terdekat_median"] = float(np.median(d))
+            bagian["terdekat_min"] = int(d.min())
+            if patokan:
+                bagian["kemandirian"] = float(np.median(d)) / patokan
+        out[split] = bagian
+    return out
 
 
 # ============================================================
@@ -623,6 +708,7 @@ def rencanakan(items: list[dict], rasio=(0.8, 0.1, 0.1), *,
     dipindah = {"valid": 0, "test": 0}
     terbaca = 0
     kalib: dict = {}
+    mandiri: dict = {}
     ambang = AMBANG_KEMBAR
     if pakai_dhash and n:
         catat_maju(kunci, fase="dhash", n=0, total=n, persen=10.0)
@@ -691,6 +777,24 @@ def rencanakan(items: list[dict], rasio=(0.8, 0.1, 0.1), *,
                 f"Pemindahan kembaran belum tenang setelah {MAKS_PUTARAN} "
                 f"putaran, jadi mungkin masih ada sisa kembaran di valid/test. "
                 f"Laporkan ini — seharusnya tidak terjadi.")
+
+        # -- 3b. seberapa mandiri valid/test setelah semuanya bersih
+        catat_maju(kunci, fase="nilai", persen=96.0)
+        mandiri = nilai_kemandirian(H, hasil, sesi)
+        for split in ("valid", "test"):
+            b = mandiri.get(split) or {}
+            nilai = b.get("kemandirian")
+            if nilai is not None and b.get("n") and nilai < 0.8:
+                peringatan.append(
+                    f"{split} bersih dari kembaran, tapi belum tentu berarti: "
+                    f"gambarnya cuma {nilai:.2f}x sejauh dari train dibanding "
+                    f"jarak satu gambar train ke sesi train lain. Angka "
+                    f"validasinya akan optimistis walau tidak ada yang bocor.")
+            if b.get("n") and b.get("n_sesi", 0) <= 2 and len(peta_sesi) > 3:
+                peringatan.append(
+                    f"{split} hanya berasal dari {b['n_sesi']} sesi pemotretan, "
+                    f"jadi ia cuma menguji {b['n_sesi']} kondisi — meja, cahaya, "
+                    f"dan sudut yang itu-itu saja, berapa pun jumlah gambarnya.")
 
     # -- 4. verifikasi: tidak boleh ada sesi yang muncul di dua split
     catat_maju(kunci, fase="selesai", persen=97.0)
@@ -788,6 +892,7 @@ def rencanakan(items: list[dict], rasio=(0.8, 0.1, 0.1), *,
         "dhash_terbaca": terbaca,
         "ambang": ambang,
         "kalibrasi": kalib,
+        "kemandirian": mandiri,
         "jumlah": {s: len(hasil[s]) for s in SPLIT},
         "persen": {s: 100.0 * len(hasil[s]) / tot for s in SPLIT},
         "kelas": {s: dict(sum((_kelas_item(items[i]) for i in hasil[s]),

@@ -421,3 +421,61 @@ def test_pembatalan_di_tengah_jalan_tidak_meninggalkan_rencana_setengah(tmp_path
 
     with pytest.raises(split.Dibatalkan):
         split.rencanakan(items, (0.8, 0.1, 0.1), batal=batal, pakai_dhash=False)
+
+
+# ============================================================
+# KEMANDIRIAN VALID/TEST
+# ============================================================
+
+def test_kemandirian_menurun_saat_valid_lebih_mirip_train():
+    """Diuji langsung di ruang sidik jari, tanpa gambar.
+
+    Dua valid, train yang sama: satu berisi sidik acak, satu berisi salinan
+    sidik train dengan beberapa bit dibalik. Yang kedua HARUS bernilai lebih
+    rendah — kalau tidak, angkanya tidak mengukur apa yang dinamainya.
+
+    Versi pertama membandingkan jarak-terdekat dengan median pasangan acak,
+    dan hasilnya terbalik: dataset yang seluruh fotonya nyaris sama justru
+    bernilai lebih tinggi. Minimum atas ratusan gambar memang selalu jauh di
+    bawah median pasangan acak, jadi yang terukur cuma besar train-nya.
+    """
+    rng = np.random.default_rng(31)
+    n_train = 300
+    sidik = {i: rng.integers(0, 256, 32, dtype=np.uint8) for i in range(n_train)}
+    sesi = [f"s{i // 5}" for i in range(n_train)]
+
+    jauh, dekat = {}, {}
+    for k in range(40):
+        i = n_train + k
+        jauh[i] = rng.integers(0, 256, 32, dtype=np.uint8)
+        h = sidik[k].copy()
+        for _ in range(30):                       # mirip, tapi tidak identik
+            h[int(rng.integers(0, 32))] ^= 1 << int(rng.integers(0, 8))
+        dekat[i] = h
+    for i in list(jauh) + list(dekat):
+        sesi.append(f"v{i}")
+
+    nilai = {}
+    for nama, kel in (("jauh", jauh), ("dekat", dekat)):
+        semua = dict(sidik); semua.update(kel)
+        hasil = {"train": list(sidik), "valid": list(kel), "test": []}
+        r = split.nilai_kemandirian(semua, hasil, sesi)
+        nilai[nama] = r["valid"]["kemandirian"]
+
+    assert nilai["dekat"] < nilai["jauh"], nilai
+    # dan yang jauh harus mendekati 1: sama mandirinya dengan gambar train
+    # mana pun terhadap sesi train lain.
+    assert 0.8 < nilai["jauh"] < 1.25, nilai
+
+
+def test_kemandirian_melaporkan_jumlah_sesi_di_valid():
+    """Jumlah sesi lebih mudah dibaca daripada rasio mana pun: valid dari
+    2 sesi cuma menguji 2 kondisi pemotretan, berapa pun gambarnya."""
+    rng = np.random.default_rng(3)
+    sidik = {i: rng.integers(0, 256, 32, dtype=np.uint8) for i in range(60)}
+    sesi = [f"s{i // 10}" for i in range(60)]
+    hasil = {"train": list(range(40)), "valid": list(range(40, 60)), "test": []}
+    r = split.nilai_kemandirian(sidik, hasil, sesi)
+    assert r["valid"]["n_sesi"] == 2 and r["valid"]["n"] == 20
+
+

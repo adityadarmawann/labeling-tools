@@ -586,6 +586,21 @@ document.addEventListener('DOMContentLoaded', () => {
             : '')
          + '<br>';
     }
+    // Kebocoran nol tidak sama dengan angka yang bisa dipercaya, dan bedanya
+    // bisa dihitung — jadi dihitung, bukan diserahkan ke firasat.
+    const m = r.kemandirian || {};
+    if (m.patokan) {
+      for (const s of ['valid', 'test']) {
+        const b = m[s];
+        if (!b || !b.n || b.kemandirian == null) continue;
+        const nilai = b.kemandirian;
+        const kata = nilai >= 0.95 ? 'semandiri yang data ini bisa'
+                   : nilai >= 0.8 ? 'cukup mandiri'
+                   : 'masih mirip train';
+        h += `${s} <b>${nilai.toFixed(2)}x</b> mandiri (${kata}) · `
+           + `${angka(b.n_sesi)} sesi<br>`;
+      }
+    }
     h += '</span>';
     for (const w of r.peringatan || []) {
       h += `<span class="split-warn">${w}</span>`;
