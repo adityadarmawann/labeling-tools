@@ -91,14 +91,18 @@
     <span class="menu" id="menu-ekspor">
       <button class="chip" id="ekspor-tombol">Ekspor ▾</button>
       <span class="menu-isi" id="ekspor-isi">
-        <span class="menu-judul">Format</span>
-        <a href="/ekspor?format=yolo-seg">YOLO segmentation (poligon)</a>
-        <a href="/ekspor?format=yolo">YOLO detection (bounding box)</a>
-        <a href="/ekspor?format=coco">COCO (instances.json)</a>
-        <a href="/ekspor?format=voc">Pascal VOC (.xml per gambar)</a>
-        <a href="/ekspor?format=createml" title="Apple Create ML. Koordinatnya titik tengah kotak, sedangkan AnyLabeling menulis sudut kiri-atas. Yang AnyLabeling keliru.">CreateML (Apple)</a>
+        {# "Format" saja terbaca seperti daftar setelan yang harus dipilih
+           dulu, padahal mengkliknya LANGSUNG mengunduh. Judul dan tanda
+           panahnya yang menjelaskan itu, bukan penjelasan terpisah. #}
+        <span class="menu-judul">Unduh sebagai</span>
+        <span class="menu-catatan" id="unduh-pakai"></span>
+        <a class="unduh" href="/ekspor?format=yolo-seg">YOLO segmentation (poligon)</a>
+        <a class="unduh" href="/ekspor?format=yolo">YOLO detection (bounding box)</a>
+        <a class="unduh" href="/ekspor?format=coco">COCO (instances.json)</a>
+        <a class="unduh" href="/ekspor?format=voc">Pascal VOC (.xml per gambar)</a>
+        <a class="unduh" href="/ekspor?format=createml" title="Apple Create ML. Koordinatnya titik tengah kotak, sedangkan AnyLabeling menulis sudut kiri-atas. Yang AnyLabeling keliru.">CreateML (Apple)</a>
         <span class="menu-pisah"></span>
-        <a href="/ekspor?format=yolo-seg&gambar=0">YOLO-seg, label saja</a>
+        <a class="unduh" href="/ekspor?format=yolo-seg&gambar=0">YOLO-seg, label saja</a>
         <span class="menu-pisah"></span>
         <span class="menu-judul">Train / Valid / Test</span>
         <span class="split-atur">

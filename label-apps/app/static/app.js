@@ -522,6 +522,15 @@ document.addEventListener('DOMContentLoaded', () => {
       // Rencana bertahan di sesi, jadi setelah halaman dimuat ulang keadaannya
       // harus ikut tampil kembali — kalau tidak, tombolnya tampak belum
       // pernah ditekan padahal splitting-nya masih berlaku.
+      // Sambungan antara hasil splitting dan tombol unduh harus terlihat.
+      // Tanpa ini, orang menjalankan splitting lalu tidak yakin apakah ZIP
+      // yang diunduh benar-benar memakainya.
+      const up = document.getElementById('unduh-pakai');
+      if (up) {
+        up.innerHTML = j.rencana
+          ? 'memakai <b>hasil splitting</b> di bawah'
+          : 'memakai pembagian cepat berbasis nama berkas';
+      }
       if (j.rencana) {
         // Bilahnya hanya disembunyikan kalau splitting-nya tidak dijalankan
         // di sesi layar ini — mis. sesudah halaman dimuat ulang, ketika

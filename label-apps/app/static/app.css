@@ -377,3 +377,12 @@ input:focus{outline:0;border-color:var(--ok)}
 .catatan-lipat .lipat-isi{display:block;margin-top:5px;padding:6px 8px;
   border-radius:6px;background:var(--warn-bg);color:var(--ink-dim);line-height:1.45}
 .catatan-lipat:not(.peringatan) .lipat-isi{background:var(--sunk)}
+
+/* Daftar format itu tombol UNDUH, bukan setelan yang harus dipilih dulu.
+   Tanpa tanda apa pun ia terbaca seperti daftar pilihan, dan orang menunggu
+   sesuatu terjadi setelah mengkliknya. */
+.menu-isi a.unduh::before{content:"↓";display:inline-block;width:14px;
+  color:var(--ink-faint);font-weight:700}
+.menu-isi a.unduh:hover::before{color:var(--aksi)}
+#unduh-pakai{padding-top:0;padding-bottom:4px}
+#unduh-pakai b{color:var(--aksi)}

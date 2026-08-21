@@ -1119,6 +1119,12 @@ def jalankan_potret(d):
     d.js("document.documentElement.removeAttribute('data-theme')")
     time.sleep(0.2)
 
+    cek("daftar format ditandai sebagai unduhan, bukan setelan",
+        d.js("document.querySelectorAll('#ekspor-isi a.unduh').length") == 6)
+    cek("sesudah splitting, tertulis unduhan memakai hasilnya",
+        "hasil splitting" in d.js("document.getElementById('unduh-pakai').textContent"),
+        d.js("document.getElementById('unduh-pakai').textContent"))
+
     cek("selesai, belum ada peringatan rasio berubah",
         d.js("document.getElementById('split-ulang').hidden") is True)
     d.js("(function(){ const k = document.getElementById('s-valid');"
