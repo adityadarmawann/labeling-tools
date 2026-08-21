@@ -56,6 +56,11 @@ aplikasi desktop masing-masing.
 - **MobileSAM**: klik objeknya, poligonnya muncul sebagai pratinjau, perbaiki
   dengan +Point / −Point atau kotak, sahkan dengan `F`. Pipeline-nya sudah
   diverifikasi identik dengan desktop — lihat [PARITAS.md](PARITAS.md)
+- **Pembelahan train/valid/test anti-bocor**: dibelah per sesi pemotretan lalu
+  isi tiap gambar diperiksa, supaya foto yang sama tidak muncul di train dan
+  valid sekaligus. Ambang kemiripannya diukur dari dataset yang bersangkutan,
+  bukan angka tetap — algoritma dan angka ukurnya di
+  [PEMBELAHAN.md](PEMBELAHAN.md)
 - **Enam tipe bentuk**: polygon, rectangle (bbox), circle, line, linestrip,
   point — masing-masing dengan cara mengakhiri seperti aslinya
 - **Menyunting terasa ringan**: klik di sisi poligon menyisipkan titik,
