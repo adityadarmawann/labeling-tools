@@ -523,3 +523,75 @@ def test_stempel_waktu_massal_tidak_dikira_sesi_pemotretan(tmp_path):
                    for s in range(24) for k in range(5)])
     assert r2["n_sesi"] == 24, r2["n_sesi"]
     assert not any("stempel waktu yang sama" in w for w in r2["peringatan"])
+
+
+def test_kelima_format_memakai_pembagian_yang_sama_persis(klien, lingkungan,
+                                                          tmp_path):
+    """Bukan cuma jumlahnya sama, tapi BERKAS yang sama mendarat di split
+    yang sama di semua format.
+
+    Kalau tidak, model YOLO dan model COCO dari dataset yang sama dinilai
+    memakai gambar yang berbeda, dan angkanya tidak bisa dibandingkan sama
+    sekali. Jumlah yang kebetulan sama tidak membuktikan itu.
+    """
+    import io
+    import json as _json
+    import zipfile
+    from tests.test_data import masuk, PW_PAUL
+
+    masuk(klien, "paul", PW_PAUL)
+    d = _ds_bersesi(tmp_path, n_sesi=12, per_sesi=6)
+    klien.post(f"/setsrc?path={d}")
+    j = klien.post("/api/split/jalankan?split=80,10,10").json()
+    assert j["ok"], j
+
+    def peta(fmt):
+        z = zipfile.ZipFile(io.BytesIO(
+            klien.get(f"/ekspor?format={fmt}&split=80,10,10").content))
+        out = {}
+        for n in z.namelist():
+            split_n = n.split("/")[0]
+            if fmt.startswith("yolo") and "/images/" in n and n.endswith(".jpg"):
+                out[n.split("/")[-1]] = split_n
+            elif fmt == "coco" and n.endswith("_annotations.coco.json"):
+                for g in _json.loads(z.read(n))["images"]:
+                    out[g["file_name"]] = split_n
+            elif fmt == "createml" and n.endswith("_annotations.createml.json"):
+                for g in _json.loads(z.read(n)):
+                    out[g["image"]] = split_n
+            elif fmt == "voc" and n.endswith(".jpg"):
+                out[n.split("/")[-1]] = split_n
+        return out
+
+    acuan = peta("yolo-seg")
+    assert acuan, "ZIP yolo-seg kosong"
+    for fmt in ("yolo", "coco", "voc", "createml"):
+        assert peta(fmt) == acuan, fmt
+    n = {s: sum(1 for v in acuan.values() if v == s) for s in split.SPLIT}
+    assert n == j["jumlah"], (n, j["jumlah"])
+
+
+def test_rasio_diubah_sesudahnya_tidak_diam_diam_mengubah_isi_zip(klien,
+                                                                  lingkungan,
+                                                                  tmp_path):
+    """Rencana yang sudah jadi mengunci pembagiannya.
+
+    Yang penting: angka di layar dan isi ZIP harus tetap sepakat. Ringkasan
+    boleh menampilkan pembagian lama, asal ZIP-nya juga pembagian lama.
+    """
+    import io
+    import zipfile
+    from tests.test_data import masuk, PW_PAUL
+
+    masuk(klien, "paul", PW_PAUL)
+    d = _ds_bersesi(tmp_path, n_sesi=12, per_sesi=6)
+    klien.post(f"/setsrc?path={d}")
+    j = klien.post("/api/split/jalankan?split=80,10,10").json()
+
+    r = klien.get("/api/ekspor/ringkasan?format=yolo-seg&split=50,25,25").json()
+    z = zipfile.ZipFile(io.BytesIO(
+        klien.get("/ekspor?format=yolo-seg&split=50,25,25").content))
+    n = {s: sum(1 for x in z.namelist()
+                if x.startswith(f"{s}/images/") and x.endswith(".jpg"))
+         for s in split.SPLIT}
+    assert n == r["split"] == j["jumlah"], (n, r["split"], j["jumlah"])

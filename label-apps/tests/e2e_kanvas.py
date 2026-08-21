@@ -1119,6 +1119,19 @@ def jalankan_potret(d):
     d.js("document.documentElement.removeAttribute('data-theme')")
     time.sleep(0.2)
 
+    cek("selesai, belum ada peringatan rasio berubah",
+        d.js("document.getElementById('split-ulang').hidden") is True)
+    d.js("(function(){ const k = document.getElementById('s-valid');"
+         " k.value = '25'; k.dispatchEvent(new Event('input')); })()")
+    time.sleep(0.25)
+    cek("mengubah rasio sesudahnya memunculkan ajakan jalankan ulang",
+        d.js("document.getElementById('split-ulang').hidden") is False)
+    d.js("(function(){ const k = document.getElementById('s-valid');"
+         " k.value = '10'; k.dispatchEvent(new Event('input')); })()")
+    time.sleep(0.25)
+    cek("dikembalikan ke angka semula, ajakannya hilang lagi",
+        d.js("document.getElementById('split-ulang').hidden") is True)
+
     cek("tombol Lupakan muncul setelah ada rencana",
         d.js("document.getElementById('split-lupa').hidden") is False)
     cek("tombol Hentikan menghilang setelah selesai",

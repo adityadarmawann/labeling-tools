@@ -537,7 +537,21 @@ document.addEventListener('DOMContentLoaded', () => {
     perbaruiTautan();
   }
 
-  kotak.forEach(k => { if (k) k.onchange = muatRingkasan; });
+  // Rencana yang sudah jadi mengunci pembagiannya, jadi mengubah angka rasio
+  // sesudah itu tidak mengubah apa pun sampai splitting dijalankan ulang.
+  // Tanpa diberitahu, kotaknya terlihat seperti tidak berfungsi.
+  let rasioSaatJalan = null;
+  function periksaRasioBerubah() {
+    if (!sLupa || sLupa.hidden) return;
+    const beda = rasioSaatJalan && rasio() !== rasioSaatJalan;
+    sUlang.hidden = !beda;
+  }
+
+  kotak.forEach(k => {
+    if (!k) return;
+    k.onchange = () => { muatRingkasan(); periksaRasioBerubah(); };
+    k.oninput = periksaRasioBerubah;
+  });
 
   // ---- splitting anti-bocor -------------------------------------------
   //
@@ -553,6 +567,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const sFase  = document.getElementById('split-fase');
   const sPersen = document.getElementById('split-persen');
   const sHasil = document.getElementById('split-hasil');
+  const sUlang = document.getElementById('split-ulang');
   const angka = v => (v || 0).toLocaleString('id-ID');
 
   // Satu bentuk lipatan untuk semua: ringkasnya terbaca, isinya sekali klik.
@@ -663,6 +678,8 @@ document.addEventListener('DOMContentLoaded', () => {
       sIsi.style.width = '100%';
       sPersen.textContent = '100%';
       sFase.textContent = 'Selesai';
+      rasioSaatJalan = rasio();
+      sUlang.hidden = true;
       tampilkanRencana(j);
       // Ringkasan di atas masih menyebut pembagian yang lama.
       muatRingkasan();
@@ -688,8 +705,10 @@ document.addEventListener('DOMContentLoaded', () => {
     try { await post('/api/split/lupakan'); } catch (e) { return; }
     sHasil.innerHTML = '';
     sudahJalan = false;
+    rasioSaatJalan = null;
     sProg.hidden = true;
     sLupa.hidden = true;
+    sUlang.hidden = true;
     muatRingkasan();
   };
 
