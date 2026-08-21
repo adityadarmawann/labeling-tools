@@ -992,6 +992,17 @@ def jalankan_potret(d):
                ".filter(n => !n.hidden).map(n => n.dataset.ket).join(',')")
     cek("keterangan ikut segmen yang aktif, bukan yang lama", ket == "dan",
         "tampil=%r" % ket)
+    cek("mode 'semuanya' menyembunyikan Latar dan Belum dilabeli",
+        bool(d.js("document.querySelector('.kelas-tanpa').hidden")))
+    cek("centangnya ikut dilepas, bukan tersembunyi tapi masih terkirim",
+        d.js("[...document.querySelectorAll('.kelas-tanpa input[type=checkbox]')]"
+             ".every(c => !c.checked)") is True)
+    d.js("(function(){ const a = document.querySelector('#kelas-isi input[value=atau]');"
+         " a.checked = true; a.dispatchEvent(new Event('change', {bubbles:true})); })()")
+    time.sleep(0.25)
+    cek("kembali ke 'salah satu' memunculkannya lagi",
+        d.js("document.querySelector('.kelas-tanpa').hidden") is False)
+    simpan("grid-kelas-semuanya")
     tanda = d.js("(function(){ const cb = document.querySelector("
                  "'#kelas-isi input:checked ~ .cb');"
                  " if (!cb) return 'tidak ada .cb setelah input tercentang';"

@@ -146,35 +146,35 @@
           <input type="hidden" name="f" value="{{ flt }}">
           {% if urut and urut != 'nama' %}<input type="hidden" name="s" value="{{ urut }}">{% endif %}
           {% if cari %}<input type="hidden" name="q" value="{{ cari }}">{% endif %}
-          {# Kontrol tersegmen, bukan dua radio bertumpuk: keduanya adalah dua
-             sisi dari SATU pilihan, dan bentuk ini menyatakannya tanpa perlu
-             dibaca. Sebagai dua baris radio, kalimat panjangnya membungkus dan
-             lingkarannya melayang di tengah blok dua baris. #}
+          {# Kata kerjanya ditaruh di JUDUL, bukan di dalam segmen. Sebagai dua
+             kata berdiri sendiri, "Semuanya" terbaca ambigu — bisa disangka
+             "tampilkan semua gambar". Dengan judulnya, ketiga bagian ini
+             terbaca sebagai satu kalimat utuh. #}
+          <span class="menu-judul">Tampilkan gambar yang punya</span>
           <div class="seg" role="radiogroup" aria-label="Aturan penggabungan">
             <label class="seg-opt">
               <input type="radio" name="m" value="atau"
                      {% if mode != 'dan' %}checked{% endif %}>
-              <span>Salah satu</span></label>
+              <span>salah satu</span></label>
             <label class="seg-opt">
               <input type="radio" name="m" value="dan"
                      {% if mode == 'dan' %}checked{% endif %}>
-              <span>Semuanya</span></label>
+              <span>semuanya</span></label>
           </div>
           {# Kedua kalimat ada di DOM dan ditukar seketika saat segmen diklik.
              Kalau hanya dirender server, keterangannya baru berubah setelah
              Terapkan ditekan — dan sampai saat itu ia menyatakan kebalikan
              dari segmen yang tampak aktif. #}
           <p class="seg-ket">
-            <span data-ket="atau"{% if mode == 'dan' %} hidden{% endif %}>Gambar cukup punya
-              <b>salah satu</b> pilihan yang dicentang.</span>
-            <span data-ket="dan"{% if mode != 'dan' %} hidden{% endif %}>Gambar harus punya
-              <b>semua</b> pilihan yang dicentang, dalam satu gambar.</span>
+            <span data-ket="atau"{% if mode == 'dan' %} hidden{% endif %}>…dari pilihan yang dicentang di bawah.</span>
+            <span data-ket="dan"{% if mode != 'dan' %} hidden{% endif %}>…<b>semua</b> kelas yang dicentang, dalam gambar yang sama.</span>
           </p>
           {# Keadaan "tanpa kelas" ikut di dropdown ini, bukan di kotak terpisah:
              "botol atau latar" adalah satu pertanyaan. Latar = sengaja
              dikosongkan (padanan Mark Null di Roboflow); Belum dilabeli =
              pekerjaan yang belum dikerjakan. #}
-          <div class="kelas-daftar kelas-tanpa">
+          <div class="kelas-daftar kelas-tanpa"
+               {% if mode == 'dan' %}hidden{% endif %}>
             <label class="kelas-baris">
               <input type="checkbox" name="x" value="latar"
                      {% if 'latar' in tanpa %}checked{% endif %}><span class="cb"></span>

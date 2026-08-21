@@ -114,15 +114,14 @@ def _filter(items: list[dict], flt: str, kelas, tanpa=(), mode="atau") -> list[d
             ada = {str(s["label"]) for s in it["shapes"]}
             sev = scanner.severity(it)
             if mode == "dan":
-                # SEMUA yang dicentang harus terpenuhi pada gambar yang sama.
-                # Aturannya berlaku seragam, termasuk untuk Latar dan Belum
-                # dilabeli — dan itu berarti mencentang sebuah kelas bersama
-                # Latar memberi nol hasil, karena gambar berobjek menurut
-                # definisinya bukan latar. Itu jawaban yang BENAR, dan penunjuk
-                # "0 dari N gambar tampil" yang menjelaskannya. Membuat
-                # pengecualian diam-diam di sini justru membuat aturannya tidak
-                # bisa diterangkan dalam satu kalimat.
-                return pilih <= ada and all(sev == s for s in sev_pilih)
+                # SEMUA kelas yang dicentang harus ada pada gambar yang sama.
+                #
+                # Latar dan Belum dilabeli tidak ikut di mode ini, dan tidak
+                # ditawarkan di antarmukanya. Gambar berobjek menurut
+                # definisinya bukan latar, jadi "punya botol DAN latar" selalu
+                # nol — dan menawarkan pilihan yang pasti nol itu sendiri sudah
+                # cacat, betapa pun benarnya angka nol itu.
+                return pilih <= ada
             return bool(pilih & ada) or sev in sev_pilih
 
         items = [i for i in items if cocok(i)]
@@ -166,6 +165,7 @@ async def index(request: Request, f: str = "all",
 
     sev = [scanner.severity(i) for i in items]
 
+    mode = "dan" if mode_q == "dan" else "atau"
     urut = urut_q if urut_q in URUT else URUT_BAWAAN
     cari = (cari_q or "").strip()
     # Kelas yang tidak dikenal SENGAJA dipertahankan, bukan dibuang. Membuangnya
@@ -174,7 +174,11 @@ async def index(request: Request, f: str = "all",
     # hasilnya nol, dan penunjuk "0 dari N gambar tampil" yang menjelaskannya.
     kelas = list(dict.fromkeys(k for k in kelas_q if k))
     tanpa = [t for t in dict.fromkeys(tanpa_q) if t in TANPA_KELAS]
-    mode = "dan" if mode_q == "dan" else "atau"
+    # Di mode "semuanya", keadaan tanpa-kelas dibuang seluruhnya — termasuk dari
+    # daftar chip — supaya URL lama atau hasil suntingan tangan tidak
+    # menghasilkan saringan yang tidak bisa dibuat lewat antarmukanya sendiri.
+    if mode_q == "dan":
+        tanpa = []
     tampil = _filter(items, f, kelas, tanpa, mode)
     if cari:
         pola = cari.lower()

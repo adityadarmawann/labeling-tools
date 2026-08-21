@@ -1848,14 +1848,37 @@ def test_saringan_kelas_mode_dan_menuntut_semuanya_dalam_satu_gambar(klien,
     assert len(_grid_nama(klien, f="all", c=["botol", "kaleng"], m="zzz")) == 3
 
 
-def test_mode_dan_dengan_latar_memberi_nol_bukan_diam_diam_diabaikan(klien,
-                                                                     lingkungan):
-    """Gambar berobjek menurut definisinya bukan latar, jadi "punya botol DAN
-    latar" memang nol. Mengabaikan salah satu centang diam-diam akan memberi
-    hasil yang terlihat masuk akal padahal bukan yang diminta."""
+def test_mode_dan_tidak_menawarkan_latar_dan_belum_dilabeli(klien, lingkungan):
+    """
+    Keputusan yang diubah setelah dipakai.
+
+    Awalnya aturan "semuanya" berlaku seragam, termasuk untuk Latar dan Belum
+    dilabeli — sehingga "punya botol DAN latar" memberi nol. Angka nol itu
+    memang benar: gambar berobjek menurut definisinya bukan latar. Tetapi
+    MENAWARKAN pilihan yang pasti nol itu sendiri sudah cacat, betapa pun
+    benarnya hasilnya.
+
+    Sekarang keduanya tidak ditawarkan di mode itu, dan dibuang juga di server
+    supaya URL lama tidak menghasilkan saringan yang tidak bisa dibuat lewat
+    antarmukanya sendiri.
+    """
     masuk(klien, "paul", PW_PAUL)
     d = _ds_dua_kelas(lingkungan["tmp"])
     klien.post(f"/setsrc?path={d}")
-    assert _grid_nama(klien, f="all", c=["botol"], x="latar", m="dan") == []
-    # dengan aturan "salah satu", keduanya digabung seperti biasa
+
+    # mode "semuanya": x diabaikan, yang menentukan hanya kelasnya
+    assert _grid_nama(klien, f="all", c=["botol"], x="latar", m="dan") == \
+        _grid_nama(klien, f="all", c=["botol"], m="dan")
+    assert _grid_nama(klien, f="all", c=["botol", "kaleng"], x="unlab", m="dan") == \
+        ["c-dua.jpg"]
+
+    # blok pilihannya juga tidak dirender, bukan sekadar diabaikan diam-diam
+    html = klien.get("/?f=all&m=dan").text
+    assert 'class="kelas-daftar kelas-tanpa"' in html
+    assert re.search(r'kelas-daftar kelas-tanpa"\s*\n?\s*hidden', html), \
+        "blok latar/belum-dilabeli harus tersembunyi di mode semuanya"
+
+    # di mode "salah satu" keduanya tetap berlaku seperti biasa
     assert len(_grid_nama(klien, f="all", c=["botol"], x="unlab")) == 2
+    assert "hidden" not in re.search(
+        r'class="kelas-daftar kelas-tanpa"[^>]*>', klien.get("/?f=all").text).group(0)

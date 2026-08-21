@@ -432,6 +432,17 @@ document.addEventListener('DOMContentLoaded', () => {
     m.querySelectorAll('[data-ket]').forEach(n => {
       n.hidden = n.dataset.ket !== aktif;
     });
+    // Latar dan Belum dilabeli tidak berlaku pada mode "semuanya": gambar
+    // berobjek menurut definisinya bukan latar, jadi menggabungkannya selalu
+    // memberi nol. Disembunyikan DAN dilepas centangnya — centang yang
+    // tersembunyi tetapi masih terkirim adalah saringan yang tak terlihat.
+    const tanpa = m.querySelector('.kelas-tanpa');
+    if (tanpa) {
+      tanpa.hidden = aktif === 'dan';
+      if (aktif === 'dan') {
+        tanpa.querySelectorAll('input[type=checkbox]').forEach(c => { c.checked = false; });
+      }
+    }
   };
   seg.forEach(o => o.querySelector('input').addEventListener('change', tandai));
   tandai();
