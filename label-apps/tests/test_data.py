@@ -1726,3 +1726,44 @@ def test_warna_kelas_sama_antara_server_dan_kanvas_dan_tidak_acak(lingkungan):
         assert hash_kelas(nama) == js_hash(nama), nama
     assert warna_kelas("botol") == "hsl(185, 62%, 55%)"
     assert cls_color("botol") == (69, 200, 211)
+
+
+def test_saringan_latar_terpisah_dari_belum_dilabeli(klien, lingkungan):
+    """
+    Gambar yang SENGAJA ditandai tanpa objek adalah sampel negatif — sudah
+    selesai diperiksa, bukan pekerjaan yang tertinggal. Keduanya sama-sama
+    tanpa objek, jadi tanpa saringan sendiri ia tidak bisa dihitung maupun
+    ditinjau ulang.
+    """
+    masuk(klien, "paul", PW_PAUL)
+    src = lingkungan["roots"] / "ds-alpha"          # 4 gambar, 2 berlabel
+    klien.post(f"/setsrc?path={src}")
+
+    assert klien.get("/?f=bg").text.count('class="card"') == 0
+    assert klien.get("/?f=unlab").text.count('class="card"') == 2
+    assert klien.get("/?f=sudah").text.count('class="card"') == 2
+
+    img = _gambar(lingkungan, "ds-alpha", 3)        # belum berlabel
+    assert klien.post(f"/markbg?path={img}").json()["ok"] is True
+
+    assert klien.get("/?f=bg").text.count('class="card"') == 1
+    assert klien.get("/?f=unlab").text.count('class="card"') == 1
+    assert klien.get("/?f=sudah").text.count('class="card"') == 2, \
+        "menandai latar tidak boleh mengubah hitungan yang sudah dilabeli"
+    assert klien.get("/?f=all").text.count('class="card"') == 4
+
+    # angka di chip harus sama dengan isi grid
+    html = klien.get("/?f=all").text
+    assert _chip(html, "Latar") == 1
+    assert _chip(html, "Sudah dilabeli") == 2
+    assert _chip(html, "Belum dilabeli") == 1
+
+
+def test_saringan_latar_bisa_digabung_dengan_urutan(klien, lingkungan):
+    masuk(klien, "paul", PW_PAUL)
+    src = lingkungan["roots"] / "ds-alpha"
+    klien.post(f"/setsrc?path={src}")
+    for i in (2, 3):
+        klien.post(f"/markbg?path={_gambar(lingkungan, 'ds-alpha', i)}")
+    nama = _grid_nama(klien, f="bg", s="nama-turun")
+    assert nama == ["ds-alpha-03.jpg", "ds-alpha-02.jpg"], nama

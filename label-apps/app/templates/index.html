@@ -36,7 +36,11 @@
   <div class="bar">
     {{ chip("Semua", "all", total) }}
     {{ chip("Perlu dicek", "issue", n_warn) }}
+    {{ chip("Sudah dilabeli", "sudah", n_sudah) }}
     {{ chip("Belum dilabeli", "unlab", n_stop) }}
+    {# Sampel negatif: sengaja ditandai tanpa objek. Berbeda dari "belum
+       dilabeli" — yang ini sudah selesai diperiksa. #}
+    {{ chip("Latar", "bg", n_bg) }}
     <span class="spacer"></span>
     <span class="path mono">{{ n_obj }} objek</span>
     <button class="chip" onclick="rescan()">Pindai ulang</button>

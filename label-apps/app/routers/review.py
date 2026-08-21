@@ -74,6 +74,15 @@ def _urutkan(items: list[dict], urut: str) -> list[dict]:
 def _filter(items: list[dict], flt: str, kelas) -> list[dict]:
     if flt == "issue":
         items = [i for i in items if i["issues"] and i["shapes"]]
+    elif flt == "bg":
+        # Gambar yang SENGAJA ditandai tanpa objek — sampel negatif. Ia berbeda
+        # dari "belum dilabeli": yang ini sudah selesai diperiksa, dan porsinya
+        # di dataset menentukan seberapa sering model salah menebak latar
+        # sebagai objek. Tanpa saringan sendiri, ia tidak bisa dihitung maupun
+        # ditinjau ulang.
+        items = [i for i in items if scanner.severity(i) == "bg"]
+    elif flt == "sudah":
+        items = [i for i in items if i["shapes"]]
     elif flt == "unlab":
         # severity 'stop', bukan sekadar "tanpa objek": gambar yang sudah
         # ditandai latar memang tanpa objek tapi sudah selesai diperiksa, dan
@@ -148,6 +157,8 @@ async def index(request: Request, f: str = "all",
         "total": len(items),
         "n_warn": sum(1 for s in sev if s == "warn"),
         "n_stop": sum(1 for s in sev if s == "stop"),
+        "n_bg": sum(1 for s in sev if s == "bg"),
+        "n_sudah": sum(1 for s in sev if s in ("ok", "warn")),
         "n_obj": sum(len(i["shapes"]) for i in items),
         "kelas_hitung": dict(sorted(kelas_hitung.items())),
         # Dataset yang dibuka langsung dari path server tidak boleh ditambahi,
