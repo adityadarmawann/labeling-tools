@@ -34,6 +34,15 @@ URUT = {
 }
 URUT_BAWAAN = "nama"
 
+# Keadaan "tanpa kelas" yang bisa ikut dicentang di dropdown kelas. Keduanya
+# sama-sama gambar tanpa objek, tetapi artinya berlawanan: `latar` sudah selesai
+# diperiksa dan sengaja dikosongkan (padanan Mark Null di Roboflow), `unlab`
+# justru pekerjaan yang belum dikerjakan.
+TANPA_KELAS = {
+    "latar": ("Latar (tanpa objek)", "bg"),
+    "unlab": ("Belum dilabeli", "stop"),
+}
+
 
 def _urutkan(items: list[dict], urut: str) -> list[dict]:
     """
@@ -71,7 +80,7 @@ def _urutkan(items: list[dict], urut: str) -> list[dict]:
     return sorted(items, key=nama)
 
 
-def _filter(items: list[dict], flt: str, kelas) -> list[dict]:
+def _filter(items: list[dict], flt: str, kelas, tanpa=()) -> list[dict]:
     if flt == "issue":
         items = [i for i in items if i["issues"] and i["shapes"]]
     elif flt == "bg":
@@ -89,13 +98,20 @@ def _filter(items: list[dict], flt: str, kelas) -> list[dict]:
         # angka di chip "Belum dilabeli" juga menghitung 'stop'. Kalau di sini
         # dipakai "tanpa objek", jumlah di chip tidak sama dengan isi grid.
         items = [i for i in items if scanner.severity(i) == "stop"]
-    if kelas:
+    if kelas or tanpa:
         # Beberapa kelas sekaligus, dengan arti "punya SALAH SATU dari ini" —
         # sama seperti filter Classes di Roboflow. Arti "punya SEMUANYA" jarang
         # dibutuhkan dan mudah disalahpahami, jadi tidak dipakai.
+        #
+        # Keadaan tanpa-kelas ikut di dalam pilihan yang SAMA, bukan saringan
+        # terpisah: "botol atau latar" adalah satu pertanyaan, dan memisahkannya
+        # ke dua kotak membuat orang harus menebak apakah keduanya digabung
+        # dengan DAN atau ATAU.
         pilih = set(kelas)
+        sev_pilih = {TANPA_KELAS[t][1] for t in tanpa if t in TANPA_KELAS}
         items = [i for i in items
-                 if any(str(s["label"]) in pilih for s in i["shapes"])]
+                 if any(str(s["label"]) in pilih for s in i["shapes"])
+                 or scanner.severity(i) in sev_pilih]
     return items
 
 
@@ -111,6 +127,10 @@ async def index(request: Request, f: str = "all",
                 # Boleh muncul berkali-kali: ?c=botol&c=kaleng. Satu nilai tetap
                 # bekerja seperti sebelumnya, jadi tautan lama tidak rusak.
                 kelas_q: list[str] = Query([], alias="c"),
+                # Keadaan tanpa-kelas, dipilih dari dropdown yang sama. Dipisah
+                # dari `c` supaya tidak mungkin bentrok dengan kelas yang
+                # kebetulan bernama "latar" atau "unlab".
+                tanpa_q: list[str] = Query([], alias="x"),
                 sess: Session = Depends(current_session),
                 settings: Settings = Depends(get_settings)):
     # Belum memilih dataset -> tampilkan pemilih, bukan grid kosong.
@@ -136,7 +156,8 @@ async def index(request: Request, f: str = "all",
     # terlihat seperti saringan yang bekerja padahal tidak. Dibiarkan apa adanya,
     # hasilnya nol, dan penunjuk "0 dari N gambar tampil" yang menjelaskannya.
     kelas = list(dict.fromkeys(k for k in kelas_q if k))
-    tampil = _filter(items, f, kelas)
+    tanpa = [t for t in dict.fromkeys(tanpa_q) if t in TANPA_KELAS]
+    tampil = _filter(items, f, kelas, tanpa)
     if cari:
         pola = cari.lower()
         tampil = [it for it in tampil if pola in it["img"].name.lower()]
@@ -154,6 +175,8 @@ async def index(request: Request, f: str = "all",
         "strip": sev[:STRIP_MAX],
         "flt": f,
         "kelas": kelas,
+        "tanpa": tanpa,
+        "tanpa_nama": {k: v[0] for k, v in TANPA_KELAS.items()},
         "total": len(items),
         "n_warn": sum(1 for s in sev if s == "warn"),
         "n_stop": sum(1 for s in sev if s == "stop"),

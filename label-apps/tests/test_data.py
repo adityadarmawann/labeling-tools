@@ -1767,3 +1767,38 @@ def test_saringan_latar_bisa_digabung_dengan_urutan(klien, lingkungan):
         klien.post(f"/markbg?path={_gambar(lingkungan, 'ds-alpha', i)}")
     nama = _grid_nama(klien, f="bg", s="nama-turun")
     assert nama == ["ds-alpha-03.jpg", "ds-alpha-02.jpg"], nama
+
+
+def test_dropdown_kelas_bisa_memilih_latar_dan_belum_dilabeli(klien, lingkungan):
+    """
+    Padanan "null" di filter Classes Roboflow. Keduanya sama-sama gambar tanpa
+    objek tetapi artinya berlawanan: latar sudah selesai diperiksa dan sengaja
+    dikosongkan, belum-dilabeli justru pekerjaan yang tertinggal.
+    """
+    masuk(klien, "paul", PW_PAUL)
+    src = lingkungan["roots"] / "ds-alpha"          # 4 gambar, 2 berlabel
+    klien.post(f"/setsrc?path={src}")
+    klien.post(f"/markbg?path={_gambar(lingkungan, 'ds-alpha', 3)}")
+
+    n = lambda u: klien.get(u).text.count('class="card"')   # noqa: E731
+    assert n("/?f=all&x=latar") == 1
+    assert n("/?f=all&x=unlab") == 1
+    assert n("/?f=all&x=latar&x=unlab") == 2
+
+    # digabung dengan kelas biasa, artinya ATAU
+    assert n("/?f=all&c=botol") == 1
+    assert n("/?f=all&c=botol&x=latar") == 2
+    assert n("/?f=all&c=botol&c=kaleng&x=latar&x=unlab") == 4
+
+    # nilai asing diabaikan, bukan menggagalkan halaman
+    assert n("/?f=all&x=tidak-ada") == 4
+
+
+def test_pilihan_latar_bertahan_saat_saringan_lain_diklik(klien, lingkungan):
+    masuk(klien, "paul", PW_PAUL)
+    src = lingkungan["roots"] / "ds-alpha"
+    klien.post(f"/setsrc?path={src}")
+    klien.post(f"/markbg?path={_gambar(lingkungan, 'ds-alpha', 3)}")
+    html = klien.get("/?f=all&x=latar&s=label-baru").text
+    assert html.count("x=latar") >= 3, "pilihan latar tidak dibawa tautan lain"
+    assert 'name="s" value="label-baru"' in html

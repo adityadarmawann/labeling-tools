@@ -262,3 +262,4 @@ input:focus{outline:0;border-color:var(--ok)}
 .kelas-aksi{display:flex;gap:6px;padding:8px 10px 2px}
 .chip.pri{background:var(--ok);color:var(--on-ink);border-color:var(--ok);
   font-weight:600}
+.kelas-tanpa .kelas-baris span{font-style:italic}
