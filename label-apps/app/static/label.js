@@ -1383,6 +1383,109 @@ function tutupDraft() {
   });
 }
 
+// ------------------------------------------------------- melipat bagian panel
+
+/*
+ * Tiap judul bagian di kolom kanan bisa diklik untuk melipat isinya.
+ *
+ * Bukan penggantian menu View: di sana panel disembunyikan sama sekali, di sini
+ * ia tetap ada dan judulnya tetap terlihat. Gunanya untuk bagian yang sedang
+ * tidak dipakai — enam bagian bertumpuk membuat kolomnya panjang sekali, dan
+ * yang dicari jadi tenggelam. Pilihannya diingat per peramban.
+ */
+const KUNCI_LIPAT = 'labelapp_panel_lipat';
+
+(() => {
+  let lipat = {};
+  try { lipat = JSON.parse(localStorage.getItem(KUNCI_LIPAT)) || {}; } catch (e) { /* abai */ }
+
+  document.querySelectorAll('.lab-side .pan').forEach((pan, i) => {
+    const h = pan.querySelector('h3');
+    if (!h) return;
+    // Kunci diambil dari judulnya, bukan urutannya: menambah panel baru di
+    // tengah tidak boleh menggeser pilihan panel lain.
+    const kunci = (h.textContent || String(i)).trim().split('\n')[0].slice(0, 24);
+    if (lipat[kunci]) pan.setAttribute('data-lipat', '');
+    h.tabIndex = 0;
+    h.setAttribute('role', 'button');
+    h.title = 'Klik untuk melipat / membuka bagian ini';
+    const alih = () => {
+      pan.toggleAttribute('data-lipat');
+      lipat[kunci] = pan.hasAttribute('data-lipat');
+      try { localStorage.setItem(KUNCI_LIPAT, JSON.stringify(lipat)); } catch (e) { /* abai */ }
+    };
+    h.onclick = alih;
+    h.onkeydown = ev => {
+      if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); alih(); }
+    };
+  });
+})();
+
+// ---------------------------------------------------------------- panduan
+
+/*
+ * Panduan pintasan.
+ *
+ * Isinya dulu ditulis sebagai dua baris teks selebar layar di bar atas. Semua
+ * ada di sana, tetapi tidak ada yang benar-benar terbaca — dan justru karena
+ * penuh, beberapa pintasan yang sudah lama bekerja tidak pernah ikut ditulis.
+ * Tidak ada satu pun yang dibuang saat dipindah ke sini; yang berubah cuma
+ * ruangnya.
+ */
+(() => {
+  const kotak = el('panduan');
+  const tombol = el('btn-panduan');
+  if (!kotak || !tombol) return;
+  const cari = el('panduan-kotak-cari');
+  const isi = el('panduan-isi');
+  const kosong = el('panduan-kosong');
+
+  function saring() {
+    const q = cari.value.trim().toLowerCase();
+    let ada = 0;
+    isi.querySelectorAll('section').forEach(sec => {
+      let cocokDiBagian = 0;
+      const judul = sec.querySelector('h4').textContent.toLowerCase();
+      sec.querySelectorAll('dt').forEach(dt => {
+        const dd = dt.nextElementSibling;
+        const teks = (dt.textContent + ' ' + (dd ? dd.textContent : '')
+                      + ' ' + judul).toLowerCase();
+        const cocok = !q || teks.includes(q);
+        dt.hidden = !cocok;
+        if (dd) dd.hidden = !cocok;
+        if (cocok) cocokDiBagian++;
+      });
+      sec.hidden = cocokDiBagian === 0;
+      ada += cocokDiBagian;
+    });
+    kosong.hidden = ada > 0;
+  }
+
+  function buka() {
+    kotak.hidden = false;
+    cari.value = '';
+    saring();
+    cari.focus();
+  }
+  function tutup() { kotak.hidden = true; }
+
+  tombol.onclick = buka;
+  el('panduan-tutup').onclick = tutup;
+  cari.oninput = saring;
+  // Klik di luar kotaknya menutup — kebiasaan yang dipakai dialog mana pun.
+  kotak.addEventListener('mousedown', ev => { if (ev.target === kotak) tutup(); });
+
+  window.addEventListener('keydown', ev => {
+    if (!kotak.hidden) {
+      if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); tutup(); }
+      return;
+    }
+    // `?` dan F1 membuka panduan dari mana saja, kecuali saat sedang mengetik.
+    if (sedangMengetik(ev.target)) return;
+    if (ev.key === '?' || ev.key === 'F1') { ev.preventDefault(); buka(); }
+  }, true);
+})();
+
 // ---------------------------------------------------------- deteksi dari teks
 
 /*

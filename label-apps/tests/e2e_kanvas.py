@@ -42,6 +42,11 @@ lolos, gagal = [], []
 BLOK = set(sys.argv[1:])
 
 
+def terlihat_kosong(v):
+    """'' berarti tidak ada tumpang tindih; string apa pun berarti ada."""
+    return v == ""
+
+
 def cek(nama, syarat, detail=""):
     (lolos if syarat else gagal).append(nama)
     print(f"  {'OK  ' if syarat else 'GAGAL'} {nama}{'  ' + detail if detail else ''}")
@@ -315,7 +320,8 @@ def jalankan(d, ip):
                      ("kelas", lambda: jalankan_kelas(d)),
                      ("dialog", lambda: jalankan_dialog(d)),
                      ("kanvas", lambda: jalankan_kanvas(d)),
-                     ("panel", lambda: jalankan_panel(d))):
+                     ("panel", lambda: jalankan_panel(d)),
+                     ("potret", lambda: jalankan_potret(d))):
         if BLOK and nama not in BLOK:
             continue
         fn()
@@ -873,6 +879,98 @@ def jalankan_panel(d):
         d.js("S.shapes.length") == 0, "n=%s" % d.js("S.shapes.length"))
     d.js("window.fetch = window.__fetchAsli;")
 
+    # -------- panduan pintasan
+    d.js("document.getElementById('btn-panduan').click()")
+    time.sleep(0.25)
+    cek("tombol Panduan membuka panduan",
+        bool(d.js("!document.getElementById('panduan').hidden")))
+    n = d.js("document.querySelectorAll('#panduan-isi dt').length")
+    cek("panduan memuat seluruh pintasan", n >= 50, "jumlah=%s" % n)
+    cek("bar atas tidak lagi memuat dinding teks pintasan",
+        d.js("document.querySelectorAll('.lab-hint').length") == 0)
+
+    d.js("(function(){ const c = document.getElementById('panduan-kotak-cari');"
+         " c.value = 'grup'; c.dispatchEvent(new Event('input')); })()")
+    time.sleep(0.2)
+    terlihat = d.js("[...document.querySelectorAll('#panduan-isi dt')]"
+                    ".filter(x => !x.hidden).length")
+    cek("kotak cari menyaring pintasan", 0 < terlihat < n,
+        "%s dari %s" % (terlihat, n))
+
+    d.js("(function(){ const c = document.getElementById('panduan-kotak-cari');"
+         " c.value = 'zzzz'; c.dispatchEvent(new Event('input')); })()")
+    time.sleep(0.2)
+    cek("pencarian tanpa hasil mengatakannya",
+        bool(d.js("!document.getElementById('panduan-kosong').hidden")))
+
+    for tipe in ("rawKeyDown", "keyUp"):
+        d.kirim("Input.dispatchKeyEvent", type=tipe, key="Escape",
+                windowsVirtualKeyCode=27, nativeVirtualKeyCode=27)
+    time.sleep(0.25)
+    cek("Escape menutup panduan",
+        bool(d.js("document.getElementById('panduan').hidden")))
+
+    # -------- panel samping tidak boleh saling tumpang tindih
+    tumpang = d.js("""(function(){
+      const p = [...document.querySelectorAll('.lab-side .pan')]
+        .filter(x => !x.hidden).map(x => x.getBoundingClientRect());
+      for (let i = 1; i < p.length; i++)
+        if (p[i].top < p[i-1].bottom - 1) return `${i}: ${p[i].top} < ${p[i-1].bottom}`;
+      return ''; })()""")
+    cek("panel samping tidak tumpang tindih", terlihat_kosong(tumpang),
+        tumpang or "tidak ada")
+
+    # -------- melipat bagian panel: menyembunyikan isi, TIDAK menghapusnya
+    judul = "document.querySelector('#pan-labels h3')"
+    isi_awal = d.js("document.querySelectorAll('#kelas .kelas').length")
+    d.js(judul + ".click()")
+    time.sleep(0.2)
+    cek("mengklik judul melipat bagiannya",
+        bool(d.js("document.getElementById('pan-labels').hasAttribute('data-lipat')")))
+    cek("isinya masih ada di DOM, cuma tidak tampil",
+        d.js("document.querySelectorAll('#kelas .kelas').length") == isi_awal
+        and d.js("document.getElementById('kelas').offsetParent === null"),
+        "jumlah kelas tetap %s" % isi_awal)
+    d.js(judul + ".click()")
+    time.sleep(0.2)
+    cek("mengklik lagi membukanya kembali",
+        not d.js("document.getElementById('pan-labels').hasAttribute('data-lipat')")
+        and d.js("document.getElementById('kelas').offsetParent !== null"))
+def jalankan_potret(d):
+    """
+    Simpan tangkapan layar ke /tmp untuk dinilai dengan mata.
+
+    Bukan pemeriksaan lolos/gagal: tata letak dan kepadatan visual tidak bisa
+    diputuskan oleh assert. Dijalankan sendiri lewat
+    `tests/e2e_kanvas.py potret`.
+    """
+    import base64
+
+    print("  -- potret --")
+    d.kirim("Emulation.setDeviceMetricsOverride", width=1500, height=880,
+            deviceScaleFactor=1, mobile=False)
+    time.sleep(0.4)
+
+    def simpan(nama):
+        r = d.kirim("Page.captureScreenshot", format="png")
+        f = Path("/tmp") / f"tampilan-{nama}.png"
+        f.write_bytes(base64.b64decode(r["data"]))
+        print(f"     {f}  ({f.stat().st_size // 1024} kB)")
+
+    d.js("document.getElementById('panduan').hidden = true;"
+         " S.v.tanyaKelas = false; render();")
+    time.sleep(0.3)
+    simpan("halaman")
+
+    d.js("document.getElementById('btn-panduan').click()")
+    time.sleep(0.5)
+    simpan("panduan")
+
+    d.js("(function(){ const c = document.getElementById('panduan-kotak-cari');"
+         " c.value = 'titik'; c.dispatchEvent(new Event('input')); })()")
+    time.sleep(0.3)
+    simpan("panduan-cari")
+    d.js("document.getElementById('panduan-tutup').click()")
 
 
 if __name__ == "__main__":
