@@ -49,11 +49,16 @@ from __future__ import annotations
 
 import re
 import threading
+import time
 from collections import Counter, defaultdict
 from pathlib import Path
 
 import cv2
 import numpy as np
+
+from ..log import catat
+
+log = catat("labelapp.split")
 
 # Butuh sekurang-kurangnya sekian sesi sebelum sebuah granularitas dianggap
 # layak. Di bawah ini train dan valid pasti berbagi kondisi pemotretan, dan
@@ -660,6 +665,9 @@ def rencanakan(items: list[dict], rasio=(0.8, 0.1, 0.1), *,
             raise Dibatalkan()
 
     n = len(items)
+    t0 = time.monotonic()
+    log.info("splitting mulai: %s gambar, rasio %s, akun %r",
+             f"{n:,}", ":".join(f"{x:.0%}"[:-1] for x in rasio), kunci or "-")
     catat_maju(kunci, fase="pindai", n=0, total=n, persen=0.0)
     cek()
 
@@ -678,6 +686,9 @@ def rencanakan(items: list[dict], rasio=(0.8, 0.1, 0.1), *,
     grup = list(peta_sesi.values())
     besar = max((len(g) for g in grup), default=0)
 
+    log.info("sesi: granularitas %s, %s sesi, terbesar %s (%.1f%%), "
+             "%s tanpa stempel waktu", gran, f"{len(peta_sesi):,}", f"{besar:,}",
+             100.0 * besar / max(n, 1), f"{tanpa_stempel:,}")
     if len(peta_sesi) < MIN_SESI:
         peringatan.append(
             f"Hanya {len(peta_sesi)} sesi foto untuk {n} gambar. Train dan valid "
@@ -729,12 +740,23 @@ def rencanakan(items: list[dict], rasio=(0.8, 0.1, 0.1), *,
                 catat_maju(kunci, n=k + 1, total=n,
                            persen=10.0 + 64.0 * (k + 1) / n)
         terbaca = len(H)
+        log.info("sidik jari: %s dari %s gambar terbaca dalam %.0f dtk",
+                 f"{terbaca:,}", f"{n:,}", time.monotonic() - t0)
+        if terbaca < n:
+            log.warning("%s gambar TIDAK terbaca dan tidak ikut diperiksa "
+                        "kemiripannya", f"{n - terbaca:,}")
         cek()
 
         # Kalibrasi SESUDAH sidik jarinya jadi: separuh bahannya — pasangan
         # foto beda-sesi — sudah tersedia gratis di situ.
         catat_maju(kunci, fase="kalibrasi", persen=76.0)
         ambang, kalib = kalibrasi_ambang(items, H, sesi)
+        log.info("kalibrasi: ambang %s bit dari %s (kembaran p99 %s, "
+                 "beda-sesi p1 %s, %s foto contoh, terpisah=%s)",
+                 ambang, BIT_HASH,
+                 f"{kalib.get('kembaran_p99', 0):.0f}",
+                 "-" if kalib.get("beda_p1") is None else f"{kalib['beda_p1']:.0f}",
+                 kalib.get("contoh", 0), kalib.get("terpisah"))
         if kalib.get("dipotong"):
             peringatan.append(
                 f"Foto dataset ini berubah sangat jauh saat diproses ulang "
@@ -769,6 +791,10 @@ def rencanakan(items: list[dict], rasio=(0.8, 0.1, 0.1), *,
                 dipindah[split] += len(kena)
                 pindah_kali_ini += len(kena)
             catat_maju(kunci, persen=80.0 + 15.0 * min(putaran / 8.0, 1.0))
+            if pindah_kali_ini:
+                log.info("putaran %d: %s gambar pindah ke train "
+                         "(valid %s, test %s)", putaran, f"{pindah_kali_ini:,}",
+                         f"{len(hasil['valid']):,}", f"{len(hasil['test']):,}")
             cek()
             if not pindah_kali_ini:
                 break
@@ -900,5 +926,21 @@ def rencanakan(items: list[dict], rasio=(0.8, 0.1, 0.1), *,
         "peringatan": peringatan,
         "total": n,
     }
+    log.info("selesai dalam %.0f dtk: train %s / valid %s / test %s "
+             "(%.1f : %.1f : %.1f), %s peringatan",
+             time.monotonic() - t0,
+             f"{ringkas['jumlah']['train']:,}", f"{ringkas['jumlah']['valid']:,}",
+             f"{ringkas['jumlah']['test']:,}",
+             ringkas["persen"]["train"], ringkas["persen"]["valid"],
+             ringkas["persen"]["test"], len(peringatan))
+    for b in ("valid", "test"):
+        m = (mandiri.get(b) or {})
+        if m.get("kemandirian") is not None:
+            log.info("  %s: kemandirian %.2f, %s sesi, %s gambar",
+                     b, m["kemandirian"], f"{m['n_sesi']:,}", f"{m['n']:,}")
+    # Peringatan ikut ke log, bukan cuma ke layar: kalau nanti ada yang
+    # janggal, layarnya sudah lama tertutup.
+    for w in peringatan:
+        log.warning("  ! %s", w)
     catat_maju(kunci, fase="selesai", persen=100.0, hasil=ringkas)
     return ringkas

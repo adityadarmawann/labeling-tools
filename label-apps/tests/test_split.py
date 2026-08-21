@@ -1,5 +1,5 @@
 """
-Uji mesin pembelahan anti-bocor.
+Uji mesin splitting anti-bocor.
 
 Yang dijaga di sini bukan "kodenya jalan", melainkan satu janji tunggal:
 tidak ada foto di valid atau test yang pernah dilihat model saat latihan —
@@ -15,7 +15,7 @@ from app.services import split
 
 
 class Nama(str):
-    """Pengganti Path yang cukup untuk mesin pembelahan: ia hanya perlu `.name`."""
+    """Pengganti Path yang cukup untuk mesin splitting: ia hanya perlu `.name`."""
 
     @property
     def name(self) -> str:
@@ -343,9 +343,9 @@ def _ds_bersesi(tmp, n_sesi=12, per_sesi=6):
     return d
 
 
-def test_rute_pembelahan_dipakai_ekspor_dan_bisa_dilupakan(klien, lingkungan,
+def test_rute_splitting_dipakai_ekspor_dan_bisa_dilupakan(klien, lingkungan,
                                                            tmp_path):
-    """Rencana yang sudah dijalankan harus menang atas pembelahan cepat.
+    """Rencana yang sudah dijalankan harus menang atas splitting cepat.
 
     Kalau tidak, dHash yang mahal itu dihitung untuk apa-apa: ZIP-nya tetap
     dibagi lewat hash nama berkas dan kebocoran yang barusan ditutup terbuka
@@ -403,7 +403,7 @@ def test_kemajuan_dilaporkan_dan_bisa_dihentikan(klien, lingkungan, tmp_path):
     assert k["fase_nama"] == "Selesai"
 
     # Menekan Hentikan saat tidak ada yang berjalan TIDAK boleh meracuni
-    # pekerjaan berikutnya: tombolnya bisa saja tertekan setelah pembelahan
+    # pekerjaan berikutnya: tombolnya bisa saja tertekan setelah splitting
     # selesai, dan itu tidak berarti apa-apa.
     klien.post("/api/split/batal")
     j = klien.post("/api/split/jalankan?split=80,10,10").json()

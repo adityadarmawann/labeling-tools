@@ -500,28 +500,28 @@ document.addEventListener('DOMContentLoaded', () => {
           : '')
         + (j.tanpa_objek ? `<br>${j.tanpa_objek} tanpa objek (contoh negatif)` : '')
         + (j.bentuk_dilewati ? ` · ${j.bentuk_dilewati} bentuk dilewati` : '')
-        // Tanpa rencana, pembelahannya cuma mengelompokkan lewat nama berkas
+        // Tanpa rencana, splitting-nya cuma mengelompokkan lewat nama berkas
         // dan isi gambarnya tidak pernah dibuka. Itu HARUS terbaca sebelum
         // orang menekan unduh: kalau tidak, satu-satunya penanda bahwa hasil
         // ekspornya bocor adalah tombol yang kebetulan tidak ditekan.
         + (j.rencana ? '' :
-           '<span class="split-warn">Isi gambar belum diperiksa. Pembelahan ini '
+           '<span class="split-warn">Isi gambar belum diperiksa. Splitting ini '
            + 'hanya mengelompokkan lewat nama berkas, jadi dua foto yang sama '
            + 'bisa mendarat di train dan valid sekaligus dan angka validasimu '
-           + 'ikut menggelembung. Jalankan <b>pembelahan anti-bocor</b> di '
+           + 'ikut menggelembung. Jalankan <b>splitting anti-bocor</b> di '
            + 'bawah lebih dulu.</span>')
         + (j.split_bawaan
            ? '<span class="split-warn">Pembagian bawaan dataset dipakai apa '
              + 'adanya, termasuk kebocorannya kalau ada — ekspor Roboflow '
-             + 'sering membelah per gambar. Menjalankan pembelahan anti-bocor '
+             + 'sering membelah per gambar. Menjalankan splitting anti-bocor '
              + 'akan menyatukannya ulang lalu membelah dari nol.</span>'
            : '');
       kotak.forEach(k => { if (k) k.disabled = !!j.split_bawaan; });
       // Rencana bertahan di sesi, jadi setelah halaman dimuat ulang keadaannya
       // harus ikut tampil kembali — kalau tidak, tombolnya tampak belum
-      // pernah ditekan padahal pembelahannya masih berlaku.
+      // pernah ditekan padahal splitting-nya masih berlaku.
       if (j.rencana) {
-        // Bilahnya hanya disembunyikan kalau pembelahannya tidak dijalankan
+        // Bilahnya hanya disembunyikan kalau splitting-nya tidak dijalankan
         // di sesi layar ini — mis. sesudah halaman dimuat ulang, ketika
         // rencananya datang dari server. Sesudah menekan tombolnya,
         // "Selesai 100%" justru penanda bahwa kerjanya kelar; menyembunyikan
@@ -537,7 +537,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   kotak.forEach(k => { if (k) k.onchange = muatRingkasan; });
 
-  // ---- pembelahan anti-bocor -------------------------------------------
+  // ---- splitting anti-bocor -------------------------------------------
   //
   // Dijalankan sebagai langkah tersendiri karena membaca isi tiap gambar
   // makan waktu (56 ms/gambar terukur), dan karena angkanya harus bisa
@@ -641,7 +641,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const j = await post('/api/split/jalankan?split=' + encodeURIComponent(rasio()));
       if (!j.ok) {
         sHasil.innerHTML = j.batal
-          ? '<span class="split-warn">Dihentikan. Pembelahan cepat berbasis '
+          ? '<span class="split-warn">Dihentikan. Splitting cepat berbasis '
             + 'nama berkas tetap dipakai.</span>'
           : `<span class="split-warn">Gagal: ${j.error || ''}</span>`;
         return;

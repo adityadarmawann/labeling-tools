@@ -1057,7 +1057,7 @@ def jalankan_potret(d):
     cek("tombolnya sendiri yang menyebut apa yang tersaring",
         "Semua kelas" not in lbl, "label=%r" % lbl)
     print("     label tombol: %r" % lbl)
-    # Menu Ekspor beserta pembelahan anti-bocornya. Bilah progres dan angka
+    # Menu Ekspor beserta splitting anti-bocornya. Bilah progres dan angka
     # persennya cuma bisa dinilai dengan mata; yang bisa di-assert hanyalah
     # bahwa hasilnya benar-benar muncul dan menyebut angka.
     d.js("document.getElementById('ekspor-tombol').click()")
@@ -1077,12 +1077,12 @@ def jalankan_potret(d):
     time.sleep(0.4)
     simpan("ekspor-split-hasil")
     teks = d.js("document.getElementById('split-hasil').textContent.trim()")
-    cek("hasil pembelahan muncul di menu ekspor", "sesi pemotretan" in teks,
+    cek("hasil splitting muncul di menu ekspor", "sesi pemotretan" in teks,
         "teks=%r" % teks[:80])
     cek("bilah progres penuh dan angkanya 100%",
         d.js("document.getElementById('split-persen').textContent") == "100%",
         d.js("document.getElementById('split-persen').textContent"))
-    cek("peringatan 'belum diperiksa' hilang setelah pembelahan dijalankan",
+    cek("peringatan 'belum diperiksa' hilang setelah splitting dijalankan",
         "belum diperiksa" not in
         d.js("document.getElementById('ekspor-info').textContent"))
     cek("tombol Lupakan muncul setelah ada rencana",

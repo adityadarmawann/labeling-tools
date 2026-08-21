@@ -108,20 +108,20 @@
         </span>
         <span class="menu-catatan" id="ekspor-info">memuat ringkasan…</span>
 
-        {# Pembelahan penuh dijalankan SENDIRI, tidak diam-diam saat mengunduh.
+        {# Splitting penuh dijalankan SENDIRI, tidak diam-diam saat mengunduh.
            Membaca isi tiap gambar makan 56 ms — sejuta gambar berarti berjam-
            jam. Lebih penting lagi: angkanya harus bisa dibaca sebelum ZIP
            puluhan gigabyte dibuat, bukan sesudah. #}
         <span class="menu-pisah"></span>
-        <span class="menu-judul">Pembelahan anti-bocor</span>
+        <span class="menu-judul">Splitting anti-bocor</span>
         <span class="menu-catatan" id="split-jelas">
           Membelah per sesi pemotretan lalu memeriksa isi tiap gambar, supaya
           foto yang sama tidak muncul di train dan valid sekaligus.</span>
         <span class="split-aksi">
-          <button class="chip" id="split-jalan">Jalankan pembelahan</button>
+          <button class="chip" id="split-jalan">Jalankan splitting</button>
           <button class="chip" id="split-batal" hidden>Hentikan</button>
           <button class="chip" id="split-lupa" hidden
-                  title="Kembali ke pembelahan cepat berbasis nama berkas">Lupakan</button>
+                  title="Kembali ke splitting cepat berbasis nama berkas">Lupakan</button>
         </span>
         <span class="prog-baris" id="prog-split" hidden>
           <span class="prog" data-on><i id="fill-split"></i></span>

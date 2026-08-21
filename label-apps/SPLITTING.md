@@ -1,4 +1,4 @@
-# Pembelahan train / valid / test
+# Splitting train / valid / test
 
 Dokumen rujukan untuk `app/services/split.py`. Ditulis supaya kalau nanti ada
 crash, angka yang janggal, atau hasil yang tidak masuk akal, ada tempat untuk
@@ -22,7 +22,7 @@ sama, tangan bergeser sedikit — praktis gambar yang sama. Kalau satu masuk
 train dan satu masuk valid, model dinilai memakai sesuatu yang sudah dia
 hafal.
 
-Pembelahan lama (`export.bagi_split` lewat `kunci_asal()`) hanya membuang
+Splitting lama (`export.bagi_split` lewat `kunci_asal()`) hanya membuang
 sufiks augmentasi Roboflow sesudah `.rf.<hash>`. Diukur pada paragon:
 
 ```
@@ -274,7 +274,7 @@ paragon       kemandirian 0,95  ·   2 dari   10 sesi
 botol-kaleng  kemandirian 1,47  ·  89 dari 4572 sesi
 ```
 
-Pembelahan paragon ternyata **baik**; yang kurang keragaman datanya. Tanpa
+Splitting paragon ternyata **baik**; yang kurang keragaman datanya. Tanpa
 angka ini, peringatannya menunjuk ke tempat yang salah.
 
 ---
@@ -287,7 +287,7 @@ dengan urutan:
 
 1. **rencana** kalau ada → dipakai apa adanya, untuk kelima format sekaligus
 2. **split bawaan dataset** kalau ada → dihormati
-3. **pembelahan cepat** berbasis hash nama berkas → cadangan
+3. **splitting cepat** berbasis hash nama berkas → cadangan
 
 Gambar yang belum ada saat rencana dibuat tetap mendarat lewat aturan
 cadangan.
@@ -299,7 +299,7 @@ cadangan.
 | `POST /api/split/jalankan?split=80,10,10` | jalankan; menggantung sampai selesai |
 | `GET /api/split/kemajuan` | fase + persen, ditanya berkala oleh browser |
 | `POST /api/split/batal` | hentikan yang sedang jalan |
-| `POST /api/split/lupakan` | buang rencana, kembali ke pembelahan cepat |
+| `POST /api/split/lupakan` | buang rencana, kembali ke splitting cepat |
 
 Petanya (`peta`) **tidak** ikut dikirim ke browser — ia bisa memuat sejuta
 nama berkas. `ringkas_rencana()` di `app/routers/datasets.py` membuangnya.
@@ -335,7 +335,7 @@ Regresi kolam negatif. Pastikan `_bagikan()` masih memisahkan **berobjek** dan
 Seharusnya tidak muncul. Kalau muncul, ada siklus pemindahan — laporkan
 beserta `ambang` dan `n_sesi`.
 
-### Pembelahannya lambat
+### Splitting-nya lambat
 
 Yang lambat pasti fase `dhash` (56 ms/gambar). Perbandingan dan kalibrasi
 hitungan menit. Kalau fase `bersih` yang lama, ambangnya kemungkinan
@@ -357,6 +357,47 @@ fungsi kembali; `kalibrasi_ambang()` berputar, jadi ia melepasnya eksplisit
 > Pernah terjadi saat mengukur: 220 foto × 7 salinan penuh ditahan sekaligus
 > = 21 GB, dan prosesnya mati tanpa pesan sama sekali. Kalau ada proses yang
 > hilang begitu saja, curigai ini lebih dulu.
+
+---
+
+## 8b. Membaca lognya
+
+Sejak commit ini, splitting menulis jejaknya ke stdout — jadi ikut tertangkap
+`./start.sh prod > /tmp/labelapps.log`. Contoh satu jalan penuh di paragon:
+
+```
+15:04:09  splitting mulai: 476 gambar, rasio 80:10:10, akun 'darma'
+15:04:09  sesi: granularitas menit, 10 sesi, terbesar 66 (13.9%), 0 tanpa stempel waktu
+15:04:36  sidik jari: 476 dari 476 gambar terbaca dalam 26 dtk
+15:05:11  kalibrasi: ambang 67 bit dari 256 (kembaran p99 40, beda-sesi p1 95,
+          60 foto contoh, terpisah=True)
+15:05:11  putaran 1: 17 gambar pindah ke train (valid 86, test 89)
+15:05:11  putaran 2: 7 gambar pindah ke train (valid 86, test 82)
+15:05:11  putaran 5: 1 gambar pindah ke train (valid 86, test 79)
+15:05:11  selesai dalam 62 dtk: train 311 / valid 86 / test 79 (65.3 : 18.1 : 16.6)
+15:05:11    valid: kemandirian 0.95, 2 sesi, 86 gambar
+15:05:11    ! Hanya 10 sesi foto untuk 476 gambar...
+```
+
+Seluruh peringatan ikut ke log, bukan cuma ke layar — kalau nanti ada yang
+janggal, layarnya sudah lama tertutup.
+
+Yang bisa dibaca dari log itu:
+
+- **berhenti di "sidik jari"** → sedang membaca gambar, 56 ms per berkas.
+  Wajar kalau lama; hitung sendiri dari jumlah gambarnya.
+- **jeda panjang setelah "sidik jari" sebelum "kalibrasi"** → kalibrasi
+  memproses ulang ~60 foto. Pada foto besar ini bisa 30 detik.
+- **"putaran" terus bertambah** melewati 5–6 → ambangnya kemungkinan terlalu
+  longgar; periksa baris `kalibrasi`.
+- **"gambar TIDAK terbaca"** → berkas rusak atau format tak dikenal; gambar
+  itu ikut dibagi tapi tidak diperiksa kemiripannya.
+- **"splitting GAGAL"** dengan jejak tumpukan → dicatat lengkap oleh
+  `app/routers/datasets.py`.
+
+Levelnya tidak bergantung pada `log_level` uvicorn. `app/log.py` memasang
+salurannya sendiri dengan `propagate = False`, karena `run.py` menjalankan
+uvicorn di `log_level="warning"` dan itu akan membungkam pesan INFO.
 
 ---
 
@@ -394,7 +435,7 @@ fungsi kembali; `kalibrasi_ambang()` berputar, jadi ia melepasnya eksplisit
 | `test_gambar_berlabel_tidak_habis_terserap_ke_valid_dan_test` | regresi kolam negatif |
 | `test_kemandirian_menurun_saat_valid_lebih_mirip_train` | skornya tidak terbalik |
 | `test_kembaran_dipindahkan_ke_train_bukan_dibuang` | tidak ada gambar hilang |
-| `test_rute_pembelahan_dipakai_ekspor_dan_bisa_dilupakan` | rencana benar-benar dipakai ZIP |
+| `test_rute_splitting_dipakai_ekspor_dan_bisa_dilupakan` | rencana benar-benar dipakai ZIP |
 
 Tampilannya dijaga blok `potret` di `tests/e2e_kanvas.py`:
 `tests/e2e_kanvas.py potret`.

@@ -9,7 +9,10 @@ from fastapi.responses import HTMLResponse, Response
 
 from ..config import Settings, get_settings
 from ..deps import current_session, current_session_api, is_local, require_local
+from ..log import catat
 from ..services import anylabeling, export, riwayat, scanner, split
+
+_log = catat("labelapp.split")
 from ..session import Session
 from ..templating import templates
 
@@ -187,13 +190,22 @@ async def split_jalankan(split_q: str = Query("", alias="split"),
 
     sess.split_batal = False
     split.bersihkan_maju(sess.user)
+    _log.info("permintaan splitting dari %r untuk %s", sess.user, sess.src)
     try:
         r = await asyncio.to_thread(
             split.rencanakan, items, export.baca_rasio(split_q),
             kunci=sess.user, batal=lambda: sess.split_batal)
     except split.Dibatalkan:
         split.bersihkan_maju(sess.user)
+        _log.warning("splitting dihentikan oleh %r", sess.user)
         return {"ok": False, "batal": True, "error": "dihentikan"}
+    except Exception:
+        # Dicatat lengkap dengan jejaknya. Tanpa ini, satu-satunya jejak
+        # kegagalan adalah bilah progres yang berhenti di tengah, dan tidak
+        # ada yang bisa dibaca sesudahnya.
+        split.bersihkan_maju(sess.user)
+        _log.exception("splitting GAGAL untuk %s", sess.src)
+        raise
     sess.rencana_split = r
     return {"ok": True, **ringkas_rencana(r)}
 
