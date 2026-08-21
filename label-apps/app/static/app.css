@@ -15,6 +15,7 @@
   --ground:#f7f8fa; --panel:#ffffff; --line:#e3e7ec; --line2:#cdd4dc;
   --ink:#1b2430; --ink-dim:#5f6d7e; --ink-faint:#93a0ae;
   --ok:#1f9d8f; --warn:#c47a10; --stop:#d64a2c;
+  --warn-bg:rgba(196,122,16,.10);   /* latar kotak peringatan */
   --raised:#fbfcfd;        /* permukaan sedikit terangkat: tombol, kotak isian */
   --sunk:#eef1f5;          /* permukaan cekung: latar gambar, alur bilah progres */
   --hover:#f3f6f9;
@@ -36,6 +37,7 @@
     --ground:#12161c; --panel:#1a1f27; --line:#28303a; --line2:#39434f;
     --ink:#e6ebf2; --ink-dim:#a3aebd; --ink-faint:#788493;
     --ok:#43b3a4; --warn:#d59a3a; --stop:#e2705a;
+    --warn-bg:rgba(213,154,58,.14);
     --raised:#212832; --sunk:#161b22; --hover:#252d38;
     --on-ink:#12161c;
     --lab-bg:#2a323d; --lab-ink:#b3bece;
@@ -50,6 +52,7 @@
   --ground:#12161c; --panel:#1a1f27; --line:#28303a; --line2:#39434f;
   --ink:#e6ebf2; --ink-dim:#a3aebd; --ink-faint:#788493;
   --ok:#43b3a4; --warn:#d59a3a; --stop:#e2705a;
+  --warn-bg:rgba(213,154,58,.14);
   --raised:#212832; --sunk:#161b22; --hover:#252d38;
   --on-ink:#12161c;
   --lab-bg:#2a323d; --lab-ink:#b3bece;
@@ -76,6 +79,13 @@ h1{font-size:15px;font-weight:600;letter-spacing:.02em}
 .strip i.stop{background:var(--stop)}
 
 .bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px 0 13px}
+/* Aturan display milik kita sendiri lebih kuat daripada [hidden] bawaan
+   peramban, jadi `el.hidden = true` pada .chip atau .prog-baris tidak
+   menyembunyikan apa pun — tombol "Hentikan" tetap terpampang walau
+   pembelahannya sudah selesai. Ditegaskan sekali di sini, bukan ditambal
+   satu per satu di tiap kelas. */
+[hidden]{display:none !important}
+
 .chip{border:1px solid var(--line2);background:transparent;color:var(--ink-dim);
   padding:5px 11px;border-radius:999px;font-size:12.5px;cursor:pointer;
   text-decoration:none;display:inline-block;transition:.12s}
@@ -211,6 +221,12 @@ input:focus{outline:0;border-color:var(--ok)}
 .menu-isi{display:none;position:absolute;right:0;top:28px;z-index:40;
   background:var(--panel);border:1px solid var(--line2);border-radius:8px;
   padding:7px 0;min-width:250px;max-width:calc(100vw - 28px);
+  /* Menu Ekspor memuat format, rasio, ringkasan, dan hasil pembelahan
+     sekaligus; pada layar pendek isinya melewati bawah jendela dan bagian
+     akhirnya tidak bisa dijangkau sama sekali. */
+  /* 150px = tinggi header + bar tempat tombolnya duduk (~118px) plus
+     sedikit jarak ke tepi bawah. Diukur dengan e2e, bukan dikira. */
+  max-height:calc(100vh - 150px);overflow-y:auto;overscroll-behavior:contain;
   box-shadow:0 8px 24px rgba(var(--bayang),.16)}
 .menu-isi a{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .menu[data-buka] .menu-isi{display:block}
@@ -316,3 +332,19 @@ input:focus{outline:0;border-color:var(--ok)}
    elipsis alih-alih memanjangkan barnya. Nama lengkapnya ada di tooltip. */
 .chip.kelas-tombol{max-width:250px;overflow:hidden;text-overflow:ellipsis;
   white-space:nowrap;vertical-align:middle}
+
+/* Pembelahan anti-bocor di dalam menu Ekspor */
+.split-aksi{display:flex;gap:6px;flex-wrap:wrap;padding:6px 12px 2px}
+.prog-baris{display:block;padding:4px 12px 2px}
+/* .prog bawaan dipakai untuk impor dan berupa block; di sini ia duduk di
+   dalam <span>, jadi tampilannya disamakan tanpa mengubah aturan aslinya. */
+.prog-baris .prog{display:block;margin-top:6px}
+.prog-teks{display:flex;justify-content:space-between;gap:8px;margin-top:5px;
+  font-size:11.5px;color:var(--ink-dim)}
+.prog-teks b{color:var(--ink);font-variant-numeric:tabular-nums}
+/* Peringatan hasil pembelahan: dibaca, bukan sekadar dilewati. */
+.split-warn{display:block;margin-top:6px;padding:6px 8px;border-radius:6px;
+  background:var(--warn-bg);
+  border-left:2px solid var(--warn,#c87800);color:var(--ink-dim);line-height:1.45}
+.split-angka{display:block;margin-top:6px;font-variant-numeric:tabular-nums}
+.split-angka b{color:var(--ink)}

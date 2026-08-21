@@ -4,12 +4,12 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse, Response
 
 from ..config import Settings, get_settings
 from ..deps import current_session, current_session_api, is_local, require_local
-from ..services import anylabeling, export, riwayat, scanner
+from ..services import anylabeling, export, riwayat, scanner, split
 from ..session import Session
 from ..templating import templates
 
@@ -113,9 +113,11 @@ async def ekspor_ringkasan(format: str = "yolo-seg", split: str = "",
     with sess.lock:
         items = list(sess.items)
         names = dict(sess.names)
+    rencana = sess.rencana_split
     r = await asyncio.to_thread(export.ringkasan, items, format == "yolo-seg",
-                                export.baca_rasio(split), names)
-    return {"ok": True, "format": export.FORMAT[format], **r}
+                                export.baca_rasio(split), names, rencana)
+    return {"ok": True, "format": export.FORMAT[format],
+            "rencana": ringkas_rencana(rencana), **r}
 
 
 @router.get("/ekspor")
@@ -139,9 +141,79 @@ async def ekspor(format: str = "yolo-seg", gambar: int = 1, split: str = "",
         items = list(sess.items)
         names = dict(sess.names)
     data = await asyncio.to_thread(export.zip_dataset, items, nama, format,
-                                   bool(gambar), export.baca_rasio(split), names)
+                                   bool(gambar), export.baca_rasio(split), names,
+                                   sess.rencana_split)
     berkas = f"{nama}-{format}.zip"
     return Response(data, media_type="application/zip", headers={
         "Content-Disposition": f'attachment; filename="{berkas}"',
         "Content-Length": str(len(data)),
     })
+
+
+# ============================================================
+# PEMBELAHAN TRAIN / VALID / TEST
+# ============================================================
+#
+# Dijalankan sebagai langkah tersendiri, bukan diam-diam saat mengunduh.
+# Dua alasan. Pertama, membaca isi tiap gambar memakan waktu — diukur 56 ms
+# per gambar, jadi satu juta gambar berarti berjam-jam; itu tidak boleh
+# menggantung di dalam satu permintaan HTTP. Kedua, dan lebih penting:
+# pembelahan yang tidak bisa diperiksa lebih dulu adalah pembelahan yang
+# tidak bisa dipercaya. Angkanya harus bisa dibaca SEBELUM ZIP puluhan
+# gigabyte dibuat.
+
+
+def ringkas_rencana(r: dict | None) -> dict | None:
+    """Rencana tanpa `peta`-nya.
+
+    Petanya bisa memuat sejuta nama berkas; mengirimnya ke browser di setiap
+    pembaruan ringkasan akan menghabiskan memori di kedua sisi tanpa ada yang
+    membacanya.
+    """
+    if not r:
+        return None
+    return {k: v for k, v in r.items() if k != "peta"}
+
+
+@router.post("/api/split/jalankan")
+async def split_jalankan(split_q: str = Query("", alias="split"),
+                         sess: Session = Depends(current_session_api)):
+    if sess.src is None:
+        return {"ok": False, "error": "belum ada dataset terbuka"}
+    with sess.lock:
+        items = list(sess.items)
+    if not items:
+        return {"ok": False, "error": "dataset ini kosong"}
+
+    sess.split_batal = False
+    split.bersihkan_maju(sess.user)
+    try:
+        r = await asyncio.to_thread(
+            split.rencanakan, items, export.baca_rasio(split_q),
+            kunci=sess.user, batal=lambda: sess.split_batal)
+    except split.Dibatalkan:
+        split.bersihkan_maju(sess.user)
+        return {"ok": False, "batal": True, "error": "dihentikan"}
+    sess.rencana_split = r
+    return {"ok": True, **ringkas_rencana(r)}
+
+
+@router.get("/api/split/kemajuan")
+async def split_kemajuan(sess: Session = Depends(current_session_api)):
+    """Ditanyakan berkala selagi /api/split/jalankan masih menggantung."""
+    k = split.kemajuan(sess.user)
+    return {"ok": True, "fase_nama": split.FASE.get(k.get("fase"), ""), **k}
+
+
+@router.post("/api/split/batal")
+async def split_batal(sess: Session = Depends(current_session_api)):
+    sess.split_batal = True
+    return {"ok": True}
+
+
+@router.post("/api/split/lupakan")
+async def split_lupakan(sess: Session = Depends(current_session_api)):
+    """Kembali ke pembelahan cepat berbasis nama berkas."""
+    sess.rencana_split = None
+    split.bersihkan_maju(sess.user)
+    return {"ok": True}

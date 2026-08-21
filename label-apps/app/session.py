@@ -35,6 +35,12 @@ class Session:
         self.thumbdir.mkdir(parents=True, exist_ok=True)
         self.lock = threading.Lock()
         self._penempat = None
+        # Rencana pembelahan train/valid/test terakhir, beserta diagnosanya.
+        # Disimpan supaya lima format ekspor memakai pembelahan yang sama
+        # persis, dan supaya dHash yang mahal itu tidak dihitung ulang tiap
+        # kali tombol ekspor ditekan.
+        self.rencana_split: dict | None = None
+        self.split_batal = False
 
     # -- dataset --
 
@@ -46,6 +52,10 @@ class Session:
         # pemindaian ulang angka itu sudah usang, jadi dibuang — kalau tidak,
         # penambahan berikutnya membagi berdasarkan keadaan yang sudah lewat.
         self._penempat = None
+        # Rencana lama menyebut nama berkas yang mungkin sudah tidak ada.
+        # Membiarkannya berarti ekspor berikutnya membelah memakai keadaan
+        # yang sudah lewat.
+        self.rencana_split = None
         self.reset_thumbs()
         annotations.write_label_file(self)
         return self.items

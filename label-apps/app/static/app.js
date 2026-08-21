@@ -501,6 +501,18 @@ document.addEventListener('DOMContentLoaded', () => {
         + (j.tanpa_objek ? `<br>${j.tanpa_objek} tanpa objek (contoh negatif)` : '')
         + (j.bentuk_dilewati ? ` · ${j.bentuk_dilewati} bentuk dilewati` : '');
       kotak.forEach(k => { if (k) k.disabled = !!j.split_bawaan; });
+      // Rencana bertahan di sesi, jadi setelah halaman dimuat ulang keadaannya
+      // harus ikut tampil kembali — kalau tidak, tombolnya tampak belum
+      // pernah ditekan padahal pembelahannya masih berlaku.
+      if (j.rencana) {
+        // Bilahnya hanya disembunyikan kalau pembelahannya tidak dijalankan
+        // di sesi layar ini — mis. sesudah halaman dimuat ulang, ketika
+        // rencananya datang dari server. Sesudah menekan tombolnya,
+        // "Selesai 100%" justru penanda bahwa kerjanya kelar; menyembunyikan
+        // bilah tepat saat penuh membuatnya berkedip lalu lenyap.
+        if (!sudahJalan) sProg.hidden = true;
+        tampilkanRencana(j.rencana);
+      }
     } catch (e) {
       info.textContent = 'Gagal menghubungi server';
     }
@@ -508,6 +520,121 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   kotak.forEach(k => { if (k) k.onchange = muatRingkasan; });
+
+  // ---- pembelahan anti-bocor -------------------------------------------
+  //
+  // Dijalankan sebagai langkah tersendiri karena membaca isi tiap gambar
+  // makan waktu (56 ms/gambar terukur), dan karena angkanya harus bisa
+  // dibaca SEBELUM ZIP-nya dibuat, bukan sesudah.
+
+  const sJalan = document.getElementById('split-jalan');
+  const sBatal = document.getElementById('split-batal');
+  const sLupa  = document.getElementById('split-lupa');
+  const sProg  = document.getElementById('prog-split');
+  const sIsi   = document.getElementById('fill-split');
+  const sFase  = document.getElementById('split-fase');
+  const sPersen = document.getElementById('split-persen');
+  const sHasil = document.getElementById('split-hasil');
+  const angka = v => (v || 0).toLocaleString('id-ID');
+
+  function tampilkanRencana(r) {
+    if (!r) { sHasil.innerHTML = ''; sLupa.hidden = true; return; }
+    sLupa.hidden = false;
+    const n = v => v.toFixed(1).replace('.', ',');
+    const pindah = (r.dipindah.valid || 0) + (r.dipindah.test || 0);
+    const objek = s => Object.values(r.kelas[s] || {}).reduce((a, b) => a + b, 0);
+    let h = '<span class="split-angka">'
+      + `<b>${angka(r.n_sesi)} sesi pemotretan</b> (kunci per-${r.granularitas}`
+      + `, terbesar ${n(r.grup_terbesar_pct)}%)<br>`;
+    for (const s of ['train', 'valid', 'test']) {
+      h += `${s} <b>${angka(r.jumlah[s])}</b> (${n(r.persen[s])}%)`
+         + ` · ${angka(objek(s))} objek<br>`;
+    }
+    if (pindah) {
+      h += `${angka(pindah)} gambar dipindah ke train karena punya kembaran `
+         + 'di sana<br>';
+    }
+    if (r.tanpa_stempel) {
+      h += `${angka(r.tanpa_stempel)} berkas tanpa stempel waktu — untuk yang `
+         + 'ini hanya isi gambarnya yang menjaga<br>';
+    }
+    h += '</span>';
+    for (const w of r.peringatan || []) {
+      h += `<span class="split-warn">${w}</span>`;
+    }
+    sHasil.innerHTML = h;
+  }
+
+  let sudahJalan = false;
+  let pantauSplit = null;
+  function hentikanPantau() {
+    if (pantauSplit) { clearInterval(pantauSplit); pantauSplit = null; }
+  }
+
+  sJalan.onclick = async ev => {
+    ev.preventDefault();
+    sudahJalan = true;
+    sJalan.disabled = true;
+    sBatal.hidden = false;
+    sLupa.hidden = true;
+    sHasil.innerHTML = '';
+    sProg.hidden = false;
+    sIsi.style.width = '0%';
+    sPersen.textContent = '0%';
+    sFase.textContent = 'Menyiapkan…';
+    // Kemajuannya ditanyakan berkala: /api/split/jalankan menggantung sampai
+    // selesai, jadi tidak bisa melaporkan apa pun di tengah jalan.
+    pantauSplit = setInterval(async () => {
+      let k;
+      try { k = await (await fetch('/api/split/kemajuan')).json(); } catch (e) { return; }
+      if (!k || k.persen == null) return;
+      sIsi.style.width = k.persen.toFixed(1) + '%';
+      sPersen.textContent = Math.round(k.persen) + '%';
+      sFase.textContent = k.fase === 'dhash' && k.total
+        ? `${k.fase_nama} — ${angka(k.n)} dari ${angka(k.total)}`
+        : (k.fase_nama || '…');
+    }, 400);
+    try {
+      const j = await post('/api/split/jalankan?split=' + encodeURIComponent(rasio()));
+      if (!j.ok) {
+        sHasil.innerHTML = j.batal
+          ? '<span class="split-warn">Dihentikan. Pembelahan cepat berbasis '
+            + 'nama berkas tetap dipakai.</span>'
+          : `<span class="split-warn">Gagal: ${j.error || ''}</span>`;
+        return;
+      }
+      sIsi.style.width = '100%';
+      sPersen.textContent = '100%';
+      sFase.textContent = 'Selesai';
+      tampilkanRencana(j);
+      // Ringkasan di atas masih menyebut pembagian yang lama.
+      muatRingkasan();
+    } catch (e) {
+      sHasil.innerHTML = '<span class="split-warn">Gagal menghubungi server</span>';
+    } finally {
+      hentikanPantau();
+      sJalan.disabled = false;
+      sBatal.hidden = true;
+    }
+  };
+
+  sBatal.onclick = async ev => {
+    ev.preventDefault();
+    sBatal.disabled = true;
+    sFase.textContent = 'Menghentikan…';
+    try { await post('/api/split/batal'); } catch (e) {}
+    sBatal.disabled = false;
+  };
+
+  sLupa.onclick = async ev => {
+    ev.preventDefault();
+    try { await post('/api/split/lupakan'); } catch (e) { return; }
+    sHasil.innerHTML = '';
+    sudahJalan = false;
+    sProg.hidden = true;
+    sLupa.hidden = true;
+    muatRingkasan();
+  };
 
   let sudah = false;
   tombol.onclick = ev => {

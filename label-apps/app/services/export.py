@@ -188,11 +188,18 @@ def kunci_asal(nama: str) -> str:
     return m.group(1) if m else Path(nama).stem
 
 
-def bagi_split(items: list[dict], rasio=RASIO_BAWAAN) -> dict[str, list[dict]]:
+def bagi_split(items: list[dict], rasio=RASIO_BAWAAN,
+               rencana: dict | None = None) -> dict[str, list[dict]]:
     """
     Bagi dataset menjadi train / valid / test.
 
-    Dua aturan, keduanya soal mencegah kebocoran:
+    **Rencana yang sudah dijalankan selalu menang.** Kalau pengguna menekan
+    "Jalankan pembelahan", hasilnya dipakai apa adanya — termasuk untuk kelima
+    format sekaligus, supaya COCO dan YOLO dari dataset yang sama tidak
+    membelah berbeda. Pembelahan cepat di bawah ini hanya cadangan untuk
+    ekspor yang dijalankan tanpa menekan tombol itu.
+
+    Dua aturan pada cadangannya, keduanya soal mencegah kebocoran:
 
     **1. Split yang sudah ada dipertahankan.** Kalau datasetnya memang sudah
     terbagi (mis. ekspor Roboflow dengan train/valid/test), pembagian itu yang
@@ -208,6 +215,22 @@ def bagi_split(items: list[dict], rasio=RASIO_BAWAAN) -> dict[str, list[dict]]:
     berapa kali pun memberi pembagian yang sama.
     """
     import hashlib
+
+    # 0. Rencana dari mesin pembelahan penuh (sesi + dHash).
+    if rencana and rencana.get("peta"):
+        peta = rencana["peta"]
+        hasil = {k: [] for k in SPLIT}
+        sisa = []
+        for it in sorted(items, key=lambda x: x["img"].name):
+            s = peta.get(it["img"].name)
+            (hasil[s] if s in hasil else sisa).append(it)
+        # Gambar yang belum ada saat rencana dibuat tetap harus mendarat di
+        # suatu tempat; ia mengikuti aturan cadangan di bawah.
+        if sisa:
+            for s, daftar in bagi_split(
+                    [{**it, "split": None} for it in sisa], rasio).items():
+                hasil[s].extend(daftar)
+        return hasil
 
     # 1. Hormati split bawaan dataset kalau ada.
     if any(it.get("split") for it in items):
@@ -242,7 +265,7 @@ def bagi_split(items: list[dict], rasio=RASIO_BAWAAN) -> dict[str, list[dict]]:
 
 def zip_yolo(items: list[dict], nama_dataset: str, segmentasi: bool,
              sertakan_gambar: bool = True, rasio=RASIO_BAWAAN,
-             names: dict | None = None) -> bytes:
+             names: dict | None = None, rencana: dict | None = None) -> bytes:
     """
     Seluruh dataset -> ZIP dengan tata letak yang **sama seperti ekspor
     Roboflow**, supaya bisa langsung dilatih tanpa dirapikan lagi:
@@ -257,7 +280,7 @@ def zip_yolo(items: list[dict], nama_dataset: str, segmentasi: bool,
     negatif yang sah di YOLO, bukan kelalaian.
     """
     peta = peta_kelas(items, names)
-    bagian = bagi_split(items, rasio)
+    bagian = bagi_split(items, rasio, rencana)
     buf = io.BytesIO()
     n_objek = 0
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
@@ -295,11 +318,11 @@ def zip_yolo(items: list[dict], nama_dataset: str, segmentasi: bool,
 
 
 def ringkasan(items: list[dict], segmentasi: bool, rasio=RASIO_BAWAAN,
-              names: dict | None = None) -> dict:
+              names: dict | None = None, rencana: dict | None = None) -> dict:
     """Angka untuk ditampilkan sebelum orang menekan unduh, termasuk jumlah
     gambar per split — seperti yang Roboflow tampilkan di Train/Test Split."""
     peta = peta_kelas(items, names)
-    bagian = bagi_split(items, rasio)
+    bagian = bagi_split(items, rasio, rencana)
     n_objek = sum(len(baris_yolo(it, peta, segmentasi)) for it in items)
     n_kosong = sum(1 for it in items if not baris_yolo(it, peta, segmentasi))
     dilewati = sum(1 for it in items for s in it["shapes"]
@@ -531,16 +554,19 @@ def createml_list(items: list[dict], nama_berkas: dict | None = None) -> list[di
 
 def zip_dataset(items: list[dict], nama: str, format: str,
                 sertakan_gambar: bool = True, rasio=RASIO_BAWAAN,
-                names: dict | None = None) -> bytes:
+                names: dict | None = None, rencana: dict | None = None) -> bytes:
     """Satu pintu untuk semua format."""
     if format in ("yolo", "yolo-seg"):
+        # Lewat kata kunci, bukan posisi: urutan parameter kedua fungsi ini
+        # tidak sama, dan pemanggilan posisional akan menyerahkan `names`
+        # sebagai `rencana` tanpa satu pun kesalahan yang terlihat.
         return zip_yolo(items, nama, format == "yolo-seg", sertakan_gambar,
-                        rasio, names)
+                        rasio, names=names, rencana=rencana)
 
     if format not in ("coco", "voc", "createml"):
         raise ValueError(f"format '{format}' tidak dikenal")
 
-    bagian = bagi_split(items, rasio)
+    bagian = bagi_split(items, rasio, rencana)
     # Dihitung SEKALI untuk seluruh dataset, lalu dipakai sama di tiap split.
     kelas = peta_kelas(items, names)
     buf = io.BytesIO()

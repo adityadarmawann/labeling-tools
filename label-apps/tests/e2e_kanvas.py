@@ -1031,6 +1031,39 @@ def jalankan_potret(d):
     cek("tombolnya sendiri yang menyebut apa yang tersaring",
         "Semua kelas" not in lbl, "label=%r" % lbl)
     print("     label tombol: %r" % lbl)
+    # Menu Ekspor beserta pembelahan anti-bocornya. Bilah progres dan angka
+    # persennya cuma bisa dinilai dengan mata; yang bisa di-assert hanyalah
+    # bahwa hasilnya benar-benar muncul dan menyebut angka.
+    d.js("document.getElementById('ekspor-tombol').click()")
+    time.sleep(1.0)
+    simpan("ekspor-menu")
+    d.js("document.getElementById('split-jalan').click()")
+    time.sleep(0.35)
+    simpan("ekspor-split-jalan")
+    for _ in range(60):
+        if d.js("document.getElementById('split-jalan').disabled") is False:
+            break
+        time.sleep(0.25)
+    time.sleep(0.4)
+    simpan("ekspor-split-hasil")
+    teks = d.js("document.getElementById('split-hasil').textContent.trim()")
+    cek("hasil pembelahan muncul di menu ekspor", "sesi pemotretan" in teks,
+        "teks=%r" % teks[:80])
+    cek("bilah progres penuh dan angkanya 100%",
+        d.js("document.getElementById('split-persen').textContent") == "100%",
+        d.js("document.getElementById('split-persen').textContent"))
+    cek("tombol Lupakan muncul setelah ada rencana",
+        d.js("document.getElementById('split-lupa').hidden") is False)
+    cek("tombol Hentikan menghilang setelah selesai",
+        d.js("document.getElementById('split-batal').hidden") is True)
+    cek("bilahnya tetap tampil di 100%, tidak berkedip lalu lenyap",
+        d.js("document.getElementById('prog-split').offsetParent !== null"))
+    luber = d.js("(function(){ const r = document.getElementById('ekspor-isi')"
+                 ".getBoundingClientRect();"
+                 " return (r.left < 0 || r.right > innerWidth || r.bottom > innerHeight)"
+                 "        ? `l=${r.left|0} r=${r.right|0} b=${r.bottom|0}` : ''; })()")
+    cek("menu ekspor tidak terpotong tepi layar", luber == "", luber)
+
     d.js("location.href = %r" % asal)
     time.sleep(1.2)
 

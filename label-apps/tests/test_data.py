@@ -1848,6 +1848,30 @@ def test_saringan_kelas_mode_dan_menuntut_semuanya_dalam_satu_gambar(klien,
     assert len(_grid_nama(klien, f="all", c=["botol", "kaleng"], m="zzz")) == 3
 
 
+def test_mengurutkan_tidak_merusak_saringan_kelas_yang_aktif(klien, lingkungan,
+                                                             tmp_path):
+    """Form urutkan/cari membawa c, x, dan m apa adanya.
+
+    Dulu seluruh daftar kelas ditulis sebagai satu nilai, jadi isinya menjadi
+    repr Python ("['botol', 'kaleng']"). Mengurutkan saat saringan aktif
+    mengirim satu nama kelas palsu yang tidak cocok apa pun, dan grid
+    mendadak kosong. `x` dan `m` bahkan tidak ikut sama sekali.
+    """
+    masuk(klien, "paul", PW_PAUL)
+    d = _ds_dua_kelas(tmp_path)
+    klien.post(f"/setsrc?path={d}")
+    html = klien.get("/?c=botol&c=kaleng&m=dan").text
+    form = html[html.index('class="bar bar-urut"'):]
+    form = form[:form.index("</form>")]
+    nilai = re.findall(r'name="c" value="([^"]*)"', form)
+    assert nilai == ["botol", "kaleng"], nilai
+    assert 'name="m" value="dan"' in form
+
+    # dan hasilnya benar-benar bertahan saat form itu dikirim
+    lanjut = klien.get("/?c=botol&c=kaleng&m=dan&s=label-baru").text
+    assert "1 dari 4 gambar tampil" in lanjut, "hanya c-dua yang punya keduanya"
+
+
 def test_tombol_kartu_membedakan_melabeli_dari_menyunting(klien, lingkungan,
                                                           tmp_path):
     """Kartu yang sudah ada bentuknya menawarkan "Edit label", bukan "Labeli".
