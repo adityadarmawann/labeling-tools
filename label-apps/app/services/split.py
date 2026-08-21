@@ -706,7 +706,7 @@ def rencanakan(items: list[dict], rasio=(0.8, 0.1, 0.1), *,
         peringatan.append(
             f"{n_batch} gambar memakai satu stempel waktu yang sama persis. "
             f"Itu ciri berkas hasil unduhan atau penamaan massal, bukan sesi "
-            f"pemotretan — jadi stempelnya diabaikan dan yang menjaga "
+            f"pemotretan, jadi stempelnya diabaikan dan yang menjaga "
             f"seluruhnya pemeriksaan isi gambar.")
 
     grup = list(peta_sesi.values())
@@ -828,7 +828,7 @@ def rencanakan(items: list[dict], rasio=(0.8, 0.1, 0.1), *,
             peringatan.append(
                 f"Pemindahan kembaran belum tenang setelah {MAKS_PUTARAN} "
                 f"putaran, jadi mungkin masih ada sisa kembaran di valid/test. "
-                f"Laporkan ini — seharusnya tidak terjadi.")
+                f"Laporkan ini, seharusnya tidak terjadi.")
 
         # -- 3b. seberapa mandiri valid/test setelah semuanya bersih
         catat_maju(kunci, fase="nilai", persen=96.0)
@@ -845,7 +845,7 @@ def rencanakan(items: list[dict], rasio=(0.8, 0.1, 0.1), *,
             if b.get("n") and b.get("n_sesi", 0) <= 2 and len(peta_sesi) > 3:
                 peringatan.append(
                     f"{split} hanya berasal dari {b['n_sesi']} sesi pemotretan, "
-                    f"jadi ia cuma menguji {b['n_sesi']} kondisi — meja, cahaya, "
+                    f"jadi ia cuma menguji {b['n_sesi']} kondisi: meja, cahaya, "
                     f"dan sudut yang itu-itu saja, berapa pun jumlah gambarnya.")
 
     # -- 4. verifikasi: tidak boleh ada sesi yang muncul di dua split
@@ -862,7 +862,7 @@ def rencanakan(items: list[dict], rasio=(0.8, 0.1, 0.1), *,
     if bocor_bukan_train:
         peringatan.append(
             f"{len(bocor_bukan_train)} sesi muncul di valid DAN test sekaligus "
-            f"— laporkan ini, seharusnya tidak terjadi.")
+            f"Laporkan ini, seharusnya tidak terjadi.")
 
     n_objek = {s: sum(_kelas_item(items[i]).total() for i in hasil[s])
                for s in SPLIT}
@@ -884,7 +884,7 @@ def rencanakan(items: list[dict], rasio=(0.8, 0.1, 0.1), *,
                     f"{split} habis: seluruh {sebelum[split]} gambarnya ternyata "
                     f"kembaran gambar di train, jadi dipindahkan ke sana. "
                     f"Dataset ini terlalu banyak memuat foto yang sama untuk "
-                    f"bisa dinilai sendiri — tidak ada yang tersisa yang belum "
+                    f"bisa dinilai sendiri. Tidak ada yang tersisa yang belum "
                     f"pernah dilihat model.")
             else:
                 peringatan.append(
@@ -896,13 +896,13 @@ def rencanakan(items: list[dict], rasio=(0.8, 0.1, 0.1), *,
         if split != "train" and not n_objek[split] and sum(n_objek.values()):
             peringatan.append(
                 f"{split} berisi {len(hasil[split])} gambar tapi tidak satu pun "
-                f"memuat objek, jadi tidak bisa dipakai menilai model — mAP-nya "
+                f"memuat objek, jadi tidak bisa dipakai menilai model. mAP-nya "
                 f"tidak terdefinisi. Labeli lebih banyak sesi lebih dulu.")
             continue
 
         if split != "train" and len(hasil[split]) < 50:
             peringatan.append(
-                f"{split} tinggal {len(hasil[split])} gambar — terlalu sedikit "
+                f"{split} tinggal {len(hasil[split])} gambar, terlalu sedikit "
                 f"untuk metrik yang stabil. Dataset ini banyak berisi foto "
                 f"berulang; menambah foto baru lebih menolong daripada "
                 f"melonggarkan ambang.")
@@ -923,7 +923,7 @@ def rencanakan(items: list[dict], rasio=(0.8, 0.1, 0.1), *,
             peringatan.append(
                 f"{split} jadi {100 * nyata:.0f}% padahal diminta "
                 f"{100 * rasio[si]:.0f}%. Sesi tidak boleh dipecah, dan dataset "
-                f"ini hanya punya {len(peta_sesi)} sesi — rasio persis memang "
+                f"ini hanya punya {len(peta_sesi)} sesi, jadi rasio persis memang "
                 f"tidak tercapai.")
 
     peta = {}

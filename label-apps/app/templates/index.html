@@ -96,7 +96,7 @@
         <a href="/ekspor?format=yolo">YOLO detection (bounding box)</a>
         <a href="/ekspor?format=coco">COCO (instances.json)</a>
         <a href="/ekspor?format=voc">Pascal VOC (.xml per gambar)</a>
-        <a href="/ekspor?format=createml" title="Apple Create ML. Koordinatnya titik tengah kotak — AnyLabeling menulis sudut kiri-atas, dan itu keliru.">CreateML (Apple)</a>
+        <a href="/ekspor?format=createml" title="Apple Create ML. Koordinatnya titik tengah kotak, sedangkan AnyLabeling menulis sudut kiri-atas. Yang AnyLabeling keliru.">CreateML (Apple)</a>
         <span class="menu-pisah"></span>
         <a href="/ekspor?format=yolo-seg&gambar=0">YOLO-seg, label saja</a>
         <span class="menu-pisah"></span>
@@ -119,10 +119,11 @@
              menu ini dibuka ia ikut memenuhi layar. #}
           <details class="catatan-lipat" id="split-jelas">
             <summary>Apa ini?</summary>
-            <span class="lipat-isi">Mengelompokkan per sesi pemotretan lalu
-              memeriksa isi tiap gambar, supaya foto yang sama tidak muncul di
-              train dan valid sekaligus. Stempel waktu massal — ciri bundel
-              unduhan — diabaikan sendiri.</span>
+            <span class="lipat-isi">Mengelompokkan foto berdasarkan sesi
+              pemotretan, lalu mengecek isi setiap gambar untuk memastikan foto
+              yang sama tidak masuk ke data train dan validasi. Stempel waktu
+              yang muncul secara massal dari proses pengunduhan juga tidak
+              dianggap sebagai penanda sesi.</span>
           </details></span>
         <span class="split-aksi">
           <button class="chip aksi" id="split-jalan">Jalankan splitting</button>
@@ -178,7 +179,7 @@
       <button class="chip kelas-tombol" id="kelas-tombol"
               {%- if kelas or tanpa %} data-on
               title="{{ pilihan_nama | join(', ') }}
-                     {{- ' — harus punya semuanya' if mode == 'dan' }}"{% endif %}>
+                     {{- ', harus punya semuanya' if mode == 'dan' }}"{% endif %}>
         {#- Tombolnya kini satu-satunya penanda keadaan saringan, jadi ia yang
             harus menyebutkan isinya. Sebelumnya keadaan itu diulang lagi sebagai
             deretan chip di sebelahnya — mengulang isi dropdown di luar

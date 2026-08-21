@@ -15,7 +15,7 @@ async function send(url, opts) {
   let j = {};
   try { j = await r.json(); } catch (e) { /* bukan JSON */ }
   if (r.status === 401) {
-    toast(j.detail || 'Sesi habis — masuk lagi');
+    toast(j.detail || 'Sesi habis, masuk lagi');
     setTimeout(() => location.href = '/login', 900);
     return { ok: false, error: j.detail || 'sesi habis' };
   }
@@ -161,7 +161,7 @@ async function imporBox() {
       isi.style.width = '100%';
       bar.dataset.tahap = 'pindai';
       note.textContent =
-        `${s.berkas.toLocaleString('id-ID')} berkas tersalin — memindai isinya…`;
+        `${s.berkas.toLocaleString('id-ID')} berkas tersalin, memindai isinya…`;
       return;
     }
     if (k.tahap !== 'salin') return;
@@ -193,18 +193,18 @@ async function imporBox() {
       const c = (j.contoh_dilewati || []).concat(j.bentrok || []);
       const sebab = (j.bentrok || []).length
         ? 'bukan gambar/anotasi, atau namanya bentrok' : 'bukan gambar/anotasi';
-      const mis = c.length ? ' — mis. ' + c.slice(0, 3).join(', ') : '';
+      const mis = c.length ? ', mis. ' + c.slice(0, 3).join(', ') : '';
       catatan.push(`${j.dilewati} berkas dilewati (${sebab})${mis}`);
     }
     if (catatan.length) {
-      note.innerHTML = `<b>${j.disalin} berkas disalin, ${j.n} gambar terbaca — perlu dicek:</b><br>`
+      note.innerHTML = `<b>${j.disalin} berkas disalin, ${j.n} gambar terbaca, perlu dicek:</b><br>`
         + catatan.map(x => '· ' + esc(x)).join('<br>')
         + '<br><button class="btn pri" id="lanjut-impor">Lanjut ke grid</button>';
       const b = document.getElementById('lanjut-impor');
       if (b) b.onclick = () => { location.href = '/'; };
       return;
     }
-    toast(`${j.disalin} berkas disalin — membuka salinan`);
+    toast(`${j.disalin} berkas disalin, membuka salinan`);
     location.href = '/';
   } catch (e) {
     beres();
@@ -236,7 +236,7 @@ document.addEventListener('click', async ev => {
     const box = document.getElementById('pathbox');
     box.value = p;
     box.focus();
-    toast('Path terisi — pilih menyalin atau membuka di tempat');
+    toast('Path terisi, pilih menyalin atau membuka di tempat');
     return;
   }
   const j = await post('/lupakan-path?path=' + encodeURIComponent(p));
@@ -371,7 +371,7 @@ async function uploadFiles(files) {
     if (b) b.onclick = () => { location.href = '/'; };
     return;
   }
-  toast('Selesai — membuka dataset');
+  toast('Selesai, membuka dataset');
   location.href = '/';
 }
 
@@ -493,7 +493,7 @@ document.addEventListener('DOMContentLoaded', () => {
           ? '<b>memakai split asli dataset</b><br>'
           : `<b>nyata: ${n(pc.train)}% : ${n(pc.valid)}% : ${n(pc.test)}%</b><br>`)
         + `train ${s.train} · valid ${s.valid} · test ${s.test}`
-        + ` — dari ${j.gambar} gambar, ${j.objek} objek, ${j.kelas} kelas`
+        + `, dari ${j.gambar} gambar, ${j.objek} objek, ${j.kelas} kelas`
         + (j.split_bawaan
           ? '<br>Dataset ini sudah terbagi train/valid/test, jadi pembagiannya '
             + 'dipertahankan dan angka rasio di atas tidak dipakai.'
@@ -507,13 +507,15 @@ document.addEventListener('DOMContentLoaded', () => {
         // Dilipat, tapi baris ringkasnya tetap berwarna peringatan: yang
         // penting terbaca sekilas, penjelasannya sekali klik.
         + (j.rencana ? '' : lipat('peringatan', 'Isi gambar belum diperiksa',
-           'Splitting ini hanya mengelompokkan lewat nama berkas, jadi dua foto '
-           + 'yang sama bisa mendarat di train dan valid sekaligus dan angka '
-           + 'validasimu ikut menggelembung. Jalankan <b>splitting anti-bocor</b> '
-           + 'di bawah lebih dulu.'))
+           'Proses splitting ini masih mengandalkan nama berkas saja, sehingga '
+           + 'foto yang sebenarnya sama bisa masuk ke data train dan validasi. '
+           + 'Akibatnya, hasil validasi bisa terlihat lebih tinggi dari kondisi '
+           + 'sebenarnya. Karena itu, sebaiknya jalankan <b>splitting '
+           + 'anti-bocor</b> di bawah terlebih dahulu agar pembagian datanya '
+           + 'lebih aman dan hasil evaluasinya lebih akurat.'))
         + (!j.split_bawaan ? '' : lipat('peringatan',
            'Memakai pembagian bawaan dataset',
-           'Dipakai apa adanya, termasuk kebocorannya kalau ada — ekspor '
+           'Dipakai apa adanya, termasuk kebocorannya kalau ada. Ekspor '
            + 'Roboflow sering membelah per gambar. Menjalankan splitting '
            + 'anti-bocor akan menyatukannya ulang lalu membelah dari nol.'));
       kotak.forEach(k => { if (k) k.disabled = !!j.split_bawaan; });
@@ -576,7 +578,7 @@ document.addEventListener('DOMContentLoaded', () => {
          + 'di sana<br>';
     }
     if (r.tanpa_stempel) {
-      h += `${angka(r.tanpa_stempel)} berkas tanpa stempel waktu — untuk yang `
+      h += `${angka(r.tanpa_stempel)} berkas tanpa stempel waktu; untuk yang `
          + 'ini hanya isi gambarnya yang menjaga<br>';
     }
     // Ambangnya diukur dari dataset ini sendiri, bukan angka tetap. Disebut
@@ -646,7 +648,7 @@ document.addEventListener('DOMContentLoaded', () => {
       sIsi.style.width = k.persen.toFixed(1) + '%';
       sPersen.textContent = Math.round(k.persen) + '%';
       sFase.textContent = k.fase === 'dhash' && k.total
-        ? `${k.fase_nama} — ${angka(k.n)} dari ${angka(k.total)}`
+        ? `${k.fase_nama}: ${angka(k.n)} dari ${angka(k.total)}`
         : (k.fase_nama || '…');
     }, 400);
     try {
@@ -815,7 +817,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function selesaikan(ok, lewat, ganti, gagal) {
     const bagian = [`<b>${ok} gambar/label ditambahkan</b>`];
     if (lewat) bagian.push(`${lewat} sudah ada di dataset (isinya sama persis, dilewati)`);
-    if (ganti) bagian.push(`${ganti} namanya sudah terpakai — disimpan dengan akhiran`);
+    if (ganti) bagian.push(`${ganti} namanya sudah terpakai, disimpan dengan akhiran`);
     if (gagal) bagian.push(`${gagal} gagal`);
     info.innerHTML = bagian.join('<br>')
       + '<br><button class="chip" id="tambah-pindai">Pindai ulang & lihat</button>';
