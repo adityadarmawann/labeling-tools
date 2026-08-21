@@ -16,6 +16,7 @@
   --ink:#1b2430; --ink-dim:#5f6d7e; --ink-faint:#93a0ae;
   --ok:#1f9d8f; --warn:#c47a10; --stop:#d64a2c;
   --warn-bg:rgba(196,122,16,.10);   /* latar kotak peringatan */
+  --aksi:#177f73; --aksi-ink:#ffffff;   /* tombol aksi utama, kontras di dua tema */
   --raised:#fbfcfd;        /* permukaan sedikit terangkat: tombol, kotak isian */
   --sunk:#eef1f5;          /* permukaan cekung: latar gambar, alur bilah progres */
   --hover:#f3f6f9;
@@ -38,6 +39,7 @@
     --ink:#e6ebf2; --ink-dim:#a3aebd; --ink-faint:#788493;
     --ok:#43b3a4; --warn:#d59a3a; --stop:#e2705a;
     --warn-bg:rgba(213,154,58,.14);
+    --aksi:#4ec2b2; --aksi-ink:#0c1a18;
     --raised:#212832; --sunk:#161b22; --hover:#252d38;
     --on-ink:#12161c;
     --lab-bg:#2a323d; --lab-ink:#b3bece;
@@ -53,6 +55,7 @@
   --ink:#e6ebf2; --ink-dim:#a3aebd; --ink-faint:#788493;
   --ok:#43b3a4; --warn:#d59a3a; --stop:#e2705a;
   --warn-bg:rgba(213,154,58,.14);
+  --aksi:#4ec2b2; --aksi-ink:#0c1a18;
   --raised:#212832; --sunk:#161b22; --hover:#252d38;
   --on-ink:#12161c;
   --lab-bg:#2a323d; --lab-ink:#b3bece;
@@ -348,3 +351,22 @@ input:focus{outline:0;border-color:var(--ok)}
   border-left:2px solid var(--warn,#c87800);color:var(--ink-dim);line-height:1.45}
 .split-angka{display:block;margin-top:6px;font-variant-numeric:tabular-nums}
 .split-angka b{color:var(--ink)}
+
+/* Tombol aksi utama di dalam menu. Diberi warna isi, bukan cuma garis tepi:
+   di antara deretan chip bergaris ia harus terbaca sebagai "yang ditekan",
+   dan --aksi dipilih supaya sama kontrasnya di tema terang maupun gelap. */
+.chip.aksi{background:var(--aksi);color:var(--aksi-ink);border-color:var(--aksi);
+  font-weight:600}
+.chip.aksi:hover{filter:brightness(1.08);color:var(--aksi-ink)}
+.chip.aksi:disabled{opacity:.55;cursor:default;filter:none}
+
+/* Catatan hasil splitting: dilipat, bukan dibuang. Deretan kotak kuning
+   membuat panelnya terbaca seperti daftar kesalahan padahal hasilnya benar —
+   tapi isinya tetap perlu bisa dibuka saat angkanya terasa aneh. */
+.catatan-lipat{display:block;margin-top:8px}
+.catatan-lipat > summary{cursor:pointer;font-size:11.5px;color:var(--ink-dim);
+  list-style:none;padding:3px 0;user-select:none}
+.catatan-lipat > summary::-webkit-details-marker{display:none}
+.catatan-lipat > summary::before{content:"▸ ";color:var(--ink-faint)}
+.catatan-lipat[open] > summary::before{content:"▾ "}
+.catatan-lipat > summary:hover{color:var(--ink)}

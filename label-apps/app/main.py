@@ -51,6 +51,22 @@ def create_app() -> FastAPI:
 
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
+    @app.middleware("http")
+    async def _halaman_jangan_dicache(request: Request, panggil):
+        """
+        Halaman HTML selalu diambil ulang; berkas static tetap boleh di-cache.
+
+        Berkas static sudah punya cap versi dari mtime (lihat templating.statik),
+        jadi peramban aman menyimpannya. Halamannya sendiri tidak punya cap
+        seperti itu, dan tanpa header ini peramban menebak sendiri — akibatnya
+        teks yang sudah diubah di server masih tampil versi lama berjam-jam,
+        dan itu terbaca seolah perubahannya tidak pernah dikerjakan.
+        """
+        r = await panggil(request)
+        if "text/html" in r.headers.get("content-type", ""):
+            r.headers["Cache-Control"] = "no-cache, must-revalidate"
+        return r
+
     @app.exception_handler(NeedsLogin)
     async def _needs_login(request: Request, exc: NeedsLogin):
         """Halaman HTML tanpa sesi dialihkan ke /login, tidak menampilkan 401."""

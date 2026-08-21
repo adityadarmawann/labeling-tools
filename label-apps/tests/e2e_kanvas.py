@@ -1085,6 +1085,30 @@ def jalankan_potret(d):
     cek("peringatan 'belum diperiksa' hilang setelah splitting dijalankan",
         "belum diperiksa" not in
         d.js("document.getElementById('ekspor-info').textContent"))
+    cek("catatan dilipat, bukan berderet sebagai kotak kuning",
+        d.js("document.querySelectorAll('#split-hasil .catatan-lipat').length") == 1
+        and d.js("document.querySelector('#split-hasil .catatan-lipat')"
+                 ".hasAttribute('open')") is False)
+    cek("isinya tetap ada dan bisa dibuka",
+        d.js("document.querySelectorAll('#split-hasil .split-warn').length") > 0)
+    cek("tombol jalankan memakai warna aksi, bukan sekadar garis tepi",
+        d.js("getComputedStyle(document.getElementById('split-jalan'))"
+             ".backgroundColor") not in ("rgba(0, 0, 0, 0)", "transparent"),
+        d.js("getComputedStyle(document.getElementById('split-jalan')).backgroundColor"))
+    # Kontras tombol aksi harus terjaga di DUA tema. Yang bawaan selalu
+    # terlihat benar; yang gelap hanya ketahuan kalau sengaja diperiksa.
+    for tema in ("dark", "light"):
+        d.js("document.documentElement.setAttribute('data-theme', %r)" % tema)
+        time.sleep(0.2)
+        warna = d.js("(function(){ const b = getComputedStyle("
+                     "document.getElementById('split-jalan'));"
+                     " return b.backgroundColor + ' | ' + b.color; })()")
+        cek("tombol jalankan tetap berwarna di tema %s" % tema,
+            "rgba(0, 0, 0, 0)" not in warna, warna)
+        print("     tema %-5s -> %s" % (tema, warna))
+    d.js("document.documentElement.removeAttribute('data-theme')")
+    time.sleep(0.2)
+
     cek("tombol Lupakan muncul setelah ada rencana",
         d.js("document.getElementById('split-lupa').hidden") is False)
     cek("tombol Hentikan menghilang setelah selesai",

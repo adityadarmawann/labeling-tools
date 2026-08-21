@@ -602,8 +602,15 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
     h += '</span>';
-    for (const w of r.peringatan || []) {
-      h += `<span class="split-warn">${w}</span>`;
+    // Catatannya dilipat, bukan dibuang. Deretan kotak kuning membuat panel
+    // ini terbaca seperti daftar kesalahan padahal hasilnya benar — sementara
+    // isinya tetap satu-satunya tempat yang menjelaskan kalau angkanya aneh.
+    const w = r.peringatan || [];
+    if (w.length) {
+      h += `<details class="catatan-lipat"><summary>${w.length} catatan `
+         + 'tentang hasil ini</summary>'
+         + w.map(x => `<span class="split-warn">${x}</span>`).join('')
+         + '</details>';
     }
     sHasil.innerHTML = h;
   }
