@@ -499,7 +499,23 @@ document.addEventListener('DOMContentLoaded', () => {
             + 'dipertahankan dan angka rasio di atas tidak dipakai.'
           : '')
         + (j.tanpa_objek ? `<br>${j.tanpa_objek} tanpa objek (contoh negatif)` : '')
-        + (j.bentuk_dilewati ? ` · ${j.bentuk_dilewati} bentuk dilewati` : '');
+        + (j.bentuk_dilewati ? ` · ${j.bentuk_dilewati} bentuk dilewati` : '')
+        // Tanpa rencana, pembelahannya cuma mengelompokkan lewat nama berkas
+        // dan isi gambarnya tidak pernah dibuka. Itu HARUS terbaca sebelum
+        // orang menekan unduh: kalau tidak, satu-satunya penanda bahwa hasil
+        // ekspornya bocor adalah tombol yang kebetulan tidak ditekan.
+        + (j.rencana ? '' :
+           '<span class="split-warn">Isi gambar belum diperiksa. Pembelahan ini '
+           + 'hanya mengelompokkan lewat nama berkas, jadi dua foto yang sama '
+           + 'bisa mendarat di train dan valid sekaligus dan angka validasimu '
+           + 'ikut menggelembung. Jalankan <b>pembelahan anti-bocor</b> di '
+           + 'bawah lebih dulu.</span>')
+        + (j.split_bawaan
+           ? '<span class="split-warn">Pembagian bawaan dataset dipakai apa '
+             + 'adanya, termasuk kebocorannya kalau ada — ekspor Roboflow '
+             + 'sering membelah per gambar. Menjalankan pembelahan anti-bocor '
+             + 'akan menyatukannya ulang lalu membelah dari nol.</span>'
+           : '');
       kotak.forEach(k => { if (k) k.disabled = !!j.split_bawaan; });
       // Rencana bertahan di sesi, jadi setelah halaman dimuat ulang keadaannya
       // harus ikut tampil kembali — kalau tidak, tombolnya tampak belum

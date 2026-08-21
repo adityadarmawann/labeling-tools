@@ -1063,6 +1063,10 @@ def jalankan_potret(d):
     d.js("document.getElementById('ekspor-tombol').click()")
     time.sleep(1.0)
     simpan("ekspor-menu")
+    peringatan = d.js("document.getElementById('ekspor-info').textContent")
+    cek("sebelum dijalankan, ringkasan mengaku isi gambar belum diperiksa",
+        "belum diperiksa" in peringatan, "teks=%r" % peringatan[-90:])
+
     d.js("document.getElementById('split-jalan').click()")
     time.sleep(0.35)
     simpan("ekspor-split-jalan")
@@ -1078,6 +1082,9 @@ def jalankan_potret(d):
     cek("bilah progres penuh dan angkanya 100%",
         d.js("document.getElementById('split-persen').textContent") == "100%",
         d.js("document.getElementById('split-persen').textContent"))
+    cek("peringatan 'belum diperiksa' hilang setelah pembelahan dijalankan",
+        "belum diperiksa" not in
+        d.js("document.getElementById('ekspor-info').textContent"))
     cek("tombol Lupakan muncul setelah ada rencana",
         d.js("document.getElementById('split-lupa').hidden") is False)
     cek("tombol Hentikan menghilang setelah selesai",
