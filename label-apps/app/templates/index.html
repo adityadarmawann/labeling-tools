@@ -114,9 +114,16 @@
            puluhan gigabyte dibuat, bukan sesudah. #}
         <span class="menu-pisah"></span>
         <span class="menu-judul">Splitting anti-bocor</span>
-        <span class="menu-catatan" id="split-jelas">
-          Mengelompokkan per sesi pemotretan lalu memeriksa isi tiap gambar,
-          supaya foto yang sama tidak muncul di train dan valid sekaligus.</span>
+        <span class="menu-catatan">
+          {# Keterangannya dilipat: sekali dibaca sudah cukup, tapi tiap kali
+             menu ini dibuka ia ikut memenuhi layar. #}
+          <details class="catatan-lipat" id="split-jelas">
+            <summary>Apa ini?</summary>
+            <span class="lipat-isi">Mengelompokkan per sesi pemotretan lalu
+              memeriksa isi tiap gambar, supaya foto yang sama tidak muncul di
+              train dan valid sekaligus. Stempel waktu massal — ciri bundel
+              unduhan — diabaikan sendiri.</span>
+          </details></span>
         <span class="split-aksi">
           <button class="chip aksi" id="split-jalan">Jalankan splitting</button>
           <button class="chip" id="split-batal" hidden>Hentikan</button>

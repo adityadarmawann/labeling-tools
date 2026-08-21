@@ -370,3 +370,10 @@ input:focus{outline:0;border-color:var(--ok)}
 .catatan-lipat > summary::before{content:"▸ ";color:var(--ink-faint)}
 .catatan-lipat[open] > summary::before{content:"▾ "}
 .catatan-lipat > summary:hover{color:var(--ink)}
+/* Baris ringkas lipatan yang berupa peringatan tetap berwarna, supaya yang
+   penting terbaca sekilas tanpa harus membuka isinya. */
+.catatan-lipat.peringatan > summary{color:var(--warn);font-weight:600}
+.catatan-lipat.peringatan > summary::before{color:var(--warn)}
+.catatan-lipat .lipat-isi{display:block;margin-top:5px;padding:6px 8px;
+  border-radius:6px;background:var(--warn-bg);color:var(--ink-dim);line-height:1.45}
+.catatan-lipat:not(.peringatan) .lipat-isi{background:var(--sunk)}

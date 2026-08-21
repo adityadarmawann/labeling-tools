@@ -1066,6 +1066,16 @@ def jalankan_potret(d):
     peringatan = d.js("document.getElementById('ekspor-info').textContent")
     cek("sebelum dijalankan, ringkasan mengaku isi gambar belum diperiksa",
         "belum diperiksa" in peringatan, "teks=%r" % peringatan[-90:])
+    cek("peringatannya dilipat, bukan berupa paragraf penuh",
+        d.js("!!document.querySelector('#ekspor-info .catatan-lipat.peringatan')")
+        and d.js("document.querySelector('#ekspor-info .catatan-lipat')"
+                 ".hasAttribute('open')") is False)
+    cek("keterangan panel juga dilipat",
+        d.js("document.getElementById('split-jelas').tagName") == "DETAILS")
+    cek("baris ringkas peringatan tetap berwarna, bukan abu biasa",
+        d.js("getComputedStyle(document.querySelector("
+             "'#ekspor-info .catatan-lipat.peringatan > summary')).color")
+        != d.js("getComputedStyle(document.getElementById('ekspor-info')).color"))
 
     d.js("document.getElementById('split-jalan').click()")
     time.sleep(0.35)

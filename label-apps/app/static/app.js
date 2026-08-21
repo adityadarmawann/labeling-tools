@@ -504,18 +504,18 @@ document.addEventListener('DOMContentLoaded', () => {
         // dan isi gambarnya tidak pernah dibuka. Itu HARUS terbaca sebelum
         // orang menekan unduh: kalau tidak, satu-satunya penanda bahwa hasil
         // ekspornya bocor adalah tombol yang kebetulan tidak ditekan.
-        + (j.rencana ? '' :
-           '<span class="split-warn">Isi gambar belum diperiksa. Splitting ini '
-           + 'hanya mengelompokkan lewat nama berkas, jadi dua foto yang sama '
-           + 'bisa mendarat di train dan valid sekaligus dan angka validasimu '
-           + 'ikut menggelembung. Jalankan <b>splitting anti-bocor</b> di '
-           + 'bawah lebih dulu.</span>')
-        + (j.split_bawaan
-           ? '<span class="split-warn">Pembagian bawaan dataset dipakai apa '
-             + 'adanya, termasuk kebocorannya kalau ada — ekspor Roboflow '
-             + 'sering membelah per gambar. Menjalankan splitting anti-bocor '
-             + 'akan menyatukannya ulang lalu membelah dari nol.</span>'
-           : '');
+        // Dilipat, tapi baris ringkasnya tetap berwarna peringatan: yang
+        // penting terbaca sekilas, penjelasannya sekali klik.
+        + (j.rencana ? '' : lipat('peringatan', 'Isi gambar belum diperiksa',
+           'Splitting ini hanya mengelompokkan lewat nama berkas, jadi dua foto '
+           + 'yang sama bisa mendarat di train dan valid sekaligus dan angka '
+           + 'validasimu ikut menggelembung. Jalankan <b>splitting anti-bocor</b> '
+           + 'di bawah lebih dulu.'))
+        + (!j.split_bawaan ? '' : lipat('peringatan',
+           'Memakai pembagian bawaan dataset',
+           'Dipakai apa adanya, termasuk kebocorannya kalau ada — ekspor '
+           + 'Roboflow sering membelah per gambar. Menjalankan splitting '
+           + 'anti-bocor akan menyatukannya ulang lalu membelah dari nol.'));
       kotak.forEach(k => { if (k) k.disabled = !!j.split_bawaan; });
       // Rencana bertahan di sesi, jadi setelah halaman dimuat ulang keadaannya
       // harus ikut tampil kembali — kalau tidak, tombolnya tampak belum
@@ -552,6 +552,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const sPersen = document.getElementById('split-persen');
   const sHasil = document.getElementById('split-hasil');
   const angka = v => (v || 0).toLocaleString('id-ID');
+
+  // Satu bentuk lipatan untuk semua: ringkasnya terbaca, isinya sekali klik.
+  const lipat = (kelas, judul, isi) =>
+    `<details class="catatan-lipat ${kelas}"><summary>${judul}</summary>`
+    + `<span class="lipat-isi">${isi}</span></details>`;
 
   function tampilkanRencana(r) {
     if (!r) { sHasil.innerHTML = ''; sLupa.hidden = true; return; }
