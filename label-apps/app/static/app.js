@@ -558,6 +558,18 @@ document.addEventListener('DOMContentLoaded', () => {
       h += `${angka(r.tanpa_stempel)} berkas tanpa stempel waktu — untuk yang `
          + 'ini hanya isi gambarnya yang menjaga<br>';
     }
+    // Ambangnya diukur dari dataset ini sendiri, bukan angka tetap. Disebut
+    // supaya angkanya bisa ditelusuri kalau hasilnya terasa aneh.
+    const kal = r.kalibrasi;
+    if (kal && kal.contoh) {
+      h += `ambang kemiripan <b>${r.ambang}</b> dari 256 bit, diukur dari `
+         + `${kal.contoh} foto dataset ini`
+         + (kal.beda_p1 != null
+            ? ` (olah ulang ${Math.round(kal.kembaran_p99)} · `
+              + `beda sesi ${Math.round(kal.beda_p1)})`
+            : '')
+         + '<br>';
+    }
     h += '</span>';
     for (const w of r.peringatan || []) {
       h += `<span class="split-warn">${w}</span>`;

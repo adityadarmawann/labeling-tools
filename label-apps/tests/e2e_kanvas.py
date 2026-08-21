@@ -966,6 +966,28 @@ def jalankan_potret(d):
     time.sleep(0.3)
     simpan("halaman")
 
+    # Blok ini menguji saringan KELAS, jadi dataset harus punya kelas. Blok
+    # `panel` di atas berakhir dengan seluruh bentuk terhapus, dan tanpa ini
+    # dropdown kelasnya kosong: pemeriksaannya lolos-lolos saja tanpa pernah
+    # menguji apa pun, atau gagal dengan pesan yang tidak menjelaskan sebabnya.
+    # Dipasang sendiri di sini, bukan diwarisi dari blok lain.
+    d.js("""
+      (async () => {
+        await fetch('/api/simpan', {method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({path: D.path, shapes: [
+            {label:'botol', shape_type:'rectangle',
+             points:[[8,8],[52,40]], group_id:null, flags:{}, description:''}]})});
+        window.__siap = 1;
+      })()
+    """)
+    for _ in range(40):
+        if d.js("window.__siap === 1"):
+            break
+        time.sleep(0.25)
+    cek("bentuk contoh untuk menguji saringan kelas tersimpan",
+        d.js("window.__siap === 1"))
+
     # Grid: baris urutkan/cari dan dropdown kelas
     d.js("location.href = '/'")
     time.sleep(1.2)
@@ -1007,6 +1029,10 @@ def jalankan_potret(d):
     cek("kembali ke 'salah satu' memunculkannya lagi",
         d.js("document.querySelector('.kelas-tanpa').hidden") is False)
     simpan("grid-kelas-semuanya")
+    n_kelas = d.js("document.querySelectorAll('#kelas-isi .kelas-daftar"
+                   ":not(.kelas-tanpa) .kelas-baris').length")
+    cek("dropdown kelas benar-benar berisi kelas", n_kelas > 0,
+        "jumlah=%s" % n_kelas)
     tanda = d.js("(function(){ const cb = document.querySelector("
                  "'#kelas-isi input:checked ~ .cb');"
                  " if (!cb) return 'tidak ada .cb setelah input tercentang';"

@@ -80,44 +80,109 @@ def test_granularitas_dipilih_paling_kasar_yang_masih_bisa_dibelah():
 
 
 # ============================================================
-# INDEKS BANYAK-PITA
+# PENCARIAN KEMBARAN
 # ============================================================
 
 def _kasar(acuan, uji, amb):
+    """Sekali hitung, tanpa petak — acuan kebenaran untuk versi berpetak."""
     A = np.array(list(acuan.values()), dtype=np.uint8)
     return {j for j, h in uji.items()
             if split._BIT[np.bitwise_xor(A, h[None, :])].sum(1).min() <= amb}
 
 
-def test_indeks_pita_menemukan_persis_sama_dengan_perbandingan_menyeluruh():
-    """Pencarian cepatnya tidak boleh melewatkan satu kembaran pun.
+def test_hash_256_bit():
+    """32 byte. Pada 8 byte, kembaran sungguhan dan foto berbeda tumpang
+    tindih (maks 14 vs min 11 — terukur di dua dataset), jadi tidak ada
+    ambang yang benar."""
+    assert split.BIT_HASH == 256
+    h = split._hash_dari(np.arange(256, dtype=np.uint8).reshape(16, 16))
+    assert h.nbytes == 32
 
-    Perbandingan semua-lawan-semua berskala kuadrat — sejuta gambar berarti
-    8x10^12 perbandingan byte. Indeks banyak-pita menggantikannya, dan
-    penggantian itu hanya sah kalau hasilnya identik. Versi pertama membuang
-    dua byte terakhir saat memotong pita, dan sebagian kembaran lolos tanpa
-    satu pun kesalahan yang terlihat.
+
+def test_pencarian_berpetak_sama_dengan_sekali_hitung(monkeypatch):
+    """Memecah perhitungan jadi petak tidak boleh mengubah hasilnya.
+
+    Petaknya sengaja dikecilkan supaya jalur berpetak benar-benar dilalui;
+    dengan ukuran bawaan, dataset uji sekecil ini muat dalam satu petak dan
+    kesalahan penjahitan antar-petak tidak akan pernah terlihat.
     """
+    monkeypatch.setattr(split, "SEL_PER_PETAK", 64)
     rng = np.random.default_rng(20260821)
     for _ in range(8):
-        acuan = {i: rng.integers(0, 256, 8, dtype=np.uint8)
-                 for i in range(int(rng.integers(40, 300)))}
-        uji = {1000 + i: rng.integers(0, 256, 8, dtype=np.uint8)
-               for i in range(int(rng.integers(40, 300)))}
-        # Sisipkan kembaran sungguhan, sebagian tepat di ambang.
+        acuan = {i: rng.integers(0, 256, 32, dtype=np.uint8)
+                 for i in range(int(rng.integers(40, 200)))}
+        uji = {1000 + i: rng.integers(0, 256, 32, dtype=np.uint8)
+               for i in range(int(rng.integers(40, 200)))}
+        # Kembaran sungguhan, sebagian tepat di ambang.
         for k in list(uji)[:20]:
             h = acuan[int(rng.integers(0, len(acuan)))].copy()
-            for _ in range(int(rng.integers(0, split.AMBANG_KEMBAR + 3))):
-                h[int(rng.integers(0, 8))] ^= 1 << int(rng.integers(0, 8))
+            for _ in range(int(rng.integers(0, split.AMBANG_KEMBAR + 12))):
+                h[int(rng.integers(0, 32))] ^= 1 << int(rng.integers(0, 8))
             uji[k] = h
-        cepat = split.cari_kembar(acuan, uji, split.AMBANG_KEMBAR)
-        assert cepat == _kasar(acuan, uji, split.AMBANG_KEMBAR)
+        amb = split.AMBANG_KEMBAR
+        assert split.cari_kembar(acuan, uji, amb) == _kasar(acuan, uji, amb)
 
 
-def test_pita_mencakup_seluruh_byte():
-    h = np.arange(8, dtype=np.uint8)
-    for n in range(1, 9):
-        assert b"".join(split._pita(h, n)) == h.tobytes()
+def _dataset_gambar(tmp, n_sesi, per_sesi, sisi=240, mirip=False):
+    """Tulis gambar sungguhan, satu potret per sesi."""
+    import cv2
+
+    rng = np.random.default_rng(4)
+
+    def potret():
+        """Citra berstruktur lembut, seperti foto — bukan derau acak.
+
+        Derau acak murni hancur total oleh kompresi JPEG: dHash-nya bergeser
+        ~105 dari 256 bit, hampir sejauh dua gambar yang tak berhubungan.
+        Fixture semacam itu membuat kalibrasi tampak gagal padahal yang salah
+        gambar ujinya. Foto sungguhan berisi bidang berfrekuensi rendah, dan
+        itulah yang ditiru di sini.
+        """
+        kecil = rng.integers(40, 215, (6, 6, 3), dtype=np.uint8)
+        return cv2.resize(kecil, (sisi, sisi), interpolation=cv2.INTER_CUBIC)
+
+    items, sesi = [], []
+    dasar = potret()
+    for s in range(n_sesi):
+        pola = dasar if mirip else potret()
+        for k in range(per_sesi):
+            nama = f"IMG_202606{1 + s // 24:02d}_{s % 24:02d}{k:02d}00.jpg"
+            p = tmp / nama
+            cv2.imwrite(str(p), pola)
+            items.append({"img": p, "shapes": [{"label": "botol"}]})
+            sesi.append(split.kunci_sesi(nama, "jam"))
+    return items, sesi
+
+
+def test_kalibrasi_memakai_kedua_distribusi_dataset_itu_sendiri(tmp_path):
+    """Ambangnya harus muat di antara "wajib tertangkap" dan "wajib lolos".
+
+    Keduanya diukur dari dataset yang sama. Versi pertama memakai pembanding
+    lintas-dataset — foto produk berbeda di ruangan berbeda — dan itu terlalu
+    mudah: ambangnya tersetel 72, lalu valid botol-kaleng terkuras dari
+    11.319 gambar jadi 36.
+    """
+    items, sesi = _dataset_gambar(tmp_path, n_sesi=20, per_sesi=3)
+    sidik = {i: split.dhash(it["img"]) for i, it in enumerate(items)}
+    sidik = {i: h for i, h in sidik.items() if h is not None}
+
+    ambang, k = split.kalibrasi_ambang(items, sidik, sesi, contoh=20)
+    assert 1 <= ambang <= split.AMBANG_MAKS
+    assert k["pasangan"] >= 20 and k["pasangan_beda"] > 0
+    # Potret tiap sesi berbeda, jadi kedua distribusinya harus terpisah...
+    assert k["terpisah"], k
+    # ...dan ambangnya duduk di antaranya.
+    assert k["kembaran_p99"] <= ambang <= k["beda_p1"], k
+
+
+def test_kalibrasi_mengaku_saat_foto_dataset_terlalu_mirip(tmp_path):
+    """Kalau semua foto praktis sama, tidak ada ambang yang memisahkan —
+    dan itu harus dikatakan, bukan disembunyikan di balik angka."""
+    items, sesi = _dataset_gambar(tmp_path, n_sesi=20, per_sesi=3, mirip=True)
+    sidik = {i: split.dhash(it["img"]) for i, it in enumerate(items)}
+    sidik = {i: h for i, h in sidik.items() if h is not None}
+    ambang, k = split.kalibrasi_ambang(items, sidik, sesi, contoh=20)
+    assert k["terpisah"] is False, k
 
 
 # ============================================================

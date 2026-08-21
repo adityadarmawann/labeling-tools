@@ -64,18 +64,56 @@ MIN_SESI = 20
 # melebihi, rasio yang diminta tidak mungkin dipenuhi.
 MAKS_GRUP = 0.40
 
-# Hamming <= ini dianggap kembaran. Longgar boleh, karena hasilnya
-# pemindahan — bukan penggabungan — jadi tidak bisa meruntuhkan grup.
-AMBANG_KEMBAR = 5
+# Sisi petak dHash. 16 -> sidik jari 256 bit.
+#
+# Diukur 21 Agustus 2026 pada dua dataset yang sangat berbeda (paragon:
+# 476 foto ponsel 4080x2296; botol-kaleng: 11.319 ekspor Roboflow 640x640),
+# dengan kembaran BUATAN yang pasti benar (kompresi ulang q70/q50, ubah
+# ukuran lewat 640, kecerahan +12%, potong 2%, geser 4 px) dan pasangan
+# bukan-kembaran yang pasti benar (lintas kedua dataset):
+#
+#     8x8  (64 bit)   kembaran maks 14  ·  bukan-kembaran min 11  -> TUMPANG TINDIH
+#     16x16 (256 bit) kembaran maks 65  ·  bukan-kembaran min 77  -> celah 12 bit
+#
+# Pada 64 bit tidak ada satu pun ambang yang menangkap seluruh kembaran
+# tanpa ikut menangkap foto yang berbeda. Menyetel ambang di alat ukur
+# sekasar itu hanya memilih jenis kesalahan mana yang mau ditanggung.
+SISI_HASH = 16
+BIT_HASH = SISI_HASH * SISI_HASH
 
-# Berapa kali pemindahan diulang sebelum menyerah. Biasanya selesai di
-# putaran kedua; batas ini hanya penjaga supaya tidak berputar selamanya.
-MAKS_PUTARAN = 5
+# Ambang cadangan, dipakai hanya kalau kalibrasi tidak bisa dijalankan
+# (mis. gambarnya tidak terbaca). Angka yang sebenarnya dipakai selalu
+# diukur dari dataset yang bersangkutan — lihat kalibrasi_ambang().
+#
+# Satu angka tetap TIDAK cukup, dan ini terukur. Dengan pembanding yang
+# benar (pasangan beda-sesi di dalam dataset yang sama):
+#
+#     paragon       kembaran p99  39  ·  beda-sesi p1  97  -> ambang 68
+#     botol-kaleng  kembaran p99  47  ·  beda-sesi p1  51  -> ambang 48
+#
+# Memakai 72 untuk keduanya menguras botol-kaleng: 10% pasangan beda-sesi
+# ikut tertangkap, dan valid tinggal 36 dari 11.319 gambar.
+AMBANG_KEMBAR = 56
+
+# Batas atas hasil kalibrasi. Lebih tinggi dari ini, foto yang benar-benar
+# berbeda mulai ikut terseret dan valid/test terkuras tanpa alasan.
+AMBANG_MAKS = 96
+
+# Pemindahan diulang sampai tidak ada lagi yang pindah, bukan sampai
+# sekian putaran. Batas ini semata penjaga supaya tidak berputar selamanya.
+#
+# Versi pertama berhenti di 5 putaran, dan pada paragon itu memotong sebelum
+# selesai: 4 kembaran tetap tertinggal di valid, padahal justru itu yang
+# hendak dicegah. Tiap putaran memindahkan gambar ke train, dan gambar yang
+# baru pindah bisa punya kembaran lain yang tadinya aman — jadi yang benar
+# adalah berhenti saat keadaannya tenang, bukan saat jatah putarannya habis.
+MAKS_PUTARAN = 60
 
 FASE = {
     "pindai": "Mengumpulkan gambar",
     "sesi": "Mengelompokkan per sesi pemotretan",
     "dhash": "Membaca isi gambar",
+    "kalibrasi": "Mengukur ambang kemiripan dataset ini",
     "bagi": "Membagikan ke train/valid/test",
     "bersih": "Memindahkan kembaran keluar dari valid/test",
     "selesai": "Selesai",
@@ -223,8 +261,16 @@ def pilih_granularitas(nama: list[str], rasio=(0.8, 0.1, 0.1)) -> tuple[str, dic
 _BIT = np.unpackbits(np.arange(256, dtype=np.uint8)[:, None], axis=1).sum(1).astype(np.uint8)
 
 
+def _hash_dari(im: np.ndarray) -> np.ndarray:
+    """dHash dari citra yang sudah di memori."""
+    if im.ndim == 3:
+        im = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
+    im = cv2.resize(im, (SISI_HASH + 1, SISI_HASH), interpolation=cv2.INTER_AREA)
+    return np.packbits(im[:, 1:] > im[:, :-1])
+
+
 def dhash(path) -> np.ndarray | None:
-    """Sidik jari 64-bit dari gradien mendatar gambar kecil.
+    """Sidik jari 256-bit dari gradien mendatar gambar kecil.
 
     Tahan terhadap perubahan ukuran, kompresi ulang, dan pergeseran kecerahan
     — persis tiga hal yang membuat dua salinan foto yang sama punya md5 beda.
@@ -232,24 +278,13 @@ def dhash(path) -> np.ndarray | None:
     im = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
     if im is None:
         return None
-    im = cv2.resize(im, (9, 8), interpolation=cv2.INTER_AREA)
-    return np.packbits(im[:, 1:] > im[:, :-1])
+    return _hash_dari(im)
 
 
-def _pita(h: np.ndarray, n: int) -> list[bytes]:
-    """
-    Potong hash menjadi n pita yang mencakup SELURUH bit.
-
-    Pembagiannya sengaja tidak rata (8 byte jadi 6 pita -> 1,1,2,1,1,2):
-    yang penting setiap bit masuk tepat satu pita. Versi pertama memakai
-    `lebar = len(b) // n` lalu memotong `[:n]`, dan itu membuang dua byte
-    terakhir — jaminan lubang merpatinya batal diam-diam, sehingga sebagian
-    kembaran lolos tanpa pernah terlihat salah.
-    """
-    b = h.tobytes()
-    n = max(1, min(n, len(b)))
-    batas = [len(b) * i // n for i in range(n + 1)]
-    return [b[batas[i]:batas[i + 1]] for i in range(n)]
+# Berapa banyak jarak dihitung sekaligus. Satu petak memakai
+# tinggi x lebar x 32 byte, jadi batas ini menjaga pemakaian memori tetap
+# di kisaran 64 MB berapa pun besar datasetnya.
+SEL_PER_PETAK = 2_000_000
 
 
 def cari_kembar(acuan: dict[int, np.ndarray], uji: dict[int, np.ndarray],
@@ -257,33 +292,144 @@ def cari_kembar(acuan: dict[int, np.ndarray], uji: dict[int, np.ndarray],
     """
     Indeks di `uji` yang punya kembaran di `acuan` (Hamming <= ambang).
 
-    Memakai indeks banyak-pita, bukan membandingkan semua lawan semua.
-    Perbandingan menyeluruh berskala kuadrat: pada satu juta gambar itu
-    8x10^12 perbandingan byte. Dengan menyimpan hash ke dalam ambang+1 pita,
-    dua hash yang berjarak <= ambang PASTI sama persis di sekurang-kurangnya
-    satu pita (asas lubang merpati: ambang perbedaan bit tidak bisa tersebar
-    ke lebih dari ambang pita). Jadi cukup membandingkan yang sepita.
+    Dihitung menyeluruh, dalam petak-petak yang muat di memori.
+
+    Versi sebelumnya memakai indeks banyak-pita: hash dipotong jadi ambang+1
+    pita, dan dua hash berjarak <= ambang pasti sama persis di sekurangnya
+    satu pita. Cara itu jauh lebih cepat, tapi menuntut jumlah pita lebih
+    banyak daripada ambangnya — mustahil di sini, karena ambang 72 berarti
+    73 pita sedangkan hash 256 bit hanya punya 32 byte.
+
+    Melepasnya boleh karena bukan di sinilah waktunya habis: membaca dan
+    mengurai gambar makan 56 ms per berkas (19 jam untuk sejuta gambar,
+    satu inti), sementara perbandingan menyeluruh untuk jumlah yang sama
+    selesai dalam hitungan menit. Menukar menit demi ketepatan itu murah;
+    menukar ketepatan demi menit tidak.
     """
     if not acuan or not uji:
         return set()
-    n_pita = ambang + 1
-    indeks: list[dict[bytes, list[int]]] = [defaultdict(list) for _ in range(n_pita)]
-    for i, h in acuan.items():
-        for p, potong in enumerate(_pita(h, n_pita)):
-            indeks[p][potong].append(i)
+    k_acuan = list(acuan)
+    k_uji = list(uji)
+    A = np.array([acuan[i] for i in k_acuan], dtype=np.uint8)
+    U = np.array([uji[i] for i in k_uji], dtype=np.uint8)
 
-    ketemu = set()
-    for j, h in uji.items():
-        calon = set()
-        for p, potong in enumerate(_pita(h, n_pita)):
-            calon.update(indeks[p].get(potong, ()))
-        if not calon:
+    lebar = min(len(A), 32_768)
+    tinggi = max(1, SEL_PER_PETAK // max(lebar, 1))
+    kena = np.zeros(len(U), dtype=bool)
+
+    for i in range(0, len(U), tinggi):
+        blok = U[i:i + tinggi]
+        # Baris yang sudah ketemu tidak perlu dibandingkan lagi dengan sisa
+        # acuan; pada dataset yang penuh kembaran itu memangkas banyak kerja.
+        sisa = np.ones(len(blok), dtype=bool)
+        for j in range(0, len(A), lebar):
+            if not sisa.any():
+                break
+            sub = blok[sisa]
+            d = _BIT[np.bitwise_xor(sub[:, None, :], A[j:j + lebar][None, :, :])].sum(2)
+            baru_kena = d.min(1) <= ambang
+            idx = np.flatnonzero(sisa)[baru_kena]
+            kena[i + idx] = True
+            sisa[idx] = False
+    return {k_uji[i] for i in np.flatnonzero(kena)}
+
+
+# ============================================================
+# KALIBRASI AMBANG
+# ============================================================
+
+# Perubahan yang PASTI menghasilkan gambar yang sama: kompresi ulang, ubah
+# ukuran, dan geser kecerahan. Ketiganya benar-benar terjadi di jalur kerja
+# ini — ekspor Roboflow mengompresi ulang dan mengubah ukuran, augmentasi
+# menggeser kecerahan.
+def _varian(im: np.ndarray) -> list[np.ndarray]:
+    out = []
+    ok, buf = cv2.imencode(".jpg", im, [int(cv2.IMWRITE_JPEG_QUALITY), 50])
+    if ok:
+        out.append(cv2.imdecode(buf, cv2.IMREAD_GRAYSCALE))
+    h, w = im.shape[:2]
+    if w > 1:
+        kecil = cv2.resize(im, (640, max(1, int(640 * h / w))))
+        out.append(cv2.resize(kecil, (w, h)))
+    out.append(np.clip(im.astype(np.int16) * 1.12, 0, 255).astype(np.uint8))
+    # Perubahan bentuk ikut, dan ini yang paling menentukan: augmentasi
+    # memotong dan menggeser, dan hasilnya masih foto yang sama. Tanpa
+    # keduanya, kalibrasi pada dataset yang sudah 640x640 nyaris tidak
+    # mengukur apa-apa — "ubah ukuran lewat 640" di sana tidak mengubah apa
+    # pun, dan ambangnya tersetel jauh terlalu rendah.
+    if h > 4 and w > 4:
+        dy, dx = max(1, int(h * .02)), max(1, int(w * .02))
+        out.append(cv2.resize(im[dy:h - dy, dx:w - dx], (w, h)))
+        out.append(cv2.warpAffine(im, np.float32([[1, 0, 4], [0, 1, 4]]), (w, h)))
+    return [o for o in out if o is not None]
+
+
+def kalibrasi_ambang(items: list[dict], sidik: dict[int, np.ndarray],
+                     sesi: list[str], contoh: int = 60) -> tuple[int, dict]:
+    """
+    Ambang untuk dataset INI, diukur dari dua distribusinya sendiri.
+
+    Tidak ada satu angka yang benar untuk semua dataset, dan itu terukur:
+    foto yang lebih kecil dan sudah lebih terkompresi kehilangan lebih banyak
+    detail saat diproses ulang, sekaligus lebih mirip satu sama lain. Kedua
+    hal itu menggeser ambang ke arah berlawanan, jadi keduanya harus diukur.
+
+    **Yang wajib tertangkap** — beberapa foto dataset ini diproses ulang
+    dengan perubahan yang PASTI tidak mengubah isinya. Semuanya masih foto
+    yang sama, jadi jaraknya menandai batas bawah.
+
+    **Yang wajib lolos** — pasangan dari SESI BERBEDA di dalam dataset ini.
+    Sebagian memang kembaran, justru itu yang sedang diburu; karena itu yang
+    dipakai persentil 1, bukan nilai terkecilnya.
+
+    Pembandingnya harus dari dataset yang sama. Versi pertama memakai
+    pasangan lintas-dataset (paragon lawan botol-kaleng) dan itu terlalu
+    mudah — produk berbeda di ruangan berbeda memang berjauhan. Ambangnya
+    tersetel 72, dan valid botol-kaleng terkuras jadi 36 dari 11.319 gambar.
+    """
+    kosong = (AMBANG_KEMBAR, {})
+    if not items or not sidik:
+        return kosong
+
+    langkah = max(1, len(items) // max(contoh, 1))
+    pos: list[int] = []
+    dipakai = 0
+    for it in items[::langkah][:contoh]:
+        im = cv2.imread(str(it["img"]), cv2.IMREAD_GRAYSCALE)
+        if im is None:
             continue
-        A = np.array([acuan[i] for i in calon], dtype=np.uint8)
-        d = _BIT[np.bitwise_xor(A, h[None, :])].sum(1)
-        if d.min() <= ambang:
-            ketemu.add(j)
-    return ketemu
+        h0 = _hash_dari(im)
+        dipakai += 1
+        for v in _varian(im):
+            pos.append(int(_BIT[np.bitwise_xor(h0, _hash_dari(v))].sum()))
+        del im
+    if not pos:
+        return kosong
+
+    # Negatifnya nyaris gratis: sidik jarinya sudah dihitung semua.
+    idx = list(sidik)[::max(1, len(sidik) // 200)][:200]
+    neg = [int(_BIT[np.bitwise_xor(sidik[a], sidik[b])].sum())
+           for i, a in enumerate(idx) for b in idx[i + 1:]
+           if sesi[a] != sesi[b]]
+
+    t_pos = float(np.percentile(pos, 99))
+    t_neg = float(np.percentile(neg, 1)) if neg else None
+    if t_neg is not None and t_neg > t_pos:
+        usul, terpisah = int((t_pos + t_neg) / 2), True
+    else:
+        # Bertumpuk: foto berbeda di dataset ini sudah sedekat kembarannya.
+        # Yang didahulukan adalah menangkap kembaran — kembaran yang lolos
+        # menggelembungkan angka validasi diam-diam, sedangkan foto berbeda
+        # yang salah tertangkap cuma pindah ke train, tidak ada yang hilang.
+        usul, terpisah = int(t_pos), False
+    ambang = max(1, min(AMBANG_MAKS, usul))
+    return ambang, {
+        "dipotong": usul > AMBANG_MAKS,
+        "contoh": dipakai, "pasangan": len(pos), "pasangan_beda": len(neg),
+        "kembaran_p99": t_pos, "kembaran_maks": int(max(pos)),
+        "beda_p1": t_neg, "terpisah": terpisah,
+        "dipakai": ambang, "cadangan": AMBANG_KEMBAR,
+    }
 
 
 # ============================================================
@@ -473,9 +619,11 @@ def rencanakan(items: list[dict], rasio=(0.8, 0.1, 0.1), *,
     sebelum = {s: len(hasil[s]) for s in SPLIT}
     cek()
 
-    # -- 3. dHash, lalu pindahkan kembaran keluar dari valid/test
+    # -- 3. dHash, kalibrasi, lalu pindahkan kembaran keluar dari valid/test
     dipindah = {"valid": 0, "test": 0}
     terbaca = 0
+    kalib: dict = {}
+    ambang = AMBANG_KEMBAR
     if pakai_dhash and n:
         catat_maju(kunci, fase="dhash", n=0, total=n, persen=10.0)
         H: dict[int, np.ndarray] = {}
@@ -490,35 +638,59 @@ def rencanakan(items: list[dict], rasio=(0.8, 0.1, 0.1), *,
                 H[k] = h
             if k % langkah == 0:
                 cek()
-                # dHash mendominasi waktu kerjanya, jadi ia yang mengisi
-                # sebagian besar bilah: 10% -> 80%.
+                # Pembacaan gambar mendominasi waktu kerjanya, jadi ia yang
+                # mengisi sebagian besar bilah: 10% -> 74%.
                 catat_maju(kunci, n=k + 1, total=n,
-                           persen=10.0 + 70.0 * (k + 1) / n)
+                           persen=10.0 + 64.0 * (k + 1) / n)
         terbaca = len(H)
         cek()
 
-        catat_maju(kunci, fase="bersih", persen=82.0)
-        for putaran in range(MAKS_PUTARAN):
+        # Kalibrasi SESUDAH sidik jarinya jadi: separuh bahannya — pasangan
+        # foto beda-sesi — sudah tersedia gratis di situ.
+        catat_maju(kunci, fase="kalibrasi", persen=76.0)
+        ambang, kalib = kalibrasi_ambang(items, H, sesi)
+        if kalib.get("dipotong"):
+            peringatan.append(
+                f"Foto dataset ini berubah sangat jauh saat diproses ulang "
+                f"({kalib['kembaran_p99']:.0f} bit dari {BIT_HASH}), jadi ambang "
+                f"yang diperlukan melampaui batas aman {AMBANG_MAKS}. Ambangnya "
+                f"dipatok di {AMBANG_MAKS} dan sebagian kembaran bisa lolos.")
+        elif kalib and not kalib.get("terpisah"):
+            peringatan.append(
+                f"Foto dataset ini terlalu mirip satu sama lain untuk dipisahkan "
+                f"dengan pasti: jarak antar-foto dari sesi berbeda sudah sedekat "
+                f"jarak antara satu foto dan hasil olah ulangnya sendiri. Ambang "
+                f"{ambang} bit dipilih untuk mendahulukan menangkap kembaran, "
+                f"jadi sebagian foto yang sebenarnya berbeda ikut pindah ke train.")
+        cek()
+
+        catat_maju(kunci, fase="bersih", persen=80.0)
+        # Diulang sampai TENANG, bukan sampai jatah putaran habis. Gambar yang
+        # baru pindah ke train ikut jadi acuan, dan bisa menarik gambar lain
+        # yang tadinya aman.
+        putaran = 0
+        while putaran < MAKS_PUTARAN:
+            putaran += 1
             acuan = {i: H[i] for i in hasil["train"] if i in H}
             pindah_kali_ini = 0
             for split in ("valid", "test"):
                 uji = {i: H[i] for i in hasil[split] if i in H}
-                kena = cari_kembar(acuan, uji)
+                kena = cari_kembar(acuan, uji, ambang)
                 if not kena:
                     continue
                 hasil[split] = [i for i in hasil[split] if i not in kena]
                 hasil["train"].extend(sorted(kena))
                 dipindah[split] += len(kena)
                 pindah_kali_ini += len(kena)
-                # Yang baru pindah ikut jadi acuan pada putaran berikutnya.
-            catat_maju(kunci, persen=82.0 + 13.0 * (putaran + 1) / MAKS_PUTARAN)
+            catat_maju(kunci, persen=80.0 + 15.0 * min(putaran / 8.0, 1.0))
             cek()
             if not pindah_kali_ini:
                 break
         else:
             peringatan.append(
                 f"Pemindahan kembaran belum tenang setelah {MAKS_PUTARAN} "
-                f"putaran; masih mungkin ada sisa kembaran di valid/test.")
+                f"putaran, jadi mungkin masih ada sisa kembaran di valid/test. "
+                f"Laporkan ini — seharusnya tidak terjadi.")
 
     # -- 4. verifikasi: tidak boleh ada sesi yang muncul di dua split
     catat_maju(kunci, fase="selesai", persen=97.0)
@@ -614,6 +786,8 @@ def rencanakan(items: list[dict], rasio=(0.8, 0.1, 0.1), *,
         "tanpa_stempel": tanpa_stempel,
         "dipindah": dipindah,
         "dhash_terbaca": terbaca,
+        "ambang": ambang,
+        "kalibrasi": kalib,
         "jumlah": {s: len(hasil[s]) for s in SPLIT},
         "persen": {s: 100.0 * len(hasil[s]) / tot for s in SPLIT},
         "kelas": {s: dict(sum((_kelas_item(items[i]) for i in hasil[s]),
