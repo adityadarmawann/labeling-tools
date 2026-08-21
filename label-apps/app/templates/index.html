@@ -236,7 +236,14 @@
       {%- endif %}
     </div>
     <div class="acts">
-      <a class="btn pri" href="/label?path={{ p }}">Labeli</a>
+      {#- Gambar yang sudah punya bentuk memakai kata "Edit label": dari deretan
+          kartu, tombolnya sendiri yang memberi tahu ini pekerjaan baru atau
+          perbaikan, tanpa harus membaca chip kelas di atasnya dulu.
+          Yang ditandai latar tetap "Labeli" — tidak ada label untuk disunting
+          di sana, dan ke situlah kamu masuk kalau tanda latarnya ternyata salah. -#}
+      <a class="btn pri" href="/label?path={{ p }}"
+         title="{% if it.shapes %}Perbaiki {{ it.shapes | length }} objek yang sudah ada{% else %}Buka kanvas dan mulai melabeli{% endif %}"
+         >{{ 'Edit label' if it.shapes else 'Labeli' }}</a>
       <a class="btn" href="/view?path={{ p }}">Lihat</a>
       {%- if local %}
       <button class="btn" onclick="openIn('{{ p }}',this)">Desktop</button>

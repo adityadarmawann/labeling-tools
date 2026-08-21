@@ -1848,6 +1848,33 @@ def test_saringan_kelas_mode_dan_menuntut_semuanya_dalam_satu_gambar(klien,
     assert len(_grid_nama(klien, f="all", c=["botol", "kaleng"], m="zzz")) == 3
 
 
+def test_tombol_kartu_membedakan_melabeli_dari_menyunting(klien, lingkungan,
+                                                          tmp_path):
+    """Kartu yang sudah ada bentuknya menawarkan "Edit label", bukan "Labeli".
+
+    Yang ditandai latar tetap "Labeli": tidak ada label untuk disunting di
+    sana, dan ke situlah kamu masuk justru kalau tanda latarnya salah.
+    """
+    masuk(klien, "paul", PW_PAUL)
+    d = _ds_dua_kelas(tmp_path)
+    klien.post(f"/setsrc?path={d}")
+    kosong = d / "d-kosong.jpg"
+    klien.post(f"/markbg?path={kosong}")
+
+    html = klien.get("/").text
+    kartu = {}
+    for bagian in html.split('<div class="card"')[1:]:
+        nama = re.search(r'class="fn mono">(?:.*?</span>)?([^<]+)<', bagian).group(1)
+        aksi = bagian[bagian.index('class="acts"'):]
+        kartu[nama.strip()] = "Edit label" if ">Edit label</a>" in aksi else "Labeli"
+
+    assert kartu["a-botol.jpg"] == "Edit label"
+    assert kartu["c-dua.jpg"] == "Edit label"
+    assert kartu["d-kosong.jpg"] == "Labeli", "kartu latar tidak punya label"
+    # tautannya tetap ke kanvas yang sama, hanya katanya yang berubah
+    assert html.count("/label?path=") == len(kartu)
+
+
 def test_saringan_kelas_tidak_menumpuk_chip_di_samping_tombolnya(klien, lingkungan,
                                                                  tmp_path):
     """Keadaan saringan disebut sekali saja, di tombolnya sendiri.
