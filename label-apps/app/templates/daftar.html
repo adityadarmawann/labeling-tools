@@ -3,46 +3,58 @@
 
 {% block body %}
 <main>
-<div class="hero">
-  <h1>Daftar akun</h1>
-
+  {# Sengaja memakai .card-form yang sama dengan halaman masuk: kedua halaman
+     ini bersebelahan dalam satu alur, dan bentuk yang berbeda membuatnya
+     terasa seperti dua aplikasi. #}
   {% if not boleh %}
-  <p class="sub">Pendaftaran mandiri sedang dimatikan. Minta admin membuatkan
-    akunmu.</p>
-  <a class="chip" href="/login">Kembali ke halaman masuk</a>
+  <div class="card-form">
+    <h2>Pendaftaran ditutup</h2>
+    <p class="sub">Pendaftaran mandiri sedang dimatikan. Minta admin
+      membuatkan akunmu.</p>
+    <p class="kartu-kaki"><a href="/login">Kembali ke halaman masuk</a></p>
+  </div>
 
   {% elif selesai %}
-  <p class="sub">Akun <b class="mono">{{ selesai }}</b> sudah terdaftar.</p>
-  {% if langsung %}
-  <p class="sub">Akunmu <b>sudah bisa dipakai</b>. Silakan masuk.</p>
-  {% else %}
-  {# Ini yang menggantikan verifikasi email: tanpa pembuktian alamat, seorang
-     admin yang memutuskan siapa boleh masuk. #}
-  <p class="sub">Sekarang <b>menunggu persetujuan admin</b>. Kabari admin
-    supaya akunmu disetujui, lalu masuk seperti biasa.</p>
-  {% endif %}
-  <a class="chip" href="/login">Ke halaman masuk</a>
+  <div class="card-form">
+    <h2>Akun dibuat</h2>
+    <p class="sub">Akun <b class="mono">{{ selesai }}</b> sudah terdaftar.</p>
+    {% if langsung %}
+    <p class="sub">Akunmu <b>sudah bisa dipakai</b>. Silakan masuk.</p>
+    {% else %}
+    {# Ini yang menggantikan verifikasi email: tanpa pembuktian alamat,
+       seorang admin yang memutuskan siapa boleh masuk. #}
+    <p class="sub">Sekarang <b>menunggu persetujuan admin</b>. Kabari admin
+      supaya akunmu disetujui, lalu masuk seperti biasa.</p>
+    {% endif %}
+    <a class="cta" href="/login" style="display:inline-block;text-align:center;
+       text-decoration:none">Ke halaman masuk</a>
+  </div>
 
   {% else %}
-  <p class="sub">Isi datamu untuk membuat akun.</p>
-  {% if error %}<p class="bad">{{ error }}</p>{% endif %}
-  <form method="post" action="/daftar" class="masuk" autocomplete="off">
+  <form class="card-form" method="post" action="/daftar" autocomplete="off">
+    <h2>Daftar akun</h2>
+    <p class="sub">Isi datamu untuk membuat akun.</p>
+    {% if error %}<p class="bad">{{ error }}</p>{% endif %}
+
     <label class="form-lbl" for="user">Nama akun</label>
     <input id="user" name="user" type="text" value="{{ akun }}"
            placeholder="mis. rizky" autofocus required>
+
     <label class="form-lbl" for="email">Email kantor</label>
     <input id="email" name="email" type="email" value="{{ email }}"
            placeholder="rizky@higo.id">
+
     <label class="form-lbl" for="pw">Kata sandi</label>
     <input id="pw" name="pw" type="password" autocomplete="new-password"
            placeholder="minimal 8 karakter" required>
+
     <label class="form-lbl" for="pw2">Ulangi kata sandi</label>
     <input id="pw2" name="pw2" type="password" autocomplete="new-password" required>
+
     <button class="cta" type="submit">Daftar</button>
+    <p class="kartu-kaki">Sudah punya akun?
+      <a href="/login">Masuk di sini</a>.</p>
   </form>
-  <p class="sub" style="margin-top:14px">Sudah punya akun?
-    <a href="/login">Masuk di sini</a>.</p>
   {% endif %}
-</div>
 </main>
 {% endblock %}

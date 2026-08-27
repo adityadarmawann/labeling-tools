@@ -15,11 +15,15 @@
 
     <button class="cta" type="submit">Masuk</button>
     {% if error %}<p class="bad">{{ error }}</p>{% endif %}
+
+    {# Di DALAM kartu, bukan sesudahnya. Ditaruh di luar </form>, ia jatuh ke
+       tepi kiri halaman tanpa gaya apa pun karena yang memusatkan tampilan
+       adalah .card-form itu sendiri (max-width + margin auto), bukan <main>. #}
+    {% if boleh_daftar %}
+    <p class="kartu-kaki">Belum punya akun?
+      <a href="/daftar">Daftar di sini</a>{% if not daftar_langsung %},
+      lalu minta admin menyetujuinya{% endif %}.</p>
+    {% endif %}
   </form>
-  {% if boleh_daftar %}
-  <p class="sub" style="margin-top:14px">Belum punya akun?
-    <a href="/daftar">Daftar di sini</a>, lalu minta admin
-    menyetujuinya.</p>
-  {% endif %}
 </main>
 {% endblock %}

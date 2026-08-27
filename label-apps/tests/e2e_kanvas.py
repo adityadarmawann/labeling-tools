@@ -999,6 +999,15 @@ def jalankan_potret(d):
     cek("bentuk contoh untuk menguji saringan kelas tersimpan",
         d.js("window.__siap === 1"))
 
+    # Kotak cari tidak boleh melar memenuhi barisnya. Gaya input di aplikasi
+    # ini didaftar per TIPE, dan pemilih [type=...] mengalahkan pemilih kelas
+    # — menambahkan satu tipe tanpa sadar bisa merentangkan kotak cari.
+    d.js("location.href = '/'")
+    time.sleep(1.2)
+    lebar = d.js("document.getElementById('cari').getBoundingClientRect().width")
+    cek("kotak cari tetap ringkas, tidak selebar barisnya",
+        100 < lebar < 400, "lebar=%.0f" % lebar)
+
     # Grid: baris urutkan/cari dan dropdown kelas
     d.js("location.href = '/'")
     time.sleep(1.2)

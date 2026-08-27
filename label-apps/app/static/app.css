@@ -178,7 +178,15 @@ td:last-child{text-align:right;color:var(--ink-dim);font-variant-numeric:tabular
    menginginkannya. */
 .form-lbl{display:block;font-size:11.5px;text-transform:uppercase;letter-spacing:.07em;
   color:var(--ink-faint);font-weight:600;margin:12px 0 5px}
-input[type=text],input[type=password]{width:100%;border:1px solid var(--line2);
+/* Tipe input didaftar satu per satu, dan itu jebakannya: menambah
+   <input type="email"> di halaman daftar membuatnya tampil sebagai kotak
+   bawaan peramban di tengah kotak-kotak lain yang sudah bergaya.
+   `search` dan `number` sengaja TIDAK ikut. Keduanya sudah punya gaya
+   sendiri lewat kelas (.cari-nama, .split-atur input), dan pemilih
+   [type=...] mengalahkan pemilih kelas — memasukkannya ke sini membuat
+   kotak cari melar memenuhi barisnya. */
+input[type=text],input[type=password],input[type=email],
+input[type=url]{width:100%;border:1px solid var(--line2);
   background:var(--raised);color:var(--ink);border-radius:6px;padding:9px 11px;font-size:13.5px;
   font-family:inherit}
 input:focus{outline:0;border-color:var(--ok)}
@@ -634,3 +642,12 @@ input:focus{outline:0;border-color:var(--ok)}
   border:1px solid var(--warn)}
 .akun-baris.menunggu{background:var(--warn-bg);border-radius:8px;
   padding-left:9px;padding-right:9px}
+
+/* Baris kaki di dalam kartu masuk/daftar: pemisah tipis lalu teks kecil
+   terpusat. Sebelumnya paragraf ini berada di LUAR kartu, dan karena yang
+   memusatkan tampilan adalah .card-form sendiri (max-width + margin auto),
+   ia jatuh ke tepi kiri halaman sebagai tautan biru telanjang. */
+.kartu-kaki{margin-top:18px;padding-top:14px;border-top:1px solid var(--line);
+  text-align:center;font-size:12.5px;color:var(--ink-dim)}
+.kartu-kaki a{color:var(--aksi);font-weight:600;text-decoration:none}
+.kartu-kaki a:hover{text-decoration:underline}

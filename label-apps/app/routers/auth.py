@@ -28,7 +28,8 @@ async def login_form(request: Request):
     if optional_session(request):
         return RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
     return templates.TemplateResponse(request, "login.html", {
-        "akun": "", "boleh_daftar": get_settings().daftar_sendiri})
+        "akun": "", "boleh_daftar": get_settings().daftar_sendiri,
+        "daftar_langsung": get_settings().daftar_langsung})
 
 
 @router.post("/login")
@@ -47,6 +48,7 @@ async def login(request: Request,
         return templates.TemplateResponse(
             request, "login.html",
             {"akun": user, "boleh_daftar": settings.daftar_sendiri,
+             "daftar_langsung": settings.daftar_langsung,
              "error": ("Akunmu sudah terdaftar tapi belum disetujui admin."
                        if menunggu else "Akun atau password salah.")},
             status_code=status.HTTP_401_UNAUTHORIZED)
