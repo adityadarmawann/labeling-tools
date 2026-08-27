@@ -854,3 +854,29 @@ input:focus{outline:0;border-color:var(--ok)}
   text-align:center;font-size:12.5px;color:var(--ink-dim)}
 .kartu-kaki a{color:var(--aksi);font-weight:600;text-decoration:none}
 .kartu-kaki a:hover{text-decoration:underline}
+
+/* =============================================================== dialog
+ *
+ * Dipakai bersama seluruh aplikasi. Dasarnya dulu hanya ada di label.css,
+ * yang cuma dimuat di halaman anotasi — jadi halaman lain tidak punya
+ * dialog sama sekali dan terpaksa memakai prompt() bawaan peramban.
+ *
+ * z-index 60: di atas penanda kerja global (59), menu (50), dan toast.
+ */
+.dlg{position:fixed;inset:0;z-index:60;display:flex;align-items:center;
+  justify-content:center;background:rgba(var(--tirai),.55);padding:20px}
+.dlg[hidden]{display:none}
+.dlg-kotak{background:var(--panel);border:1px solid var(--line2);
+  border-radius:11px;width:min(520px,100%);max-height:88vh;overflow-y:auto;
+  padding:18px 20px 16px;box-shadow:0 18px 48px rgba(var(--bayang),.34)}
+.dlg-kotak h3{margin:0 0 4px;font-size:15px;color:var(--ink)}
+.dlg-kotak .dlg-sub{margin:0 0 14px;font-size:12.5px;color:var(--ink-dim)}
+.dlg-kotak input[type=text]{width:100%;padding:8px 10px;font-size:13px;
+  background:var(--ground);color:var(--ink);border:1px solid var(--line2);
+  border-radius:6px}
+.dlg-kotak input[type=text]:focus{outline:2px solid var(--ok);outline-offset:-1px}
+.dlg-tutup{position:absolute;top:14px;right:16px;border:0;background:transparent;
+  color:var(--ink-faint);font-size:18px;line-height:1;cursor:pointer;
+  padding:4px 8px;border-radius:7px}
+.dlg-tutup:hover{background:var(--hover);color:var(--ink)}
+.dlg-kotak{position:relative}

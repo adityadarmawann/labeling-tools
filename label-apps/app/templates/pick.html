@@ -25,13 +25,13 @@
 
   <div class="pkepala">
     <div class="pjudul">
-      <h2>Dataset</h2>
+      <h2>Projek</h2>
       <p>Projek di ruang kerjamu, dan folder bersama yang hanya bisa dibaca.</p>
     </div>
     <div class="paksi">
       <button class="chip" id="buka-sampah" type="button" hidden>
         Tempat sampah <b id="sampah-n"></b></button>
-      <button class="chip aksi" id="buka-tambah" type="button">+ Dataset baru</button>
+      <button class="chip aksi" id="buka-tambah" type="button">+ Projek baru</button>
     </div>
   </div>
 
@@ -99,10 +99,21 @@
   {# Tiga panel lama jadi satu bertab. Ketiganya menjawab pertanyaan yang
      sama — datanya dari mana — dan hanya satu dipakai dalam satu waktu.
      Terlipat karena halaman ini hampir selalu dibuka untuk MEMBUKA projek. #}
-  <details class="psumber" id="lipat-tambah">
-    <summary><b>Tambah dataset</b>
-      <span>unggah dari laptop, folder di server{% if local %}, dialog desktop{% endif %}</span>
-    </summary>
+  {# Satu pintu untuk membuat projek: tombol "+ Projek baru" di kepala
+     halaman. Dulu ada DUA — tombol itu plus panel terlipat di bawah grid
+     yang isinya sama persis — dan panelnya menempati tempat permanen untuk
+     pekerjaan yang jarang dilakukan.
+
+     Istilahnya juga diluruskan. Yang dibuat di sini PROJEK; dataset diunggah
+     ke DALAM projek lewat "Tambah gambar" di halaman grid, setelah projeknya
+     terbuka. #}
+  <div class="dlg" id="dlg-projek" hidden>
+    <div class="dlg-kotak" role="dialog" aria-modal="true"
+         aria-labelledby="dlg-projek-judul">
+      <button class="dlg-tutup" type="button" id="dlg-projek-tutup"
+              aria-label="Tutup">&times;</button>
+      <h3 id="dlg-projek-judul">Projek baru</h3>
+      <p class="dlg-sub">Beri nama, lalu pilih dari mana gambarnya diambil.</p>
     <div class="sumber-isi">
       <div class="seg seg-sumber" id="seg-sumber">
         <label class="seg-opt" data-on><input type="radio" name="sumber" value="laptop" checked>
@@ -119,7 +130,7 @@
         <p class="sumber-ket">Folder berisi gambar beserta anotasi
           <span class="mono">.json</span>, atau dataset YOLO dengan subfolder
           <span class="mono">images</span> dan <span class="mono">labels</span>.</p>
-    <label class="form-lbl" for="dsname">Nama dataset</label>
+    <label class="form-lbl" for="dsname">Nama projek</label>
     <input id="dsname" type="text" placeholder="mis. sponge-batch-3">
     <div class="drop" id="drop" style="margin-top:12px">
       <b>Tarik folder dataset atau berkas .zip ke sini</b><br>
@@ -214,7 +225,8 @@
       </div>
       {% endif %}
     </div>
-  </details>
+    </div>
+  </div>
 </div>
 </main>
 {% endblock %}

@@ -1587,18 +1587,38 @@ const Progres = (() => {
       n2 => { n2.hidden = n2.dataset.sumber !== v; });
   });
 
-  /* Lipatan sumber dibuka dari tombol di kepala halaman, dan otomatis saat
-     ada berkas diseret ke mana pun di halaman — kalau tidak, .drop yang
-     tersembunyi di dalam <details> tertutup membuat tarik-lepas mati diam. */
-  const lipatTambah = document.getElementById('lipat-tambah');
-  document.getElementById('buka-tambah').onclick = () => {
-    lipatTambah.open = true;
-    lipatTambah.scrollIntoView({block: 'nearest', behavior: 'smooth'});
-  };
+  /* Dialog "Projek baru". Satu pintu, dibuka dari tombol di kepala halaman
+     dan otomatis saat ada berkas diseret ke mana pun — kalau tidak, .drop
+     yang berada di dalam dialog tertutup membuat tarik-lepas mati diam
+     tanpa memberi tahu apa-apa. */
+  const dlgProjek = document.getElementById('dlg-projek');
+  let fokusSemula = null;
+
+  function bukaDlg(v) {
+    dlgProjek.hidden = !v;
+    if (v) {
+      fokusSemula = document.activeElement;
+      const isian = document.getElementById('dsname');
+      if (isian) setTimeout(() => isian.focus(), 30);
+    } else if (fokusSemula) {
+      fokusSemula.focus();
+      fokusSemula = null;
+    }
+  }
+
+  document.getElementById('buka-tambah').onclick = () => bukaDlg(true);
+  document.getElementById('dlg-projek-tutup').onclick = () => bukaDlg(false);
+  // Klik pada tirainya menutup; klik di dalam kotaknya tidak.
+  dlgProjek.addEventListener('click', ev => {
+    if (ev.target === dlgProjek) bukaDlg(false);
+  });
+  document.addEventListener('keydown', ev => {
+    if (ev.key === 'Escape' && !dlgProjek.hidden) bukaDlg(false);
+  });
   document.addEventListener('dragenter', ev => {
     if ([...(ev.dataTransfer ? ev.dataTransfer.types : [])].includes('Files')
-        && !lipatTambah.open) {
-      lipatTambah.open = true;
+        && dlgProjek.hidden) {
+      bukaDlg(true);
     }
   });
 

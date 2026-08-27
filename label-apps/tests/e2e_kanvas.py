@@ -1196,6 +1196,26 @@ def jalankan_potret(d):
     cek("klik di luar menutup menunya",
         d.js("document.querySelector('#projek-grid .pmenu').hidden") is True)
 
+    # Satu pintu untuk membuat projek: tombolnya membuka dialog, dan tidak
+    # ada panel kembar di bawah grid yang isinya sama.
+    cek("tidak ada lagi panel tambah kembar di bawah grid",
+        d.js("!document.getElementById('lipat-tambah')"))
+    cek("dialog projek tertutup saat halaman dibuka",
+        d.js("document.getElementById('dlg-projek').hidden") is True)
+    d.js("document.getElementById('buka-tambah').click()")
+    time.sleep(0.35)
+    simpan("projek-dialog")
+    cek("tombol Projek baru membuka dialognya",
+        d.js("document.getElementById('dlg-projek').hidden") is False)
+    cek("isian nama dan kotak seret ikut pindah ke dialog",
+        d.js("!!document.querySelector('#dlg-projek #dsname')")
+        and d.js("!!document.querySelector('#dlg-projek #drop')"))
+    d.js("(function(){ const d = document.getElementById('dlg-projek');"
+         " d.dispatchEvent(new MouseEvent('click', {bubbles:true})); })()")
+    time.sleep(0.25)
+    cek("mengklik tirainya menutup dialog",
+        d.js("document.getElementById('dlg-projek').hidden") is True)
+
     # ---- aksi menunya benar-benar dijalankan, bukan cuma ada ----
     #
     # prompt() memblokir seluruh laman dan menggantung CDP, jadi ia diganti
