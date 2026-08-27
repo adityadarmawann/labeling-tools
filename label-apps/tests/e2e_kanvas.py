@@ -1186,6 +1186,63 @@ def jalankan_potret(d):
     cek("klik di luar menutup menunya",
         d.js("document.querySelector('#projek-grid .pmenu').hidden") is True)
 
+    # ---- aksi menunya benar-benar dijalankan, bukan cuma ada ----
+    #
+    # prompt() memblokir seluruh laman dan menggantung CDP, jadi ia diganti
+    # lebih dulu dengan jawaban yang sudah ditentukan. Tanpa ini pemeriksaan
+    # di bawah berhenti tanpa pesan, persis seperti confirm() dulu.
+    def aksi_projek(nama_kartu, aksi, jawab=None):
+        d.js("window.__jwb = %s; window.prompt = () => window.__jwb;"
+             " window.__toast = [];" % json.dumps(jawab))
+        d.js("""
+          (function(nama, aksi){
+            const k = [...document.querySelectorAll('#projek-grid .pcard')]
+              .find(x => x.dataset.nama === nama);
+            if (!k) { window.__hasil = 'kartu tidak ada'; return; }
+            k.querySelector(`.pmenu a[data-aksi="${aksi}"]`).click();
+            window.__hasil = 'diklik';
+          })(%s, %s)
+        """ % (json.dumps(nama_kartu), json.dumps(aksi)))
+        for _ in range(60):
+            time.sleep(0.25)
+            if d.js("document.getElementById('projek-note').textContent")\
+                    .find("\u2026") < 0:
+                break
+        time.sleep(0.5)
+        return d.js("[...document.querySelectorAll('#projek-grid .pcard')]"
+                    ".map(x => x.dataset.nama).sort().join(',')")
+
+    nama = aksi_projek("projek-dua", "ganti", "projek-dua-baru")
+    cek("Ganti nama benar-benar mengganti namanya",
+        "projek-dua-baru" in nama and "projek-dua," not in nama + ",", nama)
+
+    nama = aksi_projek("projek-satu", "duplikat")
+    cek("Duplikat menghasilkan salinan baru",
+        "projek-satu 2" in nama and "projek-satu" in nama, nama)
+
+    nama = aksi_projek("projek-satu 2", "sampah", "projek-satu 2")
+    cek("Buang ke sampah mengeluarkannya dari daftar",
+        "projek-satu 2" not in nama, nama)
+    cek("dan muncul di tempat sampah",
+        d.js("document.getElementById('sampah-lipat').hidden") is False
+        and d.js("document.querySelectorAll('#sampah-isi [data-pulih]').length") >= 1)
+
+    d.js("document.querySelector('#sampah-isi [data-pulih]').click()")
+    time.sleep(1.2)
+    nama = d.js("[...document.querySelectorAll('#projek-grid .pcard')]"
+                ".map(x => x.dataset.nama).sort().join(',')")
+    cek("Kembalikan memulihkannya dari sampah", "projek-satu 2" in nama, nama)
+
+    # Nama salah saat membuang HARUS membatalkan, bukan tetap jalan.
+    nama = aksi_projek("projek-satu", "sampah", "salah-ketik")
+    cek("mengetik nama yang salah membatalkan pembuangan",
+        "projek-satu" in nama, nama)
+
+    n_seb = d.js("document.querySelectorAll('#projek-grid .pcard').length")
+    nama = aksi_projek("projek-satu 2", "gabung", "projek-satu")
+    cek("Gabungkan menyalin isinya tanpa menghapus sumbernya",
+        "projek-satu 2" in nama and "projek-satu" in nama, nama)
+
     d.js("location.href = %r" % asal)
     time.sleep(1.2)
 
