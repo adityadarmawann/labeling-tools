@@ -41,6 +41,7 @@ class Session:
         # kali tombol ekspor ditekan.
         self.rencana_split: dict | None = None
         self.split_batal = False
+        self.projek_batal = False
 
     # -- dataset --
 

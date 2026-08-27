@@ -1216,7 +1216,43 @@ def jalankan_potret(d):
     cek("Ganti nama benar-benar mengganti namanya",
         "projek-dua-baru" in nama and "projek-dua," not in nama + ",", nama)
 
+    # Komponen progresnya diuji LANGSUNG, bukan lewat operasi sungguhan.
+    # Duplikat tiga berkas selesai lebih cepat daripada pengambil sampel mana
+    # pun, jadi mengintipnya di tengah jalan tidak membuktikan apa-apa.
+    d.js("window.__pr = Progres.mulai('Uji', {di: document.getElementById("
+         "'projek-note')}); window.__pr.taktentu('menunggu…');")
+    time.sleep(0.2)
+    cek("Progres menggambar bilah di tempat yang diminta",
+        d.js("!!document.querySelector('#projek-note .pr-kotak .prog')"))
+    cek("tanpa persentase bilahnya bergerak sendiri, bukan diam",
+        d.js("document.querySelector('#projek-note .prog')"
+             ".hasAttribute('data-tak-tentu')") is True)
+    cek("penanda kerja di pojok layar menyala",
+        d.js("document.getElementById('kerja-global').hasAttribute('data-on')")
+        is True)
+    d.js("window.__pr.set(0.5, 'separuh')")
+    time.sleep(0.2)
+    lebar = d.js("document.querySelector('#projek-note .prog i').style.width")
+    cek("persentase mengubah lebar bilahnya", lebar in ("50%", "50.0%"), lebar)
+    cek("dan angkanya ikut tertulis",
+        d.js("document.querySelector('#projek-note .pr-teks b').textContent") == "50%")
+    d.js("window.__pr.selesai('beres')")
+    time.sleep(0.2)
+    cek("selesai memadamkan penanda pojok",
+        d.js("document.getElementById('kerja-global').hasAttribute('data-on')")
+        is False)
+    d.js("window.__pr2 = Progres.mulai('Uji gagal',"
+         " {di: document.getElementById('projek-note')}); window.__pr2.gagal('x')")
+    time.sleep(0.2)
+    cek("kegagalan ditandai warna berbeda, bukan diam-diam berhenti",
+        d.js("document.querySelector('#projek-note .pr-kotak').dataset.keadaan")
+        == "gagal")
+    d.js("document.getElementById('projek-note').innerHTML = ''")
+
     nama = aksi_projek("projek-satu", "duplikat")
+    cek("penanda pojok padam setelah selesai",
+        d.js("document.getElementById('kerja-global').hasAttribute('data-on')")
+        is False)
     cek("Duplikat menghasilkan salinan baru",
         "projek-satu 2" in nama and "projek-satu" in nama, nama)
 

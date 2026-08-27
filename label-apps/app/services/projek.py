@@ -42,6 +42,32 @@ _SEMBUNYI = {SAMPAH, "_unggahan"}
 MAKS_TELUSUR = 20_000
 
 
+# ------------------------------------------------------------------ kemajuan
+#
+# Pola yang sama dengan impor dan splitting: dict di memori plus rute polling.
+# Menyalin 1,2 GB memakan menit, dan tanpa laporan tombolnya tampak mati.
+
+_maju: dict[str, dict] = {}
+_kunci_maju = __import__("threading").Lock()
+
+
+def catat_maju(kunci: str, **nilai) -> None:
+    if kunci:
+        with _kunci_maju:
+            _maju.setdefault(kunci, {}).update(nilai)
+
+
+def kemajuan(kunci: str) -> dict:
+    with _kunci_maju:
+        return dict(_maju.get(kunci) or {})
+
+
+def bersihkan_maju(kunci: str) -> None:
+    if kunci:
+        with _kunci_maju:
+            _maju.pop(kunci, None)
+
+
 class Tolak(Exception):
     """Permintaan yang tidak boleh dijalankan, dengan alasan untuk pengguna."""
 
@@ -165,7 +191,8 @@ def ganti_nama(root: Path, lama: str, baru: str) -> dict:
     return {"nama": dst.name, "path": str(dst)}
 
 
-def duplikat(root: Path, nama: str, baru: str = "") -> dict:
+def duplikat(root: Path, nama: str, baru: str = "", *,
+             kunci: str = "", batal=None) -> dict:
     """Salinan penuh. Berat, tapi itu memang yang diminta."""
     src = _folder(root, nama)
     if not src.is_dir():
@@ -182,11 +209,33 @@ def duplikat(root: Path, nama: str, baru: str = "") -> dict:
             raise Tolak("terlalu banyak salinan dengan nama serupa")
     if dst.exists():
         raise Tolak(f"sudah ada projek bernama '{dst.name}'")
+
+    # Disalin sendiri per berkas, bukan lewat shutil.copytree, semata supaya
+    # kemajuannya bisa dilaporkan. Menyalin 1,2 GB memakan menit, dan selama
+    # itu layar diam sepenuhnya kalau penyalinannya satu panggilan tertutup.
+    berkas = [f for f in src.rglob("*") if f.is_file()]
+    total = len(berkas)
     t = time.monotonic()
-    shutil.copytree(src, dst, symlinks=False)
-    log.info("duplikat: %r -> %r (%.0f dtk)", src.name, dst.name,
-             time.monotonic() - t)
-    return {"nama": dst.name, "path": str(dst)}
+    catat_maju(kunci, tahap="salin", n=0, total=total, persen=0.0,
+               judul=f"Menduplikat {src.name}")
+    dst.mkdir(parents=True)
+    langkah = max(1, total // 200)
+    for i, f in enumerate(berkas, 1):
+        if batal is not None and batal():
+            # Salinan setengah jadi lebih berbahaya daripada tidak ada:
+            # ia muncul sebagai projek utuh di daftar.
+            shutil.rmtree(dst, ignore_errors=True)
+            bersihkan_maju(kunci)
+            raise Tolak("dihentikan; salinan setengah jadi dibuang")
+        tuj = dst / f.relative_to(src)
+        tuj.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(f, tuj)
+        if i % langkah == 0 or i == total:
+            catat_maju(kunci, n=i, total=total, persen=i / max(total, 1))
+    catat_maju(kunci, tahap="selesai", persen=1.0)
+    log.info("duplikat: %r -> %r, %s berkas dalam %.0f dtk", src.name, dst.name,
+             f"{total:,}", time.monotonic() - t)
+    return {"nama": dst.name, "path": str(dst), "berkas": total}
 
 
 def ke_sampah(root: Path, nama: str) -> dict:

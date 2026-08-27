@@ -128,7 +128,25 @@ async def duplikat(nama: str = "", baru: str = "",
                    settings: Settings = Depends(get_settings)):
     """Menggandakan berarti menyalin seluruh berkasnya; bisa memakan menit."""
     root = _ruang(sess, settings)
-    return await asyncio.to_thread(_jawab, projek.duplikat, root, nama, baru)
+    projek.bersihkan_maju(sess.user)
+    sess.projek_batal = False
+    r = await asyncio.to_thread(_jawab, projek.duplikat, root, nama, baru,
+                                kunci=sess.user,
+                                batal=lambda: sess.projek_batal)
+    projek.bersihkan_maju(sess.user)
+    return r
+
+
+@router.get("/api/projek/kemajuan")
+async def kemajuan(sess: Session = Depends(current_session_api)):
+    """Ditanya berkala selagi duplikat masih menggantung."""
+    return {"ok": True, **projek.kemajuan(sess.user)}
+
+
+@router.post("/api/projek/batal")
+async def batal(sess: Session = Depends(current_session_api)):
+    sess.projek_batal = True
+    return {"ok": True}
 
 
 @router.post("/api/projek/sampah")

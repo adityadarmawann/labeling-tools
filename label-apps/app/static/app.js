@@ -80,9 +80,17 @@ async function markbg(p, on) {
 }
 
 async function rescan() {
-  toast('Memindai ulang...');
-  const j = await post('/rescan');
-  if (j.ok) location.reload(); else toast('Gagal: ' + j.error);
+  // Terukur 5,9 detik pada dataset 11.319 gambar. Toast hilang jauh sebelum
+  // itu, jadi sisa waktunya berlalu tanpa tanda apa pun.
+  const pr = Progres.mulai('Memindai ulang dataset');
+  pr.taktentu('membaca berkas anotasi…');
+  try {
+    const j = await post('/rescan');
+    if (j.ok) { pr.selesai(); location.reload(); }
+    else { pr.gagal(j.error); toast('Gagal: ' + j.error); }
+  } catch (e) {
+    pr.gagal('Gagal menghubungi server');
+  }
 }
 
 // Panah kiri/kanan untuk pindah gambar di tampilan besar.
@@ -97,12 +105,14 @@ document.addEventListener('keydown', e => {
 
 async function setsrc(p) {
   if (!p) { toast('Path masih kosong'); return; }
-  toast('Memindai folder...');
+  const pr = Progres.mulai('Membuka dataset');
+  pr.taktentu('memindai isinya…');
   try {
     const j = await post('/setsrc?path=' + encodeURIComponent(p));
-    if (j.ok) location.href = '/'; else toast(j.error);
+    if (j.ok) { pr.selesai(); location.href = '/'; }
+    else { pr.gagal(j.error); toast(j.error); }
   } catch (e) {
-    toast('Gagal menghubungi server');
+    pr.gagal('Gagal menghubungi server');
   }
 }
 
@@ -342,8 +352,11 @@ async function uploadFiles(files) {
   // Arsip dibongkar di server. Untuk berkas 1 GB ini bisa memakan waktu, jadi
   // keadaannya dikatakan, bukan dibiarkan tampak menggantung.
   for (const nama of arsip) {
+    // Bilah penuh selagi masih membongkar terbaca sebagai SELESAI. Yang benar
+    // tak-tentu: persentasenya memang tidak diketahui, tapi bahwa ia masih
+    // berjalan itu diketahui, dan justru itu yang perlu terlihat.
+    bar.setAttribute('data-tak-tentu', '');
     note.textContent = 'Membongkar ' + nama + '… (berkas besar perlu waktu)';
-    fill.style.width = '100%';
     try {
       const j = await post('/unzip?ds=' + encodeURIComponent(ds) +
                            '&name=' + encodeURIComponent(nama));
@@ -353,6 +366,8 @@ async function uploadFiles(files) {
     } catch (e) {
       toast('Gagal menghubungi server saat membongkar');
       return;
+    } finally {
+      bar.removeAttribute('data-tak-tentu');
     }
   }
 
@@ -451,6 +466,124 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 })();
 
+
+/*
+ * Progres bersama.
+ * ================
+ * Satu bentuk untuk seluruh aplikasi, dan satu jaminan: tidak ada pekerjaan
+ * panjang yang berjalan tanpa terlihat. Panel bisa saja tertutup atau
+ * halaman sudah tergulir jauh, jadi selain bilah di tempatnya sendiri ada
+ * penanda tetap di pojok layar selama masih ada yang berjalan.
+ *
+ *   const p = Progres.mulai('Menyalin berkas', {di: elemen});
+ *   p.set(0.42, '4.200 dari 10.000');   // atau p.taktentu('Memindai…')
+ *   p.selesai('Selesai, 33 dtk');
+ *   p.gagal('Gagal menghubungi server');
+ */
+const Progres = (() => {
+  const jalan = new Set();
+  let pojok = null;
+
+  function kotakPojok() {
+    if (pojok) return pojok;
+    pojok = document.createElement('div');
+    pojok.id = 'kerja-global';
+    pojok.innerHTML = '<div class="kg-judul"></div>'
+      + '<div class="prog" data-on data-tak-tentu><i></i></div>'
+      + '<div class="pr-teks"><span></span><b></b></div>';
+    document.body.appendChild(pojok);
+    return pojok;
+  }
+
+  function segarkanPojok() {
+    const k = kotakPojok();
+    if (!jalan.size) { k.removeAttribute('data-on'); return; }
+    // Yang ditampilkan yang terakhir mulai: itu yang baru saja ditekan orang.
+    const p = [...jalan][jalan.size - 1];
+    k.setAttribute('data-on', '');
+    k.querySelector('.kg-judul').textContent = p.judul;
+    k.querySelector('.pr-teks span').textContent = p.rinci || '';
+    k.querySelector('.pr-teks b').textContent = p.persen == null
+      ? '' : Math.round(p.persen * 100) + '%';
+    const bar = k.querySelector('.prog');
+    bar.toggleAttribute('data-tak-tentu', p.persen == null);
+    bar.querySelector('i').style.width =
+      p.persen == null ? '' : (p.persen * 100).toFixed(1) + '%';
+    if (jalan.size > 1) {
+      k.querySelector('.kg-judul').textContent =
+        `${p.judul}  (+${jalan.size - 1} lagi)`;
+    }
+  }
+
+  class Sesi {
+    constructor(judul, opsi) {
+      this.judul = judul;
+      this.persen = null;
+      this.rinci = '';
+      this.mulai = Date.now();
+      this.el = null;
+      const di = opsi && opsi.di;
+      if (di) {
+        this.el = document.createElement('div');
+        this.el.className = 'pr-kotak';
+        this.el.innerHTML = '<div class="prog" data-on><i></i></div>'
+          + '<div class="pr-teks"><span></span><b></b></div>';
+        di.innerHTML = '';
+        di.appendChild(this.el);
+      }
+      jalan.add(this);
+      segarkanPojok();
+    }
+    _tulis() {
+      if (this.el) {
+        const bar = this.el.querySelector('.prog');
+        bar.toggleAttribute('data-tak-tentu', this.persen == null);
+        bar.querySelector('i').style.width =
+          this.persen == null ? '' : (this.persen * 100).toFixed(1) + '%';
+        this.el.querySelector('.pr-teks span').textContent = this.rinci;
+        this.el.querySelector('.pr-teks b').textContent =
+          this.persen == null ? '' : Math.round(this.persen * 100) + '%';
+      }
+      segarkanPojok();
+    }
+    set(persen, rinci) {
+      this.persen = Math.max(0, Math.min(1, persen));
+      if (rinci != null) this.rinci = rinci;
+      this._tulis();
+      return this;
+    }
+    taktentu(rinci) {
+      this.persen = null;
+      if (rinci != null) this.rinci = rinci;
+      this._tulis();
+      return this;
+    }
+    _tutup(keadaan, pesan) {
+      jalan.delete(this);
+      const dtk = (Date.now() - this.mulai) / 1000;
+      if (this.el) {
+        this.el.dataset.keadaan = keadaan;
+        this.el.querySelector('.prog').removeAttribute('data-tak-tentu');
+        this.el.querySelector('.prog i').style.width =
+          keadaan === 'gagal' ? '100%' : '100%';
+        this.el.querySelector('.pr-teks span').textContent = pesan || '';
+        this.el.querySelector('.pr-teks b').textContent =
+          keadaan === 'gagal' ? 'gagal' : `${dtk.toFixed(0)} dtk`;
+      }
+      segarkanPojok();
+      return this;
+    }
+    selesai(pesan) { return this._tutup('selesai', pesan || 'Selesai'); }
+    gagal(pesan) { return this._tutup('gagal', pesan || 'Gagal'); }
+    buang() { jalan.delete(this); if (this.el) this.el.remove(); segarkanPojok(); }
+  }
+
+  return {
+    mulai: (judul, opsi) => new Sesi(judul, opsi || {}),
+    adaYangJalan: () => jalan.size > 0,
+  };
+})();
+
 // ---------------------------------------------------------------- menu Ekspor
 
 // Ringkasan diminta saat menu dibuka, bukan saat halaman dimuat: menghitung
@@ -479,7 +612,10 @@ document.addEventListener('DOMContentLoaded', () => {
     a.href = u.pathname + '?' + u.searchParams.toString();
     if (!unduhInfo) return;
     if (!unduhAsli) unduhAsli = unduhInfo.innerHTML;
-    unduhInfo.innerHTML = '<b>Menyiapkan ZIP…</b> jangan tutup tab ini';
+    // Server membentuk seluruh ZIP lebih dulu, jadi persentasenya tidak bisa
+    // diketahui — yang bisa cuma menandai bahwa ia masih bekerja.
+    const pr = Progres.mulai('Menyiapkan ZIP', {di: unduhInfo});
+    pr.taktentu('jangan tutup tab ini');
     const mulai = Date.now();
     const pantau = setInterval(() => {
       const siap = document.cookie.includes('unduh_siap=' + tanda);
@@ -487,15 +623,13 @@ document.addEventListener('DOMContentLoaded', () => {
       if (siap) {
         clearInterval(pantau);
         document.cookie = 'unduh_siap=; Max-Age=0; path=/';
-        unduhInfo.innerHTML = `<b>ZIP siap</b>, unduhan dimulai `
-          + `(${lewat.toFixed(0)} dtk)`;
+        pr.selesai('ZIP siap, unduhan dimulai');
         setTimeout(() => { unduhInfo.innerHTML = unduhAsli; }, 8000);
       } else if (lewat > 1800) {
         clearInterval(pantau);
-        unduhInfo.innerHTML = '<b>Belum selesai setelah 30 menit.</b> '
-          + 'Periksa log server.';
-      } else if (lewat > 3) {
-        unduhInfo.innerHTML = `<b>Menyiapkan ZIP…</b> ${lewat.toFixed(0)} dtk`;
+        pr.gagal('Belum selesai setelah 30 menit; periksa log server');
+      } else {
+        pr.taktentu(`${lewat.toFixed(0)} dtk, jangan tutup tab ini`);
       }
     }, 500);
   }
@@ -921,7 +1055,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function muat() {
     let j;
-    try { j = await (await fetch('/api/projek/daftar')).json(); } catch (e) { return; }
+    const pr = Progres.mulai('Memuat daftar projek', {di: note});
+    pr.taktentu('menghitung isi tiap folder…');
+    try { j = await (await fetch('/api/projek/daftar')).json(); }
+    catch (e) { pr.gagal('Gagal menghubungi server'); return; }
+    pr.buang();
     if (!j || !j.ok) return;
     semua = j.projek || [];
     panel.hidden = false;
@@ -943,7 +1081,7 @@ document.addEventListener('DOMContentLoaded', () => {
       grid.innerHTML = `<p class="sub" style="grid-column:1/-1;margin:0">`
         + (semua.length ? 'Tidak ada projek yang cocok.'
                         : 'Belum ada projek. Unggah dataset di bawah.') + '</p>';
-      note.textContent = '';
+      if (!Progres.adaYangJalan()) note.textContent = '';
       return;
     }
     grid.innerHTML = baris.map(p => `
@@ -971,7 +1109,9 @@ document.addEventListener('DOMContentLoaded', () => {
           <a href="#" class="bahaya" data-aksi="sampah">Buang ke tempat sampah…</a>
         </div>
       </div>`).join('');
-    note.textContent = `${baris.length} dari ${semua.length} projek`;
+    if (!Progres.adaYangJalan()) {
+      note.textContent = `${baris.length} dari ${semua.length} projek`;
+    }
   }
 
   function gambarSampah(isi) {
@@ -989,14 +1129,43 @@ document.addEventListener('DOMContentLoaded', () => {
       + 'atau terminal.</div>';
   }
 
-  async function kirim(url, params, pesan) {
-    note.textContent = pesan;
+  /*
+   * Tiap operasi memakai bilah progres yang sama.
+   *
+   * `pantau` menyebutkan rute kemajuan yang harus ditanya berkala. Yang tidak
+   * punya (ganti nama, buang, pulihkan) memakai bilah tak-tentu: ketiganya
+   * memindahkan folder, biasanya seketika, tapi bisa lama kalau berkasnya di
+   * disk jaringan. Yang tidak boleh terjadi adalah layar diam tanpa tanda.
+   */
+  async function kirim(url, params, pesan, pantau) {
+    const pr = Progres.mulai(pesan, {di: note});
+    pr.taktentu('menunggu server…');
+    let ketuk = null;
+    if (pantau) {
+      ketuk = setInterval(async () => {
+        let k;
+        try { k = await (await fetch(pantau)).json(); } catch (e) { return; }
+        if (!k) return;
+        const persen = k.persen != null ? k.persen
+                     : (k.total ? (k.berkas || k.n || 0) / k.total : null);
+        if (persen == null) return;
+        const n = k.n != null ? k.n : (k.berkas || 0);
+        pr.set(persen, k.total ? `${n.toLocaleString('id-ID')} dari `
+                                 + `${k.total.toLocaleString('id-ID')} berkas` : '');
+      }, 400);
+    }
     let j;
     try {
       j = await (await fetch(url + '?' + new URLSearchParams(params),
                              {method: 'POST'})).json();
-    } catch (e) { note.textContent = 'Gagal menghubungi server'; return null; }
-    if (!j.ok) { note.textContent = j.error || 'gagal'; toast(j.error || 'gagal'); }
+    } catch (e) {
+      pr.gagal('Gagal menghubungi server');
+      return null;
+    } finally {
+      if (ketuk) clearInterval(ketuk);
+    }
+    if (!j.ok) { pr.gagal(j.error || 'gagal'); toast(j.error || 'gagal'); }
+    else pr.selesai();
     return j;
   }
 
@@ -1023,7 +1192,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (a === 'buka') {
       const p = bukaLink ? bukaLink.dataset.buka
                          : semua.find(x => x.nama === nama).path;
-      const j = await kirim('/setsrc', {path: p}, 'Membuka…');
+      const j = await kirim('/setsrc', {path: p}, 'Membuka projek');
       if (j && j.ok) location.href = '/';
       return;
     }
@@ -1036,13 +1205,14 @@ document.addEventListener('DOMContentLoaded', () => {
     if (a === 'ganti') {
       const baru = prompt(`Nama baru untuk "${nama}":`, nama);
       if (!baru || baru === nama) return;
-      const j = await kirim('/api/projek/ganti-nama', {nama, baru}, 'Mengganti nama…');
+      const j = await kirim('/api/projek/ganti-nama', {nama, baru},
+                            'Mengganti nama');
       if (j && j.ok) { toast(`Jadi "${j.nama}"`); muat(); }
       return;
     }
     if (a === 'duplikat') {
       const j = await kirim('/api/projek/duplikat', {nama},
-                            'Menyalin seluruh berkas, bisa memakan menit…');
+                            `Menduplikat ${nama}`, '/api/projek/kemajuan');
       if (j && j.ok) { toast(`Salinan dibuat: ${j.nama}`); muat(); }
       return;
     }
@@ -1054,7 +1224,8 @@ document.addEventListener('DOMContentLoaded', () => {
         + `\n\n"${nama}" sendiri TIDAK dihapus.`, lain[0]);
       if (!tujuan) return;
       const j = await kirim('/api/projek/gabung', {sumber: nama, tujuan},
-                            'Menggabungkan…');
+                            `Menggabungkan ${nama} ke ${tujuan}`,
+                            '/api/impor/kemajuan');
       if (j && j.ok) {
         toast(`${n(j.ditambah)} berkas masuk ke ${j.tujuan}`);
         note.textContent = `${n(j.ditambah)} berkas ditambahkan ke `
@@ -1074,7 +1245,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (jwb !== null) toast('Nama tidak cocok, dibatalkan');
         return;
       }
-      const j = await kirim('/api/projek/sampah', {nama}, 'Memindahkan…');
+      const j = await kirim('/api/projek/sampah', {nama},
+                            'Memindahkan ke tempat sampah');
       if (j && j.ok) { toast(`"${j.nama}" masuk tempat sampah`); muat(); }
     }
   });
@@ -1084,7 +1256,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!b) return;
     ev.preventDefault();
     const j = await kirim('/api/projek/pulihkan', {folder: b.dataset.pulih},
-                          'Mengembalikan…');
+                          'Mengembalikan dari tempat sampah');
     if (j && j.ok) { toast(`"${j.nama}" dikembalikan`); muat(); }
   });
 
