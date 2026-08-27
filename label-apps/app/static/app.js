@@ -893,3 +893,208 @@ document.addEventListener('DOMContentLoaded', () => {
     if (b) b.onclick = () => rescan();
   }
 })();
+
+// ------------------------------------------------------- halaman Projek
+/*
+ * Kartu projek beserta menu ⋮-nya.
+ *
+ * Semua operasinya menyentuh berkas sungguhan, sebagian ribuan sekaligus,
+ * jadi tiap yang tidak bisa dibatalkan meminta ketikan nama projeknya lebih
+ * dulu. Konfirmasi "yakin?" biasa terlalu mudah dilewati dengan Enter, dan
+ * yang hilang di sini adalah berjam-jam pekerjaan pelabelan.
+ */
+(() => {
+  const grid = document.getElementById('projek-grid');
+  if (!grid) return;
+  const panel = document.getElementById('panel-projek');
+  const note = document.getElementById('projek-note');
+  const cari = document.getElementById('projek-cari');
+  const urut = document.getElementById('projek-urut');
+  const lipatSampah = document.getElementById('sampah-lipat');
+  const judulSampah = document.getElementById('sampah-judul');
+  const isiSampah = document.getElementById('sampah-isi');
+  const esc = t => String(t).replace(/[&<>"']/g,
+    c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+  const n = v => (v || 0).toLocaleString('id-ID');
+
+  let semua = [];
+
+  async function muat() {
+    let j;
+    try { j = await (await fetch('/api/projek/daftar')).json(); } catch (e) { return; }
+    if (!j || !j.ok) return;
+    semua = j.projek || [];
+    panel.hidden = false;
+    gambarSampah(j.sampah || []);
+    render();
+  }
+
+  function render() {
+    const q = (cari.value || '').trim().toLowerCase();
+    let baris = semua.filter(p => !q || p.nama.toLowerCase().includes(q));
+    const cara = urut.value;
+    baris.sort((a, b) =>
+      cara === 'nama' ? a.nama.localeCompare(b.nama, 'id')
+      : cara === 'besar' ? b.jumlah - a.jumlah
+      : cara === 'label' ? b.anotasi - a.anotasi
+      : b.diubah - a.diubah);
+
+    if (!baris.length) {
+      grid.innerHTML = `<p class="sub" style="grid-column:1/-1;margin:0">`
+        + (semua.length ? 'Tidak ada projek yang cocok.'
+                        : 'Belum ada projek. Unggah dataset di bawah.') + '</p>';
+      note.textContent = '';
+      return;
+    }
+    grid.innerHTML = baris.map(p => `
+      <div class="pcard${p.dibuka ? ' dibuka' : ''}" data-nama="${esc(p.nama)}">
+        <a class="psampul" href="#" data-buka="${esc(p.path)}">
+          ${p.sampul ? `<img loading="lazy" src="/api/projek/sampul?path=`
+                       + `${encodeURIComponent(p.sampul)}" alt="">` : ''}
+        </a>
+        <div class="pisi">
+          <div class="pnama">${esc(p.nama)}${p.dibuka
+            ? '<span class="pbuka">sedang dibuka</span>' : ''}</div>
+          <div class="pmeta">${p.lebih ? '≥' : ''}${n(p.jumlah)} gambar ·
+            ${n(p.anotasi)} dilabeli</div>
+          <div class="pmeta halus">diubah ${esc(p.usia)}</div>
+        </div>
+        <button class="ptitik" title="Fitur projek">⋮</button>
+        <div class="pmenu" hidden>
+          <a href="#" data-aksi="buka">Buka projek ini</a>
+          <a href="#" data-aksi="salin">Salin path</a>
+          <span class="menu-pisah"></span>
+          <a href="#" data-aksi="ganti">Ganti nama…</a>
+          <a href="#" data-aksi="duplikat">Duplikat</a>
+          <a href="#" data-aksi="gabung">Gabungkan ke projek lain…</a>
+          <span class="menu-pisah"></span>
+          <a href="#" class="bahaya" data-aksi="sampah">Buang ke tempat sampah…</a>
+        </div>
+      </div>`).join('');
+    note.textContent = `${baris.length} dari ${semua.length} projek`;
+  }
+
+  function gambarSampah(isi) {
+    lipatSampah.hidden = !isi.length;
+    if (!isi.length) return;
+    judulSampah.textContent = `Tempat sampah (${isi.length})`;
+    isiSampah.innerHTML = isi.map(s => `
+      <div class="row" style="gap:8px;align-items:center;margin-bottom:5px">
+        <span style="flex:1">${esc(s.nama)}
+          <span class="halus">· dibuang ${esc(s.usia)}</span></span>
+        <button class="chip" data-pulih="${esc(s.folder)}">Kembalikan</button>
+      </div>`).join('')
+      + '<div class="halus" style="margin-top:8px">Isinya masih memakan ruang '
+      + 'disk. Untuk membuangnya betulan, hapus foldernya lewat berkas manajer '
+      + 'atau terminal.</div>';
+  }
+
+  async function kirim(url, params, pesan) {
+    note.textContent = pesan;
+    let j;
+    try {
+      j = await (await fetch(url + '?' + new URLSearchParams(params),
+                             {method: 'POST'})).json();
+    } catch (e) { note.textContent = 'Gagal menghubungi server'; return null; }
+    if (!j.ok) { note.textContent = j.error || 'gagal'; toast(j.error || 'gagal'); }
+    return j;
+  }
+
+  grid.addEventListener('click', async ev => {
+    const kartu = ev.target.closest('.pcard');
+    if (!kartu) return;
+    const nama = kartu.dataset.nama;
+
+    if (ev.target.closest('.ptitik')) {
+      ev.preventDefault();
+      const m = kartu.querySelector('.pmenu');
+      const buka = m.hidden;
+      grid.querySelectorAll('.pmenu').forEach(x => { x.hidden = true; });
+      m.hidden = !buka;
+      return;
+    }
+    const bukaLink = ev.target.closest('[data-buka]');
+    const aksi = ev.target.closest('[data-aksi]');
+    if (!bukaLink && !aksi) return;
+    ev.preventDefault();
+    const a = bukaLink ? 'buka' : aksi.dataset.aksi;
+    kartu.querySelector('.pmenu').hidden = true;
+
+    if (a === 'buka') {
+      const p = bukaLink ? bukaLink.dataset.buka
+                         : semua.find(x => x.nama === nama).path;
+      const j = await kirim('/setsrc', {path: p}, 'Membuka…');
+      if (j && j.ok) location.href = '/';
+      return;
+    }
+    if (a === 'salin') {
+      const p = semua.find(x => x.nama === nama).path;
+      try { await navigator.clipboard.writeText(p); toast('Path disalin'); }
+      catch (e) { prompt('Salin path ini:', p); }
+      return;
+    }
+    if (a === 'ganti') {
+      const baru = prompt(`Nama baru untuk "${nama}":`, nama);
+      if (!baru || baru === nama) return;
+      const j = await kirim('/api/projek/ganti-nama', {nama, baru}, 'Mengganti nama…');
+      if (j && j.ok) { toast(`Jadi "${j.nama}"`); muat(); }
+      return;
+    }
+    if (a === 'duplikat') {
+      const j = await kirim('/api/projek/duplikat', {nama},
+                            'Menyalin seluruh berkas, bisa memakan menit…');
+      if (j && j.ok) { toast(`Salinan dibuat: ${j.nama}`); muat(); }
+      return;
+    }
+    if (a === 'gabung') {
+      const lain = semua.filter(x => x.nama !== nama).map(x => x.nama);
+      if (!lain.length) { toast('Belum ada projek lain untuk digabung'); return; }
+      const tujuan = prompt(
+        `Salin isi "${nama}" ke projek mana?\n\nPilihan: ${lain.join(', ')}`
+        + `\n\n"${nama}" sendiri TIDAK dihapus.`, lain[0]);
+      if (!tujuan) return;
+      const j = await kirim('/api/projek/gabung', {sumber: nama, tujuan},
+                            'Menggabungkan…');
+      if (j && j.ok) {
+        toast(`${n(j.ditambah)} berkas masuk ke ${j.tujuan}`);
+        note.textContent = `${n(j.ditambah)} berkas ditambahkan ke `
+          + `${j.tujuan}, ${n(j.sudah_ada)} sudah ada di sana.`;
+        muat();
+      }
+      return;
+    }
+    if (a === 'sampah') {
+      // Namanya harus DIKETIK. Ini memindahkan ribuan berkas sekaligus, dan
+      // dialog "yakin?" biasa hilang hanya dengan menekan Enter.
+      const jwb = prompt(
+        `Buang projek "${nama}" ke tempat sampah?\n\n`
+        + 'Berkasnya dipindah, bukan dihapus, dan bisa dikembalikan.\n\n'
+        + `Ketik nama projeknya untuk melanjutkan:`);
+      if (jwb !== nama) {
+        if (jwb !== null) toast('Nama tidak cocok, dibatalkan');
+        return;
+      }
+      const j = await kirim('/api/projek/sampah', {nama}, 'Memindahkan…');
+      if (j && j.ok) { toast(`"${j.nama}" masuk tempat sampah`); muat(); }
+    }
+  });
+
+  isiSampah.addEventListener('click', async ev => {
+    const b = ev.target.closest('[data-pulih]');
+    if (!b) return;
+    ev.preventDefault();
+    const j = await kirim('/api/projek/pulihkan', {folder: b.dataset.pulih},
+                          'Mengembalikan…');
+    if (j && j.ok) { toast(`"${j.nama}" dikembalikan`); muat(); }
+  });
+
+  document.addEventListener('click', ev => {
+    if (!ev.target.closest('.pcard')) {
+      grid.querySelectorAll('.pmenu').forEach(x => { x.hidden = true; });
+    }
+  });
+
+  cari.addEventListener('input', render);
+  urut.addEventListener('change', render);
+  muat();
+})();

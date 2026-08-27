@@ -1,0 +1,282 @@
+"""
+Mengurus dataset sebagai "projek": daftar berkartu, ganti nama, duplikat,
+gabungkan, dan buang ke tempat sampah.
+
+BATAS YANG TIDAK BOLEH DILANGGAR
+--------------------------------
+Seluruh operasi di sini menyentuh berkas sungguhan, sebagian ribuan sekaligus.
+Tiga aturan menjaganya:
+
+1. **Hanya di dalam ruang kerja akun itu sendiri.** Folder dataset bersama
+   (`datasets_root`) boleh dibaca tapi tidak boleh diubah — isinya dipakai
+   orang lain, dan sebagian aslinya milik proyek lain di mesin ini.
+
+2. **Nama dibersihkan, bukan dipercaya.** Nama projek datang dari kotak isian.
+   Tanpa dibersihkan, `../` di dalamnya cukup untuk memindahkan folder ke luar
+   ruang kerja.
+
+3. **Menghapus berarti memindahkan.** Tidak ada `rmtree` di berkas pengguna.
+   Yang dibuang mendarat di `_sampah/` dengan cap waktu, dan bisa
+   dikembalikan dengan memindahkannya balik lewat berkas manajer biasa.
+"""
+from __future__ import annotations
+
+import re
+import shutil
+import time
+from datetime import datetime
+from pathlib import Path
+
+from ..config import ANN_EXT, IMG_EXT
+from ..log import catat
+
+log = catat("labelapp.projek")
+
+SAMPAH = "_sampah"
+
+# Folder yang tidak pernah muncul sebagai projek.
+_SEMBUNYI = {SAMPAH, "_unggahan"}
+
+# Batas penelusuran per folder. Tanpa ini, satu dataset 300 ribu berkas
+# membuat halaman daftar menggantung setiap kali dibuka.
+MAKS_TELUSUR = 20_000
+
+
+class Tolak(Exception):
+    """Permintaan yang tidak boleh dijalankan, dengan alasan untuk pengguna."""
+
+
+def bersihkan_nama(s: str) -> str:
+    """Nama folder projek yang aman: tanpa pemisah path, titik depan, spasi tepi."""
+    s = re.sub(r"[^\w .()-]+", "-", str(s or "").strip(), flags=re.UNICODE)
+    s = re.sub(r"\s+", " ", s).strip(" .-")
+    return s[:80]
+
+
+def _didalam(anak: Path, induk: Path) -> bool:
+    try:
+        anak.resolve().relative_to(induk.resolve())
+        return True
+    except (ValueError, OSError):
+        return False
+
+
+def _folder(root: Path, nama: str) -> Path:
+    """Folder projek `nama` di dalam `root`, dengan seluruh pemeriksaannya."""
+    bersih = bersihkan_nama(nama)
+    if not bersih:
+        raise Tolak("nama projek kosong atau seluruhnya karakter terlarang")
+    d = (Path(root) / bersih)
+    if not _didalam(d, Path(root)):
+        raise Tolak("nama itu menunjuk ke luar ruang kerjamu")
+    return d
+
+
+# ============================================================
+# DAFTAR
+# ============================================================
+
+def _survei(d: Path) -> dict:
+    """Sekali telusur untuk semua angka yang dibutuhkan satu kartu.
+
+    Digabung menjadi satu jalan karena menelusuri folder besar itu mahal:
+    menghitung gambar, menghitung anotasi, mencari sampul, dan mencari berkas
+    terbaru masing-masing sendiri berarti empat kali kerja yang sama.
+    """
+    n_img = n_ann = 0
+    sampul: Path | None = None
+    terbaru = 0.0
+    lebih = False
+    n = 0
+    for p in d.rglob("*"):
+        n += 1
+        if n > MAKS_TELUSUR:
+            lebih = True
+            break
+        if not p.is_file():
+            continue
+        sfx = p.suffix.lower()
+        if sfx in IMG_EXT:
+            n_img += 1
+            if sampul is None:
+                sampul = p
+        elif sfx in ANN_EXT:
+            n_ann += 1
+            try:
+                terbaru = max(terbaru, p.stat().st_mtime)
+            except OSError:
+                pass
+    if not terbaru:
+        try:
+            terbaru = d.stat().st_mtime
+        except OSError:
+            terbaru = 0.0
+    return {"gambar": n_img, "anotasi": n_ann, "sampul": sampul,
+            "diubah": terbaru, "lebih": lebih}
+
+
+def _usia(t: float) -> str:
+    if not t:
+        return "-"
+    d = max(0, time.time() - t)
+    for batas, satuan, bagi in ((60, "detik", 1), (3600, "menit", 60),
+                                (86400, "jam", 3600), (2592000, "hari", 86400)):
+        if d < batas:
+            n = int(d // bagi) or 1
+            return f"{n} {satuan} lalu"
+    return datetime.fromtimestamp(t).strftime("%d %b %Y")
+
+
+def daftar(root: Path | None) -> list[dict]:
+    """Kartu untuk tiap projek di dalam `root`."""
+    if not root or not Path(root).is_dir():
+        return []
+    out = []
+    for d in sorted(Path(root).iterdir()):
+        if not d.is_dir() or d.name.startswith(".") or d.name in _SEMBUNYI:
+            continue
+        s = _survei(d)
+        if not s["gambar"]:
+            continue
+        out.append({
+            "nama": d.name, "path": str(d.resolve()),
+            "jumlah": s["gambar"], "anotasi": s["anotasi"], "lebih": s["lebih"],
+            "diubah": s["diubah"], "usia": _usia(s["diubah"]),
+            "sampul": str(s["sampul"]) if s["sampul"] else "",
+        })
+    return out
+
+
+# ============================================================
+# OPERASI
+# ============================================================
+
+def ganti_nama(root: Path, lama: str, baru: str) -> dict:
+    src = _folder(root, lama)
+    dst = _folder(root, baru)
+    if not src.is_dir():
+        raise Tolak(f"projek '{lama}' tidak ada")
+    if dst == src:
+        return {"nama": dst.name, "path": str(dst)}
+    if dst.exists():
+        raise Tolak(f"sudah ada projek bernama '{dst.name}'")
+    src.rename(dst)
+    log.info("ganti nama: %r -> %r", src.name, dst.name)
+    return {"nama": dst.name, "path": str(dst)}
+
+
+def duplikat(root: Path, nama: str, baru: str = "") -> dict:
+    """Salinan penuh. Berat, tapi itu memang yang diminta."""
+    src = _folder(root, nama)
+    if not src.is_dir():
+        raise Tolak(f"projek '{nama}' tidak ada")
+    dst = _folder(root, baru) if baru else None
+    if dst is None:
+        # Nama bebas berikutnya, supaya menekan tombolnya dua kali tidak gagal.
+        for i in range(2, 100):
+            calon = _folder(root, f"{src.name} {i}")
+            if not calon.exists():
+                dst = calon
+                break
+        else:
+            raise Tolak("terlalu banyak salinan dengan nama serupa")
+    if dst.exists():
+        raise Tolak(f"sudah ada projek bernama '{dst.name}'")
+    t = time.monotonic()
+    shutil.copytree(src, dst, symlinks=False)
+    log.info("duplikat: %r -> %r (%.0f dtk)", src.name, dst.name,
+             time.monotonic() - t)
+    return {"nama": dst.name, "path": str(dst)}
+
+
+def ke_sampah(root: Path, nama: str) -> dict:
+    """
+    Dipindahkan ke `_sampah/`, TIDAK dihapus.
+
+    Satu klik keliru di sini berarti ribuan gambar dan jam kerja pelabelan
+    hilang tanpa bisa dikembalikan. Memindahkan memberi jalan pulang, dan
+    ruang disknya bisa dibersihkan belakangan lewat berkas manajer biasa.
+    """
+    src = _folder(root, nama)
+    if not src.is_dir():
+        raise Tolak(f"projek '{nama}' tidak ada")
+    kotak = Path(root) / SAMPAH
+    kotak.mkdir(parents=True, exist_ok=True)
+    cap = datetime.now().strftime("%Y%m%d-%H%M%S")
+    dst = kotak / f"{src.name}--{cap}"
+    src.rename(dst)
+    log.info("ke sampah: %r -> %s", src.name, dst)
+    return {"nama": src.name, "sampah": str(dst)}
+
+
+def isi_sampah(root: Path | None) -> list[dict]:
+    kotak = Path(root) / SAMPAH if root else None
+    if not kotak or not kotak.is_dir():
+        return []
+    out = []
+    for d in sorted(kotak.iterdir(), reverse=True):
+        if not d.is_dir():
+            continue
+        nama, _, cap = d.name.rpartition("--")
+        try:
+            t = datetime.strptime(cap, "%Y%m%d-%H%M%S").timestamp()
+        except ValueError:
+            nama, t = d.name, d.stat().st_mtime
+        out.append({"nama": nama or d.name, "folder": d.name,
+                    "path": str(d.resolve()), "usia": _usia(t)})
+    return out
+
+
+def pulihkan(root: Path, folder: str) -> dict:
+    """Kembalikan satu projek dari tempat sampah."""
+    kotak = Path(root) / SAMPAH
+    src = kotak / bersihkan_nama(folder)
+    if not _didalam(src, kotak) or not src.is_dir():
+        raise Tolak("tidak ada di tempat sampah")
+    nama = src.name.rpartition("--")[0] or src.name
+    dst = _folder(root, nama)
+    if dst.exists():
+        dst = _folder(root, f"{nama} pulih")
+        if dst.exists():
+            raise Tolak(f"sudah ada projek bernama '{nama}'; ganti namanya dulu")
+    src.rename(dst)
+    log.info("pulih dari sampah: %s -> %r", folder, dst.name)
+    return {"nama": dst.name, "path": str(dst)}
+
+
+def gabung(root: Path, sumber: str, tujuan: str, *, kunci: str = "",
+           batal=None) -> dict:
+    """
+    Salin isi projek `sumber` ke dalam `tujuan`, keduanya di ruang kerja ini.
+
+    Memakai mesin yang sama dengan "Tambah gambar" di halaman grid, termasuk
+    Penempat-nya: kalau tujuan sudah terbagi train/valid/test, berkas baru
+    mendarat mengikuti perbandingan yang ada, dan gambar beserta labelnya
+    dijaga tetap di split yang sama.
+
+    Sumbernya TIDAK dihapus. Menggabungkan lalu membuang yang lama adalah dua
+    keputusan berbeda, dan yang kedua harus disengaja.
+    """
+    from . import impor, tambah
+
+    a = _folder(root, sumber)
+    b = _folder(root, tujuan)
+    if not a.is_dir():
+        raise Tolak(f"projek '{sumber}' tidak ada")
+    if not b.is_dir():
+        raise Tolak(f"projek '{tujuan}' tidak ada")
+    if a == b:
+        raise Tolak("sumber dan tujuannya projek yang sama")
+    if _didalam(a, b) or _didalam(b, a):
+        raise Tolak("salah satu folder berada di dalam yang lain")
+
+    penempat = tambah.Penempat(b)
+    t = time.monotonic()
+    hasil = impor.impor_folder(a, b, kunci=kunci, batal=batal,
+                               tentukan=penempat.tujuan,
+                               lapor_nama=penempat.catat)
+    log.info("gabung: %r -> %r, %s berkas dalam %.0f dtk",
+             a.name, b.name, f"{hasil['berkas']:,}", time.monotonic() - t)
+    return {"sumber": a.name, "tujuan": b.name,
+            "ditambah": hasil["berkas"], "sudah_ada": hasil["sudah_ada"],
+            "dilewati": hasil["dilewati"], "bentrok": hasil.get("bentrok", [])}

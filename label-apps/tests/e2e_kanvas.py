@@ -70,6 +70,17 @@ def siapkan():
     # Poligon 4 titik yang seluruhnya jauh dari tepi, supaya tiap sisi dan
     # titiknya pasti berada di dalam area kanvas yang terlihat.
     (ds / "classes.txt").write_text("botol\nkaleng\nplastic-cup\n")
+
+    # Dua projek di ruang unggahan akun uji. Halaman projek hanya menampilkan
+    # yang ada DI SITU — folder dataset bersama sengaja tidak bisa diganti nama
+    # atau dibuang dari sana, jadi tanpa ini kartunya kosong dan
+    # pemeriksaannya tidak menguji apa pun.
+    for nama, warna in (("projek-satu", 90), ("projek-dua", 150)):
+        pd = TMP / "unggahan" / "devuser" / nama
+        pd.mkdir(parents=True, exist_ok=True)
+        for i in range(3):
+            q = pd / f"{nama}-IMG_2026063{i}_08{i:02d}00.jpg"
+            cv2.imwrite(str(q), np.full((60, 80, 3), warna + i * 12, np.uint8))
     ip.with_suffix(".json").write_text(json.dumps({
         "version": "0.4.36", "flags": {},
         "shapes": [{"label": "botol", "shape_type": "polygon",
@@ -1149,6 +1160,31 @@ def jalankan_potret(d):
                  " return (r.left < 0 || r.right > innerWidth || r.bottom > innerHeight)"
                  "        ? `l=${r.left|0} r=${r.right|0} b=${r.bottom|0}` : ''; })()")
     cek("menu ekspor tidak terpotong tepi layar", luber == "", luber)
+
+    # Halaman projek: kartu beserta menu titik-tiganya.
+    d.js("location.href = '/pilih'")
+    time.sleep(1.4)
+    simpan("projek")
+    n_kartu = d.js("document.querySelectorAll('#projek-grid .pcard').length")
+    cek("kartu projek tampil", n_kartu > 0, "jumlah=%s" % n_kartu)
+    d.js("document.querySelector('#projek-grid .ptitik').click()")
+    time.sleep(0.35)
+    simpan("projek-menu")
+    cek("menu titik-tiga terbuka",
+        d.js("document.querySelector('#projek-grid .pmenu').hidden") is False)
+    aksi = d.js("[...document.querySelector('#projek-grid .pcard .pmenu')"
+                ".querySelectorAll('a')].map(a => a.dataset.aksi).join(',')")
+    cek("menunya memuat seluruh fitur projek",
+        aksi == "buka,salin,ganti,duplikat,gabung,sampah", aksi)
+    luber = d.js("(function(){ const r = document.querySelector("
+                 "'#projek-grid .pmenu').getBoundingClientRect();"
+                 " return (r.right > innerWidth || r.left < 0)"
+                 "        ? `l=${r.left|0} r=${r.right|0}` : ''; })()")
+    cek("menu projek tidak terpotong tepi layar", luber == "", luber)
+    d.js("document.body.click()")
+    time.sleep(0.2)
+    cek("klik di luar menutup menunya",
+        d.js("document.querySelector('#projek-grid .pmenu').hidden") is True)
 
     d.js("location.href = %r" % asal)
     time.sleep(1.2)

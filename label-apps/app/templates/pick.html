@@ -56,9 +56,28 @@
   </div>
   {% endif %}
 
-  {% if unggahan %}
-  <div class="panel"><h3>Hasil unggahanmu</h3>{{ dslist(unggahan) }}</div>
-  {% endif %}
+  {# Projek milik akun ini. Bedanya dengan panel "Dataset tersedia" di atas
+     bukan cuma tampilan: yang ini boleh diganti nama, digandakan, digabung,
+     dan dibuang. Yang di atas milik bersama dan hanya boleh dibaca. #}
+  <div class="panel" id="panel-projek" hidden>
+    <div class="row" style="align-items:baseline;gap:10px">
+      <h3 style="flex:1;margin:0">Projekmu</h3>
+      <input class="cari-nama" type="search" id="projek-cari"
+             placeholder="Cari projek…" autocomplete="off">
+      <select class="chip" id="projek-urut">
+        <option value="diubah">Terakhir diubah</option>
+        <option value="nama">Nama (A→Z)</option>
+        <option value="besar">Gambar terbanyak</option>
+        <option value="label">Paling banyak dilabeli</option>
+      </select>
+    </div>
+    <div class="projek-grid" id="projek-grid"></div>
+    <p class="upnote" id="projek-note"></p>
+    <details id="sampah-lipat" class="catatan-lipat" hidden>
+      <summary><span id="sampah-judul">Tempat sampah</span></summary>
+      <div id="sampah-isi" class="lipat-isi"></div>
+    </details>
+  </div>
 
   <div class="panel">
     <h3>Unggah dari laptop</h3>

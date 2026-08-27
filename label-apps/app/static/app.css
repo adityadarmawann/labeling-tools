@@ -386,3 +386,37 @@ input:focus{outline:0;border-color:var(--ok)}
 .menu-isi a.unduh:hover::before{color:var(--aksi)}
 #unduh-pakai{padding-top:0;padding-bottom:4px}
 #unduh-pakai b{color:var(--aksi)}
+
+/* ------------------------------------------------ kartu projek (halaman pilih) */
+.projek-grid{display:grid;gap:12px;margin-top:12px;
+  grid-template-columns:repeat(auto-fill,minmax(210px,1fr))}
+.pcard{position:relative;border:1px solid var(--line);border-radius:9px;
+  background:var(--raised);overflow:visible;transition:.14s}
+.pcard:hover{border-color:var(--line2)}
+.pcard.dibuka{border-color:var(--aksi);box-shadow:0 0 0 1px var(--aksi)}
+.psampul{display:block;height:118px;background:var(--sunk);border-radius:8px 8px 0 0;
+  overflow:hidden}
+.psampul img{width:100%;height:100%;object-fit:cover;display:block}
+.pisi{padding:9px 11px 11px}
+.pnama{font-weight:600;font-size:13px;color:var(--ink);word-break:break-word;
+  padding-right:18px}
+.pbuka{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:99px;
+  background:var(--aksi);color:var(--aksi-ink);font-size:10px;font-weight:600;
+  vertical-align:middle}
+.pmeta{font-size:11.5px;color:var(--ink-dim);margin-top:3px;
+  font-variant-numeric:tabular-nums}
+.pmeta.halus{color:var(--ink-faint)}
+/* Tombol ⋮ menempel di sudut kartu, bukan di barisnya sendiri: kartunya
+   sudah sempit, dan satu baris tombol lagi memakan tinggi tanpa guna. */
+.ptitik{position:absolute;top:124px;right:6px;border:0;background:transparent;
+  color:var(--ink-faint);font-size:16px;line-height:1;cursor:pointer;
+  padding:2px 5px;border-radius:6px}
+.ptitik:hover{background:var(--hover);color:var(--ink)}
+.pmenu{position:absolute;top:146px;right:6px;z-index:50;min-width:210px;
+  background:var(--panel);border:1px solid var(--line2);border-radius:8px;
+  padding:5px 0;box-shadow:0 8px 24px rgba(var(--bayang),.18)}
+.pmenu a{display:block;padding:6px 12px;font-size:12.5px;color:var(--ink);
+  text-decoration:none;white-space:nowrap}
+.pmenu a:hover{background:var(--hover)}
+.pmenu a.bahaya{color:var(--stop)}
+.pmenu a.bahaya:hover{background:var(--warn-bg)}
