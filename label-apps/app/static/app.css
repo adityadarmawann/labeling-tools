@@ -145,14 +145,156 @@ main{padding:20px 22px 60px}
 .empty{padding:70px 0;text-align:center;color:var(--ink-faint)}
 .empty p{margin-top:8px;font-size:13px}
 
-/* tampilan besar */
-.big{max-width:min(1100px,100%);margin:0 auto}
-.big img{max-width:100%;max-height:calc(100vh - 210px);width:auto;height:auto;display:block;margin:0 auto;border-radius:8px;border:1px solid var(--line);background:var(--sunk)}
-.side{margin-top:16px;display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}
-.box{background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:12px 14px}
-.box h3{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--ink-faint);
-  font-weight:600;margin-bottom:7px}
-.box p{font-size:13px}
+/* ======================================================== halaman Lihat
+ *
+ * Halaman ini menjawab satu pertanyaan: "anotasi gambar ini benar atau
+ * tidak?". Karena itu aturannya satu — gambar dan keterangannya WAJIB
+ * terlihat bersamaan, tanpa digulir.
+ *
+ * Bentuk lamanya menaruh Temuan, Objek per kelas, dan Berkas DI BAWAH
+ * gambar. Pada foto potret 2296x4080 yang memenuhi tinggi layar, ketiganya
+ * berada di luar layar — satu-satunya hal yang mau diperiksa justru harus
+ * dicari dengan menggulir.
+ *
+ * Tingginya diatur flexbox, bukan calc(100vh - 210px) seperti dulu. Angka
+ * 210 itu tinggi kepala yang ditebak dengan tangan, dan langsung meleset
+ * begitu nama berkas panjang membuat kepalanya membungkus jadi dua baris.
+ */
+/* height, BUKAN min-height. Tingginya harus PASTI dari atas ke bawah:
+   .lh-panggung memakai aspect-ratio dengan height:100%, dan di rantai yang
+   tingginya belum pasti itu melingkar — lebar menentukan tinggi lewat
+   aspect-ratio, tinggi menentukan lebar lewat height:100%. Hasilnya
+   panggung memilih tingginya sendiri dan halaman meluber 79 piksel.
+   dvh dipakai karena 100vh di peramban ponsel lebih tinggi daripada layar
+   yang benar-benar terlihat; baris vh ditinggal sebagai cadangan. */
+body.lihat{display:flex;flex-direction:column;height:100vh;height:100dvh;
+  overflow:hidden}
+/* Kepala tidak perlu lengket di halaman yang memang tidak menggulir. */
+body.lihat header{position:static;flex:0 0 auto}
+/* flex-basis 0, bukan auto: dengan auto, tinggi isinya ikut menentukan
+   pembagian ruang, dan itu persis kebiasaan yang mau dihilangkan. */
+body.lihat main{flex:1 1 0;min-height:0;display:flex;padding:13px 22px 16px}
+
+.lh-tata{height:100%;width:100%;
+  display:flex;gap:14px;align-items:stretch;justify-content:center}
+
+/* ------------------------------------------------------------ panggung */
+/* aspect-ratio + height:100% membuat lebarnya mengikuti rasio fotonya
+   sendiri. Kotak gelap selebar 1000px berisi foto selebar 530px terbaca
+   sebagai kesalahan tata letak; kotak yang tepat seukuran fotonya terbaca
+   sebagai bingkai. Rasionya ditanam dari templat lewat --arw/--arh. */
+.lh-panggung{flex:0 1 auto;height:100%;aspect-ratio:var(--arw)/var(--arh);
+  min-width:min(260px,100%);max-width:100%;
+  display:grid;place-items:center;overflow:hidden;
+  /* Latar gelap di KEDUA tema, alasannya sama dengan kanvas anotasi:
+     poligon berwarna tidak bisa dinilai di atas latar terang, dan halaman
+     ini pekerjaannya persis menilai poligon. */
+  background:var(--kanvas);border:1px solid var(--line);border-radius:10px}
+.lh-panggung img{max-width:100%;max-height:100%;width:auto;height:auto;
+  display:block}
+
+/* --------------------------------------------------------- kolom kanan */
+.lh-sisi{flex:0 0 320px;max-width:100%;min-width:0;
+  display:flex;flex-direction:column;gap:10px;min-height:0;
+  overflow-y:auto;overscroll-behavior:contain}
+.lh-kotak{flex:0 0 auto;background:var(--panel);border:1px solid var(--line);
+  border-radius:10px;padding:11px 13px;
+  box-shadow:0 1px 2px rgba(var(--bayang),.05)}
+.lh-kotak h3{display:flex;justify-content:space-between;align-items:baseline;
+  gap:8px;font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;
+  color:var(--ink-faint);font-weight:600;margin-bottom:8px}
+.lh-kotak h3 span{text-transform:none;letter-spacing:0;font-size:11px;
+  color:var(--ink-dim);font-variant-numeric:tabular-nums}
+
+/* Vonis. Rel 3px meminjam bahasa .card .rail di grid, jadi warna yang sama
+   berarti hal yang sama di dua halaman. */
+.lh-vonis{position:relative;overflow:hidden;padding-left:16px}
+.lh-vonis::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;
+  background:var(--ok)}
+.lh-vonis[data-s="warn"]::before{background:var(--warn)}
+.lh-vonis[data-s="stop"]::before{background:var(--stop)}
+.lh-vonis[data-s="bg"]::before{background:var(--latar)}
+.lh-vonis b{display:block;font-size:14px;font-weight:600;color:var(--ink);
+  line-height:1.35}
+/* Tiap temuan jadi pilnya sendiri. Digabung " · " jadi satu kalimat
+   panjang, jumlahnya baru ketahuan setelah dibaca seluruhnya. */
+.lh-temuan{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+.lh-temuan i{font-style:normal;font-size:11px;padding:2px 8px;
+  border-radius:999px;background:var(--warn-bg);color:var(--warn)}
+.lh-vonis[data-s="stop"] .lh-temuan i{background:var(--bahaya-lembut);
+  color:var(--stop)}
+/* Gambar yang SENGAJA dikosongkan bukan cacat. Bentuk lama mewarnainya
+   oranye semata karena daftar temuannya tidak kosong, sehingga pekerjaan
+   yang sudah benar tampak seperti peringatan. */
+.lh-vonis[data-s="bg"] .lh-temuan i{background:var(--lab-bg);color:var(--lab-ink)}
+.lh-sepi{margin-top:6px;font-size:11.5px;color:var(--ink-faint);line-height:1.5}
+
+/* Objek per kelas. Petak warnanya dari filter |warnakelas — rumus yang sama
+   dengan yang dipakai menggambar mask, jadi ia jembatan antara "ada bercak
+   warna di foto" dan "namanya apa". */
+.lh-kelas{list-style:none}
+.lh-kelas li{display:flex;align-items:center;gap:8px;padding:5px 0;
+  font-size:12.5px;border-bottom:1px solid var(--line)}
+.lh-kelas li:last-child{border-bottom:0}
+.lh-kelas .petak{flex:0 0 auto;width:11px;height:11px;border-radius:3px;
+  background:var(--c,var(--line2));
+  box-shadow:0 0 0 1px rgba(var(--bayang),.22)}
+.lh-kelas .nm{flex:1 1 auto;min-width:0;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.lh-kelas .n{flex:0 0 auto;color:var(--ink-dim);font-variant-numeric:tabular-nums}
+
+/* Berkas. overflow-wrap:anywhere, BUKAN word-break:break-all — break-all
+   memotong "paragon" jadi "para|gon" walau barisnya masih muat. */
+.lh-berkas{display:grid;grid-template-columns:auto minmax(0,1fr);gap:5px 10px;
+  font-size:11.5px;line-height:1.45}
+.lh-berkas dt{color:var(--ink-faint);white-space:nowrap}
+.lh-berkas dd{color:var(--ink-dim);min-width:0;overflow-wrap:anywhere}
+.lh-berkas dd.nm{color:var(--ink)}
+
+/* --------------------------------------------------------------- kepala */
+/* 12,5px, bukan 15px tebal. Yang panjang di sini 24 karakter hash Roboflow
+   yang tidak pernah dibaca; nama utuhnya tetap ada di title dan di panel
+   Berkas, jadi tidak ada yang hilang — ia hanya berhenti berteriak. */
+.lh-nama{flex:0 1 auto;min-width:0;max-width:46ch;font-size:12.5px;
+  font-weight:600;letter-spacing:0;color:var(--ink);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lh-nav{display:flex;align-items:center;gap:6px}
+.lh-posisi{font-size:12px;color:var(--ink-dim);font-variant-numeric:tabular-nums;
+  min-width:9ch;text-align:center}
+.lh-posisi b{color:var(--ink);font-weight:600}
+.lh-ringkas{font-size:12px;color:var(--ink-dim)}
+.lh-ringkas b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
+/* Menggantikan style="opacity:.35" sebaris, yang memudarkan tombol tapi
+   tidak pernah mematikan kliknya. */
+.chip.mati{opacity:.38;pointer-events:none}
+/* Meter posisi selebar kepala: satu-satunya cara membaca "masih jauh atau
+   hampir habis" tanpa membagi 6/476 di kepala sendiri. */
+.lh-meter{height:2px;margin:0 -22px;background:var(--sunk)}
+.lh-meter i{display:block;height:100%;background:var(--aksi)}
+
+/* ----------------------------------------------------------- layar sempit
+   Dua kolom di bawah 900px menghasilkan dua kolom yang sama-sama tidak
+   terbaca; di sini halaman kembali boleh menggulir dengan sadar. */
+@media (max-width:900px),(max-height:520px){
+  body.lihat{height:auto;min-height:0;overflow:visible}
+  body.lihat main{display:block;flex:0 0 auto}
+  .lh-tata{flex-direction:column;height:auto}
+  .lh-panggung{width:100%;height:auto;aspect-ratio:auto;max-height:60vh;
+    max-height:60dvh;flex:0 0 auto}
+  .lh-panggung img{max-height:60vh;max-height:60dvh}
+  .lh-sisi{flex:1 1 auto;width:100%;overflow:visible}
+  .lh-nama{max-width:100%}
+  .lh-meter{margin:0 -22px}
+}
+
+/* ------------------------------------------------------------- tema gelap
+   Seluruh warnanya token; yang perlu diulang hanya bayangan, karena
+   bayangan halus di atas --panel gelap tidak terlihat dan kotaknya
+   kehilangan pemisah dari latar. */
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]) .lh-kotak{box-shadow:none}
+}
+:root[data-theme="dark"] .lh-kotak{box-shadow:none}
 table{width:100%;border-collapse:collapse;font-size:12.5px}
 td{padding:3px 0;border-bottom:1px solid var(--line)}
 td:last-child{text-align:right;color:var(--ink-dim);font-variant-numeric:tabular-nums}

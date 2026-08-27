@@ -17,7 +17,8 @@
 })();
 </script>
 </head>
-<body>
+{# Kait kelas untuk halaman yang butuh tata letak setinggi layar penuh. #}
+<body class="{% block bodyclass %}{% endblock %}">
 {% block body %}{% endblock %}
 <div class="toast" id="t"></div>
 <script src="{{ statik('app.js') }}"></script>

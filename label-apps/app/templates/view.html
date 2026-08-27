@@ -1,16 +1,42 @@
 {% extends "base.html" %}
 {% block title %}{{ it.img.name }}{% endblock %}
+{% block bodyclass %}lihat{% endblock %}
 
 {% block body %}
 {%- set p = it | imgpath %}
+{%- set n_obj = it.shapes | length %}
+{#- Satu kalimat vonis per keadaan. severity() sudah dikirim router; yang
+    kurang cuma penerjemahannya ke bahasa manusia. -#}
+{%- set vonis = {'ok':   'Anotasi terlihat wajar',
+                 'warn': 'Perlu diperiksa',
+                 'stop': 'Belum dilabeli',
+                 'bg':   'Ditandai latar, sengaja tanpa objek'} -%}
 <header>
   <div class="top">
-    <h1>{{ it.img.name }}</h1>
-    <span class="path mono">{{ it.W }}×{{ it.H }} px</span>
+    <a class="chip" href="/">&larr; Kembali</a>
+    <h1 class="lh-nama mono" title="{{ it.img.name }}">{{ it.img.name }}</h1>
+    {%- if it.split %}<span class="split">{{ it.split }}</span>{% endif %}
+    <span class="path mono">{{ it.W }}&times;{{ it.H }} px</span>
     {% include "_header.html" %}
   </div>
   <div class="bar">
-    <a class="chip" href="/">Kembali</a>
+    <div class="lh-nav">
+      {%- if prev_it %}
+      <a class="chip" id="prev" href="/view?path={{ prev_it | imgpath }}"
+        >&larr; Sebelumnya</a>
+      {%- else %}
+      <span class="chip mati" id="prev" aria-disabled="true">&larr; Sebelumnya</span>
+      {%- endif %}
+      <span class="lh-posisi"><b>{{ posisi[0] }}</b> / {{ posisi[1] }}</span>
+      {%- if next_it %}
+      <a class="chip" id="next" href="/view?path={{ next_it | imgpath }}"
+        >Berikutnya &rarr;</a>
+      {%- else %}
+      <span class="chip mati" id="next" aria-disabled="true">Berikutnya &rarr;</span>
+      {%- endif %}
+    </div>
+    <a class="chip" href="/label?path={{ p }}"
+      >{{ 'Edit label' if it.shapes else 'Labeli' }}</a>
     {%- if local %}
     <button class="chip" onclick="openIn('{{ p }}',this)">Perbaiki di AnyLabeling</button>
     {%- endif %}
@@ -20,41 +46,67 @@
     <button class="chip" onclick="markbg('{{ p }}',true)">Tandai sebagai latar</button>
     {%- endif %}
     <span class="spacer"></span>
-    {%- if prev_it %}
-    <a class="chip" href="/view?path={{ prev_it | imgpath }}">&larr; Sebelumnya</a>
-    {%- else %}<span class="chip" style="opacity:.35">&larr; Sebelumnya</span>{% endif %}
-    {%- if next_it %}
-    <a class="chip" href="/view?path={{ next_it | imgpath }}">Berikutnya &rarr;</a>
-    {%- else %}<span class="chip" style="opacity:.35">Berikutnya &rarr;</span>{% endif %}
-    <span class="path mono" style="margin-left:6px">{{ posisi[0] }} / {{ posisi[1] }}</span>
+    <span class="lh-ringkas">
+      {%- if n_obj %}<b>{{ n_obj }}</b> objek &middot; <b>{{ hitung | length }}</b> kelas
+      {%- else %}tanpa objek{% endif -%}
+    </span>
   </div>
+  <div class="lh-meter" aria-hidden="true">
+    <i style="width:{{ (posisi[0] * 100 / posisi[1]) | round(2) }}%"></i></div>
 </header>
 
 <main>
-<div class="big">
-  <img src="/thumb?path={{ p }}&s=1100">
-  <div class="side">
-    <div class="box">
-      <h3>Temuan</h3>
-      <p style="color:{% if it.issues %}var(--warn){% else %}var(--ok){% endif %}">
-        {{ it.issues | join(' · ') if it.issues else 'Tidak ada temuan' }}</p>
-    </div>
-    <div class="box">
-      <h3>Objek per kelas</h3>
-      <table>
-        {%- for k, n in hitung.items() %}
-        <tr><td>{{ k }}</td><td>{{ n }}</td></tr>
-        {%- else %}
-        <tr><td colspan="2">—</td></tr>
-        {%- endfor %}
-      </table>
-    </div>
-    <div class="box">
-      <h3>Berkas</h3>
-      <p class="mono" style="font-size:11.5px;color:var(--ink-dim);word-break:break-all">
-        {{ it.img }}</p>
-    </div>
+<div class="lh-tata">
+  {#- --arw/--arh membuat bingkainya tepat seukuran rasio fotonya, jadi foto
+      potret tidak lagi duduk sebagai pita sempit di tengah kotak lebar. -#}
+  <div class="lh-panggung" style="--arw:{{ it.W }};--arh:{{ it.H }}">
+    <img src="/thumb?path={{ p }}&s=1100" width="{{ it.W }}" height="{{ it.H }}"
+         alt="{{ it.img.name }} beserta {{ n_obj }} anotasi yang tergambar di atasnya">
   </div>
+
+  <aside class="lh-sisi">
+    <section class="lh-kotak lh-vonis" data-s="{{ sev }}">
+      <h3>Temuan</h3>
+      <b>{{ vonis[sev] }}</b>
+      {%- if it.issues %}
+      <div class="lh-temuan">{% for m in it.issues %}<i>{{ m }}</i>{% endfor %}</div>
+      {%- else %}
+      <p class="lh-sepi">Tidak ada temuan</p>
+      {%- endif %}
+    </section>
+
+    <section class="lh-kotak">
+      <h3>Objek per kelas <span>{{ n_obj }} objek</span></h3>
+      {%- if hitung %}
+      <ul class="lh-kelas">
+        {%- for k, n in hitung.items() %}
+        <li style="--c:{{ k | warnakelas }}">
+          <span class="petak" aria-hidden="true"></span>
+          <span class="nm" title="{{ k }}">{{ k }}</span>
+          <span class="n">{{ n }}</span>
+        </li>
+        {%- endfor %}
+      </ul>
+      <p class="lh-sepi">Warna petak sama dengan warna anotasinya di gambar.</p>
+      {%- else %}
+      <p class="lh-sepi">&mdash; tidak ada objek di gambar ini</p>
+      {%- endif %}
+    </section>
+
+    <section class="lh-kotak">
+      <h3>Berkas</h3>
+      <dl class="lh-berkas">
+        <dt>Nama</dt><dd class="nm mono">{{ it.img.name }}</dd>
+        <dt>Folder</dt><dd class="mono">{{ it.img.parent }}</dd>
+        <dt>Ukuran</dt>
+        <dd>{{ it.W }} &times; {{ it.H }} px &middot;
+          {{ 'potret' if it.H > it.W else 'lanskap' }}</dd>
+        {%- if it.split %}
+        <dt>Split</dt><dd><span class="split">{{ it.split }}</span></dd>
+        {%- endif %}
+      </dl>
+    </section>
+  </aside>
 </div>
 </main>
 {% endblock %}

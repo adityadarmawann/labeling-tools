@@ -1359,6 +1359,55 @@ def jalankan_potret(d):
     cek("Gabungkan menyalin isinya tanpa menghapus sumbernya",
         "projek-satu 2" in nama and "projek-satu" in nama, nama)
 
+    # Halaman Lihat: gambar dan ketiga kotak keterangan harus terlihat
+    # BERSAMAAN, tanpa halaman perlu digulir sama sekali.
+    d.js("location.href = '/'")
+    time.sleep(1.2)
+    d.js("location.href = document.querySelector('a[href^=\"/view\"]').href")
+    time.sleep(1.5)
+    simpan("lihat")
+    n_kotak = d.js("document.querySelectorAll('.lh-sisi .lh-kotak').length")
+    cek("ketiga kotak keterangan ada", n_kotak == 3, "jumlah=%s" % n_kotak)
+    cek("halaman Lihat tidak bisa digulir",
+        d.js("document.documentElement.scrollHeight <= "
+             "document.documentElement.clientHeight + 2"),
+        d.js("document.documentElement.scrollHeight + ' vs ' + "
+             "document.documentElement.clientHeight"))
+    luber = d.js("(function(){"
+                 " const b = [...document.querySelectorAll('.lh-sisi .lh-kotak')]"
+                 "   .map(n => n.getBoundingClientRect());"
+                 " const bad = b.filter(r => r.bottom > innerHeight + 1);"
+                 " return bad.length ? bad.length + ' kotak terpotong' : ''; })()")
+    cek("tidak ada kotak yang terpotong di bawah layar", luber == "", luber)
+    lebar = d.js("(function(){ const a = document.querySelector('.lh-panggung')"
+                 ".getBoundingClientRect(), i = document.querySelector("
+                 "'.lh-panggung img').getBoundingClientRect();"
+                 " return Math.round(a.width - i.width); })()")
+    cek("bingkai memeluk gambarnya, bukan kotak lebar berisi pita sempit",
+        lebar < 40, "selisih lebar %s px" % lebar)
+
+    # Kasus yang sebenarnya dikeluhkan: foto potret 2296x4080. Rasionya
+    # dipaksakan ke panggung supaya bisa diukur tanpa menyiapkan foto
+    # sebesar itu di lingkungan uji.
+    ukur = d.js("(function(){"
+                " const a = document.querySelector('.lh-panggung');"
+                " a.style.setProperty('--arw', 2296);"
+                " a.style.setProperty('--arh', 4080);"
+                " const r = a.getBoundingClientRect();"
+                " const s = document.querySelector('.lh-sisi').getBoundingClientRect();"
+                " return JSON.stringify({w: Math.round(r.width),"
+                "   h: Math.round(r.height), sisiBawah: Math.round(s.bottom),"
+                "   vp: innerHeight}); })()")
+    import json as _j
+    u = _j.loads(ukur)
+    cek("pada foto potret, bingkainya jadi ramping bukan melebar",
+        u["w"] < u["h"] * 0.7, ukur)
+    cek("dan tingginya tetap muat di layar", u["h"] <= u["vp"], ukur)
+    cek("kolom kanan tetap tidak terpotong pada foto potret",
+        u["sisiBawah"] <= u["vp"] + 1, ukur)
+    d.js("(function(){ const a = document.querySelector('.lh-panggung');"
+         " a.style.removeProperty('--arw'); a.style.removeProperty('--arh'); })()")
+
     d.js("location.href = %r" % asal)
     time.sleep(1.2)
 
