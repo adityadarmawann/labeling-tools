@@ -75,6 +75,10 @@ class Settings:
     # Nama akun yang dimasuki otomatis TANPA password. Hanya berlaku untuk
     # permintaan dari mesin itu sendiri — lihat deps.sesi_otomatis.
     autologin: str = ""
+    # Domain Google Workspace yang boleh masuk sendiri, mis. "higo.id".
+    # Kosong berarti login Google mati. Email di LUAR domain itu hanya boleh
+    # kalau sudah didaftarkan admin lewat halaman kelola akun.
+    google_domain: str = ""
 
     @property
     def max_upload_bytes(self) -> int:
@@ -126,4 +130,5 @@ def get_settings() -> Settings:
         extra_labels=_read_labels(_path("LABELS_FILE")),
         flags=_read_labels(_path("FLAGS_FILE")),
         autologin=_get("DEV_AUTOLOGIN"),
+        google_domain=_get("GOOGLE_DOMAIN"),
     )

@@ -42,6 +42,9 @@ class Session:
         self.rencana_split: dict | None = None
         self.split_batal = False
         self.projek_batal = False
+        # Peran dibaca sekali saat sesi dibuat. Membacanya ulang di tiap
+        # permintaan berarti membuka users.json puluhan kali per halaman.
+        self.admin = False
 
     # -- dataset --
 
@@ -119,6 +122,8 @@ class SessionStore:
     def create(self, user: str, settings: Settings) -> tuple[str, Session]:
         sid = secrets.token_urlsafe(32)
         sess = Session(user, settings)
+        from .security import is_admin, load_users
+        sess.admin = is_admin(load_users(settings.users_file), user)
         with self._lock:
             self._data[sid] = sess
         return sid, sess

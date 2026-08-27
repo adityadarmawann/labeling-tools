@@ -152,6 +152,45 @@ def save_users(path: Path, users: dict) -> None:
     os.chmod(path, 0o600)
 
 
+# ---------------------------------------------------------------- peran & email
+#
+# Berkas akun tumbuh, jadi tiap tambahan harus SELALU punya nilai bawaan yang
+# masuk akal. Akun lama tidak punya "admin" maupun "email"; membacanya tidak
+# boleh gagal, dan yang tidak punya "admin" jelas bukan admin.
+
+
+def is_admin(users: dict, akun: str) -> bool:
+    """
+    Benar kalau akun itu admin.
+
+    Kalau BELUM ADA admin sama sekali dan akunnya cuma satu, akun itu
+    dianggap admin. Tanpa itu, memasang pembaruan ini mengunci pemilik
+    servernya sendiri di luar halaman kelola akun — ia harus kembali ke
+    terminal, padahal justru terminal yang hendak ditinggalkan.
+    """
+    rec = users.get(akun)
+    if not rec:
+        return False
+    if rec.get("admin"):
+        return True
+    return len(users) == 1 and not any(u.get("admin") for u in users.values())
+
+
+def email_akun(users: dict, akun: str) -> str:
+    return str((users.get(akun) or {}).get("email") or "")
+
+
+def cari_email(users: dict, email: str) -> str | None:
+    """Slug akun yang emailnya cocok, tanpa peduli besar-kecil huruf."""
+    e = str(email or "").strip().lower()
+    if not e:
+        return None
+    for akun, rec in users.items():
+        if str(rec.get("email") or "").strip().lower() == e:
+            return akun
+    return None
+
+
 def authenticate(users: dict, nama: str, pw: str) -> str | None:
     """Kembalikan slug akun kalau password benar, None kalau tidak."""
     akun = user_slug(nama)
@@ -174,7 +213,9 @@ def add_user(users_file: Path, nama: str) -> None:
         raise SystemExit("\n  Password minimal 8 karakter.\n")
     if pw != getpass.getpass("  Ulangi          : "):
         raise SystemExit("\n  Password tidak sama.\n")
-    users[akun] = {"hash": hash_password(pw), "nama": nama.strip() or akun}
+    lama = users.get(akun) or {}
+    users[akun] = {**lama, "hash": hash_password(pw),
+                   "nama": nama.strip() or akun}
     save_users(users_file, users)
     print(f"\n  Tersimpan di {users_file} ({len(users)} akun).\n")
 

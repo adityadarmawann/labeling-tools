@@ -1518,3 +1518,152 @@ const Progres = (() => {
   urut.addEventListener('change', render);
   muat();
 })();
+
+// ------------------------------------------------------- halaman kelola akun
+/*
+ * Menambah anggota tim sebelumnya hanya bisa lewat terminal server, sehingga
+ * satu orang harus punya akses SSH untuk pekerjaan yang sebenarnya
+ * administratif.
+ *
+ * Dua penjaga yang tidak boleh dilepas: yang menghapus akun harus mengetik
+ * nama akunnya, dan admin terakhir tidak bisa dihapus atau diturunkan.
+ * Keduanya juga ditegakkan di server; yang di sini semata supaya salahnya
+ * ketahuan sebelum permintaan dikirim.
+ */
+(() => {
+  const daftar = document.getElementById('akun-daftar');
+  if (!daftar) return;
+  const note = document.getElementById('akun-note');
+  const cari = document.getElementById('akun-cari');
+  const esc = t => String(t == null ? '' : t).replace(/[&<>"']/g,
+    c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+  let semua = [], nAdmin = 1;
+
+  async function muat() {
+    let j;
+    try { j = await (await fetch('/api/akun/daftar')).json(); } catch (e) { return; }
+    if (!j || !j.ok) { note.textContent = (j && j.error) || 'gagal memuat'; return; }
+    semua = j.akun; nAdmin = j.n_admin;
+    render();
+  }
+
+  function render() {
+    const q = (cari.value || '').trim().toLowerCase();
+    const baris = semua.filter(a => !q
+      || a.akun.includes(q) || (a.email || '').toLowerCase().includes(q)
+      || (a.nama || '').toLowerCase().includes(q));
+    daftar.innerHTML = baris.map(a => `
+      <div class="akun-baris" data-akun="${esc(a.akun)}">
+        <div class="akun-kiri">
+          <div class="akun-nama">${esc(a.nama)}
+            ${a.admin ? '<span class="lencana adm">admin</span>' : ''}
+            ${a.diri_sendiri ? '<span class="lencana aku">kamu</span>' : ''}</div>
+          <div class="akun-email${a.email ? '' : ' kosong'}">${
+            a.email ? esc(a.email) : 'belum ada email'}</div>
+          ${a.dibuat ? `<div class="akun-meta">dibuat ${esc(a.dibuat)}${
+            a.oleh ? ' oleh ' + esc(a.oleh) : ''}</div>` : ''}
+        </div>
+        <div class="akun-aksi">
+          <button class="chip" data-aksi="email">Email</button>
+          <button class="chip" data-aksi="sandi">Sandi</button>
+          <button class="chip" data-aksi="admin">${
+            a.admin ? 'Cabut admin' : 'Jadikan admin'}</button>
+          ${a.diri_sendiri ? ''
+            : '<button class="chip bahaya" data-aksi="hapus">Hapus</button>'}
+        </div>
+      </div>`).join('') || '<p class="sub" style="margin:0">Tidak ada yang cocok.</p>';
+    note.textContent = `${baris.length} dari ${semua.length} akun`
+      + ` · ${nAdmin} admin`;
+  }
+
+  async function kirim(url, params, judul) {
+    const pr = Progres.mulai(judul, {di: note});
+    pr.taktentu('menyimpan…');
+    let j;
+    try {
+      j = await (await fetch(url + '?' + new URLSearchParams(params),
+                             {method: 'POST'})).json();
+    } catch (e) { pr.gagal('Gagal menghubungi server'); return null; }
+    if (!j.ok) { pr.gagal(j.error); toast(j.error); } else pr.selesai();
+    return j;
+  }
+
+  daftar.addEventListener('click', async ev => {
+    const b = ev.target.closest('[data-aksi]');
+    if (!b) return;
+    const akun = b.closest('.akun-baris').dataset.akun;
+    const rec = semua.find(x => x.akun === akun);
+    const a = b.dataset.aksi;
+
+    if (a === 'email') {
+      const email = prompt(`Email untuk "${akun}":\n\n`
+        + 'Dipakai untuk login Google. Kosongkan untuk menghapusnya.',
+        rec.email || '');
+      if (email === null) return;
+      const j = await kirim('/api/akun/ubah', {akun, email}, 'Menyimpan email');
+      if (j && j.ok) muat();
+      return;
+    }
+    if (a === 'sandi') {
+      const sandi = prompt(`Kata sandi baru untuk "${akun}":\n\n`
+        + 'Minimal 8 karakter. Beri tahu orangnya lewat jalur lain,\n'
+        + 'jangan lewat pesan yang bisa dibaca orang banyak.');
+      if (!sandi) return;
+      const j = await kirim('/api/akun/ubah', {akun, sandi}, 'Mengganti sandi');
+      if (j && j.ok) { toast(`Sandi "${akun}" diganti`); muat(); }
+      return;
+    }
+    if (a === 'admin') {
+      const jadi = rec.admin ? 0 : 1;
+      if (!jadi && nAdmin <= 1) {
+        toast('Ini admin terakhir; angkat admin lain lebih dulu');
+        return;
+      }
+      const j = await kirim('/api/akun/ubah', {akun, admin: jadi},
+                            jadi ? 'Mengangkat admin' : 'Mencabut admin');
+      if (j && j.ok) muat();
+      return;
+    }
+    if (a === 'hapus') {
+      // Namanya harus DIKETIK: ini melenyapkan akses orang, dan dialog
+      // "yakin?" biasa hilang hanya dengan menekan Enter.
+      const jwb = prompt(`Hapus akun "${akun}"?\n\n`
+        + 'Orangnya langsung kehilangan akses. Dataset yang sudah dia unggah\n'
+        + 'TIDAK ikut terhapus.\n\nKetik nama akunnya untuk melanjutkan:');
+      if (jwb !== akun) {
+        if (jwb !== null) toast('Nama tidak cocok, dibatalkan');
+        return;
+      }
+      const j = await kirim('/api/akun/hapus', {akun}, `Menghapus ${akun}`);
+      if (j && j.ok) { toast(`Akun "${akun}" dihapus`); muat(); }
+    }
+  });
+
+  const simpan = document.getElementById('a-simpan');
+  simpan.onclick = async () => {
+    const nama = document.getElementById('a-nama').value.trim();
+    const email = document.getElementById('a-email').value.trim();
+    const sandi = document.getElementById('a-sandi').value;
+    const admin = document.getElementById('a-admin').checked ? 1 : 0;
+    const n2 = document.getElementById('a-note');
+    if (!nama) { toast('Nama akun masih kosong'); return; }
+    if (sandi.length < 8) { toast('Kata sandi minimal 8 karakter'); return; }
+    const pr = Progres.mulai(`Menambah ${nama}`, {di: n2});
+    pr.taktentu('menyimpan…');
+    let j;
+    try {
+      j = await (await fetch('/api/akun/tambah?' + new URLSearchParams(
+        {nama, sandi, email, admin}), {method: 'POST'})).json();
+    } catch (e) { pr.gagal('Gagal menghubungi server'); return; }
+    if (!j.ok) { pr.gagal(j.error); toast(j.error); return; }
+    pr.selesai(`Akun "${j.akun}" dibuat`);
+    ['a-nama', 'a-email', 'a-sandi'].forEach(i => {
+      document.getElementById(i).value = '';
+    });
+    document.getElementById('a-admin').checked = false;
+    muat();
+  };
+
+  cari.addEventListener('input', render);
+  muat();
+})();

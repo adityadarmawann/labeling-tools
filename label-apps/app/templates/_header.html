@@ -8,4 +8,8 @@
   <option value="light">Tema: terang</option>
   <option value="dark">Tema: gelap</option>
 </select>
+{# Tautan kelola akun hanya untuk admin. Menyembunyikannya dari menu bukan
+   pengamanan — rutenya sendiri yang memeriksa; ini semata supaya tidak
+   membingungkan anggota yang memang tidak berhak. #}
+{% if sess.admin %}<a class="chip" href="/akun">Kelola akun</a>{% endif %}
 <a class="chip" href="/logout">Keluar</a>

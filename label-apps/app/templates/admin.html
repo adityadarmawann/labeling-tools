@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Kelola akun{% endblock %}
+
+{% block body %}
+<header>
+  <div class="top"><h1>Kelola akun</h1>{% include "_header.html" %}</div>
+  <div style="height:12px"></div>
+</header>
+<main>
+<div class="pick">
+  {% if not admin %}
+  <div class="panel">
+    <h3>Halaman ini untuk admin</h3>
+    <p class="sub" style="text-align:left;margin:0">
+      Akunmu belum punya hak admin. Minta admin menambahkannya lewat halaman
+      ini, atau jalankan <span class="mono">run.py --adduser</span> di server.</p>
+  </div>
+  {% else %}
+
+  <div class="panel">
+    <div class="row" style="align-items:baseline;gap:10px">
+      <h3 style="flex:1;margin:0">Anggota tim</h3>
+      <input class="cari-nama" type="search" id="akun-cari"
+             placeholder="Cari nama atau email…" autocomplete="off">
+    </div>
+    <div id="akun-daftar" class="akun-daftar"></div>
+    <p class="upnote" id="akun-note"></p>
+  </div>
+
+  <div class="panel">
+    <h3>Tambah anggota</h3>
+    <label class="form-lbl" for="a-nama">Nama akun</label>
+    <input id="a-nama" type="text" placeholder="mis. rizky" autocomplete="off">
+    <label class="form-lbl" for="a-email" style="margin-top:10px">
+      Email <span class="halus">(untuk login Google nanti)</span></label>
+    <input id="a-email" type="email" placeholder="rizky@higo.id" autocomplete="off">
+    <label class="form-lbl" for="a-sandi" style="margin-top:10px">
+      Kata sandi <span class="halus">(minimal 8 karakter)</span></label>
+    <input id="a-sandi" type="password" autocomplete="new-password">
+    <label class="kelas-baris" style="margin-top:12px">
+      <input type="checkbox" id="a-admin"><span class="cb"></span>
+      <span>Jadikan admin — boleh mengelola akun orang lain</span>
+    </label>
+    <button class="cta" id="a-simpan" style="width:auto;padding:9px 20px">
+      Tambah anggota</button>
+    <p class="upnote" id="a-note"></p>
+  </div>
+
+  <div class="panel">
+    <h3>Login Google</h3>
+    {% if domain_google %}
+    <p class="halus" style="margin:0">
+      Siapa pun dengan email di domain <b class="mono">{{ domain_google }}</b>
+      bisa masuk sendiri. Email di luar domain itu hanya bisa masuk kalau
+      sudah kamu daftarkan di atas.</p>
+    {% else %}
+    <p class="halus" style="margin:0">
+      Belum menyala. Login Google menuntut nama domain dan HTTPS; Google
+      menolak alamat IP sebagai tujuan pengalihan, jadi alamat yang dipakai
+      sekarang tidak bisa didaftarkan apa adanya.
+    </p>
+    <p class="halus" style="margin:8px 0 0">Urutan yang dibutuhkan:</p>
+    <ol class="halus" style="margin:6px 0 0;padding-left:20px;line-height:1.7">
+      <li>Arahkan DNS <span class="mono">anylabel.higo.id</span> ke server ini</li>
+      <li>Nyalakan nginx beserta sertifikat TLS</li>
+      <li>Daftarkan OAuth client di Google Cloud</li>
+      <li>Isi <span class="mono">LABELAPP_GOOGLE_DOMAIN</span> di
+        <span class="mono">env/prod.env</span></li>
+    </ol>
+    <p class="halus" style="margin:8px 0 0">
+      Email yang kamu isi sekarang tetap tersimpan, jadi begitu menyala tim
+      tidak perlu didaftarkan ulang satu per satu.</p>
+    {% endif %}
+    <p class="halus" style="margin:10px 0 0">
+      Berkas akun: <span class="mono">{{ berkas }}</span></p>
+  </div>
+  {% endif %}
+</div>
+</main>
+{% endblock %}
