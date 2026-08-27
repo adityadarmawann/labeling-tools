@@ -1349,7 +1349,7 @@ const Progres = (() => {
         ? '<div class="pkosong"><b>Tidak ada yang cocok</b>'
           + 'Ubah kata pencarianmu.</div>'
         : '<div class="pkosong"><b>Belum ada projek</b>'
-          + 'Buka "+ Dataset baru" di atas untuk mengunggah yang pertama.</div>';
+          + 'Buka "+ Projek baru" di atas untuk membuat yang pertama.</div>';
       hitung(0);
       return;
     }
