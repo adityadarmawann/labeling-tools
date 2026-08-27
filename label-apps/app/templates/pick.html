@@ -1,20 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Pilih dataset{% endblock %}
 
-{% macro dslist(rows) -%}
-<div class="dslist">
-  {%- for r in rows %}
-  {# Path ditaruh di data-path, bukan di dalam string JS di atribut onclick.
-     tojson menghasilkan tanda kutip ganda biasa, dan itu menutup atribut
-     onclick lebih awal sehingga seluruh item tidak bisa diklik. #}
-  <a class="ds" href="#" data-path="{{ r.path }}">
-    <span class="n">{{ r.nama }}</span>
-    <span class="c">{% if r.lebih %}≥{% endif %}{{ r.jumlah }} gambar</span>
-  </a>
-  {%- endfor %}
-</div>
-{%- endmacro %}
-
 {% block body %}
 <header>
   <div class="top"><h1>Periksa anotasi</h1>{% include "_header.html" %}</div>
@@ -22,65 +8,117 @@
 </header>
 <main>
 <div class="pick">
-  <h2>Pilih dataset</h2>
-  <p class="sub">Folder berisi gambar beserta anotasi <span class="mono">.json</span>,
-    atau dataset YOLO dengan subfolder <span class="mono">images</span> dan
-    <span class="mono">labels</span>.</p>
-  {% if error %}<p class="bad" style="text-align:center">{{ error }}</p>{% endif %}
+  {% if error %}<p class="bad">{{ error }}</p>{% endif %}
 
-  {# Tanpa baris ini, membuka dataset lewat path terasa seperti tidak terjadi
-     apa-apa: pathnya di luar daftar mana pun, jadi tidak ada jejaknya di
-     halaman ini walau datasetnya sebenarnya masih terbuka. #}
+  {# Satu baris, seluruhnya bisa diklik. Dulu panel setinggi ~100px yang
+     mengulang informasi yang sudah ada sebagai pil di kartunya sendiri, dan
+     hanya tombol di ujungnya yang bisa ditekan. #}
   {% if sess.src %}
-  <div class="panel">
-    <h3>Sedang dibuka</h3>
-    <div class="row" style="align-items:baseline">
-      <div style="flex:1">
-        <b>{{ sess.src.name }}</b>
-        <span class="sub">· {{ sess.items | length }} gambar</span><br>
-        <span class="mono halus">{{ sess.src }}</span>
-      </div>
-      <a class="btn pri" href="/">Buka grid</a>
-    </div>
-  </div>
+  <a class="lanjut" href="/">
+    <span class="lanjut-tag">Sedang dibuka</span>
+    <b>{{ sess.src.name }}</b>
+    <span class="n">{{ sess.items | length }} gambar</span>
+    <span class="lanjut-path mono">{{ sess.src }}</span>
+    <span class="lanjut-cta">Buka grid &rarr;</span>
+  </a>
   {% endif %}
 
+  <div class="pkepala">
+    <div class="pjudul">
+      <h2>Dataset</h2>
+      <p>Projek di ruang kerjamu, dan folder bersama yang hanya bisa dibaca.</p>
+    </div>
+    <div class="paksi">
+      <button class="chip" id="buka-sampah" type="button" hidden>
+        Tempat sampah <b id="sampah-n"></b></button>
+      <button class="chip aksi" id="buka-tambah" type="button">+ Dataset baru</button>
+    </div>
+  </div>
+
+  {# Dua daftar yang tampil serupa tapi berperilaku beda: satu bisa dikelola,
+     satu hanya bisa dibaca. Sebagai tab, keduanya jelas dua SUMBER, dan
+     status hanya-baca ditempel di kartunya sendiri — bukan diserahkan ke
+     judul panel, yang justru hal pertama yang berhenti dibaca orang. #}
+  <div class="palat">
+    <div class="seg ptab" id="ptab">
+      <label class="seg-opt" data-on>
+        <input type="radio" name="sumberdata" value="milik" checked>
+        Projekmu <b id="n-milik"></b></label>
+      {% if datasets_root %}
+      <label class="seg-opt">
+        <input type="radio" name="sumberdata" value="bersama">
+        Dataset bersama <b>{{ datasets | length }}</b></label>
+      {% endif %}
+    </div>
+    <span class="spacer"></span>
+    <input class="cari-nama" type="search" id="projek-cari"
+           placeholder="Cari projek…" autocomplete="off"
+           aria-label="Cari projek berdasarkan nama">
+    <select class="chip" id="projek-urut" aria-label="Urutan projek">
+      <option value="diubah">Terakhir diubah</option>
+      <option value="nama">Nama (A→Z)</option>
+      <option value="besar">Gambar terbanyak</option>
+      <option value="label">Paling banyak dilabeli</option>
+    </select>
+    <span class="phitung" id="projek-hitung" aria-live="polite" hidden></span>
+  </div>
+
+  {# Wadah tersendiri untuk Progres. Dulu elemen yang sama juga memegang
+     teks "4 dari 4 projek", jadi memulai duplikasi menghapus angkanya dan
+     angkanya menolak muncul selama ada operasi berjalan. #}
+  <div class="jalur-status"><p class="upnote" id="projek-note"></p></div>
+
+  <div class="pgrid" id="projek-grid" hidden></div>
+
   {% if datasets_root %}
-  <div class="panel">
-    <h3>Dataset tersedia</h3>
-    {% if datasets %}{{ dslist(datasets) }}
-    {% else %}
-    <p class="sub" style="text-align:left;margin:0">Belum ada subfolder berisi gambar di
-      <span class="mono">{{ datasets_root }}</span>.</p>
+  <div class="pgrid" id="grid-bersama" hidden>
+    {%- for r in datasets %}
+    <div class="pcard bersama">
+      <span class="psampul kosong" aria-hidden="true">▤</span>
+      <div class="pisi">
+        <a class="pnama pnama-link" href="#" data-path="{{ r.path }}"
+          >{{ r.nama }}<span class="plabel">hanya baca</span></a>
+        <div class="pmeta">{% if r.lebih %}≥{% endif %}{{ r.jumlah }} gambar</div>
+        <div class="pmeta halus">folder bersama · tidak bisa diganti nama atau dibuang</div>
+      </div>
+    </div>
+    {%- endfor %}
+    {% if not datasets %}
+    <div class="pkosong"><b>Belum ada dataset bersama</b>
+      Belum ada subfolder berisi gambar di
+      <span class="mono">{{ datasets_root }}</span>.</div>
     {% endif %}
   </div>
   {% endif %}
 
-  {# Projek milik akun ini. Bedanya dengan panel "Dataset tersedia" di atas
-     bukan cuma tampilan: yang ini boleh diganti nama, digandakan, digabung,
-     dan dibuang. Yang di atas milik bersama dan hanya boleh dibaca. #}
-  <div class="panel" id="panel-projek" hidden>
-    <div class="row" style="align-items:baseline;gap:10px">
-      <h3 style="flex:1;margin:0">Projekmu</h3>
-      <input class="cari-nama" type="search" id="projek-cari"
-             placeholder="Cari projek…" autocomplete="off">
-      <select class="chip" id="projek-urut">
-        <option value="diubah">Terakhir diubah</option>
-        <option value="nama">Nama (A→Z)</option>
-        <option value="besar">Gambar terbanyak</option>
-        <option value="label">Paling banyak dilabeli</option>
-      </select>
-    </div>
-    <div class="projek-grid" id="projek-grid"></div>
-    <p class="upnote" id="projek-note"></p>
-    <details id="sampah-lipat" class="catatan-lipat" hidden>
-      <summary><span id="sampah-judul">Tempat sampah</span></summary>
-      <div id="sampah-isi" class="lipat-isi"></div>
-    </details>
-  </div>
+  <details id="sampah-lipat" class="catatan-lipat lipat-blok" hidden>
+    <summary><span id="sampah-judul">Tempat sampah</span></summary>
+    <div id="sampah-isi" class="lipat-isi"></div>
+  </details>
 
-  <div class="panel">
-    <h3>Unggah dari laptop</h3>
+  {# Tiga panel lama jadi satu bertab. Ketiganya menjawab pertanyaan yang
+     sama — datanya dari mana — dan hanya satu dipakai dalam satu waktu.
+     Terlipat karena halaman ini hampir selalu dibuka untuk MEMBUKA projek. #}
+  <details class="psumber" id="lipat-tambah">
+    <summary><b>Tambah dataset</b>
+      <span>unggah dari laptop, folder di server{% if local %}, dialog desktop{% endif %}</span>
+    </summary>
+    <div class="sumber-isi">
+      <div class="seg seg-sumber" id="seg-sumber">
+        <label class="seg-opt" data-on><input type="radio" name="sumber" value="laptop" checked>
+          Dari laptop</label>
+        <label class="seg-opt"><input type="radio" name="sumber" value="server">
+          Folder di server</label>
+        {% if local %}
+        <label class="seg-opt"><input type="radio" name="sumber" value="desktop">
+          Dialog desktop</label>
+        {% endif %}
+      </div>
+
+      <div data-sumber="laptop">
+        <p class="sumber-ket">Folder berisi gambar beserta anotasi
+          <span class="mono">.json</span>, atau dataset YOLO dengan subfolder
+          <span class="mono">images</span> dan <span class="mono">labels</span>.</p>
     <label class="form-lbl" for="dsname">Nama dataset</label>
     <input id="dsname" type="text" placeholder="mis. sponge-batch-3">
     <div class="drop" id="drop" style="margin-top:12px">
@@ -111,10 +149,9 @@
            accept=".jpg,.jpeg,.png,.bmp,.webp,.tif,.tiff,.json,.txt,.yaml,.yml,.zip">
     <div class="prog" id="prog"><i id="fill"></i></div>
     <p class="upnote" id="upnote"></p>
-  </div>
+      </div>
 
-  <div class="panel">
-    <h3>Ambil dari folder di server</h3>
+      <div data-sumber="server" hidden>
     <p class="halus" style="margin:0 0 8px">
       Sama seperti unggah dari laptop, hanya sumbernya folder di server ini.
       Isinya <b>disalin</b> ke ruang kerjamu — folder aslinya tidak pernah
@@ -163,17 +200,21 @@
               style="background:transparent;color:var(--ink-dim);
                      border:1px solid var(--line2)">Buka di tempat</button>
     </details>
-  </div>
+      </div>
 
-  {% if local %}
-  <div class="panel">
-    <h3>Dialog desktop</h3>
+      {% if local %}
+      <div data-sumber="desktop" hidden>
     <button class="cta" style="width:auto;margin-top:0;padding:9px 18px;font-size:13px"
             onclick="pickdir()">Buka penjelajah berkas</button>
     <p class="sub" style="text-align:left;margin:10px 0 0">Hanya muncul saat kamu
       membuka dari mesin server sendiri, karena dialognya tampil di layar server.</p>
-  </div>
-  {% endif %}
+        <p class="sumber-ket" style="margin-top:10px">Hanya berguna saat kamu
+          membuka dari mesin server sendiri, karena dialognya tampil di layar
+          server.</p>
+      </div>
+      {% endif %}
+    </div>
+  </details>
 </div>
 </main>
 {% endblock %}

@@ -102,6 +102,29 @@ def _folder(root: Path, nama: str) -> Path:
 # DAFTAR
 # ============================================================
 
+def anotasi_untuk(gambar: Path) -> Path | None:
+    """
+    Berkas anotasi milik sebuah gambar, kalau ada.
+
+    Dua tata letak beredar dan keduanya harus dikenali. Labelme menaruh
+    `.json` bersebelahan dengan gambarnya; YOLO menaruh `.txt` di folder
+    `labels/` yang sejajar dengan `images/`. Memeriksa `.json` saja membuat
+    seluruh dataset YOLO tampak belum berlabel — terukur pada
+    botol-kaleng-tetra-mlp-cup-1: 11.321 berkas .txt, nol .json.
+    """
+    j = gambar.with_suffix(".json")
+    if j.is_file():
+        return j
+    t = gambar.with_suffix(".txt")
+    if t.is_file():
+        return t
+    if gambar.parent.name == "images":
+        t = gambar.parent.parent / "labels" / (gambar.stem + ".txt")
+        if t.is_file():
+            return t
+    return None
+
+
 def _survei(d: Path) -> dict:
     """Sekali telusur untuk semua angka yang dibutuhkan satu kartu.
 
@@ -111,6 +134,7 @@ def _survei(d: Path) -> dict:
     """
     n_img = n_ann = 0
     sampul: Path | None = None
+    sampul_berlabel = False
     terbaru = 0.0
     lebih = False
     n = 0
@@ -124,8 +148,14 @@ def _survei(d: Path) -> dict:
         sfx = p.suffix.lower()
         if sfx in IMG_EXT:
             n_img += 1
-            if sampul is None:
-                sampul = p
+            # Sampul diambil dari gambar yang PUNYA anotasi, bukan yang
+            # pertama menurut abjad. Foto produk di atas meja yang belum
+            # dilabeli tidak memberi tahu apa pun tentang isi projeknya —
+            # yang tampak cuma mejanya.
+            if sampul is None or not sampul_berlabel:
+                punya = anotasi_untuk(p) is not None
+                if sampul is None or punya:
+                    sampul, sampul_berlabel = p, punya
         elif sfx in ANN_EXT:
             n_ann += 1
             try:

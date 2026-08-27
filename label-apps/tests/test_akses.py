@@ -190,7 +190,11 @@ def test_item_dataset_bisa_diklik(klien, lingkungan):
 
         def handle_starttag(self, tag, attrs):
             d = dict(attrs)
-            if tag == "a" and "ds" in (d.get("class") or ""):
+            # Kartu dataset bersama. Kelasnya berganti dari "ds" jadi
+            # "pnama pnama-link" saat halaman pilih dirombak; yang dijaga uji
+            # ini bukan nama kelasnya, melainkan bahwa pathnya dibawa
+            # data-path dan bukan disisipkan ke string JavaScript.
+            if tag == "a" and d.get("data-path"):
                 self.ds.append(d)
 
     p = Ambil()

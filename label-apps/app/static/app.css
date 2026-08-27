@@ -193,7 +193,7 @@ input:focus{outline:0;border-color:var(--ok)}
 .card-form .cta{width:100%;margin-top:20px}
 .bad{margin-top:14px;color:var(--stop);font-size:12.5px}
 
-.pick{max-width:660px;margin:8vh auto 0;padding:0 20px}
+.pick{max-width:1360px;margin:0 auto;padding:0}
 .pick h2{font-size:20px;font-weight:600;text-align:center}
 .pick .sub{text-align:center;color:var(--ink-dim);font-size:13.5px;margin-top:8px}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:9px;
@@ -403,39 +403,242 @@ input:focus{outline:0;border-color:var(--ok)}
 #unduh-pakai{padding-top:0;padding-bottom:4px}
 #unduh-pakai b{color:var(--aksi)}
 
-/* ------------------------------------------------ kartu projek (halaman pilih) */
-.projek-grid{display:grid;gap:12px;margin-top:12px;
-  grid-template-columns:repeat(auto-fill,minmax(210px,1fr))}
-.pcard{position:relative;border:1px solid var(--line);border-radius:9px;
-  background:var(--raised);overflow:visible;transition:.14s}
-.pcard:hover{border-color:var(--line2)}
-.pcard.dibuka{border-color:var(--aksi);box-shadow:0 0 0 1px var(--aksi)}
-.psampul{display:block;height:118px;background:var(--sunk);border-radius:8px 8px 0 0;
-  overflow:hidden}
+/* ==================================================== halaman Pilih dataset
+ *
+ * Dirombak dari bentuk pertamanya: kolom 660px di tengah layar dengan
+ * delapan panel bertumpuk, dan kartu menegak yang sampulnya lebih besar
+ * daripada namanya.
+ *
+ * Dua aturan yang menyusun sisanya:
+ *   1. SATU tingkat kotak. Kartu duduk langsung di atas latar halaman.
+ *      Sebelumnya main -> .panel -> .pcard, dan .pcard (--raised) di atas
+ *      .panel (--panel) berbeda 1,5% — kotak yang tidak terlihat tapi tetap
+ *      dibayar dengan garis tepi dan padding.
+ *   2. Kartu MENDATAR. Yang dicari orang adalah nama, bukan foto.
+ *
+ * Lebarnya 1360px, bukan 100%. Roboflow pun tidak memakai lebar penuh:
+ * kolom kartunya berhenti jauh sebelum tepi jendela. Pada monitor 2560px,
+ * lebar penuh memberi tujuh kartu sejajar dengan kolom nama begitu sempit
+ * sampai setiap nama terpotong elipsis.
+ *
+ * .panel LAMA sengaja tidak disentuh: admin.html memakainya di empat tempat.
+ */
+.pgrid{display:grid;gap:10px;margin-top:12px;
+  /* min(330px,100%) bukan 330px: di layar 360px wadahnya cuma ~316px, dan
+     minmax(330px,1fr) memaksa satu jalur 330px yang meluber keluar layar. */
+  grid-template-columns:repeat(auto-fill,minmax(min(330px,100%),1fr))}
+
+.pcard{position:relative;display:flex;align-items:center;gap:12px;
+  min-height:88px;padding:11px 12px;
+  background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  box-shadow:0 1px 2px rgba(var(--bayang),.05);
+  transition:background .12s,border-color .12s,box-shadow .12s}
+/* Isian latar, bukan angkat. Empat baris kartu yang melompat tiap kali
+   kursor lewat itu gelisah; .card di halaman grid boleh mengangkat karena
+   di sana kartunya kecil dan dilihat satu per satu. */
+.pcard:hover{background:var(--hover);border-color:var(--line2);
+  box-shadow:0 4px 14px rgba(var(--bayang),.09)}
+
+.psampul{position:relative;z-index:2;flex:0 0 auto;display:block;
+  width:64px;height:64px;border-radius:8px;overflow:hidden;
+  background:var(--sunk);border:1px solid var(--line)}
 .psampul img{width:100%;height:100%;object-fit:cover;display:block}
-.pisi{padding:9px 11px 11px}
-.pnama{font-weight:600;font-size:13px;color:var(--ink);word-break:break-word;
-  padding-right:18px}
-.pbuka{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:99px;
-  background:var(--aksi);color:var(--aksi-ink);font-size:10px;font-weight:600;
-  vertical-align:middle}
-.pmeta{font-size:11.5px;color:var(--ink-dim);margin-top:3px;
-  font-variant-numeric:tabular-nums}
-.pmeta.halus{color:var(--ink-faint)}
-/* Tombol ⋮ menempel di sudut kartu, bukan di barisnya sendiri: kartunya
-   sudah sempit, dan satu baris tombol lagi memakan tinggi tanpa guna. */
-.ptitik{position:absolute;top:124px;right:6px;border:0;background:transparent;
+/* Projek tanpa sampul dan dataset bersama tetap memesan kotak yang sama,
+   supaya barisnya tidak bergeser sendiri. */
+.psampul.kosong{display:grid;place-items:center;color:var(--ink-faint);
+  font-size:19px}
+
+.pisi{flex:1 1 auto;min-width:0;padding-right:26px}
+/* Dua baris lalu elipsis. "botol-kaleng-tetra-mlp-cup-1" tidak muat satu
+   baris di kolom ~204px, dan memotongnya di baris pertama membuang justru
+   bagian yang membedakannya dari saudaranya. */
+.pnama{display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;
+  -webkit-box-orient:vertical;overflow:hidden;
+  font-size:13.5px;font-weight:600;line-height:1.28;color:var(--ink);
+  word-break:break-word;text-decoration:none}
+/* Tautan yang direntangkan: seluruh kartu jadi sasaran klik tanpa
+   menyarangkan <a> di dalam <a>. */
+.pnama-link{text-decoration:none;color:inherit}
+.pnama-link::after{content:"";position:absolute;inset:0;z-index:1;
+  border-radius:10px}
+.pbuka,.plabel{display:inline-block;margin-left:6px;padding:1px 6px;
+  border-radius:99px;font-size:10px;font-weight:600;vertical-align:middle;
+  white-space:nowrap}
+.pbuka{background:var(--aksi);color:var(--aksi-ink)}
+.plabel{background:var(--lab-bg);color:var(--lab-ink)}
+/* --ink-dim, bukan --ink-faint. #93a0ae di atas putih itu 2,7:1 — di bawah
+   ambang keterbacaan 4,5:1, dan yang dibawanya adalah jumlah gambar serta
+   tanggal ubah. --ink-dim mencapai 5,3:1; --ink-faint untuk hiasan saja. */
+.pmeta{margin-top:4px;font-size:11.5px;color:var(--ink-dim);
+  font-variant-numeric:tabular-nums;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pmeta b{color:var(--ink);font-weight:600}
+.pmeta.halus{margin-top:4px;font-size:11px}
+/* Kemajuan pelabelan menggantikan lencana tipe milik Roboflow. Lencana yang
+   selalu berbunyi sama itu derau; persentase ini satu-satunya angka di
+   halaman yang menjawab "mana yang perlu kukerjakan". */
+.pbar{margin-top:6px;height:3px;border-radius:99px;background:var(--sunk);
+  overflow:hidden}
+.pbar i{display:block;height:100%;width:0;border-radius:99px;
+  background:var(--aksi);transition:width .2s}
+
+/* Tombol titik-tiga dijangkarkan ke SUDUT KARTU. Sebelumnya top:124px —
+   angka yang diturunkan dengan tangan dari .psampul{height:118px}, dua
+   aturan terpisah yang wajib sinkron; mengubah tinggi sampul melepaskan
+   menunya dari tombolnya. Selalu terlihat, tidak disembunyikan sampai
+   hover: di layar sentuh tidak ada hover. */
+.ptitik{position:absolute;z-index:2;top:8px;right:8px;width:26px;height:26px;
+  display:grid;place-items:center;border:0;background:transparent;
   color:var(--ink-faint);font-size:16px;line-height:1;cursor:pointer;
-  padding:2px 5px;border-radius:6px}
-.ptitik:hover{background:var(--hover);color:var(--ink)}
-.pmenu{position:absolute;top:146px;right:6px;z-index:50;min-width:210px;
-  background:var(--panel);border:1px solid var(--line2);border-radius:8px;
-  padding:5px 0;box-shadow:0 8px 24px rgba(var(--bayang),.18)}
-.pmenu a{display:block;padding:6px 12px;font-size:12.5px;color:var(--ink);
-  text-decoration:none;white-space:nowrap}
-.pmenu a:hover{background:var(--hover)}
-.pmenu a.bahaya{color:var(--stop)}
-.pmenu a.bahaya:hover{background:var(--warn-bg)}
+  border-radius:7px;transition:.12s}
+.pcard:hover .ptitik{color:var(--ink-dim)}
+.ptitik:hover{background:var(--raised);color:var(--ink);
+  box-shadow:0 0 0 1px var(--line2)}
+.ptitik:focus-visible{outline:2px solid var(--ok);outline-offset:1px}
+
+.pmenu{position:absolute;z-index:50;top:34px;right:8px;
+  min-width:214px;max-width:calc(100vw - 32px);
+  /* Kartu di baris terbawah membuka menunya melewati tepi jendela, dan
+     "Buang ke tempat sampah" jadi tak terjangkau. .menu-isi sudah lama
+     memakai penawar yang sama; .pmenu tidak pernah kebagian. */
+  max-height:calc(100vh - 120px);overflow-y:auto;overscroll-behavior:contain;
+  background:var(--panel);border:1px solid var(--line2);border-radius:9px;
+  padding:5px 0;box-shadow:0 10px 28px rgba(var(--bayang),.20)}
+.pmenu a,.pmenu button{display:block;width:100%;text-align:left;
+  padding:6px 12px;font-size:12.5px;color:var(--ink);text-decoration:none;
+  white-space:nowrap;background:transparent;border:0;cursor:pointer;
+  font-family:inherit}
+.pmenu a:hover,.pmenu button:hover{background:var(--hover)}
+.pmenu .bahaya{color:var(--stop)}
+.pmenu .bahaya:hover{background:var(--warn-bg)}
+
+/* Sedang dibuka: rel + latar + pil, bertumpuk. Rel 3px meminjam bahasa
+   .card .rail yang sudah dipakai halaman grid; konsistensi ke dalam lebih
+   berharga daripada meniru Roboflow. Yang dibuang cincin
+   box-shadow:0 0 0 1px var(--aksi) — cincin 1px berwarna terbaca sebagai
+   penanda fokus papan ketik, bukan sebagai status. */
+.pcard.dibuka{background:var(--ok-lembut);border-color:var(--ok-pudar)}
+.pcard.dibuka:hover{background:var(--ok-lembut);border-color:var(--aksi)}
+.pcard.dibuka::before{content:"";position:absolute;left:-1px;top:12px;
+  bottom:12px;width:3px;border-radius:0 3px 3px 0;background:var(--aksi)}
+
+/* Dataset bersama: kartu yang sama, tanpa titik-tiga dan tanpa meter.
+   Perbedaannya dikatakan di kartunya sendiri ("hanya baca"), bukan
+   diserahkan ke judul panel di atasnya — judul adalah hal pertama yang
+   berhenti dibaca orang. */
+.pcard.bersama{background:var(--raised)}
+.pcard.bersama:hover{background:var(--hover)}
+
+.pkosong{grid-column:1/-1;padding:34px 16px;text-align:center;
+  border:1.5px dashed var(--line);border-radius:10px;
+  color:var(--ink-dim);font-size:13px}
+.pkosong b{display:block;color:var(--ink);font-size:14px;margin-bottom:5px}
+
+/* ------------------------------------------------------ kepala & bilah alat */
+.pkepala{display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;
+  margin:16px 0 4px}
+.pjudul{flex:1 1 260px;min-width:0}
+.pjudul h2{font-size:19px;font-weight:600;text-align:left}
+.pjudul p{margin-top:3px;font-size:12.5px;color:var(--ink-dim)}
+.paksi{flex:0 0 auto;display:flex;gap:8px;align-items:center}
+
+/* Lengket supaya cari dan urut tetap terjangkau saat projeknya banyak.
+   58px = tinggi header. Ukur ulang kalau isi header berubah. */
+.palat{position:sticky;top:58px;z-index:15;
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  margin:10px -8px 0;padding:9px 8px;background:var(--ground);
+  box-shadow:0 1px 0 var(--line)}
+.palat .spacer{flex:1 1 12px}
+.palat .cari-nama{flex:0 1 260px;min-width:150px}
+/* .seg dibuat untuk dalam menu (margin:0 14px); di bilah alat marginnya
+   harus nol dan segmennya selebar isinya, bukan 1fr. */
+.ptab{margin:0;flex:0 0 auto}
+.ptab .seg-opt{flex:0 0 auto;padding:5px 13px}
+.ptab .seg-opt b{margin-left:6px;font-size:10.5px;font-weight:600;
+  color:var(--ink-faint);font-variant-numeric:tabular-nums}
+.ptab .seg-opt[data-on] b{color:var(--aksi)}
+/* Hanya muncul saat ada saringan aktif. Angka yang selalu berbunyi
+   "4 dari 4" tidak pernah dibaca. */
+.phitung{flex:0 0 auto;font-size:11.5px;color:var(--ink-dim);
+  font-variant-numeric:tabular-nums}
+/* Jalur status: wadah Progres.mulai({di: ...}). Kosong berarti tanpa tinggi,
+   jadi grid tidak bergeser tiap kali operasi mulai dan selesai. */
+.jalur-status .upnote{text-align:left;margin:8px 0 0}
+.jalur-status .upnote:empty{display:none}
+
+/* --------------------------------------------------- bilah "sedang dibuka"
+   Satu baris, dan SELURUHNYA bisa diklik. Sebelumnya hanya tombol di
+   ujungnya, padahal seluruh baris terbaca sebagai satu sasaran. */
+.lanjut{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  padding:9px 13px;border-radius:9px;text-decoration:none;color:var(--ink);
+  background:var(--ok-lembut);border:1px solid var(--ok-pudar);
+  transition:border-color .12s}
+.lanjut:hover{border-color:var(--aksi)}
+.lanjut-tag{flex:0 0 auto;font-size:9.5px;font-weight:700;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--aksi-ink);background:var(--aksi);
+  padding:2px 7px;border-radius:99px}
+.lanjut b{flex:0 0 auto;font-size:13.5px}
+.lanjut .n{flex:0 0 auto;font-size:12px;color:var(--ink-dim);
+  font-variant-numeric:tabular-nums}
+.lanjut-path{flex:1 1 200px;min-width:0;font-size:11.5px;color:var(--ink-dim);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lanjut-cta{flex:0 0 auto;font-size:12.5px;font-weight:600;color:var(--aksi)}
+
+/* ------------------------------------------------------- tambah dataset
+   Tiga panel lama (unggah laptop, folder server, dialog desktop) jadi satu
+   panel bertab. Ketiganya menjawab pertanyaan yang sama — "datanya dari
+   mana?" — dan hanya satu yang dipakai dalam satu waktu. Terlipat karena
+   halaman ini hampir selalu dibuka untuk MEMBUKA projek, bukan mengunggah. */
+.psumber{margin-top:26px;background:var(--panel);border:1px solid var(--line);
+  border-radius:11px;overflow:hidden}
+.psumber > summary{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  padding:13px 16px;cursor:pointer;list-style:none;user-select:none}
+.psumber > summary::-webkit-details-marker{display:none}
+.psumber > summary:hover{background:var(--hover)}
+.psumber > summary b{font-size:13.5px}
+.psumber > summary span{font-size:12px;color:var(--ink-dim)}
+.psumber > summary::after{content:"▾";margin-left:auto;flex:0 0 auto;
+  font-size:11px;color:var(--ink-faint);transition:transform .15s}
+.psumber[open] > summary::after{transform:rotate(180deg)}
+.psumber[open] > summary{border-bottom:1px solid var(--line)}
+.sumber-isi{padding:4px 16px 16px}
+.seg-sumber{margin:14px 0}
+.sumber-ket{font-size:12px;color:var(--ink-dim);line-height:1.55;margin:0 0 4px}
+.lipat-blok{margin-top:18px;padding-top:12px;border-top:1px solid var(--line)}
+
+/* ------------------------------------------------------------ layar sempit */
+@media (max-width:720px){
+  /* Bilah lengket di bawah header yang juga lengket menyisakan terlalu
+     sedikit tinggi untuk kartunya sendiri. */
+  .palat{position:static;box-shadow:none;border-bottom:1px solid var(--line)}
+  .palat .cari-nama{flex:1 1 100%}
+  .ptab{flex:1 1 100%}
+  .ptab .seg-opt{flex:1}
+  .lanjut-path{display:none}
+  .psampul{width:56px;height:56px}
+  .pcard{min-height:0}
+}
+
+/* -------------------------------------------------------------- tema gelap
+   Seluruh warnanya sudah token; yang perlu diulang hanya bayangan. Bayangan
+   halus di atas --panel gelap tidak terlihat, jadi kartunya kehilangan
+   pemisah dari latar dan menunya kehilangan ketinggiannya. */
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]) .pcard{box-shadow:none}
+  :root:not([data-theme="light"]) .pcard:hover{
+    box-shadow:0 4px 16px rgba(var(--bayang),.5)}
+  :root:not([data-theme="light"]) .pmenu{
+    box-shadow:0 12px 32px rgba(var(--bayang),.6)}
+  :root:not([data-theme="light"]) .ptitik:hover{background:var(--sunk)}
+}
+:root[data-theme="dark"] .pcard{box-shadow:none}
+:root[data-theme="dark"] .pcard:hover{box-shadow:0 4px 16px rgba(var(--bayang),.5)}
+:root[data-theme="dark"] .pmenu{box-shadow:0 12px 32px rgba(var(--bayang),.6)}
+:root[data-theme="dark"] .ptitik:hover{background:var(--sunk)}
+
+@media (prefers-reduced-motion:reduce){
+  .pcard,.lanjut,.ptitik,.pbar i,.psumber > summary::after{transition:none}
+}
 
 /* ------------------------------------------------------- progres bersama */
 .pr-kotak{display:block;margin-top:10px}

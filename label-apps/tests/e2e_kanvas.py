@@ -1182,7 +1182,8 @@ def jalankan_potret(d):
     cek("menu titik-tiga terbuka",
         d.js("document.querySelector('#projek-grid .pmenu').hidden") is False)
     aksi = d.js("[...document.querySelector('#projek-grid .pcard .pmenu')"
-                ".querySelectorAll('a')].map(a => a.dataset.aksi).join(',')")
+                ".querySelectorAll('[data-aksi]')].map(a => a.dataset.aksi)"
+                ".join(',')")
     cek("menunya memuat seluruh fitur projek",
         aksi == "buka,salin,ganti,duplikat,gabung,sampah", aksi)
     luber = d.js("(function(){ const r = document.querySelector("
@@ -1208,7 +1209,7 @@ def jalankan_potret(d):
             const k = [...document.querySelectorAll('#projek-grid .pcard')]
               .find(x => x.dataset.nama === nama);
             if (!k) { window.__hasil = 'kartu tidak ada'; return; }
-            k.querySelector(`.pmenu a[data-aksi="${aksi}"]`).click();
+            k.querySelector(`.pmenu [data-aksi="${aksi}"]`).click();
             window.__hasil = 'diklik';
           })(%s, %s)
         """ % (json.dumps(nama_kartu), json.dumps(aksi)))

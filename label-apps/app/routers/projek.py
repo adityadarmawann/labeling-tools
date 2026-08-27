@@ -14,6 +14,7 @@ digabungkan, atau dibuang dari sini.
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 
 import cv2
@@ -90,11 +91,79 @@ async def sampul(path: str = "", sess: Session = Depends(current_session),
             or not projek._didalam(p, _ruang(sess, settings))):
         return Response(status_code=404)
 
+    def kotak_objek(h: int, w: int) -> tuple[int, int, int, int] | None:
+        """
+        Kotak yang memuat SATU objek terbesar di gambar itu, dengan bantalan.
+
+        Tanpa pemotongan sama sekali, mengecilkan seluruh bingkai lalu
+        memangkas dari tengah (object-fit: cover) menghasilkan sampul berisi
+        MEJA: foto produk selalu punya benda kecil di tengah bingkai besar,
+        dan yang tersisa setelah dikecilkan jadi 64 piksel cuma mejanya.
+
+        Yang dipakai satu objek terbesar, BUKAN gabungan seluruh objek.
+        Terukur pada paragon: sampulnya memuat dua objek yang berjauhan,
+        gabungannya membentang y 276..2766 dari tinggi 4080 — yaitu nyaris
+        seluruh gambar, jadi memotongnya tidak mengubah apa pun.
+
+        Nisbahnya juga tidak dipaksa bujur sangkar; membujursangkarkan objek
+        355x797 menghasilkan potongan 1354x1354 dengan 500 piksel meja di
+        kiri dan kanan. Pemangkasan terakhir diserahkan ke object-fit: cover.
+        """
+        ann = projek.anotasi_untuk(p)
+        if ann is None:
+            return None
+        kotak: list[tuple[float, float, float, float]] = []
+        try:
+            if ann.suffix.lower() == ".json":
+                for b in (json.loads(ann.read_text(encoding="utf-8"))
+                          .get("shapes") or []):
+                    t = [q for q in (b.get("points") or [])
+                         if isinstance(q, (list, tuple)) and len(q) >= 2]
+                    if t:
+                        xs = [float(q[0]) for q in t]
+                        ys = [float(q[1]) for q in t]
+                        kotak.append((min(xs), min(ys), max(xs), max(ys)))
+            else:
+                # YOLO: nilainya ternormalkan 0..1. Baris bbox berisi
+                # `kelas cx cy w h`; baris segmentasi berisi pasangan titik.
+                for baris in ann.read_text(encoding="utf-8").splitlines():
+                    a = baris.split()
+                    if len(a) == 5:
+                        cx, cy, bw, bh = (float(v) for v in a[1:5])
+                        kotak.append(((cx - bw / 2) * w, (cy - bh / 2) * h,
+                                      (cx + bw / 2) * w, (cy + bh / 2) * h))
+                    elif len(a) >= 7 and len(a) % 2 == 1:
+                        n = [float(v) for v in a[1:]]
+                        xs = [v * w for v in n[0::2]]
+                        ys = [v * h for v in n[1::2]]
+                        kotak.append((min(xs), min(ys), max(xs), max(ys)))
+        except (OSError, ValueError, TypeError):
+            return None
+        if not kotak:
+            return None
+
+        x0, y0, x1, y1 = max(kotak, key=lambda k: (k[2] - k[0]) * (k[3] - k[1]))
+        x0, x1 = max(0.0, x0), min(float(w), x1)
+        y0, y1 = max(0.0, y0), min(float(h), y1)
+        if x1 - x0 < 4 or y1 - y0 < 4:
+            return None
+        # Bantalan seperlima sisi terpanjang: cukup untuk memberi ruang
+        # bernapas tanpa mengundang mejanya kembali masuk.
+        pad = 0.2 * max(x1 - x0, y1 - y0)
+        return (max(0, int(x0 - pad)), max(0, int(y0 - pad)),
+                min(w, int(x1 + pad)), min(h, int(y1 + pad)))
+
     def kecilkan() -> bytes | None:
         im = cv2.imread(str(p), cv2.IMREAD_COLOR)
         if im is None:
             return None
         h, w = im.shape[:2]
+        kotak = kotak_objek(h, w)
+        if kotak:
+            x0, y0, x1, y1 = kotak
+            if x1 - x0 > 8 and y1 - y0 > 8:
+                im = im[y0:y1, x0:x1]
+                h, w = im.shape[:2]
         sisi = max(h, w) or 1
         k = min(1.0, SAMPUL_SISI / sisi)
         if k < 1.0:

@@ -228,7 +228,10 @@ async function imporBox() {
 // pernah membuat seluruh daftar tidak bisa diklik karena tanda kutipnya
 // menutup atribut onclick lebih awal.
 document.addEventListener('click', ev => {
-  const a = ev.target.closest && ev.target.closest('a.ds[data-path]');
+  // Kartu dataset bersama. Kelasnya berganti dari .ds saat halaman
+  // pilih dirombak jadi kartu; pemilihnya harus ikut, kalau tidak
+  // seluruh daftar bersama diam-diam berhenti bisa diklik.
+  const a = ev.target.closest && ev.target.closest('a[data-path]');
   if (!a) return;
   ev.preventDefault();
   setsrc(a.dataset.path);
@@ -1288,7 +1291,6 @@ const Progres = (() => {
 (() => {
   const grid = document.getElementById('projek-grid');
   if (!grid) return;
-  const panel = document.getElementById('panel-projek');
   const note = document.getElementById('projek-note');
   const cari = document.getElementById('projek-cari');
   const urut = document.getElementById('projek-urut');
@@ -1301,16 +1303,33 @@ const Progres = (() => {
 
   let semua = [];
 
+
+  function hitung(tampil) {
+    const q = (cari.value || '').trim();
+    const hit = document.getElementById('projek-hitung');
+    hit.hidden = !q;
+    hit.textContent = q ? `menampilkan ${tampil} dari ${semua.length}` : '';
+    const nm = document.getElementById('n-milik');
+    if (nm) nm.textContent = semua.length;
+  }
+
   async function muat() {
     let j;
     const pr = Progres.mulai('Memuat daftar projek', {di: note});
     pr.taktentu('menghitung isi tiap folder…');
     try { j = await (await fetch('/api/projek/daftar')).json(); }
     catch (e) { pr.gagal('Gagal menghubungi server'); return; }
+    // Jalur !ok DULU diam saja: progresnya dibuang, fungsinya return, dan
+    // panelnya tetap tersembunyi selamanya. Yang hilang bukan cuma daftar
+    // projek — tempat sampah ada di dalam panel yang sama, jadi folder yang
+    // baru dibuang tampak lenyap tanpa satu pun keterangan.
+    if (!j || !j.ok) {
+      pr.gagal((j && j.error) || 'Gagal memuat daftar projek');
+      return;
+    }
     pr.buang();
-    if (!j || !j.ok) return;
     semua = j.projek || [];
-    panel.hidden = false;
+    grid.hidden = false;
     gambarSampah(j.sampah || []);
     render();
   }
@@ -1326,44 +1345,59 @@ const Progres = (() => {
       : b.diubah - a.diubah);
 
     if (!baris.length) {
-      grid.innerHTML = `<p class="sub" style="grid-column:1/-1;margin:0">`
-        + (semua.length ? 'Tidak ada projek yang cocok.'
-                        : 'Belum ada projek. Unggah dataset di bawah.') + '</p>';
-      if (!Progres.adaYangJalan()) note.textContent = '';
+      grid.innerHTML = semua.length
+        ? '<div class="pkosong"><b>Tidak ada yang cocok</b>'
+          + 'Ubah kata pencarianmu.</div>'
+        : '<div class="pkosong"><b>Belum ada projek</b>'
+          + 'Buka "+ Dataset baru" di atas untuk mengunggah yang pertama.</div>';
+      hitung(0);
       return;
     }
-    grid.innerHTML = baris.map(p => `
+    grid.innerHTML = baris.map(p => {
+      const pct = p.jumlah ? Math.min(100, Math.round(p.anotasi / p.jumlah * 100)) : 0;
+      return `
       <div class="pcard${p.dibuka ? ' dibuka' : ''}" data-nama="${esc(p.nama)}">
-        <a class="psampul" href="#" data-buka="${esc(p.path)}">
-          ${p.sampul ? `<img loading="lazy" src="/api/projek/sampul?path=`
-                       + `${encodeURIComponent(p.sampul)}" alt="">` : ''}
+        <a class="psampul${p.sampul ? '' : ' kosong'}" href="#" tabindex="-1"
+           aria-hidden="true" data-buka="${esc(p.path)}">
+          ${p.sampul ? `<img loading="lazy" alt="" src="/api/projek/sampul?path=`
+                       + `${encodeURIComponent(p.sampul)}">` : '\u25a4'}
         </a>
         <div class="pisi">
-          <div class="pnama">${esc(p.nama)}${p.dibuka
-            ? '<span class="pbuka">sedang dibuka</span>' : ''}</div>
-          <div class="pmeta">${p.lebih ? '≥' : ''}${n(p.jumlah)} gambar ·
-            ${n(p.anotasi)} dilabeli</div>
+          <a class="pnama pnama-link" href="#" data-buka="${esc(p.path)}"
+            >${esc(p.nama)}${p.dibuka
+              ? '<span class="pbuka">sedang dibuka</span>' : ''}</a>
+          <div class="pmeta">${p.lebih ? '\u2265' : ''}${n(p.jumlah)} gambar &middot;
+            ${n(p.anotasi)} dilabeli &middot; <b>${pct}%</b></div>
+          <div class="pbar" title="${n(p.anotasi)} dari ${n(p.jumlah)} gambar sudah dilabeli">
+            <i style="width:${pct}%"></i></div>
           <div class="pmeta halus">diubah ${esc(p.usia)}</div>
         </div>
-        <button class="ptitik" title="Fitur projek">⋮</button>
-        <div class="pmenu" hidden>
-          <a href="#" data-aksi="buka">Buka projek ini</a>
-          <a href="#" data-aksi="salin">Salin path</a>
+        <button class="ptitik" type="button" title="Fitur projek"
+                aria-haspopup="menu" aria-expanded="false">\u22ee</button>
+        <div class="pmenu" role="menu" hidden>
+          <button type="button" role="menuitem" data-aksi="buka">Buka projek ini</button>
+          <button type="button" role="menuitem" data-aksi="salin">Salin path</button>
           <span class="menu-pisah"></span>
-          <a href="#" data-aksi="ganti">Ganti nama…</a>
-          <a href="#" data-aksi="duplikat">Duplikat</a>
-          <a href="#" data-aksi="gabung">Gabungkan ke projek lain…</a>
+          <button type="button" role="menuitem" data-aksi="ganti">Ganti nama\u2026</button>
+          <button type="button" role="menuitem" data-aksi="duplikat">Duplikat</button>
+          <button type="button" role="menuitem" data-aksi="gabung">Gabungkan ke projek lain\u2026</button>
           <span class="menu-pisah"></span>
-          <a href="#" class="bahaya" data-aksi="sampah">Buang ke tempat sampah…</a>
+          <button type="button" role="menuitem" class="bahaya" data-aksi="sampah">
+            Buang ke tempat sampah\u2026</button>
         </div>
-      </div>`).join('');
-    if (!Progres.adaYangJalan()) {
-      note.textContent = `${baris.length} dari ${semua.length} projek`;
-    }
+      </div>`;
+    }).join('');
+    // #projek-note dipakai Progres sebagai wadahnya. Menulis penghitung ke
+    // sana berarti dua makna dalam satu kotak: memulai duplikasi menghapus
+    // angkanya, dan angkanya menolak muncul selama ada operasi berjalan.
+    hitung(baris.length);
   }
 
   function gambarSampah(isi) {
     lipatSampah.hidden = !isi.length;
+    const chip = document.getElementById('buka-sampah');
+    chip.hidden = !isi.length;
+    document.getElementById('sampah-n').textContent = isi.length || '';
     if (!isi.length) return;
     judulSampah.textContent = `Tempat sampah (${isi.length})`;
     isiSampah.innerHTML = isi.map(s => `
@@ -1427,7 +1461,10 @@ const Progres = (() => {
       const m = kartu.querySelector('.pmenu');
       const buka = m.hidden;
       grid.querySelectorAll('.pmenu').forEach(x => { x.hidden = true; });
+      grid.querySelectorAll('.ptitik').forEach(
+        x => x.setAttribute('aria-expanded', 'false'));
       m.hidden = !buka;
+      kartu.querySelector('.ptitik').setAttribute('aria-expanded', String(buka));
       return;
     }
     const bukaLink = ev.target.closest('[data-buka]');
@@ -1512,6 +1549,83 @@ const Progres = (() => {
     if (!ev.target.closest('.pcard')) {
       grid.querySelectorAll('.pmenu').forEach(x => { x.hidden = true; });
     }
+  });
+
+  /* Penanda data-on pada segmen aktif. Pola yang sama dengan saringan
+     kelas: dipasang lewat JS, bukan :has(), supaya tidak bergantung pada
+     dukungan peramban terhadap :has(). */
+  function segPasang(wadah, saatGanti) {
+    if (!wadah) return;
+    const opsi = [...wadah.querySelectorAll('.seg-opt')];
+    const tandai = () => {
+      let aktif = '';
+      opsi.forEach(o => {
+        const c = o.querySelector('input');
+        o.toggleAttribute('data-on', c.checked);
+        if (c.checked) aktif = c.value;
+      });
+      saatGanti(aktif);
+    };
+    wadah.addEventListener('change', tandai);
+    tandai();
+  }
+
+  segPasang(document.getElementById('ptab'), v => {
+    const milik = v === 'milik';
+    grid.hidden = !milik || !semua.length && false;
+    const b = document.getElementById('grid-bersama');
+    if (b) b.hidden = milik;
+    // Cari dan urut hanya berlaku untuk projek sendiri; membiarkannya aktif
+    // tapi tak berpengaruh lebih membingungkan daripada meredupkannya.
+    cari.disabled = !milik;
+    urut.disabled = !milik;
+    document.getElementById('projek-hitung').hidden = !milik;
+  });
+
+  segPasang(document.getElementById('seg-sumber'), v => {
+    document.querySelectorAll('[data-sumber]').forEach(
+      n2 => { n2.hidden = n2.dataset.sumber !== v; });
+  });
+
+  /* Lipatan sumber dibuka dari tombol di kepala halaman, dan otomatis saat
+     ada berkas diseret ke mana pun di halaman — kalau tidak, .drop yang
+     tersembunyi di dalam <details> tertutup membuat tarik-lepas mati diam. */
+  const lipatTambah = document.getElementById('lipat-tambah');
+  document.getElementById('buka-tambah').onclick = () => {
+    lipatTambah.open = true;
+    lipatTambah.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+  };
+  document.addEventListener('dragenter', ev => {
+    if ([...(ev.dataTransfer ? ev.dataTransfer.types : [])].includes('Files')
+        && !lipatTambah.open) {
+      lipatTambah.open = true;
+    }
+  });
+
+  document.getElementById('buka-sampah').onclick = () => {
+    lipatSampah.open = true;
+    lipatSampah.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+  };
+
+  /* Urutan diingat. Sebelumnya tiap kunjungan kembali ke "Terakhir diubah",
+     dan orang yang bekerja berdasarkan nama menggantinya lagi setiap kali. */
+  try {
+    const simpan = localStorage.getItem('labelapp_projek_urut');
+    if (simpan) urut.value = simpan;
+  } catch (e) { /* mode privat */ }
+  urut.addEventListener('change', () => {
+    try { localStorage.setItem('labelapp_projek_urut', urut.value); } catch (e) {}
+  });
+
+  // Escape menutup menu titik-tiga dan mengembalikan fokus ke tombolnya.
+  document.addEventListener('keydown', ev => {
+    if (ev.key !== 'Escape') return;
+    const buka = grid.querySelector('.pmenu:not([hidden])');
+    if (!buka) return;
+    buka.hidden = true;
+    const t = buka.closest('.pcard').querySelector('.ptitik');
+    t.setAttribute('aria-expanded', 'false');
+    t.focus();
   });
 
   cari.addEventListener('input', render);
