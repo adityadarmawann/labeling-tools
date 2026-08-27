@@ -159,7 +159,8 @@ def save_users(path: Path, users: dict) -> None:
 # boleh gagal, dan yang tidak punya "admin" jelas bukan admin.
 
 
-def daftar_sendiri(users_file, nama: str, sandi: str, email: str) -> str:
+def daftar_sendiri(users_file, nama: str, sandi: str, email: str,
+                   langsung: bool = False) -> str:
     """
     Buat akun yang MENUNGGU persetujuan admin.
 
@@ -178,7 +179,8 @@ def daftar_sendiri(users_file, nama: str, sandi: str, email: str) -> str:
         raise ValueError(f"akun '{akun}' sudah ada")
     users[akun] = {
         "hash": hash_password(sandi), "nama": (nama or "").strip() or akun,
-        "email": (email or "").strip(), "admin": False, "menunggu": True,
+        "email": (email or "").strip(), "admin": False,
+        "menunggu": not langsung,
         "dibuat": __import__("datetime").date.today().isoformat(),
         "oleh": "daftar sendiri",
     }
@@ -219,7 +221,12 @@ def cari_email(users: dict, email: str) -> str | None:
 
 
 def menunggu_setujuan(users: dict, akun: str) -> bool:
-    """Akun yang mendaftar sendiri dan belum disetujui admin."""
+    """Akun yang mendaftar sendiri dan belum disetujui admin.
+
+    Hanya ada kalau LABELAPP_DAFTAR_LANGSUNG dimatikan — dan itu memang
+    bawaannya, karena menyalakannya bergantung pada firewall yang membatasi
+    siapa saja yang bisa menjangkau aplikasi ini.
+    """
     return bool((users.get(akun) or {}).get("menunggu"))
 
 

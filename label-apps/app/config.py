@@ -82,6 +82,11 @@ class Settings:
     # Boleh mendaftar sendiri lewat /daftar. Hasilnya SELALU akun yang
     # menunggu persetujuan admin, tidak pernah langsung bisa masuk.
     daftar_sendiri: bool = True
+    # Kalau True, akun hasil pendaftaran mandiri LANGSUNG bisa masuk tanpa
+    # menunggu persetujuan. Hanya pantas dinyalakan kalau portnya memang
+    # dibatasi ke jaringan tepercaya — periksa `sudo ufw status verbose`,
+    # dan pastikan bawaan incoming-nya deny.
+    daftar_langsung: bool = False
 
     @property
     def max_upload_bytes(self) -> int:
@@ -135,4 +140,5 @@ def get_settings() -> Settings:
         autologin=_get("DEV_AUTOLOGIN"),
         google_domain=_get("GOOGLE_DOMAIN"),
         daftar_sendiri=_bool("DAFTAR_SENDIRI", True),
+        daftar_langsung=_bool("DAFTAR_LANGSUNG", False),
     )

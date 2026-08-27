@@ -114,13 +114,16 @@ async def daftar_kirim(request: Request, user: str = Form(""),
 
     try:
         akun = await asyncio.to_thread(
-            daftar_sendiri, settings.users_file, user, pw, email)
+            daftar_sendiri, settings.users_file, user, pw, email,
+            settings.daftar_langsung)
     except ValueError as e:
         return salah(str(e).capitalize() + ".")
     except OSError as e:
         return salah(f"Gagal menyimpan: {str(e)[:80]}")
 
-    log.info("pendaftaran mandiri: %r (email=%r) menunggu persetujuan",
-             akun, (email or "").strip())
+    log.info("pendaftaran mandiri: %r (email=%r) %s", akun,
+             (email or "").strip(),
+             "langsung aktif" if settings.daftar_langsung
+             else "menunggu persetujuan")
     return templates.TemplateResponse(request, "daftar.html", {
-        "boleh": True, "selesai": akun})
+        "boleh": True, "selesai": akun, "langsung": settings.daftar_langsung})

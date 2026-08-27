@@ -329,3 +329,21 @@ def test_pendaftaran_bisa_dimatikan_lewat_setelan(klien, lingkungan, monkeypatch
         assert "rizky" not in _users(lingkungan)
     finally:
         get_settings.cache_clear()
+
+
+def test_daftar_langsung_aktif_kalau_setelannya_dinyalakan(klien, lingkungan,
+                                                           monkeypatch):
+    """Hanya pantas dinyalakan kalau firewall membatasi siapa yang bisa
+    menjangkau aplikasi ini; karena itu bawaannya mati."""
+    from app.config import get_settings
+    get_settings.cache_clear()
+    monkeypatch.setenv("LABELAPP_DAFTAR_LANGSUNG", "1")
+    try:
+        r = klien.post("/daftar", data={"user": "rizky", "pw": "sandi-rizky-1",
+                                        "pw2": "sandi-rizky-1"})
+        assert r.status_code == 200 and "sudah bisa dipakai" in r.text
+        assert "menunggu" not in _users(lingkungan)["rizky"] \
+            or _users(lingkungan)["rizky"]["menunggu"] is False
+        assert masuk(klien, "rizky", "sandi-rizky-1"), "harusnya langsung bisa masuk"
+    finally:
+        get_settings.cache_clear()
