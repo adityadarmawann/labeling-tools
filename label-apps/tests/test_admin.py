@@ -35,23 +35,63 @@ def _jadikan_admin(lingkungan, akun: str, nilai: bool = True) -> None:
 # PERAN
 # ============================================================
 
-def test_akun_tunggal_dianggap_admin_supaya_pemiliknya_tidak_terkunci(tmp_path):
-    """Memasang pembaruan ini tidak boleh mengunci pemilik servernya sendiri.
+def test_hak_admin_tidak_hilang_saat_orang_lain_mendaftar(tmp_path):
+    """Regresi atas bug yang terukur di server sungguhan.
 
-    Berkas akun lama tidak punya kolom "admin" sama sekali. Kalau ketiadaan
-    itu berarti "bukan admin", pemilik server kehilangan akses ke halaman
-    kelola akun dan harus kembali ke terminal — padahal justru terminal yang
-    hendak ditinggalkan.
+    Aturan pertamanya "kalau akunnya cuma satu, dia admin". Aturan itu gugur
+    seketika begitu orang pertama mendaftar sendiri: darma admin saat
+    sendirian, lalu kehilangan haknya tanpa pernah menyerahkannya — dan
+    tidak ada satu pun akun yang bisa memperbaikinya dari halaman web.
     """
-    satu = {"darma": {"hash": "x", "nama": "darma"}}
+    from app.security import calon_admin
+
+    satu = {"darma": {"hash": "x", "dibuat": "2026-08-01"}}
     assert is_admin(satu, "darma") is True
 
-    dua = {"darma": {"hash": "x"}, "rizky": {"hash": "y"}}
-    assert is_admin(dua, "darma") is False, "dua akun tanpa admin: jangan menebak"
+    # Orang lain mendaftar sendiri: hak darma HARUS bertahan.
+    dua = dict(satu)
+    dua["rizky"] = {"hash": "y", "dibuat": "2026-08-27", "oleh": "daftar sendiri"}
+    assert is_admin(dua, "darma") is True, "hak admin hilang saat ada pendaftar"
+    assert is_admin(dua, "rizky") is False
+    assert calon_admin(dua) == "darma"
 
+    # Yang dibuat lewat terminal didahulukan daripada yang mendaftar sendiri,
+    # walau pendaftarnya lebih tua.
+    campur = {
+        "pendaftar": {"hash": "a", "dibuat": "2026-01-01", "oleh": "daftar sendiri"},
+        "dibuatkan": {"hash": "b", "dibuat": "2026-06-01"},
+    }
+    assert calon_admin(campur) == "dibuatkan"
+
+    # Begitu ada admin sungguhan, tidak ada lagi yang diangkat diam-diam.
     ada = {"darma": {"hash": "x", "admin": True}, "rizky": {"hash": "y"}}
-    assert is_admin(ada, "darma") is True
+    assert calon_admin(ada) is None
     assert is_admin(ada, "rizky") is False
+
+
+def test_hak_admin_ditulis_ke_berkas_bukan_cuma_disimpulkan(tmp_path):
+    """Menyimpulkannya saat dibaca tidak cukup.
+
+    Aturan apa pun yang bergantung pada isi berkas bisa gugur begitu isinya
+    berubah, dan yang berubah di sini adalah orang lain mendaftar. Karena itu
+    haknya ditulis sekali saat server menyala.
+    """
+    import json as _json
+
+    from app.security import load_users, pastikan_ada_admin
+
+    f = tmp_path / "users.json"
+    f.write_text(_json.dumps({
+        "darma": {"hash": "x", "dibuat": "2026-08-01"},
+        "rizky": {"hash": "y", "dibuat": "2026-08-27", "oleh": "daftar sendiri"},
+    }))
+
+    assert pastikan_ada_admin(f) == "darma"
+    assert load_users(f)["darma"]["admin"] is True
+
+    # Dipanggil ulang tidak mengangkat siapa-siapa lagi.
+    assert pastikan_ada_admin(f) is None
+    assert load_users(f)["rizky"].get("admin") in (None, False)
 
 
 def test_bukan_admin_ditolak_di_rutenya_bukan_cuma_disembunyikan(klien,
@@ -140,6 +180,10 @@ def test_admin_terakhir_tidak_bisa_diturunkan_atau_dihapus(klien, lingkungan):
     """Satu klik keliru tidak boleh mengunci seluruh tim di luar halaman ini."""
     masuk(klien, "paul", PW_PAUL)
     _jadikan_admin(lingkungan, "paul", True)
+    # Server yang menyala mengangkat satu admin kalau belum ada, dan di
+    # lingkungan uji yang terangkat anggi. Ia diturunkan di sini supaya paul
+    # benar-benar jadi admin TERAKHIR — itu yang sedang diuji.
+    _jadikan_admin(lingkungan, "anggi", False)
     klien.post("/api/akun/tambah", params={"nama": "biasa", "sandi": "12345678"})
 
     j = klien.post("/api/akun/ubah", params={"akun": "paul", "admin": 0}).json()

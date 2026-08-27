@@ -37,6 +37,16 @@ async def lifespan(app: FastAPI):
         print(f"  AUTOLOGIN : '{st.autologin}' — masuk tanpa password, HANYA dari\n"
               f"              mesin ini. Permintaan dari jaringan tetap harus login.",
               flush=True)
+
+    # Selalu ada sekurang-kurangnya satu admin, dan haknya DITULIS ke berkas.
+    # Menyimpulkannya saat dibaca tidak cukup: aturan apa pun yang bergantung
+    # pada isi berkas bisa gugur begitu isinya berubah, dan yang berubah di
+    # sini adalah orang lain mendaftar.
+    from .security import pastikan_ada_admin
+    diangkat = pastikan_ada_admin(st.users_file)
+    if diangkat:
+        print(f"  ADMIN     : '{diangkat}' diangkat jadi admin karena belum ada\n"
+              f"              satu pun. Ubah lewat halaman /akun.", flush=True)
     yield
     # Cache thumbnail bersifat sementara: dibuang saat proses berhenti supaya
     # /tmp tidak menumpuk sisa dari sesi-sesi lama.

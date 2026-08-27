@@ -188,21 +188,58 @@ def daftar_sendiri(users_file, nama: str, sandi: str, email: str,
     return akun
 
 
+def calon_admin(users: dict) -> str | None:
+    """
+    Akun yang paling pantas jadi admin kalau BELUM ADA satu pun.
+
+    Yang didahulukan akun yang dibuat lewat terminal atau oleh admin lain,
+    bukan yang mendaftar sendiri: yang punya akses server jelas pemiliknya.
+    Di antara yang setara, yang paling tua.
+    """
+    if not users or any(u.get("admin") for u in users.values()):
+        return None
+
+    def urutan(item):
+        akun, rec = item
+        sendiri = 1 if rec.get("oleh") == "daftar sendiri" else 0
+        return (sendiri, str(rec.get("dibuat") or ""), akun)
+
+    return sorted(users.items(), key=urutan)[0][0]
+
+
+def pastikan_ada_admin(users_file) -> str | None:
+    """
+    Kalau tidak ada admin sama sekali, angkat satu dan SIMPAN.
+
+    Disimpan, bukan sekadar disimpulkan saat dibaca. Versi pertama memakai
+    aturan "kalau akunnya cuma satu, dia admin" — dan aturan itu gugur
+    seketika begitu orang pertama mendaftar sendiri. Diukur: darma admin saat
+    sendirian, lalu kehilangan haknya tanpa pernah menyerahkannya, dan tidak
+    ada satu pun akun yang bisa memperbaikinya dari halaman web.
+    """
+    users = load_users(users_file)
+    akun = calon_admin(users)
+    if not akun:
+        return None
+    users[akun]["admin"] = True
+    save_users(users_file, users)
+    return akun
+
+
 def is_admin(users: dict, akun: str) -> bool:
     """
     Benar kalau akun itu admin.
 
-    Kalau BELUM ADA admin sama sekali dan akunnya cuma satu, akun itu
-    dianggap admin. Tanpa itu, memasang pembaruan ini mengunci pemilik
-    servernya sendiri di luar halaman kelola akun — ia harus kembali ke
-    terminal, padahal justru terminal yang hendak ditinggalkan.
+    Kalau belum ada admin sama sekali, calon_admin() yang menentukan — dan
+    itu TIDAK bergantung pada jumlah akun, supaya haknya tidak hilang begitu
+    orang lain mendaftar.
     """
     rec = users.get(akun)
     if not rec:
         return False
     if rec.get("admin"):
         return True
-    return len(users) == 1 and not any(u.get("admin") for u in users.values())
+    return calon_admin(users) == akun
 
 
 def email_akun(users: dict, akun: str) -> str:
