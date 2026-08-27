@@ -1,6 +1,9 @@
 # Kredensial
 users.json
 .env
+# Kredensial OAuth dan sejenisnya. env/prod.env IKUT ter-commit,
+# jadi yang rahasia harus di berkas terpisah yang tidak terlacak.
+env/rahasia.env
 
 # Virtualenv
 .venv/

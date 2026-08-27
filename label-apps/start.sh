@@ -48,6 +48,17 @@ while IFS='=' read -r k v; do
   [[ -n "${!k-}" ]] || printf -v "$k" '%s' "$v"
   export "$k"
 done < <(grep -E '^LABELAPP_' "$BERKAS")
+
+# Kredensial yang tidak boleh masuk git dibaca dari berkas terpisah.
+# env/prod.env ikut ter-commit; menaruh client secret di situ berarti
+# mengunggahnya ke repositori.
+if [[ -f env/rahasia.env ]]; then
+  while IFS='=' read -r k v; do
+    [[ "$k" =~ ^LABELAPP_ ]] || continue
+    [[ -n "${!k-}" ]] || printf -v "$k" '%s' "$v"
+    export "$k"
+  done < <(grep -E '^LABELAPP_' env/rahasia.env)
+fi
 set +a
 
 PORT="${LABELAPP_PORT:-8042}"
