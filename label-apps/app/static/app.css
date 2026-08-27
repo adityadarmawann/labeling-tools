@@ -438,12 +438,175 @@ input:focus{outline:0;border-color:var(--ok)}
 .pr-kotak[data-keadaan="gagal"] .pr-teks b{color:var(--stop)}
 .pr-kotak[data-keadaan="selesai"] .pr-teks b{color:var(--aksi)}
 
-/* Penanda kerja global di pojok layar: satu-satunya jaminan bahwa TIDAK ADA
-   pekerjaan panjang yang berjalan tanpa terlihat, walau panelnya tertutup
-   atau pengguna sudah menggulir jauh. */
-#kerja-global{position:fixed;right:16px;bottom:16px;z-index:900;max-width:320px;
-  background:var(--panel);border:1px solid var(--line2);border-radius:10px;
-  padding:11px 13px;box-shadow:0 10px 28px rgba(var(--bayang),.20);display:none}
-#kerja-global[data-on]{display:block}
-#kerja-global .kg-judul{font-size:12.5px;font-weight:600;color:var(--ink)}
-#kerja-global .prog{margin-top:8px}
+/* ===================================================== penanda kerja global
+ *
+ * Dua keadaan: PIL (tertutup, ~30x92) dan PANEL (terbuka, 316px). Tertutup
+ * itu keadaan normal; panelnya hanya ada kalau diklik.
+ *
+ * Ukuran pil bukan selera. Di halaman anotasi .lab-side lebarnya 260px; pil
+ * terlebar (92px) + right:16px berhenti di 108px dari tepi kanan, jadi ia
+ * duduk seluruhnya di dalam panel kanan dan TIDAK PERNAH menutupi kanvas.
+ * Kotak 320px yang lama menggantung 76px di atas kanvas, persis tempat orang
+ * menyeret simpul poligon.
+ *
+ * z-index 59: di atas .pmenu dan .toast (50), DI BAWAH .dlg (60). Dialog
+ * modal itu interaksi sengaja dan pendek; penanda ini kembali sesudahnya.
+ * Sebelumnya 900, sehingga ia duduk di atas dialog beserta tirainya.
+ */
+#kerja-global{
+  position:fixed; right:16px; bottom:16px; z-index:59;
+  display:none; flex-direction:column-reverse; align-items:flex-end;
+  /* Wadahnya tembus klik; hanya pil dan panel yang menangkap kursor, supaya
+     seretan yang kebetulan lewat di dekatnya tidak pernah tersangkut. */
+  pointer-events:none;
+  font-size:12px; opacity:1; transition:opacity .2s ease;
+}
+#kerja-global[data-on]{display:flex}
+#kerja-global[data-pergi]{opacity:0}
+
+/* ------------------------------------------------------------------- pil */
+.kg-pil{
+  pointer-events:auto;
+  display:inline-flex; align-items:center;
+  height:30px; padding:0 11px 0 9px; max-width:min(60vw,320px);
+  border:1px solid var(--line2); border-radius:999px;
+  background:var(--panel); color:var(--ink-dim);
+  box-shadow:0 4px 14px rgba(var(--bayang),.16);
+  font:inherit; font-size:12px; line-height:1; cursor:pointer;
+  transition:background .12s, border-color .12s, color .12s;
+}
+.kg-pil:hover{background:var(--hover); border-color:var(--ink-faint); color:var(--ink)}
+.kg-pil:focus-visible{outline:2px solid var(--ok); outline-offset:2px}
+
+/* Cincin kemajuan. Lubang tengahnya harus sewarna latar pil termasuk saat
+   disorot, kalau tidak ia tampak seperti titik yang salah warna. */
+.kg-cincin{
+  flex:0 0 auto; width:15px; height:15px; margin-right:7px;
+  border-radius:50%; position:relative;
+  background:conic-gradient(var(--aksi) calc(var(--v,0) * 1%), var(--sunk) 0);
+}
+.kg-cincin::after{
+  content:""; position:absolute; inset:4px; border-radius:50%; background:var(--panel);
+}
+.kg-pil:hover .kg-cincin::after{background:var(--hover)}
+.kg-cincin[data-tak-tentu]{
+  background:conic-gradient(from 0turn, var(--aksi) 0 30%, var(--sunk) 30%);
+  animation:kg-putar .85s linear infinite;
+}
+@keyframes kg-putar{to{transform:rotate(1turn)}}
+
+/* Nama pekerjaan melebar 3,5 detik saat ada yang baru dimulai, lalu mengecil
+   sendiri. Namanya cuma perlu dibaca sekali; sisanya cukup jadi titik di
+   pojok. Jaraknya dibawa margin, bukan gap, supaya ikut menciut. */
+.kg-judul{
+  max-width:0; margin-right:0; opacity:0; color:var(--ink); font-weight:600;
+  overflow:hidden; white-space:nowrap; text-overflow:ellipsis;
+  transition:max-width .26s ease, margin-right .26s ease, opacity .18s ease;
+}
+#kerja-global[data-kenalan] .kg-judul{max-width:190px; margin-right:8px; opacity:1}
+.kg-teks{color:var(--ink); font-weight:600; font-variant-numeric:tabular-nums;
+  white-space:nowrap}
+
+#kerja-global[data-keadaan="selesai"] .kg-cincin,
+#kerja-global[data-keadaan="selesai"] .kg-cincin::after{background:var(--aksi)}
+#kerja-global[data-keadaan="selesai"] .kg-teks{color:var(--aksi)}
+#kerja-global[data-keadaan="gagal"] .kg-pil{
+  border-color:var(--stop); background:var(--bahaya-lembut)}
+#kerja-global[data-keadaan="gagal"] .kg-pil:hover{background:var(--bahaya-lembut)}
+#kerja-global[data-keadaan="gagal"] .kg-cincin,
+#kerja-global[data-keadaan="gagal"] .kg-cincin::after{background:var(--stop)}
+#kerja-global[data-keadaan="gagal"] .kg-teks{color:var(--stop)}
+
+/* ----------------------------------------------------------------- panel */
+.kg-panel{
+  pointer-events:auto;
+  width:316px; max-width:calc(100vw - 32px); margin-bottom:8px;
+  background:var(--panel); border:1px solid var(--line2); border-radius:11px;
+  box-shadow:0 12px 32px rgba(var(--bayang),.22);
+  overflow:hidden; transform-origin:100% 100%;
+  animation:kg-muncul .14s ease-out;
+}
+@keyframes kg-muncul{
+  from{opacity:0; transform:translateY(6px) scale(.98)}
+  to{opacity:1; transform:none}
+}
+.kg-kepala{
+  display:flex; align-items:center; gap:8px;
+  padding:8px 7px 8px 13px;
+  background:var(--raised); border-bottom:1px solid var(--line);
+}
+.kg-kepala h4{
+  flex:1; font-size:10.5px; font-weight:600; letter-spacing:.09em;
+  text-transform:uppercase; color:var(--ink-faint); margin:0;
+}
+.kg-tutup{
+  border:0; background:transparent; color:var(--ink-faint); cursor:pointer;
+  font:inherit; font-size:15px; line-height:1; padding:3px 7px; border-radius:6px;
+}
+.kg-tutup:hover{background:var(--hover); color:var(--ink)}
+.kg-tutup:focus-visible{outline:2px solid var(--ok); outline-offset:-2px}
+
+.kg-daftar{
+  list-style:none; margin:0; padding:0;
+  max-height:min(58vh,380px); overflow-y:auto; overscroll-behavior:contain;
+}
+.kg-item{padding:9px 13px 10px}
+.kg-item + .kg-item{border-top:1px solid var(--line)}
+.kg-baris{display:flex; align-items:baseline; gap:8px}
+.kg-nama{
+  flex:1; min-width:0; font-size:12.5px; font-weight:600; color:var(--ink);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.kg-angka{
+  flex:0 0 auto; font-size:11.5px; color:var(--ink-dim);
+  font-variant-numeric:tabular-nums;
+}
+/* .prog dipakai bersama; di dalam baris ia lebih tipis dan rapat. */
+.kg-item .prog{height:6px; margin-top:7px}
+.kg-rinci{
+  margin-top:5px; font-size:11.5px; color:var(--ink-faint);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.kg-buang{
+  flex:0 0 auto; border:0; background:transparent; color:var(--ink-faint);
+  cursor:pointer; font:inherit; font-size:13px; line-height:1;
+  padding:2px 5px; margin:-2px -4px -2px 0; border-radius:5px;
+}
+.kg-buang:hover{background:var(--hover); color:var(--ink)}
+.kg-buang:focus-visible{outline:2px solid var(--ok); outline-offset:-2px}
+
+.kg-item[data-keadaan="selesai"] .kg-nama{color:var(--ink-dim); font-weight:500}
+.kg-item[data-keadaan="selesai"] .kg-angka{color:var(--aksi); font-weight:600}
+.kg-item[data-keadaan="selesai"] .prog i{background:var(--aksi)}
+.kg-item[data-keadaan="gagal"]{background:var(--bahaya-lembut)}
+.kg-item[data-keadaan="gagal"] .kg-angka{color:var(--stop); font-weight:600}
+.kg-item[data-keadaan="gagal"] .prog i{background:var(--stop); width:100% !important}
+.kg-item[data-keadaan="gagal"] .kg-rinci{color:var(--ink)}
+
+/* Pengumuman untuk pembaca layar; tidak pernah terlihat. */
+.kg-live{
+  position:absolute; width:1px; height:1px; margin:-1px; padding:0; border:0;
+  overflow:hidden; clip:rect(0 0 0 0); clip-path:inset(50%); white-space:nowrap;
+}
+
+/* Tema gelap: seluruh warnanya sudah token, jadi yang perlu diulang hanya
+   bayangannya. Hitam .16 di atas --panel gelap praktis tak terlihat, dan
+   pilnya kehilangan pemisah dari latar. */
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]) .kg-pil{box-shadow:0 4px 16px rgba(var(--bayang),.55)}
+  :root:not([data-theme="light"]) .kg-panel{box-shadow:0 12px 34px rgba(var(--bayang),.6)}
+}
+:root[data-theme="dark"] .kg-pil{box-shadow:0 4px 16px rgba(var(--bayang),.55)}
+:root[data-theme="dark"] .kg-panel{box-shadow:0 12px 34px rgba(var(--bayang),.6)}
+
+/* Gerak yang dikurangi. Animasi tak-tentu berputar selamanya, dan bagi
+   sebagian orang itu memicu pusing; keadaan "sedang berjalan" tetap harus
+   tersampaikan, jadi diganti bentuk diam, bukan dihilangkan. */
+@media (prefers-reduced-motion:reduce){
+  #kerja-global, .kg-judul{transition:none}
+  .kg-panel{animation:none}
+  .kg-cincin[data-tak-tentu]{
+    animation:none; background:conic-gradient(var(--aksi) 0 50%, var(--sunk) 0)}
+  .prog[data-tak-tentu] i{animation:none; width:100% !important; opacity:.45}
+  .prog[data-tahap="pindai"] i{animation:none}
+}

@@ -1219,38 +1219,88 @@ def jalankan_potret(d):
     # Komponen progresnya diuji LANGSUNG, bukan lewat operasi sungguhan.
     # Duplikat tiga berkas selesai lebih cepat daripada pengambil sampel mana
     # pun, jadi mengintipnya di tengah jalan tidak membuktikan apa-apa.
-    d.js("window.__pr = Progres.mulai('Uji', {di: document.getElementById("
+    d.js("window.__pr = Progres.mulai('Uji lama', {di: document.getElementById("
          "'projek-note')}); window.__pr.taktentu('menunggu…');")
-    time.sleep(0.2)
+    time.sleep(0.3)
     cek("Progres menggambar bilah di tempat yang diminta",
         d.js("!!document.querySelector('#projek-note .pr-kotak .prog')"))
     cek("tanpa persentase bilahnya bergerak sendiri, bukan diam",
         d.js("document.querySelector('#projek-note .prog')"
              ".hasAttribute('data-tak-tentu')") is True)
-    cek("penanda kerja di pojok layar menyala",
+
+    # -- penanda pojok: pil, bukan kotak --
+    cek("penanda pojok menyala",
         d.js("document.getElementById('kerja-global').hasAttribute('data-on')")
         is True)
-    d.js("window.__pr.set(0.5, 'separuh')")
-    time.sleep(0.2)
-    lebar = d.js("document.querySelector('#projek-note .prog i').style.width")
-    cek("persentase mengubah lebar bilahnya", lebar in ("50%", "50.0%"), lebar)
-    cek("dan angkanya ikut tertulis",
-        d.js("document.querySelector('#projek-note .pr-teks b').textContent") == "50%")
+    lebar = d.js("document.querySelector('.kg-pil').getBoundingClientRect().width")
+    cek("pil tertutup tidak menutupi kanvas (< 260px panel kanan)",
+        lebar < 200, "lebar=%.0f" % lebar)
+    cek("pil itu tombol sungguhan, bisa difokus papan tik",
+        d.js("document.querySelector('.kg-pil').tagName") == "BUTTON")
+    cek("z-index di bawah dialog (60), bukan menimpanya",
+        int(d.js("getComputedStyle(document.getElementById('kerja-global'))"
+                 ".zIndex")) < 60)
+    cek("wadahnya tembus klik, hanya pil yang menangkap kursor",
+        d.js("getComputedStyle(document.getElementById('kerja-global'))"
+             ".pointerEvents") == "none")
+
+    # -- klik untuk melihat detail --
+    d.js("document.querySelector('.kg-pil').click()")
+    time.sleep(0.35)
+    simpan("progres-panel")
+    cek("mengklik pil membuka panel detail",
+        d.js("document.getElementById('kg-panel').hidden") is False)
+    cek("aria-expanded ikut berubah",
+        d.js("document.querySelector('.kg-pil').getAttribute('aria-expanded')")
+        == "true")
+    n = d.js("document.querySelectorAll('#kg-panel .kg-item').length")
+    cek("panel memuat barisnya", n >= 1, "jumlah=%s" % n)
+
+    # Yang paling tua di atas: ekspor panjang tidak boleh terdorong keluar
+    # oleh pekerjaan pendek yang dimulai belakangan.
+    d.js("window.__pr2 = Progres.mulai('Uji baru'); window.__pr2.set(0.5)")
+    time.sleep(0.35)
+    urut = d.js("[...document.querySelectorAll('#kg-panel .kg-nama')]"
+                ".map(x => x.textContent).join('|')")
+    cek("yang paling dulu dimulai tetap di baris atas", urut.startswith("Uji lama"),
+        urut)
+
+    d.js("window.__pr2.gagal('server tidak menjawab')")
+    time.sleep(0.4)
+    cek("kegagalan ditandai di barisnya",
+        d.js("!!document.querySelector('#kg-panel .kg-item[data-keadaan=gagal]')"))
     d.js("window.__pr.selesai('beres')")
-    time.sleep(0.2)
-    cek("selesai memadamkan penanda pojok",
+    time.sleep(0.4)
+    cek("pil menyatakan gagal selama masih ada yang gagal",
+        d.js("document.getElementById('kerja-global').dataset.keadaan") == "gagal")
+
+    d.js("document.querySelector('.kg-tutup').click()")
+    time.sleep(0.25)
+    cek("tombol tutup menutup panelnya",
+        d.js("document.getElementById('kg-panel').hidden") is True)
+    d.js("document.querySelectorAll('#kg-panel .kg-buang').forEach(b => b.click())")
+    d.js("document.querySelector('.kg-pil').click()")
+    time.sleep(0.3)
+    d.js("document.querySelectorAll('#kg-panel .kg-buang').forEach(b => b.click())")
+    time.sleep(0.4)
+    cek("membuang semua barisnya memadamkan penanda",
         d.js("document.getElementById('kerja-global').hasAttribute('data-on')")
         is False)
-    d.js("window.__pr2 = Progres.mulai('Uji gagal',"
-         " {di: document.getElementById('projek-note')}); window.__pr2.gagal('x')")
-    time.sleep(0.2)
-    cek("kegagalan ditandai warna berbeda, bukan diam-diam berhenti",
-        d.js("document.querySelector('#projek-note .pr-kotak').dataset.keadaan")
-        == "gagal")
+
     d.js("document.getElementById('projek-note').innerHTML = ''")
 
     nama = aksi_projek("projek-satu", "duplikat")
-    cek("penanda pojok padam setelah selesai",
+    # Sesudah operasi sungguhan, penandanya sengaja BERTAHAN sebentar
+    # menyatakan "Selesai", lalu padam sendiri. Hilang seketika berarti orang
+    # yang sedang melihat ke tempat lain tidak pernah tahu hasilnya.
+    cek("penanda menyatakan selesai, bukan langsung hilang",
+        d.js("document.getElementById('kerja-global').dataset.keadaan") == "selesai",
+        d.js("document.getElementById('kerja-global').dataset.keadaan"))
+    for _ in range(30):
+        time.sleep(0.4)
+        if not d.js("document.getElementById('kerja-global').hasAttribute('data-on')"):
+            break
+    cek("lalu padam sendiri tanpa perlu disentuh",
         d.js("document.getElementById('kerja-global').hasAttribute('data-on')")
         is False)
     cek("Duplikat menghasilkan salinan baru",

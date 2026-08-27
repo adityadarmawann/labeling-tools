@@ -481,47 +481,265 @@ document.addEventListener('DOMContentLoaded', () => {
  *   p.gagal('Gagal menghubungi server');
  */
 const Progres = (() => {
-  const jalan = new Set();
-  let pojok = null;
+  const jalan = new Set();        // yang masih berjalan
+  const arsip = [];               // yang sudah selesai/gagal, belum dibuang
+  let wadah = null, pil = null, panel = null, daftar = null;
+  let liveSopan = null, liveTegas = null;
+  let terbuka = false, detik = null, kenalan = null, rafMinta = false;
+  let noUrut = 0;
 
-  function kotakPojok() {
-    if (pojok) return pojok;
-    pojok = document.createElement('div');
-    pojok.id = 'kerja-global';
-    pojok.innerHTML = '<div class="kg-judul"></div>'
-      + '<div class="prog" data-on data-tak-tentu><i></i></div>'
-      + '<div class="pr-teks"><span></span><b></b></div>';
-    document.body.appendChild(pojok);
-    return pojok;
+  const pad = v => String(v).padStart(2, '0');
+  const jam = d => d >= 60 ? `${Math.floor(d / 60)}:${pad(Math.round(d % 60))}`
+                           : `${Math.round(d)} dtk`;
+  const esc = t => String(t == null ? '' : t).replace(/[&<>"']/g,
+    c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+
+  function ucap(teks, tegas) {
+    const el = tegas ? liveTegas : liveSopan;
+    if (!el) return;
+    // Pesan yang sama dua kali berturut-turut diabaikan pembaca layar kalau
+    // isinya tidak sempat kosong lebih dulu.
+    el.textContent = '';
+    setTimeout(() => { el.textContent = teks; }, 60);
   }
 
-  function segarkanPojok() {
-    const k = kotakPojok();
-    if (!jalan.size) { k.removeAttribute('data-on'); return; }
-    // Yang ditampilkan yang terakhir mulai: itu yang baru saja ditekan orang.
-    const p = [...jalan][jalan.size - 1];
-    k.setAttribute('data-on', '');
-    k.querySelector('.kg-judul').textContent = p.judul;
-    k.querySelector('.pr-teks span').textContent = p.rinci || '';
-    k.querySelector('.pr-teks b').textContent = p.persen == null
-      ? '' : Math.round(p.persen * 100) + '%';
-    const bar = k.querySelector('.prog');
-    bar.toggleAttribute('data-tak-tentu', p.persen == null);
-    bar.querySelector('i').style.width =
-      p.persen == null ? '' : (p.persen * 100).toFixed(1) + '%';
-    if (jalan.size > 1) {
-      k.querySelector('.kg-judul').textContent =
-        `${p.judul}  (+${jalan.size - 1} lagi)`;
+  function bangun() {
+    if (wadah) return;
+    wadah = document.createElement('div');
+    wadah.id = 'kerja-global';
+    // Pil DULU di DOM, panel sesudahnya; column-reverse yang membalik
+    // urutan visualnya. Disengaja: mata melihat panel di atas pil, tapi Tab
+    // mencapai pil dulu lalu isi panelnya.
+    wadah.innerHTML =
+      '<button class="kg-pil" type="button" aria-expanded="false"'
+      + ' aria-controls="kg-panel">'
+      + '<span class="kg-cincin" aria-hidden="true"></span>'
+      + '<span class="kg-judul"></span><span class="kg-teks"></span></button>'
+      + '<div class="kg-panel" id="kg-panel" role="group"'
+      + ' aria-label="Pekerjaan berjalan" hidden>'
+      + '<div class="kg-kepala"><h4>Pekerjaan berjalan</h4>'
+      + '<button class="kg-tutup" type="button"'
+      + ' aria-label="Tutup daftar pekerjaan">×</button></div>'
+      + '<ul class="kg-daftar"></ul></div>';
+    document.body.appendChild(wadah);
+    pil = wadah.querySelector('.kg-pil');
+    panel = wadah.querySelector('.kg-panel');
+    daftar = wadah.querySelector('.kg-daftar');
+
+    liveSopan = document.createElement('div');
+    liveSopan.className = 'kg-live';
+    liveSopan.setAttribute('aria-live', 'polite');
+    liveSopan.setAttribute('aria-atomic', 'true');
+    liveTegas = document.createElement('div');
+    liveTegas.className = 'kg-live';
+    liveTegas.setAttribute('role', 'alert');
+    document.body.append(liveSopan, liveTegas);
+
+    pil.addEventListener('click', () => setBuka(!terbuka));
+    wadah.querySelector('.kg-tutup').addEventListener('click', () => {
+      setBuka(false);
+      pil.focus();
+    });
+    daftar.addEventListener('click', ev => {
+      const b = ev.target.closest('.kg-buang');
+      if (!b) return;
+      const id = b.closest('.kg-item').dataset.id;
+      const i = arsip.findIndex(x => String(x.id) === id);
+      if (i >= 0) arsip.splice(i, 1);
+      minta();
+    });
+    document.addEventListener('keydown', ev => {
+      if (ev.key === 'Escape' && terbuka && wadah.contains(document.activeElement)) {
+        setBuka(false);
+        pil.focus();
+      }
+    });
+    // Klik di luar menutup panel TANPA memindahkan fokus: kalau fokus sedang
+    // di kanvas, merebutnya di tengah menggambar jauh lebih mengganggu
+    // daripada panel yang terbuka.
+    document.addEventListener('click', ev => {
+      if (terbuka && !wadah.contains(ev.target)) setBuka(false);
+    });
+  }
+
+  function setBuka(v) {
+    terbuka = v;
+    panel.hidden = !v;
+    pil.setAttribute('aria-expanded', String(v));
+    if (v) {
+      // Membuka panel = mengakui kegagalan. Sejak saat itu barisnya punya
+      // batas waktu; sebelum dilihat, ia menetap selamanya.
+      const t = Date.now();
+      arsip.forEach(a => { if (a.keadaan === 'gagal' && !a.dilihat) a.dilihat = t; });
     }
+    minta();
+  }
+
+  function minta() {
+    if (rafMinta) return;
+    rafMinta = true;
+    requestAnimationFrame(() => { rafMinta = false; gambar(); });
+  }
+
+  function baris() {
+    // Yang masih berjalan di atas, dari yang PALING TUA. Versi lama
+    // menampilkan yang terakhir dimulai, sehingga ekspor 13 menit hilang dari
+    // layar begitu orang menekan "Pindai ulang" yang cuma 6 detik.
+    const aktif = [...jalan].sort((a, b) => a.mulai - b.mulai);
+    return aktif.concat(arsip.slice().sort((a, b) => b.tutupPada - a.tutupPada));
+  }
+
+  function gambar() {
+    if (!wadah) return;
+    const semua = baris();
+    if (!semua.length) {
+      wadah.removeAttribute('data-on');
+      wadah.removeAttribute('data-keadaan');
+      if (terbuka) setBuka(false);
+      return;
+    }
+    wadah.setAttribute('data-on', '');
+
+    const aktif = semua.filter(x => jalan.has(x));
+    const gagal = arsip.filter(a => a.keadaan === 'gagal');
+    const cincin = pil.querySelector('.kg-cincin');
+    const teks = pil.querySelector('.kg-teks');
+    const judul = pil.querySelector('.kg-judul');
+
+    let keadaan = 'jalan', nilai = null, label, sebut;
+    if (aktif.length) {
+      const berpersen = aktif.filter(x => x.persen != null);
+      nilai = berpersen.length === aktif.length
+        ? berpersen.reduce((s, x) => s + x.persen, 0) / aktif.length : null;
+      const utama = aktif[0];
+      judul.textContent = utama.judul;
+      label = aktif.length > 1 ? `${aktif.length} kerja`
+            : nilai != null ? `${Math.round(nilai * 100)}%`
+            : jam((Date.now() - utama.mulai) / 1000);
+      sebut = aktif.length > 1
+        ? `${aktif.length} pekerjaan berjalan. Buka daftar pekerjaan.`
+        : `${utama.judul}${nilai != null ? ', ' + Math.round(nilai * 100)
+            + ' persen' : ''}. Buka daftar pekerjaan.`;
+    } else if (gagal.length) {
+      keadaan = 'gagal';
+      nilai = 1;
+      judul.textContent = gagal[0].judul;
+      label = gagal.length > 1 ? `${gagal.length} gagal` : 'Gagal';
+      sebut = `${gagal.length} pekerjaan gagal. Buka daftar untuk melihatnya.`;
+    } else {
+      keadaan = 'selesai';
+      nilai = 1;
+      judul.textContent = semua[0].judul;
+      label = 'Selesai';
+      sebut = 'Pekerjaan selesai.';
+    }
+    wadah.setAttribute('data-keadaan', keadaan);
+    cincin.toggleAttribute('data-tak-tentu', nilai == null);
+    cincin.style.setProperty('--v', nilai == null ? 0 : (nilai * 100).toFixed(0));
+    teks.textContent = label;
+    pil.title = sebut;
+    pil.setAttribute('aria-label', sebut);
+
+    if (terbuka) gambarDaftar(semua);
+  }
+
+  function gambarDaftar(semua) {
+    const ada = new Map(
+      [...daftar.children].map(li => [li.dataset.id, li]));
+    semua.forEach((s, i) => {
+      let li = ada.get(String(s.id));
+      if (!li) {
+        li = document.createElement('li');
+        li.className = 'kg-item';
+        li.dataset.id = s.id;
+        li.innerHTML =
+          `<div class="kg-baris"><span class="kg-nama" id="kg-n${s.id}"></span>`
+          + '<b class="kg-angka"></b></div>'
+          + `<div class="prog" data-on role="progressbar" aria-labelledby="kg-n${s.id}"`
+          + ' aria-valuemin="0" aria-valuemax="100"><i></i></div>'
+          + '<div class="kg-rinci"></div>';
+      }
+      ada.delete(String(s.id));
+      const hidup = jalan.has(s);
+      li.dataset.keadaan = hidup ? 'jalan' : s.keadaan;
+      li.querySelector('.kg-nama').textContent = s.judul;
+      const dtk = ((hidup ? Date.now() : s.tutupPada) - s.mulai) / 1000;
+      li.querySelector('.kg-angka').textContent = !hidup
+        ? (s.keadaan === 'gagal' ? 'Gagal' : jam(dtk))
+        : (s.persen != null ? `${Math.round(s.persen * 100)}%` : jam(dtk));
+      const bar = li.querySelector('.prog');
+      const isi = bar.querySelector('i');
+      bar.toggleAttribute('data-tak-tentu', hidup && s.persen == null);
+      isi.style.width = hidup
+        ? (s.persen == null ? '' : (s.persen * 100).toFixed(1) + '%') : '100%';
+      // Tanpa aria-valuenow berarti "tak tentu" menurut ARIA. valuenow="0"
+      // justru dibacakan "0 persen" dan terdengar macet.
+      if (hidup && s.persen == null) bar.removeAttribute('aria-valuenow');
+      else bar.setAttribute('aria-valuenow',
+                            String(Math.round((s.persen == null ? 1 : s.persen) * 100)));
+      bar.setAttribute('aria-valuetext', hidup && s.persen == null
+        ? `sedang berjalan, ${jam(dtk)}` : `${li.querySelector('.kg-angka').textContent}`
+          + (s.rinci ? ', ' + s.rinci : ''));
+      li.querySelector('.kg-rinci').textContent = s.rinci || '';
+      if (!hidup && !li.querySelector('.kg-buang')) {
+        const b = document.createElement('button');
+        b.className = 'kg-buang';
+        b.type = 'button';
+        b.setAttribute('aria-label', 'Buang: ' + s.judul);
+        b.innerHTML = '×';
+        li.querySelector('.kg-baris').appendChild(b);
+      }
+      if (daftar.children[i] !== li) daftar.insertBefore(li, daftar.children[i] || null);
+    });
+    ada.forEach(li => li.remove());
+  }
+
+  function detakMulai() {
+    if (detik) return;
+    detik = setInterval(() => {
+      // Detak hidup untuk pekerjaan tanpa persentase: tanpa ini orang menutup
+      // tab karena mengira macet.
+      const now = Date.now();
+      jalan.forEach(s => {
+        if (s.persen == null && now - (s.ucapPada || s.mulai) > 60000) {
+          s.ucapPada = now;
+          ucap(`${s.judul} masih berjalan, ${jam((now - s.mulai) / 1000)}.`);
+        }
+      });
+      bersihkanArsip();
+      minta();
+    }, 1000);
+  }
+
+  function detakBerhenti() {
+    // Jangan biarkan hidup di tab yang menganggur.
+    if (detik && !jalan.size && !arsip.length) { clearInterval(detik); detik = null; }
+  }
+
+  function bersihkanArsip() {
+    const now = Date.now();
+    let ubah = false;
+    for (let i = arsip.length - 1; i >= 0; i--) {
+      const a = arsip[i];
+      const batas = a.keadaan === 'gagal'
+        ? (a.dilihat ? a.dilihat + 12000 : Infinity)   // menetap sampai dilihat
+        : a.tutupPada + 5000;
+      if (now > batas) { arsip.splice(i, 1); ubah = true; }
+    }
+    if (ubah) minta();
+    detakBerhenti();
   }
 
   class Sesi {
     constructor(judul, opsi) {
+      this.id = ++noUrut;
       this.judul = judul;
       this.persen = null;
       this.rinci = '';
       this.mulai = Date.now();
+      this.tonggak = 0;
       this.el = null;
+      bangun();
       const di = opsi && opsi.di;
       if (di) {
         this.el = document.createElement('div');
@@ -532,7 +750,16 @@ const Progres = (() => {
         di.appendChild(this.el);
       }
       jalan.add(this);
-      segarkanPojok();
+      detakMulai();
+      ucap(`${judul} dimulai.`);
+      // Perkenalan: pil melebar menyebut namanya, lalu mengecil sendiri.
+      // Dilewati kalau panelnya memang sedang terbuka.
+      if (!terbuka) {
+        wadah.setAttribute('data-kenalan', '');
+        clearTimeout(kenalan);
+        kenalan = setTimeout(() => wadah.removeAttribute('data-kenalan'), 3500);
+      }
+      minta();
     }
     _tulis() {
       if (this.el) {
@@ -544,11 +771,18 @@ const Progres = (() => {
         this.el.querySelector('.pr-teks b').textContent =
           this.persen == null ? '' : Math.round(this.persen * 100) + '%';
       }
-      segarkanPojok();
+      minta();
     }
     set(persen, rinci) {
       this.persen = Math.max(0, Math.min(1, persen));
       if (rinci != null) this.rinci = rinci;
+      // Tonggak 25/50/75 saja. Mengumumkan tiap persen akan mengubur seluruh
+      // percakapan lain pada ekspor yang berjalan belasan menit.
+      const t = Math.floor(this.persen * 4) * 25;
+      if (t > this.tonggak && t < 100) {
+        this.tonggak = t;
+        ucap(`${this.judul}, ${t} persen.`);
+      }
       this._tulis();
       return this;
     }
@@ -559,28 +793,42 @@ const Progres = (() => {
       return this;
     }
     _tutup(keadaan, pesan) {
-      jalan.delete(this);
-      const dtk = (Date.now() - this.mulai) / 1000;
+      if (!jalan.delete(this)) return this;
+      this.keadaan = keadaan;
+      this.tutupPada = Date.now();
+      this.rinci = pesan || (keadaan === 'gagal' ? 'Gagal' : 'Selesai');
+      const dtk = (this.tutupPada - this.mulai) / 1000;
       if (this.el) {
         this.el.dataset.keadaan = keadaan;
         this.el.querySelector('.prog').removeAttribute('data-tak-tentu');
-        this.el.querySelector('.prog i').style.width =
-          keadaan === 'gagal' ? '100%' : '100%';
-        this.el.querySelector('.pr-teks span').textContent = pesan || '';
+        this.el.querySelector('.prog i').style.width = '100%';
+        this.el.querySelector('.pr-teks span').textContent = this.rinci;
         this.el.querySelector('.pr-teks b').textContent =
-          keadaan === 'gagal' ? 'gagal' : `${dtk.toFixed(0)} dtk`;
+          keadaan === 'gagal' ? 'gagal' : jam(dtk);
       }
-      segarkanPojok();
+      arsip.push(this);
+      if (keadaan === 'gagal') ucap(`${this.judul} gagal: ${this.rinci}`, true);
+      else ucap(`${this.judul} selesai, ${jam(dtk)}.`);
+      minta();
       return this;
     }
     selesai(pesan) { return this._tutup('selesai', pesan || 'Selesai'); }
     gagal(pesan) { return this._tutup('gagal', pesan || 'Gagal'); }
-    buang() { jalan.delete(this); if (this.el) this.el.remove(); segarkanPojok(); }
+    buang() {
+      jalan.delete(this);
+      const i = arsip.indexOf(this);
+      if (i >= 0) arsip.splice(i, 1);
+      if (this.el) this.el.remove();
+      minta();
+      detakBerhenti();
+      return this;
+    }
   }
 
   return {
     mulai: (judul, opsi) => new Sesi(judul, opsi || {}),
     adaYangJalan: () => jalan.size > 0,
+    _buka: v => { bangun(); setBuka(v); },      // dipakai uji e2e
   };
 })();
 
