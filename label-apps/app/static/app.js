@@ -1552,10 +1552,15 @@ const Progres = (() => {
     const baris = semua.filter(a => !q
       || a.akun.includes(q) || (a.email || '').toLowerCase().includes(q)
       || (a.nama || '').toLowerCase().includes(q));
+    // Yang menunggu persetujuan naik ke atas. Merekalah yang butuh keputusan;
+    // sisanya cuma daftar.
+    baris.sort((a, b) => (b.menunggu ? 1 : 0) - (a.menunggu ? 1 : 0));
     daftar.innerHTML = baris.map(a => `
-      <div class="akun-baris" data-akun="${esc(a.akun)}">
+      <div class="akun-baris${a.menunggu ? ' menunggu' : ''}"
+           data-akun="${esc(a.akun)}">
         <div class="akun-kiri">
           <div class="akun-nama">${esc(a.nama)}
+            ${a.menunggu ? '<span class="lencana tunggu">menunggu persetujuan</span>' : ''}
             ${a.admin ? '<span class="lencana adm">admin</span>' : ''}
             ${a.diri_sendiri ? '<span class="lencana aku">kamu</span>' : ''}</div>
           <div class="akun-email${a.email ? '' : ' kosong'}">${
@@ -1564,6 +1569,8 @@ const Progres = (() => {
             a.oleh ? ' oleh ' + esc(a.oleh) : ''}</div>` : ''}
         </div>
         <div class="akun-aksi">
+          ${a.menunggu
+            ? '<button class="chip aksi" data-aksi="setujui">Setujui</button>' : ''}
           <button class="chip" data-aksi="email">Email</button>
           <button class="chip" data-aksi="sandi">Sandi</button>
           <button class="chip" data-aksi="admin">${
@@ -1572,8 +1579,10 @@ const Progres = (() => {
             : '<button class="chip bahaya" data-aksi="hapus">Hapus</button>'}
         </div>
       </div>`).join('') || '<p class="sub" style="margin:0">Tidak ada yang cocok.</p>';
+    const tunggu = semua.filter(a => a.menunggu).length;
     note.textContent = `${baris.length} dari ${semua.length} akun`
-      + ` · ${nAdmin} admin`;
+      + ` · ${nAdmin} admin`
+      + (tunggu ? ` · ${tunggu} menunggu persetujuan` : '');
   }
 
   async function kirim(url, params, judul) {
@@ -1595,6 +1604,11 @@ const Progres = (() => {
     const rec = semua.find(x => x.akun === akun);
     const a = b.dataset.aksi;
 
+    if (a === 'setujui') {
+      const j = await kirim('/api/akun/setujui', {akun}, `Menyetujui ${akun}`);
+      if (j && j.ok) { toast(`"${akun}" sekarang bisa masuk`); muat(); }
+      return;
+    }
     if (a === 'email') {
       const email = prompt(`Email untuk "${akun}":\n\n`
         + 'Dipakai untuk login Google. Kosongkan untuk menghapusnya.',

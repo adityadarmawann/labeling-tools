@@ -159,6 +159,33 @@ def save_users(path: Path, users: dict) -> None:
 # boleh gagal, dan yang tidak punya "admin" jelas bukan admin.
 
 
+def daftar_sendiri(users_file, nama: str, sandi: str, email: str) -> str:
+    """
+    Buat akun yang MENUNGGU persetujuan admin.
+
+    Tanpa verifikasi email, tidak ada yang membuktikan alamat yang diketik
+    benar-benar milik pendaftarnya. Persetujuan admin yang menggantikan
+    pembuktian itu: akunnya ada, sandinya sudah dipilih sendiri, tapi belum
+    bisa dipakai masuk sampai seseorang yang berwenang melihatnya.
+
+    Dibuat begini juga supaya aman kalau ternyata portnya terbuka ke luar
+    jaringan kantor — pendaftaran liar berakhir sebagai daftar tunggu, bukan
+    sebagai akses.
+    """
+    users = load_users(users_file)
+    akun = user_slug(nama)
+    if akun in users:
+        raise ValueError(f"akun '{akun}' sudah ada")
+    users[akun] = {
+        "hash": hash_password(sandi), "nama": (nama or "").strip() or akun,
+        "email": (email or "").strip(), "admin": False, "menunggu": True,
+        "dibuat": __import__("datetime").date.today().isoformat(),
+        "oleh": "daftar sendiri",
+    }
+    save_users(users_file, users)
+    return akun
+
+
 def is_admin(users: dict, akun: str) -> bool:
     """
     Benar kalau akun itu admin.
@@ -191,11 +218,24 @@ def cari_email(users: dict, email: str) -> str | None:
     return None
 
 
+def menunggu_setujuan(users: dict, akun: str) -> bool:
+    """Akun yang mendaftar sendiri dan belum disetujui admin."""
+    return bool((users.get(akun) or {}).get("menunggu"))
+
+
 def authenticate(users: dict, nama: str, pw: str) -> str | None:
-    """Kembalikan slug akun kalau password benar, None kalau tidak."""
+    """
+    Kembalikan slug akun kalau password benar, None kalau tidak.
+
+    Akun yang menunggu persetujuan diperlakukan seperti password salah:
+    sandinya benar, tapi belum boleh masuk. Yang membedakan keduanya
+    disampaikan halaman login, bukan fungsi ini.
+    """
     akun = user_slug(nama)
     rec = users.get(akun)
     if not rec or not verify_password(pw, rec.get("hash", "")):
+        return None
+    if rec.get("menunggu"):
         return None
     return akun
 

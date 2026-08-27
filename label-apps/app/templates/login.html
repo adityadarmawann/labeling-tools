@@ -16,5 +16,10 @@
     <button class="cta" type="submit">Masuk</button>
     {% if error %}<p class="bad">{{ error }}</p>{% endif %}
   </form>
+  {% if boleh_daftar %}
+  <p class="sub" style="margin-top:14px">Belum punya akun?
+    <a href="/daftar">Daftar di sini</a>, lalu minta admin
+    menyetujuinya.</p>
+  {% endif %}
 </main>
 {% endblock %}

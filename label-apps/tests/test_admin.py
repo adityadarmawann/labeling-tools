@@ -229,3 +229,103 @@ def test_halaman_akun_menolak_dengan_sopan_untuk_yang_bukan_admin(klien,
     assert "belum punya hak admin" in html
     assert "Tambah anggota" not in html, "borang tambah bocor ke yang bukan admin"
     assert "akun-daftar" not in html, "daftar akun bocor ke yang bukan admin"
+
+
+# ============================================================
+# DAFTAR SENDIRI + PERSETUJUAN
+# ============================================================
+
+def test_daftar_sendiri_belum_bisa_masuk_sebelum_disetujui(klien, lingkungan):
+    """Ini yang menggantikan verifikasi email.
+
+    Tanpa pembuktian alamat, tidak ada yang menjamin email yang diketik milik
+    pendaftarnya. Persetujuan admin yang menggantikannya — dan itu pula yang
+    membuat rute pendaftaran aman kalau portnya ternyata terbuka ke luar
+    jaringan kantor.
+    """
+    r = klien.post("/daftar", data={
+        "user": "rizky", "email": "rizky@higo.id",
+        "pw": "sandi-rizky-1", "pw2": "sandi-rizky-1"})
+    assert r.status_code == 200 and "menunggu persetujuan" in r.text
+
+    rec = _users(lingkungan)["rizky"]
+    assert rec["menunggu"] is True
+    assert rec["admin"] is False, "pendaftar tidak boleh langsung jadi admin"
+    assert rec["oleh"] == "daftar sendiri"
+
+    # Sandinya benar, tapi belum boleh masuk.
+    r = klien.post("/login", data={"user": "rizky", "pw": "sandi-rizky-1"},
+                   follow_redirects=False)
+    assert r.status_code == 401
+    assert "belum disetujui" in r.text, "pesannya harus membedakan dari sandi salah"
+
+
+def test_setelah_disetujui_baru_bisa_masuk(klien, lingkungan):
+    klien.post("/daftar", data={"user": "rizky", "pw": "sandi-rizky-1",
+                                "pw2": "sandi-rizky-1"})
+    masuk(klien, "paul", PW_PAUL)
+    _jadikan_admin(lingkungan, "paul", True)
+
+    j = klien.get("/api/akun/daftar").json()
+    assert j["n_menunggu"] == 1
+    per = {a["akun"]: a for a in j["akun"]}
+    assert per["rizky"]["menunggu"] is True
+
+    j = klien.post("/api/akun/setujui", params={"akun": "rizky"}).json()
+    assert j["ok"], j
+    assert "menunggu" not in _users(lingkungan)["rizky"]
+    assert _users(lingkungan)["rizky"]["disetujui_oleh"] == "paul"
+
+    klien.get("/logout")
+    assert masuk(klien, "rizky", "sandi-rizky-1")
+
+
+@pytest.mark.parametrize("data, potongan", [
+    ({"user": "", "pw": "12345678", "pw2": "12345678"}, "kosong"),
+    ({"user": "budi", "pw": "pendek", "pw2": "pendek"}, "8 karakter"),
+    ({"user": "budi", "pw": "12345678", "pw2": "berbeda9"}, "tidak sama"),
+    ({"user": "budi", "pw": "12345678", "pw2": "12345678",
+      "email": "bukan-email"}, "email"),
+])
+def test_daftar_menolak_isian_yang_salah(klien, lingkungan, data, potongan):
+    r = klien.post("/daftar", data=data)
+    assert r.status_code == 400 and potongan in r.text, r.text[:200]
+    assert "budi" not in _users(lingkungan)
+
+
+def test_daftar_menolak_nama_yang_sudah_dipakai(klien, lingkungan):
+    r = klien.post("/daftar", data={"user": "paul", "pw": "12345678",
+                                    "pw2": "12345678"})
+    assert r.status_code == 400 and "sudah ada" in r.text
+    # dan sandi paul yang lama TIDAK boleh tertimpa
+    assert masuk(klien, "paul", PW_PAUL)
+
+
+def test_menyetujui_hanya_untuk_admin(klien, lingkungan):
+    klien.post("/daftar", data={"user": "rizky", "pw": "sandi-rizky-1",
+                                "pw2": "sandi-rizky-1"})
+    masuk(klien, "paul", PW_PAUL)
+    _jadikan_admin(lingkungan, "paul", False)
+    p = lingkungan["users"]
+    d = json.loads(p.read_text())
+    d["lain"] = {"hash": "x", "admin": True}
+    p.write_text(json.dumps(d))
+    klien.get("/logout")
+    masuk(klien, "paul", PW_PAUL)
+
+    j = klien.post("/api/akun/setujui", params={"akun": "rizky"}).json()
+    assert j["ok"] is False and "admin" in j["error"]
+    assert _users(lingkungan)["rizky"]["menunggu"] is True
+
+
+def test_pendaftaran_bisa_dimatikan_lewat_setelan(klien, lingkungan, monkeypatch):
+    from app.config import get_settings
+    get_settings.cache_clear()
+    monkeypatch.setenv("LABELAPP_DAFTAR_SENDIRI", "0")
+    try:
+        r = klien.post("/daftar", data={"user": "rizky", "pw": "12345678",
+                                        "pw2": "12345678"})
+        assert r.status_code == 403 and "dimatikan" in r.text
+        assert "rizky" not in _users(lingkungan)
+    finally:
+        get_settings.cache_clear()

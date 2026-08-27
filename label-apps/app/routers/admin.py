@@ -92,6 +92,7 @@ def _daftar(users: dict, sess_user: str) -> list[dict]:
             "oleh": rec.get("oleh") or "",
             "diri_sendiri": akun == sess_user,
             "punya_sandi": bool(rec.get("hash")),
+            "menunggu": bool(rec.get("menunggu")),
         })
     return out
 
@@ -119,8 +120,11 @@ async def daftar(sess: Session = Depends(current_session_api),
         users = _wajib_admin(sess, settings)
     except Tolak as e:
         return {"ok": False, "error": str(e)}
-    return {"ok": True, "akun": _daftar(users, sess.user),
+    isi = _daftar(users, sess.user)
+    return {"ok": True, "akun": isi,
             "domain_google": settings.google_domain,
+            "boleh_daftar": settings.daftar_sendiri,
+            "n_menunggu": sum(1 for a in isi if a["menunggu"]),
             "n_admin": _n_admin(users) or 1}
 
 
@@ -197,6 +201,30 @@ def _ubah(settings: Settings, oleh: str, akun: str, email=None,
     return {"akun": akun}
 
 
+def _setujui(settings: Settings, oleh: str, akun: str) -> dict:
+    """
+    Loloskan akun yang mendaftar sendiri.
+
+    Ini yang menggantikan verifikasi email: tanpa pembuktian alamat, seorang
+    manusia yang memutuskan siapa boleh masuk. Karena itu ia sengaja jadi
+    langkah terpisah, bukan efek samping dari menyunting sesuatu yang lain.
+    """
+    users = load_users(settings.users_file)
+    akun = user_slug(akun)
+    if akun not in users:
+        raise Tolak(f"akun '{akun}' tidak ada")
+    if not users[akun].get("menunggu"):
+        raise Tolak(f"akun '{akun}' memang sudah bisa masuk")
+    rec = dict(users[akun])
+    rec.pop("menunggu", None)
+    rec["disetujui_oleh"] = oleh
+    rec["disetujui"] = date.today().isoformat()
+    users[akun] = rec
+    save_users(settings.users_file, users)
+    log.info("akun disetujui: %r oleh %r", akun, oleh)
+    return {"akun": akun}
+
+
 def _hapus(settings: Settings, oleh: str, akun: str) -> dict:
     users = load_users(settings.users_file)
     akun = user_slug(akun)
@@ -237,6 +265,16 @@ async def ubah(akun: str = "", email: str | None = None,
     return await asyncio.to_thread(
         _jawab, _ubah, settings, sess.user, akun, email,
         None if admin is None else bool(admin), sandi)
+
+
+@router.post("/api/akun/setujui")
+async def setujui(akun: str = "", sess: Session = Depends(current_session_api),
+                  settings: Settings = Depends(get_settings)):
+    try:
+        _wajib_admin(sess, settings)
+    except Tolak as e:
+        return {"ok": False, "error": str(e)}
+    return await asyncio.to_thread(_jawab, _setujui, settings, sess.user, akun)
 
 
 @router.post("/api/akun/hapus")

@@ -79,6 +79,9 @@ class Settings:
     # Kosong berarti login Google mati. Email di LUAR domain itu hanya boleh
     # kalau sudah didaftarkan admin lewat halaman kelola akun.
     google_domain: str = ""
+    # Boleh mendaftar sendiri lewat /daftar. Hasilnya SELALU akun yang
+    # menunggu persetujuan admin, tidak pernah langsung bisa masuk.
+    daftar_sendiri: bool = True
 
     @property
     def max_upload_bytes(self) -> int:
@@ -131,4 +134,5 @@ def get_settings() -> Settings:
         flags=_read_labels(_path("FLAGS_FILE")),
         autologin=_get("DEV_AUTOLOGIN"),
         google_domain=_get("GOOGLE_DOMAIN"),
+        daftar_sendiri=_bool("DAFTAR_SENDIRI", True),
     )
