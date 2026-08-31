@@ -34,3 +34,7 @@ labelapp-unggahan/
 # Akun & data mode dev (terpisah dari prod)
 users.dev.json
 dev-data/
+
+# Log dan catatan runtime (dibuat deploy.sh)
+logs/
+run/

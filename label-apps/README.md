@@ -148,28 +148,32 @@ menerjemahkan HTTP ke `services/`.
 ## Dua mode: dev dan prod
 
 ```bash
-./start.sh            # dev (bawaan) — localhost:8043, muat ulang otomatis
-./start.sh prod       # produksi — dipakai tim
+./start.sh            # dev (bawaan) — port 8043, muat ulang otomatis
+./start.sh prod       # produksi — dipakai tim, port 8042
 ```
 
+Keduanya boleh hidup bersamaan; menyalakan dev tidak mengganggu tim.
 Setelannya di [env/dev.env](env/dev.env) dan [env/prod.env](env/prod.env).
 
 | | dev | prod |
 |---|---|---|
 | Port | 8043 | 8042 |
-| Alamat | `127.0.0.1` saja | `0.0.0.0` (atau `127.0.0.1` di belakang nginx) |
+| Alamat | `0.0.0.0` | `0.0.0.0` (atau `127.0.0.1` di belakang nginx) |
 | Berkas akun | `users.dev.json` | `users.json` |
 | Dataset | `./dev-data/datasets` | folder dataset sungguhan |
 | Unggahan | `./dev-data/unggahan` | folder unggahan sungguhan |
+| Thumbnail | `./dev-data/thumb` | `/tmp/labelapp_<pid>` |
 | Muat ulang saat kode berubah | ya | tidak |
 | Batas unggahan | 20 MB | 80 MB |
+| Masuk otomatis tanpa password | ya, **hanya dari mesin itu sendiri** | tidak |
 
 Tiga hal yang disengaja:
 
 **Semua path dev berbeda dari prod.** Akun, dataset, unggahan, dan thumbnail
 terpisah — mencoba-coba di dev tidak bisa merusak anotasi tim, dan akun uji
 tidak bisa dipakai masuk ke prod. Port juga berbeda supaya keduanya bisa hidup
-bersamaan.
+bersamaan. [tests/test_mode.py](tests/test_mode.py) gagal kalau salah satu
+setelan itu sampai sama, atau kalau folder dev bersarang di dalam folder prod.
 
 **dev adalah bawaan, prod harus diminta.** Menyalakan produksi perlu disengaja,
 bukan kebetulan.
@@ -177,13 +181,50 @@ bukan kebetulan.
 **Muat ulang otomatis hanya di dev.** Di produksi, restart mendadak saat kode
 tersentuh berarti semua orang kehilangan sesinya di tengah pekerjaan.
 
+### Membukanya dari laptop
+
+Dev mendengar di `0.0.0.0` seperti prod, jadi keduanya bisa dibuka dari laptop
+di jaringan kantor — asal ufw mengizinkan portnya:
+
+```bash
+sudo ufw allow from 103.182.240.26 to any port 8043 proto tcp
+```
+
+Yang menjaga dev tetap aman bukan alamat ikatannya, melainkan dua hal lain:
+ufw membatasi siapa yang bisa menjangkau portnya, dan `LABELAPP_DEV_AUTOLOGIN`
+hanya berlaku untuk permintaan dari mesin itu sendiri — `deps.sesi_otomatis`
+memakai `is_local()`, dan permintaan lewat proxy pun ditolak. Dari laptop,
+halaman login tetap muncul.
+
 Buat akun dev sekali:
 
 ```bash
-.venv/bin/python run.py --users users.dev.json --adduser devuser
+.venv/bin/python run.py --users users.dev.json --adduser namamu
 ```
 
 `users.dev.json` dan `dev-data/` tidak masuk repo.
+
+### Menaikkan kode dev ke prod
+
+```bash
+./deploy.sh --status     # apa yang sedang jalan, tanpa mengubah apa pun
+./deploy.sh              # uji, konfirmasi, lalu ganti proses prod
+```
+
+[deploy.sh](deploy.sh) menolak berjalan kalau ada perubahan yang belum
+di-commit, menjalankan pytest lebih dulu, menyebutkan commit apa saja yang akan
+naik, lalu memastikan prod benar-benar menjawab sebelum menyatakan berhasil.
+Kalau tidak menjawab, ia menunjukkan log dan perintah untuk kembali ke commit
+sebelumnya.
+
+Satu hal yang membuatnya tidak selalu perlu dijalankan: **templat dan CSS
+dibaca dari disk tiap permintaan**, jadi perubahan tampilan sudah tayang di
+prod tanpa restart. Yang butuh restart hanya kode Python. `deploy.sh`
+mengatakan mana yang sedang kamu hadapi, supaya tidak ada sesi tim yang diputus
+tanpa alasan.
+
+Commit yang sedang dijalankan prod dicatat di `run/prod.commit` (tidak masuk
+repo).
 
 ## Paritas dengan AnyLabeling
 
@@ -206,13 +247,14 @@ aplikasi ini beserta prioritasnya.
 .venv/bin/python -m pytest
 ```
 
-102 tes: gerbang login, isolasi antar akun, sterilisasi nama berkas unggahan,
+244 tes: gerbang login, isolasi antar akun, sterilisasi nama berkas unggahan,
 penjagaan endpoint desktop, tandai latar, kecocokan angka chip dengan isi grid,
 paritas MobileSAM, bentuk keluaran ekspor, bulat-balik keenam tipe bentuk,
 pemindaian ekspor bersplit, penulisan balik label YOLO, pembagian split yang
 tidak memecah augmentasi satu foto, serta keamanan bongkar arsip (zip-slip,
 zip bomb, dan zip di dalam zip), serta kesetaraan keluaran dengan Roboflow
-(cincin poligon, pengurungan koordinat, dan urutan indeks kelas).
+(cincin poligon, pengurungan koordinat, dan urutan indeks kelas),
+serta pemisahan setelan dev dan prod.
 
 Kanvas diuji terpisah dengan Chrome sungguhan, karena perilaku mouse tidak bisa
 dipercaya kalau hanya fungsinya yang dipanggil langsung — urutan penanganan klik

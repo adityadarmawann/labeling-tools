@@ -41,7 +41,7 @@ kuning() { printf '\033[33m%s\033[0m\n' "$1"; }
 }
 
 # Muat setelan mode ini. Nilai yang sudah ada di environment TIDAK ditimpa,
-# supaya PORT=9000 ./start.sh dev tetap berlaku.
+# supaya LABELAPP_PORT=9000 ./start.sh dev tetap berlaku (awalan LABELAPP_ wajib).
 set -a
 while IFS='=' read -r k v; do
   [[ "$k" =~ ^LABELAPP_ ]] || continue
