@@ -384,7 +384,7 @@
       ket.innerHTML = '<b>Perlu dicek:</b><br>'
         + buka.peringatan.map(p => '· ' + p).join('<br>');
     } else {
-      ket.textContent = 'Selesai. Semua berkas sudah ada di ' + PROJEK + '.';
+      ket.textContent = 'Selesai. Berikutnya: bagi gambarnya ke anggota tim.';
     }
   }
 
@@ -565,7 +565,10 @@
       };
     }
     $('ug-batal').onclick = () => { batal = true; };
-    $('ug-lanjut').href = '/';
+    // Unggahan yang selesai lalu mendarat di grid tidak menjawab pertanyaan
+    // berikutnya, yaitu siapa yang mengerjakan ini. Halaman bagi tugas yang
+    // menjawabnya, jadi ke situ tujuannya.
+    $('ug-lanjut').href = '/bagi?ds=' + encodeURIComponent(PROJEK);
 
     // Nama batch bawaan: tanggal dan jam hari ini. Kolom kosong membuat orang
     // mengarangnya sendiri tiap kali, dan yang dikarang jarang konsisten.

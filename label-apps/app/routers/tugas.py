@@ -14,7 +14,7 @@ from __future__ import annotations
 import asyncio
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from ..config import Settings, get_settings
 from ..deps import current_session, current_session_api
@@ -25,6 +25,12 @@ from ..session import Session
 from ..templating import templates
 
 router = APIRouter(tags=["tugas"])
+
+# Ubin yang digambar sekaligus di halaman bagi. Di atas ini daftarnya
+# dipotong dan sisanya cukup disebut angkanya: dua puluh ribu ubin
+# membuat halaman berat padahal yang diputuskan cuma berapa banyak dan
+# untuk siapa.
+MAKS_UBIN = 400
 
 
 def _siap(sess: Session) -> tuple[dict | None, str]:
@@ -41,6 +47,72 @@ def _kunci(sess: Session, paths: list[str]) -> list[str]:
         if it:
             out.append(svc_tag.kunci_gambar(sess.src, it["img"]))
     return out
+
+
+@router.get("/bagi", response_class=HTMLResponse)
+async def halaman_bagi(request: Request, ds: str = "",
+                       sess: Session = Depends(current_session),
+                       settings: Settings = Depends(get_settings)):
+    """
+    Bagi gambar yang belum ditugaskan ke anggota tim.
+
+    Inilah yang menggantikan "langsung ke grid" setelah unggah. Unggahan yang
+    selesai lalu mendarat di grid tidak menjawab pertanyaan berikutnya, yaitu
+    siapa yang mengerjakan ini; halaman ini yang menjawabnya.
+    """
+    from ..services import projek as sp
+
+    d = sp.temukan(settings.uploads_root, sess.user, ds)
+    if d is None:
+        return RedirectResponse("/pilih", status_code=303)
+    if str(sess.src or "") != str(d):
+        await asyncio.to_thread(sess.load, d)
+
+    data = svc.baca(d, sess.user)
+    ringkas = await asyncio.to_thread(sp.ringkas, d)
+    pr = {"nama": d.name, "path": str(d), **ringkas, "versi": 0,
+          "ds": ds if "/" in ds else d.name}
+
+    ditugaskan = {k for t in data["tugas"].values()
+                  for k in (t.get("gambar") or [])}
+    belum = [it for it in sess.items
+             if svc_tag.kunci_gambar(d, it["img"]) not in ditugaskan]
+
+    return templates.TemplateResponse(request, "bagi.html", {
+        "sess": sess, "pr": pr, "aktif": "anotasi",
+        "boleh_kelola": svc.boleh_kelola(data, sess.user),
+        "pemilik": data["pemilik"] or sess.user,
+        "anggota": sorted(data["anggota"]),
+        "undangan": svc.undangan_terbuka(data),
+        "belum": belum[:MAKS_UBIN],
+        "n_belum": len(belum),
+        "n_dipotong": max(0, len(belum) - MAKS_UBIN),
+    })
+
+
+@router.get("/api/tugas/calon")
+async def calon(sess: Session = Depends(current_session_api),
+                settings: Settings = Depends(get_settings)):
+    """
+    Akun yang bisa ditugaskan.
+
+    Hanya untuk pemilik projek. Daftar akun adalah keterangan tentang orang;
+    membukanya ke siapa pun yang punya sesi berarti siapa pun bisa menyusun
+    daftar seluruh anggota tim.
+    """
+    data, galat = _siap(sess)
+    if galat:
+        return {"ok": False, "error": galat}
+    if not svc.boleh_kelola(data, sess.user):
+        return {"ok": False, "error": "hanya pemilik projek yang bisa membagi tugas"}
+    from ..security import load_users
+    users = load_users(settings.users_file)
+    out = [{"akun": a, "nama": (r.get("nama") or a),
+            "email": r.get("email") or "",
+            "anggota": a in data["anggota"] or a == data["pemilik"]}
+           for a, r in sorted(users.items())]
+    return {"ok": True, "akun": out, "pemilik": data["pemilik"],
+            "anggota": sorted(data["anggota"])}
 
 
 @router.get("/api/tugas/keadaan")

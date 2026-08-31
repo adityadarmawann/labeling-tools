@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}Bagi tugas{% endblock %}
+{% block bodyclass %}berprojek{% endblock %}
+
+{% block body %}
+<header>
+  <div class="top">
+    <h1>Bagi tugas</h1>
+    {% include "_header.html" %}
+  </div>
+</header>
+
+<main>
+{% include "_sisi.html" %}
+<div class="sisi-isi bg-isi" id="bg-isi"
+     data-ds="{{ pr.ds }}" data-pemilik="{{ pemilik }}">
+
+  {% if not boleh_kelola %}
+  <div class="pkosong" style="max-width:640px">
+    <b>Hanya pemilik projek yang membagi tugas</b>
+    Projek ini milik <b>{{ pemilik }}</b>. Kamu bisa melihat seluruh gambarnya
+    dan mengerjakan yang ditugaskan kepadamu.
+    <span style="display:block;margin-top:10px">
+      <a href="/?ds={{ pr.ds | urlquote }}">Buka datasetnya</a></span>
+  </div>
+
+  {% elif not n_belum %}
+  <div class="pkosong" style="max-width:640px">
+    <b>Semua gambar sudah ditugaskan</b>
+    Tidak ada lagi yang menunggu dibagi di projek ini.
+    <span style="display:block;margin-top:10px">
+      <a href="/unggah?ds={{ pr.ds | urlquote }}">Unggah lagi</a> atau
+      <a href="/?ds={{ pr.ds | urlquote }}">buka datasetnya</a>.</span>
+  </div>
+
+  {% else %}
+  <div class="bg-tata">
+    {# ---------------------------------------------------------- kiri #}
+    <section class="bg-media">
+      <div class="bg-kepala">
+        <div>
+          <h2 class="bg-judul">Belum ditugaskan</h2>
+          <span class="bg-sub"><b id="bg-jumlah">{{ n_belum }}</b> gambar
+            menunggu dibagi{% if n_dipotong %} &middot; {{ n_dipotong }} di
+            antaranya tidak digambar di sini, tetap ikut dibagi{% endif %}</span>
+        </div>
+        <a class="chip" href="/unggah?ds={{ pr.ds | urlquote }}">Unggah lagi</a>
+      </div>
+
+      <div class="bg-kisi" id="bg-kisi">
+        {%- for it in belum %}
+        <figure class="bg-ubin" data-path="{{ it | imgpath }}">
+          <span class="bg-gambar">
+            <img src="/thumb?path={{ it | imgpath }}&s=220" alt=""
+                 width="110" height="110" decoding="async">
+          </span>
+          <figcaption class="bg-nama" title="{{ it.img.name }}">{{ it.img.name }}</figcaption>
+        </figure>
+        {%- endfor %}
+      </div>
+    </section>
+
+    {# ---------------------------------------------------------- kanan #}
+    <aside class="bg-panel">
+      <h3 class="bg-panel-judul">Bagikan ke anggota tim</h3>
+
+      <label class="form-lbl" for="bg-n">Berapa gambar yang dibagikan</label>
+      <div class="bg-jumlah">
+        <input type="number" id="bg-n" min="1" max="{{ n_belum }}"
+               value="{{ n_belum }}" inputmode="numeric">
+        <span class="bg-dari">dari {{ n_belum }}</span>
+      </div>
+      <input type="range" id="bg-slider" min="1" max="{{ n_belum }}"
+             value="{{ n_belum }}" aria-label="Jumlah gambar yang dibagikan">
+
+      {# Diacak secara bawaan. Gambar berurutan nama berkas hampir selalu
+         berurutan waktu pemotretan juga, jadi membagi berurutan memberi satu
+         orang seluruh sesi pagi dan yang lain seluruh sesi sore. Perbedaan
+         cahaya di antara keduanya lalu terbaca sebagai perbedaan gaya
+         pelabelan. #}
+      <label class="bg-centang">
+        <input type="checkbox" id="bg-acak" checked><span class="cb"></span>
+        <span>Acak dulu sebelum dibagi</span></label>
+
+      <label class="form-lbl" for="bg-catatan">Catatan untuk pelabel</label>
+      <textarea id="bg-catatan" rows="2"
+        placeholder="mis. abaikan botol yang terpotong tepi gambar"></textarea>
+
+      <div class="bg-pisah"></div>
+
+      <div class="bg-orang-kepala">
+        <span class="form-lbl" style="margin:0">Pilih pelabel</span>
+        <button class="chip" type="button" id="bg-tambah-orang">+ Anggota</button>
+      </div>
+      <div class="bg-orang" id="bg-orang">
+        <span class="halus">Memuat daftar anggota&hellip;</span>
+      </div>
+
+      {# Kotak tambah anggota, tersembunyi sampai diminta. #}
+      <div class="bg-undang" id="bg-undang" hidden>
+        <label class="form-lbl" for="bg-email">Akun atau email</label>
+        <div class="row">
+          <input type="text" id="bg-email" placeholder="rizky atau rizky@higo.id">
+          <button class="cta" type="button" id="bg-undang-kirim">Undang</button>
+        </div>
+        <div class="jalur-status" id="bg-undang-jalur"></div>
+      </div>
+
+      <p class="bg-acak-ket halus" id="bg-acak-ket"></p>
+      <div class="jalur-status" id="bg-jalur"></div>
+      <button class="cta bg-mulai" type="button" id="bg-mulai" disabled>
+        Pilih pelabel dulu</button>
+    </aside>
+  </div>
+  {% endif %}
+</div>
+</main>
+{% endblock %}
+
+{% block skrip %}<script src="{{ statik('bagi.js') }}"></script>{% endblock %}

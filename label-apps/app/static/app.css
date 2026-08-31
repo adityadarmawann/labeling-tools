@@ -1417,3 +1417,73 @@ body.berprojek main{display:flex;gap:0;padding:0;align-items:stretch}
   .sisi-judul{display:none}
   .sisi-isi{padding:16px}
 }
+
+/* ==================================================== halaman bagi tugas */
+.bg-tata{display:flex;gap:18px;align-items:flex-start}
+.bg-media{flex:1 1 0;min-width:0}
+.bg-kepala{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;
+  margin-bottom:12px}
+.bg-judul{margin:0;font-size:16px}
+.bg-sub{font-size:12px;color:var(--ink-dim)}
+
+.bg-kisi{display:grid;gap:10px;
+  grid-template-columns:repeat(auto-fill,minmax(110px,1fr));
+  max-height:min(64vh,660px);overflow-y:auto;padding:2px}
+.bg-ubin{margin:0}
+.bg-gambar{display:block;aspect-ratio:1;border-radius:7px;overflow:hidden;
+  background:var(--sunk);border:1px solid var(--line)}
+.bg-gambar img{width:100%;height:100%;object-fit:contain;display:block}
+.bg-nama{font-size:10.5px;color:var(--ink-faint);margin-top:4px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Yang di luar jatah diredupkan, bukan disembunyikan: melihat sisa yang
+   tertinggal itu bagian dari keputusannya. */
+.bg-ubin[data-luar]{opacity:.25}
+
+.bg-panel{flex:0 0 320px;background:var(--panel);border:1px solid var(--line);
+  border-radius:10px;padding:16px 15px 18px;
+  position:sticky;top:64px}
+.bg-panel-judul{margin:0 0 12px;font-size:14px}
+.bg-jumlah{display:flex;gap:9px;align-items:center}
+.bg-jumlah input{width:96px}
+.bg-dari{font-size:12px;color:var(--ink-faint);white-space:nowrap}
+.bg-panel input[type=range]{width:100%;margin:8px 0 2px}
+.bg-centang{display:flex;gap:8px;align-items:center;margin:10px 0 4px;
+  font-size:12.5px;color:var(--ink-dim);cursor:pointer}
+.bg-panel textarea{width:100%;resize:vertical}
+.bg-pisah{height:1px;background:var(--line);margin:14px 0 12px}
+
+.bg-orang-kepala{display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:7px}
+.bg-orang{display:flex;flex-direction:column;gap:3px;max-height:220px;
+  overflow-y:auto}
+.bg-orang-baris{display:flex;gap:9px;align-items:center;width:100%;
+  padding:7px 8px;border:1px solid transparent;border-radius:8px;
+  background:transparent;cursor:pointer;text-align:left;color:var(--ink-dim)}
+.bg-orang-baris:hover{background:var(--hover)}
+.bg-orang-baris[data-on]{border-color:var(--aksi);background:var(--ok-lembut);
+  color:var(--ink)}
+.bg-avatar{flex:0 0 26px;height:26px;display:grid;place-items:center;
+  border-radius:50%;background:var(--sunk);color:var(--ink-dim);
+  font-size:11px;font-weight:600}
+.bg-orang-teks{display:flex;flex-direction:column;min-width:0;flex:1 1 auto}
+.bg-orang-teks b{font-size:12.5px;color:var(--ink);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.bg-orang-teks .halus{margin:0;font-size:10.5px}
+.bg-orang-n{flex:0 0 auto;font-size:11px;color:var(--aksi);font-weight:600;
+  white-space:nowrap}
+
+.bg-undang{margin-top:10px;padding:11px;background:var(--sunk);
+  border-radius:8px}
+.bg-undang .row{gap:6px}
+.bg-tautan{display:flex;gap:6px;align-items:center;margin-top:8px}
+.bg-tautan .mono{flex:1 1 auto;min-width:0;font-size:10.5px;
+  color:var(--ink-dim);overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}
+.bg-mulai{width:100%;margin-top:14px}
+
+@media (max-width:1080px){
+  .bg-tata{flex-direction:column}
+  .bg-panel{flex:1 1 auto;width:100%;position:static}
+  .bg-kisi{max-height:42vh}
+}
+.bg-acak-ket{margin:10px 0 0;line-height:1.5}

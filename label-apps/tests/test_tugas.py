@@ -327,3 +327,78 @@ def test_rute_undangan_dibuka_menjadikan_anggota(klien, aplikasi, lingkungan):
 
     # Dibuka kedua kalinya, tautannya sudah mati.
     assert "tidak berlaku" in lain.get(jalur).text
+
+
+# ============================================================
+# HALAMAN BAGI
+# ============================================================
+
+def test_halaman_bagi_menampilkan_yang_belum_ditugaskan(klien, lingkungan):
+    import pathlib
+
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = _projek(ruang, "bagi-uji", n=4)
+    klien.post(f"/setsrc?path={d}")
+
+    h = klien.get("/bagi?ds=bagi-uji").text
+    assert h.count('class="bg-ubin"') == 4
+    assert 'id="bg-mulai"' in h
+
+    gambar = sorted(str(x) for x in d.glob("*.jpg"))
+    klien.post("/api/tugas/bagi", json={"pelabel": "anggi", "gambar": gambar[:3]})
+
+    h = klien.get("/bagi?ds=bagi-uji").text
+    assert h.count('class="bg-ubin"') == 1, "yang sudah ditugaskan masih tampil"
+
+    klien.post("/api/tugas/bagi", json={"pelabel": "anggi", "gambar": gambar[3:]})
+    h = klien.get("/bagi?ds=bagi-uji").text
+    assert "Semua gambar sudah ditugaskan" in h
+
+
+def test_halaman_bagi_menolak_yang_bukan_pemilik(klien, aplikasi, lingkungan):
+    """Anggota tetap boleh membuka halamannya, tetapi tidak diberi alatnya.
+
+    Menyembunyikan halamannya sama sekali menyisakan teka-teki; halaman yang
+    menjelaskan siapa pemiliknya tidak.
+    """
+    import pathlib
+
+    from conftest import klien_baru
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = _projek(ruang, "bagi-hak", n=2)
+    klien.post(f"/setsrc?path={d}")
+    klien.post("/api/tugas/undang?akun=anggi")
+
+    lain = klien_baru(aplikasi, "anggi", PW_ANGGI)
+    h = lain.get("/bagi?ds=paul/bagi-hak").text
+    assert "Hanya pemilik projek yang membagi tugas" in h
+    assert 'id="bg-mulai"' not in h
+
+    j = lain.get("/api/tugas/calon").json()
+    assert j["ok"] is False and "pemilik" in j["error"]
+
+
+def test_calon_pelabel_hanya_untuk_pemilik(klien, lingkungan):
+    """Daftar akun adalah keterangan tentang orang.
+
+    Membukanya ke siapa pun yang punya sesi berarti siapa pun bisa menyusun
+    daftar seluruh anggota tim.
+    """
+    import pathlib
+
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = _projek(ruang, "calon-uji", n=2)
+    klien.post(f"/setsrc?path={d}")
+
+    j = klien.get("/api/tugas/calon").json()
+    assert j["ok"] and {a["akun"] for a in j["akun"]} >= {"paul", "anggi"}
+    assert next(a for a in j["akun"] if a["akun"] == "paul")["anggota"] is True
