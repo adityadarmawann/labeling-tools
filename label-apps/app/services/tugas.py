@@ -191,6 +191,30 @@ def di_dataset(data: dict, kunci: str) -> bool:
     return data["warisan"] or kunci in data["dataset"]
 
 
+def saring_dataset(items: list, ds: Path, akun: str = "") -> tuple[list, dict]:
+    """
+    Hanya gambar yang sudah dinyatakan masuk dataset, beserta angkanya.
+
+    Inilah yang membedakan "sudah dilabeli" dari "sudah selesai". Melabeli
+    dilakukan berkali-kali sambil ragu; menyatakan masuk dataset sekali dan
+    berakibat, dan yang berakibat itu justru di sini: splitting, versi, dan
+    ekspor semuanya bekerja pada hasil saringan ini.
+
+    Projek warisan mengembalikan seluruhnya apa adanya. Tanpa itu, ekspor empat
+    projek yang sudah ada akan mendadak kosong pada hari fitur ini dipasang.
+    """
+    from .tag import kunci_gambar
+
+    data = baca(ds, akun)
+    if data["warisan"]:
+        return list(items), {"n_semua": len(items), "n_dataset": len(items),
+                             "warisan": True}
+    dipakai = [it for it in items
+               if di_dataset(data, kunci_gambar(ds, it["img"]))]
+    return dipakai, {"n_semua": len(items), "n_dataset": len(dipakai),
+                     "warisan": False}
+
+
 def masukkan(ds: Path, kunci_daftar: list[str], pemilik: str = "") -> dict:
     """Nyatakan sekumpulan gambar masuk dataset."""
     with _kunci:

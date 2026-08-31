@@ -669,6 +669,13 @@ const Progres = (() => {
       // Kalau datasetnya sudah punya split sendiri, pembagian itu yang dipakai
       // dan rasio yang diketik tidak berlaku. Itu harus dikatakan, bukan
       // dibiarkan jadi teka-teki kenapa angkanya tidak berubah.
+      // Yang diekspor cuma isi dataset, dan itu harus terbaca SEBELUM tombol
+      // unduh ditekan. ZIP berisi 28 dari 476 gambar tanpa satu kata pun
+      // terlihat seperti ekspor yang gagal separuh.
+      const catatanDataset = (!j.warisan && j.n_semua !== j.n_dataset)
+        ? `<br><b>${j.n_dataset} dari ${j.n_semua} gambar</b> ada di dataset; `
+          + 'sisanya masih dikerjakan dan tidak ikut diunduh.'
+        : '';
       info.innerHTML =
         (j.split_bawaan
           ? '<b>memakai split asli dataset</b><br>'
@@ -679,6 +686,7 @@ const Progres = (() => {
           ? '<br>Dataset ini sudah terbagi train/valid/test, jadi pembagiannya '
             + 'dipertahankan dan angka rasio di atas tidak dipakai.'
           : '')
+        + catatanDataset
         + (j.tanpa_objek ? `<br>${j.tanpa_objek} tanpa objek (contoh negatif)` : '')
         + (j.bentuk_dilewati ? ` · ${j.bentuk_dilewati} bentuk dilewati` : '')
         // Tanpa rencana, splitting-nya cuma mengelompokkan lewat nama berkas

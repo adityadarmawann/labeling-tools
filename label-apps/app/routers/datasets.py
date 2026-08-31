@@ -10,7 +10,7 @@ from fastapi.responses import HTMLResponse, Response
 from ..config import Settings, get_settings
 from ..deps import current_session, current_session_api, is_local, require_local
 from ..log import catat
-from ..services import anylabeling, export, riwayat, scanner, split
+from ..services import anylabeling, export, riwayat, scanner, split, tugas
 
 _log = catat("labelapp.split")
 from ..session import Session
@@ -116,11 +116,15 @@ async def ekspor_ringkasan(format: str = "yolo-seg", split: str = "",
     with sess.lock:
         items = list(sess.items)
         names = dict(sess.names)
+    # Yang diekspor HANYA yang sudah dinyatakan masuk dataset. Lihat
+    # tugas.saring_dataset; projek yang belum pernah dibagi tidak terpengaruh.
+    items, hitung = await asyncio.to_thread(tugas.saring_dataset, items,
+                                            sess.src, sess.user)
     rencana = sess.rencana_split
     r = await asyncio.to_thread(export.ringkasan, items, format == "yolo-seg",
                                 export.baca_rasio(split), names, rencana)
     return {"ok": True, "format": export.FORMAT[format],
-            "rencana": ringkas_rencana(rencana), **r}
+            "rencana": ringkas_rencana(rencana), **hitung, **r}
 
 
 @router.get("/ekspor")
@@ -143,6 +147,18 @@ async def ekspor(format: str = "yolo-seg", gambar: int = 1, split: str = "",
     with sess.lock:
         items = list(sess.items)
         names = dict(sess.names)
+    # Isi ZIP-nya harus sama persis dengan yang dihitung ringkasan di panelnya.
+    # Kalau ringkasan menyaring dan unduhan tidak, angka yang dibaca sebelum
+    # menekan tombol bukan angka yang diterima sesudahnya.
+    items, _ = await asyncio.to_thread(tugas.saring_dataset, items,
+                                       sess.src, sess.user)
+    if not items:
+        # Ditolak dengan sebabnya, bukan ZIP kosong yang baru ketahuan salah
+        # setelah diunduh dan dibuka.
+        return Response(
+            "belum ada gambar yang dimasukkan ke dataset. Buka Anotasi, pilih "
+            "gambar yang sudah selesai, lalu tekan Tambahkan ke dataset.",
+            status_code=409, media_type="text/plain; charset=utf-8")
     data = await asyncio.to_thread(export.zip_dataset, items, nama, format,
                                    bool(gambar), export.baca_rasio(split), names,
                                    sess.rencana_split)
@@ -197,8 +213,12 @@ async def split_jalankan(split_q: str = Query("", alias="split"),
         return {"ok": False, "error": "belum ada dataset terbuka"}
     with sess.lock:
         items = list(sess.items)
+    items, hitung = await asyncio.to_thread(tugas.saring_dataset, items,
+                                            sess.src, sess.user)
     if not items:
-        return {"ok": False, "error": "dataset ini kosong"}
+        return {"ok": False, "error": (
+            "belum ada gambar yang dimasukkan ke dataset. Splitting bekerja "
+            "pada isi dataset, bukan pada seluruh gambar yang diunggah.")}
 
     sess.split_batal = False
     split.bersihkan_maju(sess.user)

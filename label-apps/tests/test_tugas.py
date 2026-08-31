@@ -637,3 +637,58 @@ def test_kanvas_jujur_sejak_dibuka_bukan_menolak_saat_disimpan(klien, aplikasi,
     # Dan rutenya tetap menolak walau kanvasnya dipaksa mengirim.
     j = lain.post("/api/simpan", json={"path": gambar[1], "shapes": []}).json()
     assert j["ok"] is False
+
+
+# ============================================================
+# DATASET MENENTUKAN EKSPOR
+# ============================================================
+
+def test_projek_warisan_mengekspor_semuanya_seperti_sebelumnya(klien, lingkungan):
+    """Tidak ada satu pun projek lama yang ekspornya berubah."""
+    import pathlib
+
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = _projek(ruang, "warisan-ekspor", n=4)
+    klien.post(f"/setsrc?path={d}")
+
+    j = klien.get("/api/ekspor/ringkasan?format=yolo-seg&split=8:1:1").json()
+    assert j["warisan"] is True
+    assert j["n_semua"] == j["n_dataset"] == 4
+    assert klien.get("/ekspor?format=yolo-seg&gambar=0").status_code == 200
+
+
+def test_ekspor_dan_splitting_hanya_memakai_isi_dataset(klien, lingkungan):
+    """Yang sudah di-add itulah yang di-splitting, diberi versi, dan diekspor."""
+    import io
+    import pathlib
+    import zipfile
+
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = _projek(ruang, "ekspor-tugas", n=5)
+    klien.post(f"/setsrc?path={d}")
+    gambar = sorted(str(x) for x in d.glob("*.jpg"))
+    klien.post("/api/tugas/bagi", json={"pelabel": "paul", "gambar": gambar})
+
+    # Berkas tugas sudah ada, dataset masih kosong: ekspor DITOLAK dengan
+    # sebabnya, bukan mengirim ZIP kosong.
+    r = klien.get("/ekspor?format=yolo-seg&gambar=0")
+    assert r.status_code == 409 and "Tambahkan ke dataset" in r.text
+    j = klien.post("/api/split/jalankan?split=8:1:1").json()
+    assert j["ok"] is False and "dataset" in j["error"]
+
+    klien.post("/api/tugas/dataset", json={"gambar": gambar[:2]})
+    j = klien.get("/api/ekspor/ringkasan?format=yolo-seg&split=8:1:1").json()
+    assert j["n_semua"] == 5 and j["n_dataset"] == 2 and j["gambar"] == 2
+
+    # Isi ZIP harus sama persis dengan yang dihitung ringkasan.
+    r = klien.get("/ekspor?format=yolo-seg&gambar=0")
+    assert r.status_code == 200
+    z = zipfile.ZipFile(io.BytesIO(r.content))
+    label = [x for x in z.namelist() if "/labels/" in x and x.endswith(".txt")]
+    assert len(label) == 2, label
