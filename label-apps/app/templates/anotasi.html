@@ -56,16 +56,26 @@
         <span class="an-hitung">{{ belum_ditugaskan }}</span>
       </div>
       {% if belum_ditugaskan %}
-      <div class="an-kosong">
-        <b>{{ belum_ditugaskan }} gambar menunggu dibagi</b>
+      {#- Satu baris per UNGGAHAN, bukan satu angka gabungan. Angka 378 tidak
+          memberi tahu apa pun tentang asalnya: satu unggahan besar dan lima
+          unggahan kecil terlihat sama, padahal keputusan membaginya hampir
+          selalu per unggahan. -#}
+      {%- for b in belum_batch %}
+      <article class="an-batch">
+        <div class="an-batch-atas">
+          <b class="an-batch-nama" title="{{ b.batch or 'tanpa nama unggahan' }}">
+            {{ b.batch or 'Tanpa nama unggahan' }}</b>
+          <span class="an-batch-n">{{ b.n }}</span>
+        </div>
         {% if boleh_kelola %}
-        <a class="cta" href="/bagi?ds={{ pr.ds | urlquote }}"
-           style="display:inline-block;text-decoration:none;text-align:center">
-          Bagi tugas</a>
-        {% else %}
-        <span class="halus">Pemilik projek yang membaginya.</span>
+        <a class="an-mulai" href="/bagi?ds={{ pr.ds | urlquote }}{% if b.batch %}&batch={{ b.batch | urlquote }}{% endif %}">
+          Bagi tugas &rarr;</a>
         {% endif %}
-      </div>
+      </article>
+      {%- endfor %}
+      {% if not boleh_kelola %}
+      <span class="halus" style="text-align:center">Pemilik projek yang membaginya.</span>
+      {% endif %}
       {% else %}
       <div class="an-kosong"><b>Semuanya sudah dibagi</b>
         <span class="halus">Tidak ada gambar yang menganggur di projek ini.</span>
@@ -112,9 +122,13 @@
 
     <div class="an-kolom">
       <div class="an-kolom-kepala">
-        <b>Selesai</b>
+        <b>Dataset</b>
         <span class="an-hitung">{{ selesai | length }}</span>
       </div>
+      {#- Istilahnya disamakan dengan yang dipakai di seluruh aplikasi: yang
+          masuk sini itulah yang di-splitting, diberi versi, dan diekspor. -#}
+      <a class="an-lihat-semua" href="/?ds={{ pr.ds | urlquote }}">
+        Lihat semua {{ n_dataset }} gambar di dataset &rarr;</a>
       {%- for k in selesai %}
       <article class="an-kartu an-selesai" data-id="{{ k.id }}">
         <div class="an-kartu-atas">
@@ -130,7 +144,7 @@
           Lihat isinya &rarr;</a>
       </article>
       {%- else %}
-      <div class="an-kosong"><b>Belum ada yang selesai</b>
+      <div class="an-kosong"><b>Belum ada yang masuk dataset</b>
         {# Ini yang paling sering ditanyakan saat kolom ini kosong padahal
            pekerjaannya sudah rampung: melabeli saja belum cukup. #}
         <span class="halus">Tugas pindah ke sini setelah gambarnya

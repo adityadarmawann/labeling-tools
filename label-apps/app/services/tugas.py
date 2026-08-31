@@ -389,7 +389,8 @@ def bubarkan(ds: Path, pemilik: str, tid: str) -> dict:
 # PAPAN
 # ============================================================
 
-def papan(data: dict, berlabel: set[str], semua: set[str]) -> dict:
+def papan(data: dict, berlabel: set[str], semua: set[str],
+          batch_dari: dict[str, str] | None = None) -> dict:
     """
     Bahan untuk papan Anotasi: tiga kolom.
 
@@ -416,6 +417,18 @@ def papan(data: dict, berlabel: set[str], semua: set[str]) -> dict:
     kartu.sort(key=lambda k: k["dibuat"], reverse=True)
     belum = sorted(semua - ditugaskan)
 
+    # Yang belum ditugaskan dikelompokkan per UNGGAHAN, bukan disebut sebagai
+    # satu angka gabungan. Satu angka 378 tidak memberi tahu apa pun tentang
+    # asalnya: satu unggahan besar dan lima unggahan kecil terlihat sama, dan
+    # keputusan membaginya justru hampir selalu per unggahan.
+    bd = batch_dari or {}
+    kelompok: dict[str, int] = {}
+    for k in belum:
+        kelompok[bd.get(k) or ""] = kelompok.get(bd.get(k) or "", 0) + 1
+    belum_batch = sorted(
+        ({"batch": nama, "n": n} for nama, n in kelompok.items()),
+        key=lambda x: (x["batch"] == "", -x["n"], x["batch"]))
+
     # Ringkasan per orang, dan inilah yang paling sering ditanyakan: si aditya
     # sudah berapa persen. Dijumlahkan dari kartunya, bukan dihitung ulang,
     # supaya angka di ringkasan dan angka di kartu tidak pernah berbeda.
@@ -434,6 +447,7 @@ def papan(data: dict, berlabel: set[str], semua: set[str]) -> dict:
 
     return {
         "belum_ditugaskan": len(belum),
+        "belum_batch": belum_batch,
         "kartu": kartu,
         "per_pelabel": per_pelabel,
         "n_dataset": sum(1 for k in semua if di_dataset(data, k)),

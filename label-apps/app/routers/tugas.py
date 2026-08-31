@@ -84,7 +84,17 @@ async def halaman_papan(request: Request, ds: str = "",
     berlabel = {svc_tag.kunci_gambar(d, it["img"]) for it in items
                 if scanner.severity(it) != "stop"}
 
-    papan = svc.papan(data, berlabel, semua)
+    # Nama unggahan tiap gambar, dipakai mengelompokkan kolom pertama.
+    tdata_tag = svc_tag.baca(d)
+    batch_dari = {}
+    if tdata_tag["gambar"]:
+        for it in items:
+            k = svc_tag.kunci_gambar(d, it["img"])
+            b = svc_tag.untuk(tdata_tag, k)["batch"]
+            if b:
+                batch_dari[k] = b
+
+    papan = svc.papan(data, berlabel, semua, batch_dari)
     return templates.TemplateResponse(request, "anotasi.html", {
         "sess": sess, "pr": pr, "aktif": "anotasi",
         "boleh_kelola": svc.boleh_kelola(data, sess.user),
@@ -154,7 +164,7 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
 
 
 @router.get("/bagi", response_class=HTMLResponse)
-async def halaman_bagi(request: Request, ds: str = "",
+async def halaman_bagi(request: Request, ds: str = "", batch: str = "",
                        sess: Session = Depends(current_session),
                        settings: Settings = Depends(get_settings)):
     """
@@ -179,8 +189,18 @@ async def halaman_bagi(request: Request, ds: str = "",
 
     ditugaskan = {k for t in data["tugas"].values()
                   for k in (t.get("gambar") or [])}
-    belum = [it for it in sess.items
-             if svc_tag.kunci_gambar(d, it["img"]) not in ditugaskan]
+    tdata_tag = svc_tag.baca(d)
+    belum = []
+    for it in sess.items:
+        k = svc_tag.kunci_gambar(d, it["img"])
+        if k in ditugaskan:
+            continue
+        # Dibatasi ke satu unggahan kalau diminta: membagi biasanya dilakukan
+        # per unggahan, dan menyodorkan seluruh sisa projek saat yang dimaksud
+        # satu folder membuat slidernya menunjuk kumpulan yang salah.
+        if batch and svc_tag.untuk(tdata_tag, k)["batch"] != batch:
+            continue
+        belum.append(it)
 
     return templates.TemplateResponse(request, "bagi.html", {
         "sess": sess, "pr": pr, "aktif": "anotasi",
@@ -188,6 +208,7 @@ async def halaman_bagi(request: Request, ds: str = "",
         "pemilik": data["pemilik"] or sess.user,
         "anggota": sorted(data["anggota"]),
         "undangan": svc.undangan_terbuka(data),
+        "batch": batch,
         "belum": belum[:MAKS_UBIN],
         "n_belum": len(belum),
         "n_dipotong": max(0, len(belum) - MAKS_UBIN),

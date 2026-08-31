@@ -423,8 +423,11 @@ def test_papan_menampilkan_tiga_kolom_dan_ringkasan_per_orang(klien, lingkungan)
     gambar = sorted(str(x) for x in d.glob("*.jpg"))
 
     h = klien.get("/anotasi?ds=papan-uji").text
-    assert "Belum ditugaskan" in h and "Dikerjakan" in h and "Selesai" in h
-    assert "4 gambar menunggu dibagi" in h
+    # Ketiga kolomnya, dengan nama yang dipakai di seluruh aplikasi.
+    assert "Belum ditugaskan" in h and "Dikerjakan" in h and "Dataset" in h
+    # Kolom pertama menyebut UNGGAHANNYA, bukan satu angka gabungan: satu
+    # unggahan besar dan lima unggahan kecil tidak boleh terlihat sama.
+    assert "Tanpa nama unggahan" in h and ">4<" in h
 
     klien.post("/api/tugas/bagi", json={"pelabel": "anggi",
                                         "gambar": gambar[:2],
@@ -459,7 +462,8 @@ def test_papan_membubarkan_tugas_tidak_menghapus_labelnya(klien, lingkungan):
     assert len(list(d.glob("*.json"))) == n_json, "label ikut terhapus"
 
     h = klien.get("/anotasi?ds=bubar-uji").text
-    assert "3 gambar menunggu dibagi" in h, "gambarnya kembali menganggur"
+    assert h.count('class="an-batch"') == 1 and ">3<" in h, \
+        "gambarnya kembali menganggur"
 
 
 # ============================================================
@@ -816,3 +820,52 @@ def test_versi_tanpa_gambar_di_dataset_ditolak(klien, lingkungan):
 
     j = klien.post("/api/versi/buat?split=8:1:1").json()
     assert j["ok"] is False and "dataset" in j["error"]
+
+
+def test_kolom_belum_ditugaskan_dikelompokkan_per_unggahan(klien, lingkungan):
+    """Satu angka gabungan tidak memberi tahu apa pun tentang asalnya.
+
+    Satu unggahan besar dan lima unggahan kecil terlihat sama, padahal
+    keputusan membaginya hampir selalu per unggahan.
+    """
+    import pathlib
+
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = _projek(ruang, "batch-papan", n=6)
+    klien.post(f"/setsrc?path={d}")
+    g = sorted(str(x) for x in d.glob("*.jpg"))
+    klien.post("/api/tag/pasang", json={"paths": g[:4], "batch": "Folder pagi"})
+    klien.post("/api/tag/pasang", json={"paths": g[4:], "batch": "Folder sore"})
+
+    h = klien.get("/anotasi?ds=batch-papan").text
+    assert h.count('class="an-batch"') == 2
+    assert "Folder pagi" in h and "Folder sore" in h
+    # Yang besar didahulukan; tanpa nama selalu terakhir.
+    assert h.index("Folder pagi") < h.index("Folder sore")
+
+    # Tombolnya membawa nama unggahannya, dan halaman bagi membatasi ke situ.
+    assert "batch=Folder%20pagi" in h or "batch=Folder+pagi" in h
+    hb = klien.get("/bagi?ds=batch-papan&batch=Folder pagi").text
+    assert hb.count('class="bg-ubin"') == 4, "halaman bagi tidak dibatasi"
+    assert klien.get("/bagi?ds=batch-papan").text.count('class="bg-ubin"') == 6
+
+
+def test_kolom_dataset_menautkan_ke_gambarnya(klien, lingkungan):
+    import pathlib
+
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = _projek(ruang, "dataset-tautan", n=3)
+    klien.post(f"/setsrc?path={d}")
+    g = sorted(str(x) for x in d.glob("*.jpg"))
+    klien.post("/api/tugas/bagi", json={"pelabel": "paul", "gambar": g})
+    klien.post("/api/tugas/dataset", json={"gambar": g[:2]})
+
+    h = klien.get("/anotasi?ds=dataset-tautan").text
+    assert "Lihat semua 2 gambar di dataset" in h
+    assert 'href="/?ds=dataset-tautan"' in h
