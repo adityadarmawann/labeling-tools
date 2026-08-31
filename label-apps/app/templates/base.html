@@ -22,5 +22,8 @@
 {% block body %}{% endblock %}
 <div class="toast" id="t"></div>
 <script src="{{ statik('app.js') }}"></script>
+{# Skrip khusus satu halaman, dimuat SESUDAH app.js supaya
+   pembantu bersama seperti Progres dan send() sudah ada. #}
+{% block skrip %}{% endblock %}
 </body>
 </html>

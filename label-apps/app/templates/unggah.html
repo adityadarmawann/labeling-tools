@@ -1,0 +1,252 @@
+{% extends "base.html" %}
+{% block title %}Unggah data{% endblock %}
+
+{% block body %}
+<header>
+  <div class="top">
+    <h1>Unggah data</h1>
+    {% if projek %}<span class="path mono">{{ projek.nama }}</span>{% endif %}
+    {% include "_header.html" %}
+  </div>
+
+  {# Penunjuk tahap duduk di header yang lengket. Di tahap 2 dengan ribuan
+     thumbnail, ini satu-satunya yang memberitahu masih ada tahap sesudahnya.
+     data-on = tahap sekarang, data-selesai = tahap yang sudah dilewati;
+     keduanya dipindahkan JavaScript. #}
+  <nav class="ug-langkah" id="ug-langkah" aria-label="Tahap unggahan">
+    <span class="ug-langkah-item" id="ug-langkah-1" data-on>
+      <span class="ug-langkah-no">1</span>Pilih berkas</span>
+    <span class="ug-langkah-panah" aria-hidden="true">&rarr;</span>
+    <span class="ug-langkah-item" id="ug-langkah-2">
+      <span class="ug-langkah-no">2</span>Periksa</span>
+    <span class="ug-langkah-panah" aria-hidden="true">&rarr;</span>
+    <span class="ug-langkah-item" id="ug-langkah-3">
+      <span class="ug-langkah-no">3</span>Unggah</span>
+  </nav>
+</header>
+
+<main>
+<div class="ug-halaman" id="ug-halaman"
+     data-projek="{{ projek.nama }}" data-path="{{ projek.path }}">
+
+  {# ---------------------------------------------------------- nama & tag
+     Dipakai bersama tahap 1 dan tahap 2: di Roboflow pun kolom ini tidak
+     hilang saat berkasnya sudah di-staging, dan nama batch justru paling
+     sering diperbaiki setelah melihat isinya. #}
+  <div class="ug-isian">
+    <div>
+      <label class="form-lbl" for="ug-nama-batch">Nama batch</label>
+      <input type="text" id="ug-nama-batch" autocomplete="off"
+             placeholder="mis. sesi-pagi-2026-08-31">
+    </div>
+    <div>
+      <label class="form-lbl" for="ug-tag-input">Tag</label>
+      {# Tampak seperti satu kotak isian, isinya chip. Wadahnya yang diberi
+         tepi; inputnya sendiri telanjang supaya tidak ada kotak di dalam
+         kotak. #}
+      <div class="ug-tag-kotak" id="ug-tag-kotak">
+        <input type="text" class="ug-tag-input" id="ug-tag-input"
+               autocomplete="off" placeholder="Tambah tag, pisahkan dengan Enter">
+      </div>
+    </div>
+  </div>
+
+  {# ============================================================= TAHAP 1 #}
+  <section class="ug-tahap1" id="ug-tahap1">
+
+    <div class="drop ug-drop" id="ug-drop">
+      <span class="ug-drop-ikon" aria-hidden="true">&uarr;</span>
+      <b class="ug-drop-judul">Tarik gambar, folder dataset, atau berkas
+        <span class="mono">.zip</span> ke sini</b>
+      <span class="ug-drop-atau">atau pilih sendiri</span>
+      <span class="ug-drop-tombol">
+        <button class="cta" type="button" id="ug-pilih-berkas">Pilih berkas</button>
+        <button class="cta garis" type="button" id="ug-pilih-folder">Pilih folder</button>
+      </span>
+      <span class="ug-drop-batas">
+        subfolder <span class="mono">images</span> /
+        <span class="mono">labels</span> ikut terjaga &middot;
+        maks {{ max_upload_mb }} MB per berkas, {{ max_zip_mb }} MB untuk .zip</span>
+    </div>
+
+    {# webkitdirectory: pemilih folder. Didukung Chrome, Edge, dan Firefox.
+       Kedua input ini dipakai ulang oleh tombol di bilah tahap 2, jadi ia
+       duduk di luar section tahap mana pun tidak perlu; ia di sini karena
+       tahap 1 yang pertama memakainya, dan `hidden` pada section induk tidak
+       pernah memengaruhinya karena input file memang tak terlihat. #}
+    <input id="ug-folder" type="file" webkitdirectory multiple hidden>
+    {# Daftar ini harus sama dengan UP_EXT di app.js dan dengan
+       IMG_EXT + ANN_EXT + META_EXT + ARSIP_EXT di app/config.py. #}
+    <input id="ug-berkas" type="file" multiple hidden
+           accept=".jpg,.jpeg,.png,.bmp,.webp,.tif,.tiff,.json,.txt,.yaml,.yml,.zip">
+
+    <div class="ug-bawah">
+      <section class="panel ug-format">
+        <h3>Format yang didukung</h3>
+        <div class="ug-format-kisi">
+          <div class="ug-format-grup">
+            <b>Gambar</b>
+            <span class="mono">.jpg .jpeg .png .bmp .webp .tif .tiff</span>
+          </div>
+          <div class="ug-format-grup">
+            <b>Anotasi</b>
+            <span><span class="mono">.json</span> labelme &middot;
+              <span class="mono">.txt</span> YOLO</span>
+          </div>
+          <div class="ug-format-grup">
+            <b>Kelas</b>
+            {# Sebab paling sering dataset Roboflow tampil dengan kelas berupa
+               angka: data.yaml ketinggalan saat mengunggah. #}
+            <span><span class="mono">data.yaml</span> &middot; tanpa berkas ini
+              kelasnya jadi angka</span>
+          </div>
+          <div class="ug-format-grup">
+            <b>Arsip</b>
+            <span><span class="mono">.zip</span> &middot; dibongkar sendiri di
+              server</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel ug-server">
+        <h3>Ambil dari folder di server</h3>
+        <p class="ug-server-ket">Isinya <b>disalin</b> ke ruang kerjamu. Folder
+          aslinya tidak pernah disentuh, jadi aman disunting dan ditambahi
+          gambar.</p>
+        <div class="row">
+          <input id="ug-server-path" type="text" class="mono"
+                 placeholder="/home/paul/computer-vision/datasets/nama-folder">
+          <button class="cta" type="button" id="ug-server-impor">Salin</button>
+        </div>
+        <div class="jalur-status" id="ug-server-jalur"></div>
+
+        {% if local %}
+        {# Hanya muncul saat halaman ini dibuka DARI mesin server, karena
+           jendela penjelajahnya tampil di layar server itu, bukan di layarmu. #}
+        <button class="cta garis ug-server-jelajah" type="button"
+                id="ug-server-jelajah">Buka penjelajah berkas di server</button>
+        {% endif %}
+
+        {# Path dataset di server panjang, dan salah satu huruf di tengahnya
+           bisa membuka folder lain tanpa disadari. Karena itu yang sudah
+           pernah dipakai diingat, bukan diketik ulang. #}
+        {% if riwayat %}
+        <div class="ug-riwayat" id="ug-server-riwayat">
+          <div class="ug-riwayat-judul">Path yang pernah kamu pakai</div>
+          {%- for r in riwayat %}
+          <div class="ug-riwayat-baris">
+            <button class="ug-riwayat-path mono" type="button" data-path="{{ r.path }}"
+              {% if not r.ada %}disabled title="folder ini sudah tidak ada di server"{% endif %}
+              >{{ r.path }}</button>
+            <button class="ug-riwayat-lupa" type="button" data-path="{{ r.path }}"
+                    title="hapus dari daftar ini saja"
+                    aria-label="Lupakan path ini">&times;</button>
+          </div>
+          {%- endfor %}
+        </div>
+        {% endif %}
+      </section>
+    </div>
+  </section>
+
+  {# ============================================================= TAHAP 2 #}
+  <section class="ug-tahap2" id="ug-tahap2" hidden>
+
+    <div class="seg ug-tab" id="ug-tab" role="group" aria-label="Saring berkas">
+      <label class="seg-opt" data-on>
+        <input type="radio" name="ug-saring" value="semua" checked>
+        Semua gambar <b id="ug-n-semua">0</b></label>
+      <label class="seg-opt">
+        <input type="radio" name="ug-saring" value="anotasi">
+        Sudah dianotasi <b id="ug-n-anotasi">0</b></label>
+      <label class="seg-opt">
+        <input type="radio" name="ug-saring" value="tanpa">
+        Belum dianotasi <b id="ug-n-tanpa">0</b></label>
+    </div>
+
+    {# Seluruh panggung jadi sasaran seret, bukan cuma bilahnya: setelah
+       thumbnail memenuhi layar, bilah setinggi 52px itu sasaran yang terlalu
+       kecil untuk folder yang diseret dari jendela lain. #}
+    <div class="ug-panggung" id="ug-panggung">
+      <div class="ug-bilah">
+        <div class="ug-bilah-ket">
+          <b>Tarik berkas lain ke sini untuk menambah</b>
+          <span class="mono">.jpg .png .json .txt data.yaml .zip</span>
+        </div>
+        <span class="spacer"></span>
+        <button class="chip" type="button" id="ug-tambah-berkas">Pilih berkas</button>
+        <button class="chip" type="button" id="ug-tambah-folder">Pilih folder</button>
+        <button class="chip aksi" type="button" id="ug-simpan">
+          Simpan dan lanjutkan &rarr;</button>
+      </div>
+
+      <div class="ug-kisi-bungkus" id="ug-kisi-bungkus" tabindex="0"
+           aria-label="Berkas yang akan diunggah">
+        <div class="ug-kisi" id="ug-kisi">
+          {# Diisi JavaScript dari #ug-ubin-tpl. Kosong di server. #}
+        </div>
+
+        {# Muncul hanya saat saringan tidak menyisakan apa pun. .pkosong sudah
+           punya grid-column:1/-1, jadi ia melebar penuh di dalam kisi. #}
+        <div class="pkosong" id="ug-kosong" hidden>
+          <b>Tidak ada yang cocok</b>
+          Tidak ada berkas pada saringan ini. Pilih tab lain.
+        </div>
+      </div>
+    </div>
+
+    {# Cetakan satu ubin. Dipakai JavaScript dengan cloneNode(true). #}
+    <template id="ug-ubin-tpl">
+      <figure class="ug-ubin" data-anotasi="tidak">
+        <span class="ug-gambar">
+          {# <canvas>, bukan <img>. Foto ponsel di dataset ini 2296x4080;
+             sebuah <img> mendekodenya utuh, yaitu 37 MB piksel per gambar,
+             dan satu layar berisi 14 ubin sudah menghabiskan setengah giga.
+             createImageBitmap mengecilkannya SAAT mendekode, jadi yang
+             tersimpan cuma sebesar ubinnya. Lihat unggah.js. #}
+          <canvas width="240" height="240"></canvas>
+          <span class="ug-tanda" hidden>anotasi</span>
+          <button class="ug-buang" type="button"
+                  aria-label="Keluarkan berkas ini">&times;</button>
+        </span>
+        <figcaption class="ug-nama"></figcaption>
+      </figure>
+    </template>
+  </section>
+
+  {# ============================================================= TAHAP 3 #}
+  <section class="ug-tahap3" id="ug-tahap3" hidden>
+    <div class="ug-unggah">
+      <h3 class="ug-unggah-judul">Mengunggah
+        <b id="ug-unggah-nama">batch</b></h3>
+
+      {# Wadah untuk Progres.mulai({di: ...}). Markup di dalamnya berbentuk
+         persis seperti yang dibangun modul itu, jadi tampilannya sama entah
+         digerakkan Progres atau disetel tangan lewat #ug-fill. #}
+      <div class="jalur-status" id="ug-progres-jalur">
+        <div class="pr-kotak" id="ug-progres">
+          <div class="prog" id="ug-prog" data-on><i id="ug-fill"></i></div>
+          <div class="pr-teks">
+            <span id="ug-progres-rinci">Menyiapkan&hellip;</span>
+            <b id="ug-progres-persen">0%</b>
+          </div>
+        </div>
+      </div>
+
+      <p class="ug-unggah-ket" id="ug-unggah-ket">
+        Biarkan tab ini terbuka sampai selesai. Berkas yang sudah masuk tidak
+        diulang kalau unggahannya dilanjutkan nanti.</p>
+
+      <div class="ug-unggah-aksi">
+        <button class="chip" type="button" id="ug-batal">Batalkan</button>
+        <span class="spacer"></span>
+        <a class="chip aksi" id="ug-lanjut" href="/" hidden>Buka grid &rarr;</a>
+      </div>
+    </div>
+  </section>
+
+</div>
+</main>
+{% endblock %}
+
+{% block skrip %}<script src="{{ statik('unggah.js') }}"></script>{% endblock %}

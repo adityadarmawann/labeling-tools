@@ -116,113 +116,6 @@ async function setsrc(p) {
   }
 }
 
-function setsrcBox() {
-  setsrc(document.getElementById('pathbox').value.trim());
-}
-
-/*
- * Ambil dari folder di server = MENYALIN, bukan membuka di tempat.
- *
- * Bedanya menentukan: /setsrc membuka folder itu juga, sehingga menyunting
- * berarti mengubah dataset aslinya. Di sini isinya disalin dulu ke ruang kerja
- * pemakai, jadi menyunting dan menambah gambar tidak pernah menyentuh sumber.
- * Ukurannya disurvei lebih dulu — menyalin beberapa GB tanpa pemberitahuan
- * bukan kejutan yang menyenangkan.
- */
-async function imporBox() {
-  const p = document.getElementById('pathbox').value.trim();
-  const note = document.getElementById('impornote');
-  if (!p) { toast('Path masih kosong'); return; }
-
-  note.textContent = 'Memeriksa isi folder…';
-  let s;
-  try {
-    s = await (await fetch('/api/impor/survei?path=' + encodeURIComponent(p))).json();
-  } catch (e) { note.textContent = ''; toast('Gagal menghubungi server'); return; }
-  if (!s.ok) { note.textContent = ''; toast(s.error); return; }
-
-  const mb = s.bytes / 1048576;
-  const ukuran = mb >= 1024 ? (mb / 1024).toFixed(1) + ' GB' : mb.toFixed(0) + ' MB';
-  const nama = prompt(
-    `Akan menyalin ${s.berkas} berkas (${ukuran}) ke ruang kerjamu.\n`
-    + `Folder asalnya tidak diubah sama sekali.\n\n`
-    + `Beri nama untuk salinan ini:`, s.nama_usul || '');
-  if (nama === null) { note.textContent = ''; return; }
-
-  const tombol = document.getElementById('btn-impor');
-  const bar = document.getElementById('prog-impor');
-  const isi = document.getElementById('fill-impor');
-  // Dimatikan selama berjalan: menekan dua kali memulai penyalinan kedua ke
-  // folder tujuan yang sama, dan keduanya lalu berebut berkas yang sama.
-  if (tombol) { tombol.disabled = true; tombol.textContent = 'Menyalin…'; }
-  bar.setAttribute('data-on', '');
-  isi.style.width = '0%';
-  note.textContent = `Menyalin ${s.berkas} berkas (${ukuran})…`;
-
-  // Penyalinan berjalan di thread terpisah di server sementara permintaan
-  // /impor di bawah menggantung sampai selesai, jadi kemajuannya ditanyakan
-  // lewat permintaan terpisah. Tanpa ini penyalinan 22 ribu berkas tampak
-  // seperti halaman yang macet.
-  const pantau = setInterval(async () => {
-    let k;
-    try { k = await (await fetch('/api/impor/kemajuan')).json(); } catch (e) { return; }
-    if (!k || !k.tahap) return;
-    if (k.tahap === 'pindai') {
-      isi.style.width = '100%';
-      bar.dataset.tahap = 'pindai';
-      note.textContent =
-        `${s.berkas.toLocaleString('id-ID')} berkas tersalin, memindai isinya…`;
-      return;
-    }
-    if (k.tahap !== 'salin') return;
-    const persen = k.total ? Math.min(100, k.berkas / k.total * 100) : 0;
-    isi.style.width = persen.toFixed(1) + '%';
-    note.textContent = `${k.berkas.toLocaleString('id-ID')} dari `
-      + `${k.total.toLocaleString('id-ID')} berkas · `
-      + `${(k.bytes / 1048576).toFixed(0)} MB · ${persen.toFixed(0)}%`;
-  }, 500);
-
-  const beres = () => {
-    clearInterval(pantau);
-    bar.removeAttribute('data-on');
-    delete bar.dataset.tahap;
-    if (tombol) { tombol.disabled = false; tombol.textContent = 'Salin ke ruang kerjaku'; }
-  };
-
-  try {
-    const j = await post('/impor?path=' + encodeURIComponent(p)
-                       + '&ds=' + encodeURIComponent(nama.trim() || s.nama_usul));
-    beres();
-    if (!j.ok) { note.textContent = j.error; toast(j.error); return; }
-
-    // Berkas yang terlewat dilaporkan, tidak didiamkan: salinan yang kurang
-    // beberapa gambar tetap terlihat berhasil, dan kekurangannya baru ketahuan
-    // jauh belakangan saat dataset dilatih.
-    const catatan = (j.peringatan || []).slice();
-    if (j.dilewati) {
-      const c = (j.contoh_dilewati || []).concat(j.bentrok || []);
-      const sebab = (j.bentrok || []).length
-        ? 'bukan gambar/anotasi, atau namanya bentrok' : 'bukan gambar/anotasi';
-      const mis = c.length ? ', mis. ' + c.slice(0, 3).join(', ') : '';
-      catatan.push(`${j.dilewati} berkas dilewati (${sebab})${mis}`);
-    }
-    if (catatan.length) {
-      note.innerHTML = `<b>${j.disalin} berkas disalin, ${j.n} gambar terbaca, perlu dicek:</b><br>`
-        + catatan.map(x => '· ' + esc(x)).join('<br>')
-        + '<br><button class="btn pri" id="lanjut-impor">Lanjut ke grid</button>';
-      const b = document.getElementById('lanjut-impor');
-      if (b) b.onclick = () => { location.href = '/'; };
-      return;
-    }
-    toast(`${j.disalin} berkas disalin, membuka salinan`);
-    location.href = '/';
-  } catch (e) {
-    beres();
-    note.textContent = '';
-    toast('Gagal menghubungi server');
-  }
-}
-
 // Item dataset membawa path di data-path. Dipasang lewat delegasi supaya path
 // tidak perlu disisipkan ke dalam string JavaScript di atribut HTML — cara itu
 // pernah membuat seluruh daftar tidak bisa diklik karena tanda kutipnya
@@ -255,17 +148,6 @@ document.addEventListener('click', async ev => {
   const j = await post('/lupakan-path?path=' + encodeURIComponent(p));
   if (j.ok) t.closest('.row').remove();
 });
-
-async function pickdir() {
-  toast('Dialog terbuka di layar server...');
-  try {
-    const j = await post('/pickdir');
-    if (j.ok) { toast('Memindai folder...'); location.href = '/'; }
-    else toast(j.error);
-  } catch (e) {
-    toast('Gagal membuka dialog');
-  }
-}
 
 // ---------------------------------------------------------------- unggah
 
@@ -316,109 +198,6 @@ async function dariDrop(dt) {
   return out;
 }
 
-async function uploadFiles(files) {
-  const ds = (document.getElementById('dsname').value || '').trim();
-  if (!ds) { toast('Beri nama dataset dulu'); return; }
-
-  const pilih = [...files].filter(f => UP_EXT.some(e => f.name.toLowerCase().endsWith(e)));
-  if (!pilih.length) {
-    toast('Tidak ada gambar, anotasi, data.yaml, atau .zip di pilihan itu');
-    return;
-  }
-
-  const bar = document.getElementById('prog');
-  const fill = document.getElementById('fill');
-  const note = document.getElementById('upnote');
-  bar.setAttribute('data-on', '');
-
-  let selesai = 0, gagal = 0;
-  const arsip = [];
-  for (const f of pilih) {
-    const nama = namaKirim(f);
-    try {
-      const j = await send('/upload?ds=' + encodeURIComponent(ds) +
-                           '&name=' + encodeURIComponent(nama),
-                           { method: 'PUT', body: f });
-      if (!j.ok) { gagal++; if (gagal <= 2) toast(f.name + ': ' + j.error); }
-      else if (j.arsip) arsip.push(j.name);
-    } catch (e) {
-      gagal++;
-    }
-    selesai++;
-    fill.style.width = Math.round(selesai * 100 / pilih.length) + '%';
-    note.textContent = selesai + ' / ' + pilih.length + ' terkirim' +
-                       (gagal ? (' · ' + gagal + ' gagal') : '');
-  }
-
-  if (selesai <= gagal) { toast('Semua berkas gagal terkirim'); return; }
-
-  // Arsip dibongkar di server. Untuk berkas 1 GB ini bisa memakan waktu, jadi
-  // keadaannya dikatakan, bukan dibiarkan tampak menggantung.
-  for (const nama of arsip) {
-    // Bilah penuh selagi masih membongkar terbaca sebagai SELESAI. Yang benar
-    // tak-tentu: persentasenya memang tidak diketahui, tapi bahwa ia masih
-    // berjalan itu diketahui, dan justru itu yang perlu terlihat.
-    bar.setAttribute('data-tak-tentu', '');
-    note.textContent = 'Membongkar ' + nama + '… (berkas besar perlu waktu)';
-    try {
-      const j = await post('/unzip?ds=' + encodeURIComponent(ds) +
-                           '&name=' + encodeURIComponent(nama));
-      if (!j.ok) { toast('Gagal membongkar: ' + j.error); note.textContent = j.error; return; }
-      note.textContent = `${nama}: ${j.n} berkas dibongkar`
-                       + (j.dilewati ? ` · ${j.dilewati} dilewati` : '');
-    } catch (e) {
-      toast('Gagal menghubungi server saat membongkar');
-      return;
-    } finally {
-      bar.removeAttribute('data-tak-tentu');
-    }
-  }
-
-  const j = await post('/useupload?ds=' + encodeURIComponent(ds));
-  if (!j.ok) { toast(j.error); return; }
-
-  // Peringatan ditahan di layar dan menunggu diklik. Kalau ditoast lalu
-  // langsung pindah halaman, orang tidak akan sempat membacanya — padahal
-  // isinya justru menentukan apakah datasetnya benar.
-  if ((j.peringatan || []).length) {
-    bar.removeAttribute('data-on');
-    note.innerHTML = '<b>Dataset terbuka (' + j.n + ' gambar), tapi perlu dicek:</b><br>'
-      + j.peringatan.map(p => '· ' + p).join('<br>')
-      + '<br><button class="btn pri" id="lanjut-grid">Lanjut ke grid</button>';
-    const b = document.getElementById('lanjut-grid');
-    if (b) b.onclick = () => { location.href = '/'; };
-    return;
-  }
-  toast('Selesai, membuka dataset');
-  location.href = '/';
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-  const d = document.getElementById('drop');
-  const berkas = document.getElementById('files');
-  const folder = document.getElementById('folder');
-  if (!d || !berkas) return;
-
-  // Klik pada area tarik-lepas membuka pemilih FOLDER, bukan pemilih berkas —
-  // unggahan dataset hampir selalu satu folder, bukan berkas satu-satu.
-  d.onclick = () => (folder || berkas).click();
-  if (folder) folder.onchange = () => uploadFiles(folder.files);
-  berkas.onchange = () => uploadFiles(berkas.files);
-
-  const tf = document.getElementById('pilih-folder');
-  const tb = document.getElementById('pilih-berkas');
-  if (tf) tf.onclick = ev => { ev.preventDefault(); (folder || berkas).click(); };
-  if (tb) tb.onclick = ev => { ev.preventDefault(); berkas.click(); };
-
-  d.ondragover = e => { e.preventDefault(); d.setAttribute('data-over', ''); };
-  d.ondragleave = () => d.removeAttribute('data-over');
-  d.ondrop = async e => {
-    e.preventDefault();
-    d.removeAttribute('data-over');
-    document.getElementById('upnote').textContent = 'membaca isi folder…';
-    uploadFiles(await dariDrop(e.dataTransfer));
-  };
-});
 
 /*
  * Menu saringan kelas. Klik di DALAM menunya tidak menutupnya — memilih tiga
@@ -1607,6 +1386,35 @@ const Progres = (() => {
   }
 
   document.getElementById('buka-tambah').onclick = () => bukaDlg(true);
+
+  /* Membuat projek sekarang cuma soal nama. Berkasnya diurus di halaman
+     Unggah data, yang bisa memperlihatkan APA yang akan terkirim sebelum
+     benar-benar terkirim. */
+  const tombolBuat = document.getElementById('buat-projek');
+  if (tombolBuat) {
+    const buat = async () => {
+      const isian = document.getElementById('dsname');
+      const nama = (isian.value || '').trim();
+      if (!nama) { toast('Beri nama projeknya dulu'); isian.focus(); return; }
+      tombolBuat.disabled = true;
+      const pr = Progres.mulai('Membuat projek ' + nama,
+                               { di: document.getElementById('projek-baru-jalur') });
+      pr.taktentu('Menyiapkan foldernya');
+      try {
+        const j = await post('/api/projek/baru?nama=' + encodeURIComponent(nama));
+        if (!j.ok) { pr.gagal(j.error); tombolBuat.disabled = false; return; }
+        pr.selesai('Projek dibuat, membuka halaman unggah');
+        location.href = '/unggah?ds=' + encodeURIComponent(j.nama);
+      } catch (e) {
+        pr.gagal('Gagal menghubungi server');
+        tombolBuat.disabled = false;
+      }
+    };
+    tombolBuat.onclick = buat;
+    document.getElementById('dsname').addEventListener('keydown', ev => {
+      if (ev.key === 'Enter') { ev.preventDefault(); buat(); }
+    });
+  }
   document.getElementById('dlg-projek-tutup').onclick = () => bukaDlg(false);
   // Klik pada tirainya menutup; klik di dalam kotaknya tidak.
   dlgProjek.addEventListener('click', ev => {

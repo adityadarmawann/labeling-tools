@@ -113,118 +113,20 @@
       <button class="dlg-tutup" type="button" id="dlg-projek-tutup"
               aria-label="Tutup">&times;</button>
       <h3 id="dlg-projek-judul">Projek baru</h3>
-      <p class="dlg-sub">Beri nama, lalu pilih dari mana gambarnya diambil.</p>
-    <div class="sumber-isi">
-      <div class="seg seg-sumber" id="seg-sumber">
-        <label class="seg-opt" data-on><input type="radio" name="sumber" value="laptop" checked>
-          Dari laptop</label>
-        <label class="seg-opt"><input type="radio" name="sumber" value="server">
-          Folder di server</label>
-        {% if local %}
-        <label class="seg-opt"><input type="radio" name="sumber" value="desktop">
-          Dialog desktop</label>
-        {% endif %}
-      </div>
+      <p class="dlg-sub">Beri nama projeknya. Gambarnya diunggah di langkah
+        berikutnya, di halaman projek itu sendiri.</p>
 
-      <div data-sumber="laptop">
-        <p class="sumber-ket">Folder berisi gambar beserta anotasi
-          <span class="mono">.json</span>, atau dataset YOLO dengan subfolder
-          <span class="mono">images</span> dan <span class="mono">labels</span>.</p>
-    <label class="form-lbl" for="dsname">Nama projek</label>
-    <input id="dsname" type="text" placeholder="mis. sponge-batch-3">
-    <div class="drop" id="drop" style="margin-top:12px">
-      <b>Tarik folder dataset atau berkas .zip ke sini</b><br>
-      <span style="font-size:11.5px;color:var(--ink-faint)">
-        subfolder <span class="mono">images</span> /
-        <span class="mono">labels</span> ikut terjaga · gambar,
-        <span class="mono">.json</span> / <span class="mono">.txt</span>,
-        dan <span class="mono">data.yaml</span> ·
-        maks {{ max_upload_mb }} MB per berkas, {{ max_zip_mb }} MB untuk .zip<br>
-        {# Sebab paling sering dataset Roboflow tampil dengan kelas berupa
-           angka: data.yaml ketinggalan saat mengunggah. #}
-        <b>ekspor Roboflow:</b> sertakan <span class="mono">data.yaml</span>-nya,
-        atau unggah saja .zip-nya utuh — dibongkar sendiri di server</span>
-    </div>
-    <div class="row" style="margin-top:10px">
-      <button class="cta" id="pilih-folder" style="flex:1;margin-top:0">
-        Pilih folder</button>
-      <button class="cta" id="pilih-berkas"
-        style="flex:0 0 auto;margin-top:0;background:transparent;color:var(--ink-dim);
-               border:1px solid var(--line2)">Pilih berkas saja</button>
-    </div>
-    {# webkitdirectory: pemilih folder. Didukung Chrome, Edge, dan Firefox. #}
-    <input id="folder" type="file" webkitdirectory multiple hidden>
-    {# Daftar ini harus sama dengan UP_EXT di app.js dan dengan
-       IMG_EXT + ANN_EXT + META_EXT + ARSIP_EXT di app/config.py. #}
-    <input id="files" type="file" multiple hidden
-           accept=".jpg,.jpeg,.png,.bmp,.webp,.tif,.tiff,.json,.txt,.yaml,.yml,.zip">
-    <div class="prog" id="prog"><i id="fill"></i></div>
-    <p class="upnote" id="upnote"></p>
-      </div>
-
-      <div data-sumber="server" hidden>
-    <p class="halus" style="margin:0 0 8px">
-      Sama seperti unggah dari laptop, hanya sumbernya folder di server ini.
-      Isinya <b>disalin</b> ke ruang kerjamu — folder aslinya tidak pernah
-      disentuh, jadi aman disunting dan ditambahi gambar.
-    </p>
-    <div class="row">
-      <div style="flex:1">
-        <input id="pathbox" type="text"
-               placeholder="/home/paul/computer-vision/datasets/nama-folder">
-      </div>
-      <button class="cta" id="btn-impor" onclick="imporBox()">Salin ke ruang kerjaku</button>
-    </div>
-    <div class="prog" id="prog-impor"><i id="fill-impor"></i></div>
-    <p class="upnote" id="impornote"></p>
-
-    {# Path dataset di server panjang, dan salah satu huruf di tengahnya bisa
-       membuka folder lain tanpa disadari. Karena itu yang sudah pernah dipakai
-       diingat, bukan diketik ulang. #}
-    {% if riwayat %}
-    <div style="margin-top:12px">
-      <div class="halus" style="margin-bottom:6px">Path yang pernah kamu pakai</div>
-      {%- for r in riwayat %}
-      <div class="row" style="gap:6px;align-items:center;margin-bottom:4px">
-        <button class="riw mono" data-path="{{ r.path }}"
-                {% if not r.ada %}disabled title="folder ini sudah tidak ada di server"{% endif %}
-                style="flex:1;text-align:left;background:transparent;cursor:pointer;
-                       border:1px solid var(--line2);border-radius:6px;padding:6px 8px;
-                       color:var({{ '--ink-faint' if not r.ada else '--ink-dim' }});
-                       overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.path }}</button>
-        <span class="halus" style="flex:0 0 auto;font-size:11px">
-          {{ 'disalin' if r.cara == 'salin' else 'dibuka di tempat' }}</span>
-        <button class="lupa" data-path="{{ r.path }}" title="hapus dari daftar ini saja"
-                style="flex:0 0 auto;background:transparent;border:0;cursor:pointer;
-                       color:var(--ink-faint);padding:4px 8px">×</button>
-      </div>
-      {%- endfor %}
-    </div>
-    {% endif %}
-    <details style="margin-top:8px">
-      <summary class="halus" style="cursor:pointer">Buka langsung tanpa menyalin</summary>
-      <p class="halus" style="margin:8px 0">
-        Lebih cepat dan tidak memakan disk, tetapi <b>menyunting akan mengubah
-        berkas di folder itu juga</b>. Pakai kalau cuma mau melihat-lihat.
-      </p>
-      <button class="cta" onclick="setsrcBox()"
-              style="background:transparent;color:var(--ink-dim);
-                     border:1px solid var(--line2)">Buka di tempat</button>
-    </details>
-      </div>
-
-      {% if local %}
-      <div data-sumber="desktop" hidden>
-    <button class="cta" style="width:auto;margin-top:0;padding:9px 18px;font-size:13px"
-            onclick="pickdir()">Buka penjelajah berkas</button>
-    <p class="sub" style="text-align:left;margin:10px 0 0">Hanya muncul saat kamu
-      membuka dari mesin server sendiri, karena dialognya tampil di layar server.</p>
-        <p class="sumber-ket" style="margin-top:10px">Hanya berguna saat kamu
-          membuka dari mesin server sendiri, karena dialognya tampil di layar
-          server.</p>
-      </div>
-      {% endif %}
-    </div>
+      {# Dialog ini dulu memuat seluruh pemilihan sumber: tarik-lepas dari
+         laptop, salin dari folder server, dan dialog desktop. Semuanya pindah
+         ke halaman Unggah data, yang punya ruang untuk memperlihatkan APA yang
+         akan terkirim sebelum benar-benar terkirim. Yang tersisa di sini cuma
+         yang memang perlu diputuskan lebih dulu: namanya. #}
+      <label class="form-lbl" for="dsname">Nama projek</label>
+      <input id="dsname" type="text" placeholder="mis. sponge-batch-3"
+             autocomplete="off">
+      <div class="jalur-status" id="projek-baru-jalur"></div>
+      <button class="cta" type="button" id="buat-projek">
+        Buat, lalu unggah gambar &rarr;</button>
     </div>
   </div>
 </div>

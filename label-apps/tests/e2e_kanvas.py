@@ -1230,9 +1230,13 @@ def jalankan_potret(d):
     simpan("projek-dialog")
     cek("tombol Projek baru membuka dialognya",
         d.js("document.getElementById('dlg-projek').hidden") is False)
-    cek("isian nama dan kotak seret ikut pindah ke dialog",
+    # Dialognya sekarang HANYA menanyakan nama. Pemilihan sumber berkas pindah
+    # ke halaman Unggah data, yang bisa memperlihatkan apa yang akan terkirim
+    # sebelum benar-benar terkirim.
+    cek("dialog projek cuma menanyakan nama",
         d.js("!!document.querySelector('#dlg-projek #dsname')")
-        and d.js("!!document.querySelector('#dlg-projek #drop')"))
+        and d.js("!!document.querySelector('#dlg-projek #buat-projek')")
+        and d.js("!document.querySelector('#dlg-projek #drop')"))
     d.js("(function(){ const d = document.getElementById('dlg-projek');"
          " d.dispatchEvent(new MouseEvent('click', {bubbles:true})); })()")
     time.sleep(0.25)

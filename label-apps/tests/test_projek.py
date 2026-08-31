@@ -134,6 +134,36 @@ def test_projek_berisi_tidak_ditandai_kosong(tmp_path):
     assert kartu["berisi"]["kosong"] is False
 
 
+def test_unggahan_mendarat_di_projek_yang_sama_walau_namanya_berspasi(klien,
+                                                                       lingkungan):
+    """Regresi atas dua aturan nama yang berbeda untuk satu hal yang sama.
+
+    Halaman projek membersihkan nama dengan projek.bersihkan_nama, yang
+    membiarkan spasi. Unggahan dulu memakai safe_slug, yang menggantinya
+    dengan tanda hubung. Akibatnya projek "Coba Alur Baru" menerima
+    unggahannya ke folder "Coba-Alur-Baru", dan di halaman projek keduanya
+    muncul sebagai dua kartu terpisah tanpa ada yang salah di layar mana pun.
+    """
+    import pathlib
+
+    from tests.test_data import masuk, PW_PAUL
+
+    masuk(klien, "paul", PW_PAUL)
+    nama = "Coba Alur Baru"
+    j = klien.post(f"/api/projek/baru?nama={nama}").json()
+    assert j["ok"], j
+
+    r = klien.put(f"/upload?ds={nama}&name=a.jpg", content=b"x" * 64)
+    assert r.json()["ok"], r.json()
+
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    assert (ruang / nama / "a.jpg").is_file(), "berkas mendarat di folder lain"
+    assert not (ruang / "Coba-Alur-Baru").exists(), "folder kembar terbentuk"
+
+    kartu = [p["nama"] for p in klien.get("/api/projek/daftar").json()["projek"]]
+    assert kartu.count(nama) == 1 and "Coba-Alur-Baru" not in kartu, kartu
+
+
 # ============================================================
 # GANTI NAMA
 # ============================================================

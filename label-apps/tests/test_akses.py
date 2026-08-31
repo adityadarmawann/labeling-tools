@@ -143,8 +143,16 @@ def test_tombol_desktop_disembunyikan_dari_jaringan(klien, klien_lokal, lingkung
 
     assert "openIn(" not in klien.get("/").text
     assert "openIn(" in klien_lokal.get("/").text
-    assert 'onclick="pickdir()"' not in klien.get("/pilih").text
-    assert 'onclick="pickdir()"' in klien_lokal.get("/pilih").text
+
+    # Tombol penjelajah berkas pindah dari dialog "Projek baru" ke halaman
+    # Unggah data, tetapi aturannya tidak berubah: jendelanya tampil di layar
+    # SERVER, jadi ia tidak ada gunanya bagi siapa pun yang membuka lewat
+    # jaringan, dan hanya membingungkan kalau tetap ditampilkan.
+    klien.post("/api/projek/baru?nama=uji-desktop")
+    klien_lokal.post("/api/projek/baru?nama=uji-desktop-lokal")
+    assert 'id="ug-server-jelajah"' not in klien.get("/unggah?ds=uji-desktop").text
+    assert 'id="ug-server-jelajah"' in klien_lokal.get(
+        "/unggah?ds=uji-desktop-lokal").text
 
 
 # ---------------------------------------------------------------- penjaga insiden

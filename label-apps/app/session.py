@@ -109,7 +109,20 @@ class Session:
             f.unlink(missing_ok=True)
 
     def upload_dir(self, ds: str) -> Path:
-        return self.settings.uploads_root / safe_slug(self.user) / safe_slug(ds)
+        """Folder projek tujuan unggahan.
+
+        Nama projeknya dibersihkan dengan aturan yang SAMA seperti halaman
+        projek (services.projek.bersihkan_nama), bukan safe_slug. Keduanya
+        berbeda pada spasi: safe_slug menggantinya dengan tanda hubung. Projek
+        bernama "Coba Alur Baru" karena itu menerima unggahannya ke folder lain
+        bernama "Coba-Alur-Baru", dan di halaman projek keduanya muncul sebagai
+        dua kartu terpisah tanpa ada yang salah di layar mana pun.
+
+        Nama akun tetap memakai safe_slug: akun memang selalu berupa slug.
+        """
+        from .services.projek import bersihkan_nama
+        return (self.settings.uploads_root / safe_slug(self.user)
+                / bersihkan_nama(ds))
 
 
 class SessionStore:

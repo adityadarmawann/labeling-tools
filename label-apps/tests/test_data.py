@@ -188,11 +188,22 @@ def test_pindai_ulang_menangkap_berkas_baru(klien, lingkungan):
 
 
 def test_daftar_dataset_muncul_di_halaman_pilih(klien):
+    """Halaman pilih menampilkan apa yang ADA; mengisi projek ada di /unggah.
+
+    Kotak seret dan kotak path dulu ikut di halaman ini, di dalam dialog
+    "Projek baru". Keduanya pindah ke halaman Unggah data karena di sanalah
+    ada ruang untuk memperlihatkan apa yang akan terkirim sebelum terkirim.
+    """
     masuk(klien, "paul", PW_PAUL)
     html = klien.get("/pilih").text
     assert "ds-alpha" in html and "ds-beta" in html
-    assert 'id="drop"' in html          # panel unggah
-    assert 'id="pathbox"' in html       # kotak path
+    assert 'id="dsname"' in html        # dialog projek baru: namanya saja
+    assert 'id="drop"' not in html
+
+    klien.post("/api/projek/baru?nama=uji-unggah")
+    ug = klien.get("/unggah?ds=uji-unggah").text
+    assert 'id="ug-drop"' in ug         # kotak seret
+    assert 'id="ug-server-path"' in ug  # kotak path folder server
 
 
 # ---------------------------------------------------------------- unggah folder
@@ -1027,12 +1038,15 @@ def test_riwayat_path_diingat_lintas_sesi(klien, aplikasi, lingkungan):
     masuk(klien, "paul", PW_PAUL)
     src = buat_dataset(lingkungan["tmp"] / "riw" / "ds-riwayat", 2, 1)
     assert klien.post(f"/setsrc?path={src}").json()["ok"] is True
-    assert str(src.resolve()) in klien.get("/pilih").text
+    # Riwayat path ikut pindah ke halaman Unggah data bersama kotak pathnya.
+    klien.post("/api/projek/baru?nama=uji-riwayat")
+    assert str(src.resolve()) in klien.get("/unggah?ds=uji-riwayat").text
 
     # semua sesi dibuang, seperti restart
     store._data.clear()
     lain = klien_baru(aplikasi, "paul", PW_PAUL)
-    assert str(src.resolve()) in lain.get("/pilih").text
+    lain.post("/api/projek/baru?nama=uji-riwayat2")
+    assert str(src.resolve()) in lain.get("/unggah?ds=uji-riwayat2").text
 
     # milik akun lain tidak ikut terlihat
     anggi = klien_baru(aplikasi, "anggi", PW_ANGGI)

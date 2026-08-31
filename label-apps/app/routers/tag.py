@@ -54,10 +54,23 @@ async def pasang(request: Request,
         return {"ok": False, "error": "belum ada dataset terbuka"}
     body = await request.json()
     paths = body.get("paths") or []
-    if not isinstance(paths, list) or not paths:
-        return {"ok": False, "error": "tidak ada gambar yang ditunjuk"}
 
-    kunci = _kunci(sess, [str(p) for p in paths])
+    if body.get("tanpa_batch"):
+        # Dipakai tepat setelah satu unggahan selesai: yang baru masuk adalah
+        # gambar yang belum punya nama batch. Menandainya lewat daftar nama
+        # yang dikirim peramban tidak bisa diandalkan, karena isi .zip baru
+        # diketahui setelah dibongkar DI SERVER, dan peramban tidak pernah
+        # melihat nama berkas di dalamnya.
+        data = await asyncio.to_thread(svc.baca, sess.src)
+        kunci = [k for k in (svc.kunci_gambar(sess.src, it["img"])
+                             for it in sess.items)
+                 if not svc.untuk(data, k)["batch"]]
+        if not kunci:
+            return {"ok": True, "n": 0, **svc.hitung(data)}
+    else:
+        if not isinstance(paths, list) or not paths:
+            return {"ok": False, "error": "tidak ada gambar yang ditunjuk"}
+        kunci = _kunci(sess, [str(p) for p in paths])
     if not kunci:
         return {"ok": False, "error": "tidak satu pun gambar itu ada di dataset ini"}
 

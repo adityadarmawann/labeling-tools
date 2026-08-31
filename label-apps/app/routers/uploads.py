@@ -12,16 +12,48 @@ import asyncio
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from ..config import ARSIP_EXT, Settings, get_settings
-from ..deps import current_session_api
+from ..deps import current_session, current_session_api, is_local
 from ..security import safe_relpath, safe_slug
-from ..services import arsip, impor, riwayat, scanner, tambah
+from ..services import arsip, impor, projek, riwayat, scanner, tambah
 from ..session import Session
+from ..templating import templates
 
 router = APIRouter(tags=["uploads"])
 
 CHUNK = 256 * 1024
+
+
+@router.get("/unggah", response_class=HTMLResponse)
+async def halaman_unggah(request: Request, ds: str = "",
+                         sess: Session = Depends(current_session),
+                         settings: Settings = Depends(get_settings)):
+    """
+    Halaman unggah milik SATU projek.
+
+    Projeknya ditentukan lebih dulu, dan itu inti perubahan alurnya: dulu
+    memberi nama dan memilih berkas adalah satu tindakan, sehingga projek tidak
+    bisa ada sebelum ada isinya. Satu projek diisi berkali-kali, dari sumber
+    berbeda, pada hari berbeda; memaksa keduanya bersamaan berarti memaksa
+    seluruh gambar siap sebelum boleh memberi nama.
+    """
+    nama = projek.bersihkan_nama(ds)
+    d = Path(settings.uploads_root) / sess.user / nama if nama else None
+    if not nama or d is None or not d.is_dir():
+        # Tanpa projek yang jelas, halaman ini tidak punya tujuan menyimpan.
+        # Dikembalikan ke daftar projek, bukan menampilkan halaman yang
+        # tombolnya semua menolak.
+        return RedirectResponse("/pilih", status_code=303)
+    return templates.TemplateResponse(request, "unggah.html", {
+        "sess": sess,
+        "local": is_local(request),
+        "projek": {"nama": nama, "path": str(d)},
+        "max_upload_mb": settings.max_upload_mb,
+        "max_zip_mb": settings.max_zip_mb,
+        "riwayat": riwayat.baca(settings, sess.user),
+    })
 
 
 @router.put("/upload")
@@ -163,8 +195,11 @@ async def impor_dari_server(path: str = "", ds: str = "",
     folder sumber tidak pernah ditulis sama sekali.
     """
     sumber = Path((path or "").strip()).expanduser()
-    nama = safe_slug(ds or sumber.name)
-    tujuan = sess.upload_dir(nama)
+    # Diserahkan apa adanya ke upload_dir, yang memegang satu-satunya aturan
+    # nama projek. Membersihkannya di sini lebih dulu dengan aturan yang
+    # berbeda membuat unggahan mendarat di folder yang bukan projeknya.
+    tujuan = sess.upload_dir(ds or sumber.name)
+    nama = tujuan.name
     try:
         hasil = await asyncio.to_thread(impor.impor_folder, sumber, tujuan,
                                         kunci=sess.user)
@@ -309,5 +344,5 @@ async def use_upload(ds: str = "", sess: Session = Depends(current_session_api))
     # Peringatan dikirim bersama hasil, bukan sebagai kegagalan: datasetnya
     # tetap bisa dibuka, hanya ada yang perlu diketahui lebih dulu.
     peringatan = await asyncio.to_thread(scanner.periksa_kelengkapan, d)
-    return {"ok": True, "dir": str(d), "n": n, "nama": safe_slug(ds),
+    return {"ok": True, "dir": str(d), "n": n, "nama": d.name,
             "peringatan": peringatan}
