@@ -788,7 +788,10 @@ def test_daftar_versi_tidak_membawa_petanya(klien, lingkungan):
     klien.post("/api/tugas/dataset", json={"gambar": gambar})
     klien.post("/api/versi/buat?split=8:1:1")
 
-    v = klien.get("/api/versi/daftar").json()["versi"]
+    from app.services import versi as svc_versi
+
+    ruang_p = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    v = svc_versi.daftar(ruang_p / "versi-daftar")
     assert len(v) == 1 and "peta" not in v[0] and "gambar" not in v[0]
     assert v[0]["jumlah"] and sum(v[0]["jumlah"].values()) == 4
 
@@ -796,7 +799,7 @@ def test_daftar_versi_tidak_membawa_petanya(klien, lingkungan):
     assert "v1" in h and "Buat versi" in h
 
     assert klien.post("/api/versi/hapus?nomor=1").json()["ok"]
-    assert klien.get("/api/versi/daftar").json()["versi"] == []
+    assert "Belum ada versi" in klien.get("/versi?ds=versi-daftar").text
 
 
 def test_versi_tanpa_gambar_di_dataset_ditolak(klien, lingkungan):

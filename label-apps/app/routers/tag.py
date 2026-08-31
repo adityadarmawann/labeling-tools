@@ -39,14 +39,6 @@ def _kunci(sess: Session, paths: list[str]) -> list[str]:
     return out
 
 
-@router.get("/api/tag/daftar")
-async def daftar(sess: Session = Depends(current_session_api)):
-    if sess.src is None:
-        return {"ok": False, "error": "belum ada dataset terbuka"}
-    data = await asyncio.to_thread(svc.baca, sess.src)
-    return {"ok": True, **svc.hitung(data)}
-
-
 @router.post("/api/tag/pasang")
 async def pasang(request: Request,
                  sess: Session = Depends(current_session_api)):

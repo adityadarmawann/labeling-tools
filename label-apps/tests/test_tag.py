@@ -138,8 +138,11 @@ def test_rute_tag_menandai_lalu_menghitungnya(klien, lingkungan):
     assert j["tag"] == {"sesi pagi": 2}
     assert j["batch"] == {"Unggahan uji": 2}
 
-    j = klien.get("/api/tag/daftar").json()
-    assert j["ok"] and j["tag"] == {"sesi pagi": 2}
+    # Hitungannya dibaca dari halamannya, bukan dari rute tersendiri: grid
+    # merendernya di server, dan rute kedua yang menjawab pertanyaan sama pasti
+    # berbeda jawabannya suatu hari.
+    h = klien.get("/").text
+    assert 'id="menu-tag"' in h and "sesi pagi" in h
 
     isi = json.loads((src / tag.BERKAS).read_text())
     assert len(isi["gambar"]) == 2
@@ -149,7 +152,8 @@ def test_tag_tanpa_dataset_terbuka_ditolak_dengan_jelas(klien, lingkungan):
     from tests.test_data import masuk, PW_PAUL
 
     masuk(klien, "paul", PW_PAUL)
-    j = klien.get("/api/tag/daftar").json()
+    j = klien.post("/api/tag/pasang", json={"paths": ["x.jpg"],
+                                            "tambah": ["a"]}).json()
     assert j["ok"] is False and "dataset" in j["error"]
 
 

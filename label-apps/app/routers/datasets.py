@@ -94,13 +94,6 @@ async def pick_dir(sess: Session = Depends(current_session_api)):
     return {"ok": True, "dir": str(d), "n": n}
 
 
-@router.get("/api/versi/daftar")
-async def versi_daftar(sess: Session = Depends(current_session_api)):
-    if sess.src is None:
-        return {"ok": False, "error": "belum ada dataset terbuka"}
-    return {"ok": True, "versi": await asyncio.to_thread(versi.daftar, sess.src)}
-
-
 @router.post("/api/versi/buat")
 async def versi_buat(split: str = "", catatan: str = "",
                      sess: Session = Depends(current_session_api)):
