@@ -27,7 +27,8 @@
 
 <main>
 <div class="ug-halaman" id="ug-halaman"
-     data-projek="{{ projek.nama }}" data-path="{{ projek.path }}">
+     data-projek="{{ projek.nama }}" data-path="{{ projek.path }}"
+     data-berisi="{{ 1 if berisi else 0 }}" data-tata="{{ tata }}">
 
   {# ---------------------------------------------------------- nama & tag
      Dipakai bersama tahap 1 dan tahap 2: di Roboflow pun kolom ini tidak
@@ -64,9 +65,18 @@
         <button class="cta garis" type="button" id="ug-pilih-folder">Pilih folder</button>
       </span>
       <span class="ug-drop-batas">
+        {%- if berisi %}
+        menyatu ke dataset yang sudah ada
+        {%- if tata == "split" %}, dibagi mengikuti rasio train/valid/test yang
+        sudah jalan{% elif tata == "yolo" %}, masuk ke <span class="mono">images</span>
+        dan <span class="mono">labels</span> yang sudah ada{% endif %} &middot;
+        gambar dan anotasi saja, tanpa <span class="mono">.zip</span> &middot;
+        maks {{ max_upload_mb }} MB per berkas
+        {%- else %}
         subfolder <span class="mono">images</span> /
         <span class="mono">labels</span> ikut terjaga &middot;
-        maks {{ max_upload_mb }} MB per berkas, {{ max_zip_mb }} MB untuk .zip</span>
+        maks {{ max_upload_mb }} MB per berkas, {{ max_zip_mb }} MB untuk .zip
+        {%- endif %}</span>
     </div>
 
     {# webkitdirectory: pemilih folder. Didukung Chrome, Edge, dan Firefox.
@@ -171,7 +181,7 @@
       <div class="ug-bilah">
         <div class="ug-bilah-ket">
           <b>Tarik berkas lain ke sini untuk menambah</b>
-          <span class="mono">.jpg .png .json .txt data.yaml .zip</span>
+          <span class="mono">{% if berisi %}.jpg .png .json .txt{% else %}.jpg .png .json .txt data.yaml .zip{% endif %}</span>
         </div>
         <span class="spacer"></span>
         <button class="chip" type="button" id="ug-tambah-berkas">Pilih berkas</button>

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -77,6 +78,16 @@ def _urutkan(items: list[dict], urut: str) -> list[dict]:
     if urut == "objek-sedikit":
         return sorted(items, key=lambda it: (len(it["shapes"]), nama(it)))
     return sorted(items, key=nama)
+
+
+def _diruang(sess, settings) -> bool:
+    """Apakah dataset yang terbuka berada di ruang kerja akun ini."""
+    try:
+        (sess.src.resolve()
+         .relative_to((Path(settings.uploads_root) / sess.user).resolve()))
+        return True
+    except (ValueError, OSError, AttributeError):
+        return False
 
 
 def _filter(items: list[dict], flt: str, kelas, tanpa=(), mode="atau") -> list[dict]:
@@ -216,6 +227,11 @@ async def index(request: Request, f: str = "all",
         # Dataset yang dibuka langsung dari path server tidak boleh ditambahi,
         # dan alasannya ikut dikirim supaya tombolnya bisa menjelaskan diri
         # sendiri alih-alih hanya menghilang tanpa keterangan.
+        # Nama projek untuk tautan ke halaman unggah. Kosong berarti dataset
+        # ini bukan milik ruang kerja akun ini (dataset bersama, atau dibuka
+        # langsung dari path server), dan halaman unggah tidak berlaku untuknya.
+        "unggah_ds": (sess.src.name
+                      if _diruang(sess, settings) else ""),
         "tolak_tambah": tambah.boleh_ditambahi(
             sess.src, settings.uploads_root / safe_slug(sess.user)),
         "bersplit": tambah.tata_letak(sess.src) == tambah.TATA_SPLIT,

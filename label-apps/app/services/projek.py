@@ -125,6 +125,23 @@ def anotasi_untuk(gambar: Path) -> Path | None:
     return None
 
 
+def punya_gambar(d: Path) -> bool:
+    """Apakah projek ini sudah berisi gambar.
+
+    Berhenti pada temuan pertama, bukan menghitung semuanya: yang ditanyakan
+    cuma kosong atau tidak, dan projek terbesar di sini berisi dua puluh dua
+    ribu berkas. Menghitungnya berarti menelusuri seluruhnya untuk menjawab
+    pertanyaan ya-tidak.
+    """
+    try:
+        for f in Path(d).rglob("*"):
+            if f.is_file() and f.suffix.lower() in IMG_EXT:
+                return True
+    except OSError:
+        pass
+    return False
+
+
 def _survei(d: Path) -> dict:
     """Sekali telusur untuk semua angka yang dibutuhkan satu kartu.
 

@@ -164,6 +164,57 @@ def test_unggahan_mendarat_di_projek_yang_sama_walau_namanya_berspasi(klien,
     assert kartu.count(nama) == 1 and "Coba-Alur-Baru" not in kartu, kartu
 
 
+def test_halaman_unggah_tahu_projeknya_kosong_atau_sudah_berisi(klien, lingkungan):
+    """Jalur pengirimannya ditentukan keadaan projek, bukan pilihan pengguna.
+
+    Projek kosong menerima apa saja lewat /upload, termasuk .zip, lalu
+    dipindai dari nol. Projek yang sudah berisi harus lewat /tambah, yang
+    menaruh tiap berkas mengikuti tata letak yang SUDAH ada di sana. Menyamakan
+    keduanya berarti gambar baru mendarat di akar dan merusak pembagian
+    train/valid/test yang sudah jalan.
+    """
+    from tests.test_data import masuk, PW_PAUL
+
+    masuk(klien, "paul", PW_PAUL)
+    klien.post("/api/projek/baru?nama=projek-kosong")
+    h = klien.get("/unggah?ds=projek-kosong").text
+    assert 'data-berisi="0"' in h
+    assert ".zip" in h, "projek kosong masih boleh menerima arsip"
+
+    klien.put("/upload?ds=projek-kosong&name=a.jpg", content=b"x" * 64)
+    h = klien.get("/unggah?ds=projek-kosong").text
+    assert 'data-berisi="1"' in h
+    assert "menyatu ke dataset yang sudah ada" in h
+
+
+def test_grid_menautkan_ke_halaman_unggah_bukan_menu_kedua(klien, lingkungan):
+    """Satu pintu memasukkan gambar.
+
+    Grid dulu punya menu "Tambah gambar" berisi kotak seret dan kotak path
+    sendiri, tanpa tahap periksa. Dua pintu untuk satu pekerjaan berarti
+    keduanya harus dijaga sama setiap kali ada perubahan.
+    """
+    import pathlib
+
+    from tests.test_data import masuk, PW_PAUL
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = _projek(ruang, "punyaku", n=2)
+    klien.post(f"/setsrc?path={d}")
+
+    h = klien.get("/").text
+    assert 'href="/unggah?ds=punyaku"' in h
+    assert 'id="drop-tambah"' not in h and 'id="menu-tambah"' not in h
+
+    # Dataset bersama tidak boleh ditambahi: tombolnya tetap ada, tetapi mati,
+    # beserta alasannya. Tombol yang hilang menyisakan teka-teki.
+    bersama = lingkungan["roots"] / "ds-alpha"
+    klien.post(f"/setsrc?path={bersama}")
+    h = klien.get("/").text
+    assert "data-mati" in h and 'href="/unggah' not in h
+
+
 # ============================================================
 # GANTI NAMA
 # ============================================================

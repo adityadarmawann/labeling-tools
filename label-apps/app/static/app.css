@@ -117,6 +117,11 @@ h1{font-size:15px;font-weight:600;letter-spacing:.02em}
   text-decoration:none;display:inline-block;transition:.12s}
 .chip:hover{border-color:var(--ink-faint);color:var(--ink)}
 .chip[data-on]{background:var(--ink);color:var(--on-ink);border-color:var(--ink);font-weight:600}
+/* Chip yang tidak bisa dipakai. Dihilangkan sama sekali akan menyisakan
+   teka-teki: tombolnya ada tadi, sekarang tidak, dan tidak ada yang
+   menjelaskan kenapa. Yang menjelaskan justru title-nya. */
+.chip[data-mati]{opacity:.45;cursor:not-allowed}
+.chip[data-mati]:hover{border-color:var(--line2);color:var(--ink-dim)}
 .chip b{font-variant-numeric:tabular-nums}
 /* Keterangan kecil di samping label isian. Dulu hanya ada di label.css, yang
    cuma dimuat halaman kanvas, padahal kelas ini dipakai juga di halaman kelola

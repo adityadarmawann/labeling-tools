@@ -20,6 +20,12 @@
 
   const PROJEK = halaman.dataset.projek || '';
   const PATH = halaman.dataset.path || '';
+  /* Projek yang SUDAH berisi gambar dikirimi lewat /tambah, yang menaruh tiap
+     berkas mengikuti tata letak di sana: dataset bersplit tetap terbagi
+     train/valid/test, dataset YOLO tetap punya images/ dan labels/. Projek
+     kosong lewat /upload, yang menerima apa saja termasuk .zip lalu dipindai
+     dari nol. Yang menentukan keadaan projeknya, bukan pilihan pengguna. */
+  const BERISI = halaman.dataset.berisi === '1';
 
   // Nama-nama ini harus sama dengan UP_EXT di app.js dan dengan
   // IMG_EXT + ANN_EXT + META_EXT + ARSIP_EXT di app/config.py.
@@ -74,9 +80,14 @@
 
   function tambah(daftarFile) {
     let baru = 0, ditolak = 0;
+    let arsipDitolak = 0;
     for (const f of daftarFile) {
       const nama = namaKirim(f);
       if (!UP_EXT.some(e => nama.toLowerCase().endsWith(e))) { ditolak++; continue; }
+      // Membongkar arsip ke dalam dataset yang sudah terbagi akan menumpahkan
+      // isinya di akar, di luar train/valid/test. Ditolak di sini, bukan
+      // dibiarkan gagal belakangan setelah berkasnya terlanjur naik.
+      if (BERISI && adalahArsip(nama)) { arsipDitolak++; continue; }
       if (berkas.has(nama)) continue;
       berkas.set(nama, { file: f, nama, gambar: adalahGambar(nama),
                          arsip: adalahArsip(nama) });
@@ -87,6 +98,10 @@
       return;
     }
     if (ditolak) toast(ditolak + ' berkas dilewati karena formatnya tidak didukung');
+    if (arsipDitolak) {
+      toast(arsipDitolak + ' berkas .zip dilewati: dataset ini sudah berisi, '
+            + 'bongkar dulu di laptop lalu tarik isinya');
+    }
     if (baru) gambarUlang();
     keTahap(2);
   }
@@ -296,14 +311,24 @@
     // bilah di dalamnya yang disimpan lebih dulu.
     const pr = Progres.mulai('Mengunggah ke ' + PROJEK, { di: $('ug-progres-jalur') });
 
+    // /tambah bekerja pada dataset yang SEDANG dibuka sesi ini, jadi projeknya
+    // harus dibuka lebih dulu. Dilakukan sekali di sini, bukan per berkas.
+    if (BERISI) {
+      pr.taktentu('Membuka dataset…');
+      const buka = await post('/setsrc?path=' + encodeURIComponent(PATH));
+      if (!buka.ok) { pr.gagal(buka.error || 'Gagal membuka dataset'); return; }
+    }
+
     let selesai = 0, gagal = 0;
     const arsip = [];
     for (const b of semua) {
       if (batal) { pr.gagal(`Dibatalkan setelah ${selesai} berkas`); return; }
       try {
-        const j = await send('/upload?ds=' + encodeURIComponent(PROJEK) +
-                             '&name=' + encodeURIComponent(b.nama),
-                             { method: 'PUT', body: b.file });
+        const url = BERISI
+          ? '/tambah?name=' + encodeURIComponent(b.nama)
+          : '/upload?ds=' + encodeURIComponent(PROJEK)
+            + '&name=' + encodeURIComponent(b.nama);
+        const j = await send(url, { method: 'PUT', body: b.file });
         if (!j.ok) { gagal++; if (gagal <= 2) toast(b.nama + ': ' + j.error); }
         else if (j.arsip) arsip.push(j.name);
       } catch (e) { gagal++; }
@@ -327,8 +352,12 @@
     }
 
     pr.taktentu('Memindai isi dataset…');
-    const buka = await post('/useupload?ds=' + encodeURIComponent(PROJEK));
-    if (!buka.ok) { pr.gagal(buka.error || 'Gagal membuka dataset'); return; }
+    // /useupload membuka folder unggahan sebagai dataset; untuk yang sudah
+    // terbuka cukup dipindai ulang supaya gambar barunya ikut terhitung.
+    const buka = BERISI
+      ? await post('/rescan')
+      : await post('/useupload?ds=' + encodeURIComponent(PROJEK));
+    if (!buka.ok) { pr.gagal(buka.error || 'Gagal memindai dataset'); return; }
 
     if (namaBatch || tag.length) {
       pr.taktentu('Menandai gambar…');
@@ -343,7 +372,7 @@
       } catch (e) { toast('Gambar terunggah, tapi tagnya gagal disimpan'); }
     }
 
-    const pesan = `${buka.n.toLocaleString('id-ID')} gambar di dataset`
+    const pesan = `${(buka.n || 0).toLocaleString('id-ID')} gambar di dataset`
                 + (gagal ? ` · ${gagal} berkas gagal` : '');
     pr.selesai(pesan);
     $('ug-batal').hidden = true;

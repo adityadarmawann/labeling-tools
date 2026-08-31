@@ -46,10 +46,20 @@ async def halaman_unggah(request: Request, ds: str = "",
         # Dikembalikan ke daftar projek, bukan menampilkan halaman yang
         # tombolnya semua menolak.
         return RedirectResponse("/pilih", status_code=303)
+    # Dua jalur, dan yang menentukan bukan pilihan pengguna melainkan keadaan
+    # projeknya. Projek kosong menerima apa saja lewat /upload, termasuk .zip
+    # dan data.yaml, lalu dipindai dari nol. Projek yang sudah berisi harus
+    # lewat /tambah, yang menaruh tiap berkas mengikuti tata letak yang SUDAH
+    # ada di sana: dataset bersplit tetap terbagi train/valid/test, dataset
+    # YOLO tetap punya images/ dan labels/. Menyamakan keduanya berarti gambar
+    # baru mendarat di akar dan merusak pembagian yang sudah jalan.
+    berisi = await asyncio.to_thread(projek.punya_gambar, d)
     return templates.TemplateResponse(request, "unggah.html", {
         "sess": sess,
         "local": is_local(request),
         "projek": {"nama": nama, "path": str(d)},
+        "berisi": berisi,
+        "tata": tambah.tata_letak(d) if berisi else "",
         "max_upload_mb": settings.max_upload_mb,
         "max_zip_mb": settings.max_zip_mb,
         "riwayat": riwayat.baca(settings, sess.user),
