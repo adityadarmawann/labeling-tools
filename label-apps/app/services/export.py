@@ -590,6 +590,17 @@ def catatan_split(items: list[dict], bagian: dict, rencana: dict | None,
         return "\n".join(b) + "\n"
 
     r = rencana
+    # Rencana yang hanya membawa peta: pembagiannya dibekukan sebuah versi,
+    # bukan dihitung ulang di sini. Angka sesi, ambang, dan kemandirian memang
+    # tidak ada, dan mencoba mencetaknya membuat seluruh ekspor gagal.
+    if not r.get("n_sesi"):
+        b += ["SPLITTING: dibekukan dari versi"
+              + (f" v{r['versi']}." if r.get("versi") else "."), "",
+              "Gambar mana masuk split mana diambil apa adanya dari versi itu,",
+              "jadi ekspor ini berisi pembagian yang sama persis dengan saat",
+              "versinya dibuat, walau dataset sudah bertambah sesudahnya."]
+        return "\n".join(b) + "\n"
+
     k = r.get("kalibrasi") or {}
     m = r.get("kemandirian") or {}
     b += ["SPLITTING: anti-bocor (per sesi pemotretan + pemeriksaan isi gambar).",

@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 
 from app.services import projek, tugas
+from app.services import tag as tag_mod
 from tests.test_data import PW_ANGGI, PW_PAUL, masuk
 
 
@@ -692,3 +693,123 @@ def test_ekspor_dan_splitting_hanya_memakai_isi_dataset(klien, lingkungan):
     z = zipfile.ZipFile(io.BytesIO(r.content))
     label = [x for x in z.namelist() if "/labels/" in x and x.endswith(".txt")]
     assert len(label) == 2, label
+
+
+def test_berkas_pendamping_tidak_dikira_anotasi(tmp_path):
+    """Regresi: berkas pendamping kita sendiri merusak pemindaian.
+
+    .tag.json dan .tugas.json ikut terhitung sebagai anotasi labelme, sehingga
+    dataset YOLO yang sudah pernah ditugaskan diperingatkan "memuat anotasi
+    labelme DAN YOLO sekaligus" — peringatan yang muncul justru KARENA
+    memakai fitur penugasannya.
+    """
+    import cv2
+    import numpy as np
+
+    from app.services import scanner
+
+    d = tmp_path / "ds"
+    (d / "images").mkdir(parents=True)
+    (d / "labels").mkdir()
+    cv2.imwrite(str(d / "images" / "a.jpg"), np.zeros((40, 40, 3), np.uint8))
+    (d / "labels" / "a.txt").write_text("0 0.5 0.5 0.2 0.2\n")
+    (d / "data.yaml").write_text("names:\n  0: botol\n")
+    assert scanner.periksa_kelengkapan(d) == []
+
+    (d / tag_mod.BERKAS).write_text('{"versi":1,"gambar":{}}')
+    (d / tugas.BERKAS).write_text('{"versi":1,"pemilik":"x"}')
+    assert scanner.periksa_kelengkapan(d) == [], "berkas pendamping dikira anotasi"
+
+    # Dan isinya tidak ikut terbaca sebagai gambar/anotasi.
+    items, _ = scanner.scan(d)
+    assert len(items) == 1 and items[0]["img"].name == "a.jpg"
+
+
+# ============================================================
+# VERSI
+# ============================================================
+
+def test_versi_tetap_sama_walau_dataset_bertambah(klien, lingkungan):
+    """Itu seluruh alasan versi ada.
+
+    Tanpa ini, satu-satunya cara mengetahui data apa yang dipakai melatih
+    sebuah model adalah mengingatnya.
+    """
+    import io
+    import pathlib
+    import zipfile
+
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = _projek(ruang, "versi-uji", n=6)
+    klien.post(f"/setsrc?path={d}")
+    gambar = sorted(str(x) for x in d.glob("*.jpg"))
+    klien.post("/api/tugas/bagi", json={"pelabel": "paul", "gambar": gambar})
+    klien.post("/api/tugas/dataset", json={"gambar": gambar[:3]})
+
+    j = klien.post("/api/versi/buat?split=8:1:1&catatan=tiga pertama").json()
+    assert j["ok"] and j["nomor"] == 1 and j["n"] == 3, j
+
+    def isi_zip(url):
+        r = klien.get(url)
+        assert r.status_code == 200, r.status_code
+        z = zipfile.ZipFile(io.BytesIO(r.content))
+        return sorted(x for x in z.namelist()
+                      if "/labels/" in x and x.endswith(".txt"))
+
+    v1 = isi_zip("/ekspor?nomor=1&format=yolo-seg&gambar=0")
+    assert len(v1) == 3
+
+    # Dataset bertambah; ekspor biasa ikut, versi TIDAK.
+    klien.post("/api/tugas/dataset", json={"gambar": gambar[3:]})
+    assert klien.get(
+        "/api/ekspor/ringkasan?format=yolo-seg&split=8:1:1").json()["n_dataset"] == 6
+    assert isi_zip("/ekspor?nomor=1&format=yolo-seg&gambar=0") == v1
+
+    # Versi kedua memotret keadaan yang baru.
+    assert klien.post("/api/versi/buat?split=8:1:1").json()["n"] == 6
+    assert len(isi_zip("/ekspor?nomor=2&format=yolo-seg&gambar=0")) == 6
+
+
+def test_daftar_versi_tidak_membawa_petanya(klien, lingkungan):
+    """Peta bisa berisi puluhan ribu baris dan tidak dipakai menampilkan daftar."""
+    import pathlib
+
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = _projek(ruang, "versi-daftar", n=4)
+    klien.post(f"/setsrc?path={d}")
+    gambar = sorted(str(x) for x in d.glob("*.jpg"))
+    klien.post("/api/tugas/bagi", json={"pelabel": "paul", "gambar": gambar})
+    klien.post("/api/tugas/dataset", json={"gambar": gambar})
+    klien.post("/api/versi/buat?split=8:1:1")
+
+    v = klien.get("/api/versi/daftar").json()["versi"]
+    assert len(v) == 1 and "peta" not in v[0] and "gambar" not in v[0]
+    assert v[0]["jumlah"] and sum(v[0]["jumlah"].values()) == 4
+
+    h = klien.get("/versi?ds=versi-daftar").text
+    assert "v1" in h and "Buat versi" in h
+
+    assert klien.post("/api/versi/hapus?nomor=1").json()["ok"]
+    assert klien.get("/api/versi/daftar").json()["versi"] == []
+
+
+def test_versi_tanpa_gambar_di_dataset_ditolak(klien, lingkungan):
+    import pathlib
+
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = _projek(ruang, "versi-kosong", n=2)
+    klien.post(f"/setsrc?path={d}")
+    gambar = sorted(str(x) for x in d.glob("*.jpg"))
+    klien.post("/api/tugas/bagi", json={"pelabel": "paul", "gambar": gambar})
+
+    j = klien.post("/api/versi/buat?split=8:1:1").json()
+    assert j["ok"] is False and "dataset" in j["error"]

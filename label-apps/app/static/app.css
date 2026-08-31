@@ -1620,3 +1620,29 @@ body.berprojek main{display:flex;gap:0;padding:0;align-items:stretch}
   border-radius:999px;background:var(--sunk);color:var(--ink-dim);
   max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tugas-cap.tugas-aku{background:var(--ok-lembut);color:var(--aksi);font-weight:600}
+
+/* ==================================================== halaman versi */
+.vs-buat{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  padding:14px 15px 15px;margin-bottom:16px;max-width:760px}
+.vs-buat-teks b{display:block;font-size:13.5px;margin-bottom:4px}
+.vs-buat-teks .halus{margin:0;line-height:1.55}
+.vs-buat-alat{display:flex;gap:8px;align-items:center;margin-top:11px;
+  flex-wrap:wrap}
+.vs-buat-alat #vs-rasio{width:92px;text-align:center}
+.vs-buat-alat #vs-catatan{flex:1 1 220px;min-width:0}
+.vs-buat-alat .cta{margin-top:0;flex:0 0 auto;padding:9px 18px;font-size:13px}
+
+.vs-daftar{display:flex;flex-direction:column;gap:11px;max-width:760px}
+.vs-kartu{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  padding:12px 14px 13px;display:flex;flex-direction:column;gap:8px}
+.vs-atas{display:flex;align-items:center;gap:9px}
+.vs-nomor{font-size:15px;color:var(--aksi)}
+.vs-waktu{margin:0}
+.vs-angka{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;
+  color:var(--ink-dim)}
+.vs-angka b{color:var(--ink);font-variant-numeric:tabular-nums}
+.vs-unduh{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:2px}
+/* Warna ketiga split di bilah versi, sama dengan warna yang dipakai di tempat
+   lain: teal untuk train, kuning valid, biru test. */
+.lajur .p-warn{background:var(--warn)}
+.lajur .p-bg{background:var(--latar)}

@@ -88,10 +88,18 @@ async def halaman_versi(request: Request, ds: str = "",
     if d is None:
         return RedirectResponse("/pilih", status_code=303)
     nama = d.name
+    from ..services import versi as svc_versi
+    from ..services import tugas as svc_tugas
+
     ringkas = await asyncio.to_thread(projek.ringkas, d)
-    pr = {"nama": nama, "path": str(d), **ringkas, "versi": 0}
+    daftar = await asyncio.to_thread(svc_versi.daftar, d)
+    tdata = svc_tugas.baca(d, sess.user)
+    pr = {"nama": nama, "path": str(d), **ringkas, "versi": len(daftar),
+          "ds": ds if "/" in ds else nama}
     return templates.TemplateResponse(request, "versi.html", {
         "sess": sess, "projek": pr, "pr": pr, "aktif": "versi",
+        "daftar": daftar,
+        "boleh_kelola": svc_tugas.boleh_kelola(tdata, sess.user),
     })
 
 

@@ -201,11 +201,31 @@ def periksa_kelengkapan(src: Path) -> list[str]:
             "data.yaml-nya, atau buat classes.txt berisi satu nama kelas "
             "per baris.")
 
-    if any(True for _ in src.rglob("*.json")) and punya_txt:
+    if any(True for _ in anotasi_json(src)) and punya_txt:
         pesan.append(
             "folder ini memuat anotasi labelme (.json) DAN YOLO (.txt) "
             "sekaligus — periksa mana yang sebenarnya kamu maksud.")
     return pesan
+
+
+def anotasi_json(src: Path):
+    """
+    Berkas .json yang benar-benar ANOTASI di dalam `src`.
+
+    Berkas pendamping aplikasi ini berawalan titik (.tag.json, .tugas.json),
+    dan tanpa saringan ini ia ikut terhitung sebagai anotasi labelme. Akibatnya
+    dua-duanya salah sekaligus: dataset YOLO yang sudah pernah ditugaskan
+    diperingatkan "memuat anotasi labelme DAN YOLO sekaligus", dan berkas yang
+    isinya bukan anotasi dicoba dibaca sebagai anotasi lalu dicatat rusak.
+
+    Aturannya sengaja umum, bukan daftar nama: berkas maupun FOLDER berawalan
+    titik memang keterangan, bukan data. Folder ikut diperiksa karena versi
+    dataset disimpan di .versi/, dan berkas di dalamnya bernama v1.json yang
+    namanya sendiri tidak berawalan titik.
+    """
+    return (p for p in src.rglob("*.json")
+            if not any(bagian.startswith(".")
+                       for bagian in p.relative_to(src).parts))
 
 
 def poly_area(p: np.ndarray) -> float:
@@ -539,7 +559,7 @@ def _gabung_cadangan(ip: Path, shapes: list[dict]) -> None:
 
 def _scan_labelme(src: Path):
     items, seen, broken = [], set(), set()
-    for jp in sorted(src.rglob("*.json")):
+    for jp in sorted(anotasi_json(src)):
         try:
             sh, W, H = read_json(jp)
         except Exception:

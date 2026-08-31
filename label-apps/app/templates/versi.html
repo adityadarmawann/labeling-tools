@@ -12,17 +12,81 @@
 
 <main>
 {% include "_sisi.html" %}
-<div class="sisi-isi">
-  <div class="pkosong" style="max-width:640px">
+<div class="sisi-isi" id="vs-isi" data-ds="{{ pr.ds }}">
+
+  {% if boleh_kelola %}
+  <section class="vs-buat">
+    <div class="vs-buat-teks">
+      <b>Bekukan pembagian yang berlaku sekarang</b>
+      <span class="halus">Yang dibekukan bukan rasionya melainkan petanya:
+        gambar mana masuk train, valid, atau test. Rasio yang sama pada dataset
+        yang sudah bertambah menghasilkan pembagian yang lain, dan versi yang
+        isinya berubah bukan versi.</span>
+    </div>
+    <div class="vs-buat-alat">
+      <input type="text" id="vs-rasio" value="8:1:1" title="train:valid:test">
+      <input type="text" id="vs-catatan" placeholder="catatan, mis. sebelum tambah kahf">
+      <button class="cta" type="button" id="vs-buat">Buat versi</button>
+    </div>
+    <div class="jalur-status" id="vs-jalur"></div>
+  </section>
+  {% endif %}
+
+  {% if not daftar %}
+  <div class="pkosong" style="max-width:660px">
     <b>Belum ada versi</b>
-    Versi adalah pembagian train/valid/test yang dibekukan: sekali dibuat, isinya
-    tetap dan bisa diunduh ulang kapan saja, walau gambar barunya sudah bertambah.
-    Itu yang membuat hasil pelatihan bisa ditelusuri kembali ke data yang persis
-    dipakai.
-    <span style="display:block;margin-top:10px">Sekarang splitting masih dijalankan
-    dari halaman <a href="/?ds={{ pr.nama | urlquote }}">Dataset</a> dan hasilnya
-    langsung diunduh sebagai ZIP, tanpa disimpan.</span>
+    Versi adalah pembagian train/valid/test yang dibekukan: sekali dibuat,
+    isinya tetap dan bisa diunduh ulang kapan saja, walau gambar barunya sudah
+    bertambah. Itu yang membuat hasil pelatihan bisa ditelusuri kembali ke data
+    yang persis dipakai.
+    {% if not boleh_kelola %}
+    <span style="display:block;margin-top:10px">Pemilik projek yang membuatnya.</span>
+    {% endif %}
   </div>
+  {% else %}
+  <div class="vs-daftar">
+    {%- for v in daftar %}
+    <article class="vs-kartu" data-nomor="{{ v.nomor }}">
+      <div class="vs-atas">
+        <b class="vs-nomor">v{{ v.nomor }}</b>
+        <span class="vs-waktu halus">{{ v.dibuat }} &middot; oleh {{ v.oleh }}</span>
+        <span class="spacer"></span>
+        {% if boleh_kelola %}
+        <button class="an-buang" type="button" data-nomor="{{ v.nomor }}"
+                title="Hapus versi ini" aria-label="Hapus">&times;</button>
+        {% endif %}
+      </div>
+
+      {% set j = v.jumlah or {} %}
+      <div class="lajur an-lajur" title="train / valid / test">
+        {%- if j.train %}<i class="p-ok" style="flex-grow:{{ j.train }}"></i>{% endif -%}
+        {%- if j.valid %}<i class="p-warn" style="flex-grow:{{ j.valid }}"></i>{% endif -%}
+        {%- if j.test %}<i class="p-bg" style="flex-grow:{{ j.test }}"></i>{% endif -%}
+      </div>
+      <div class="vs-angka">
+        <span><b>{{ v.n }}</b> gambar</span>
+        <span>train <b>{{ j.train or 0 }}</b></span>
+        <span>valid <b>{{ j.valid or 0 }}</b></span>
+        <span>test <b>{{ j.test or 0 }}</b></span>
+        <span>{{ v.kelas }} kelas</span>
+        <span class="halus">rasio {{ v.rasio }}</span>
+      </div>
+      {% if v.catatan %}<p class="an-catatan">{{ v.catatan }}</p>{% endif %}
+
+      <div class="vs-unduh">
+        <span class="halus">Unduh:</span>
+        <a class="chip" href="/ekspor?nomor={{ v.nomor }}&format=yolo-seg">YOLO-seg</a>
+        <a class="chip" href="/ekspor?nomor={{ v.nomor }}&format=yolo">YOLO</a>
+        <a class="chip" href="/ekspor?nomor={{ v.nomor }}&format=coco">COCO</a>
+        <a class="chip" href="/ekspor?nomor={{ v.nomor }}&format=voc">VOC</a>
+        <a class="chip" href="/ekspor?nomor={{ v.nomor }}&format=yolo-seg&gambar=0">label saja</a>
+      </div>
+    </article>
+    {%- endfor %}
+  </div>
+  {% endif %}
 </div>
 </main>
 {% endblock %}
+
+{% block skrip %}<script src="{{ statik('versi.js') }}"></script>{% endblock %}

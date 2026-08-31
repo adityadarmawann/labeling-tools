@@ -10,7 +10,8 @@ from fastapi.responses import HTMLResponse, Response
 from ..config import Settings, get_settings
 from ..deps import current_session, current_session_api, is_local, require_local
 from ..log import catat
-from ..services import anylabeling, export, riwayat, scanner, split, tugas
+from ..services import (anylabeling, export, riwayat, scanner, split,
+                        tugas, versi)
 
 _log = catat("labelapp.split")
 from ..session import Session
@@ -92,6 +93,61 @@ async def pick_dir(sess: Session = Depends(current_session_api)):
     return {"ok": True, "dir": str(d), "n": n}
 
 
+@router.get("/api/versi/daftar")
+async def versi_daftar(sess: Session = Depends(current_session_api)):
+    if sess.src is None:
+        return {"ok": False, "error": "belum ada dataset terbuka"}
+    return {"ok": True, "versi": await asyncio.to_thread(versi.daftar, sess.src)}
+
+
+@router.post("/api/versi/buat")
+async def versi_buat(split: str = "", catatan: str = "",
+                     sess: Session = Depends(current_session_api)):
+    """
+    Bekukan pembagian yang berlaku sekarang jadi satu versi.
+
+    Yang dibekukan petanya, bukan rasionya: rasio yang sama pada dataset yang
+    sudah bertambah menghasilkan pembagian yang lain, dan versi yang isinya
+    berubah bukan versi.
+    """
+    if sess.src is None:
+        return {"ok": False, "error": "belum ada dataset terbuka"}
+    with sess.lock:
+        items = list(sess.items)
+        names = dict(sess.names)
+    items, hitung = await asyncio.to_thread(tugas.saring_dataset, items,
+                                            sess.src, sess.user)
+    if not items:
+        return {"ok": False, "error": (
+            "belum ada gambar yang dimasukkan ke dataset. Versi dibuat dari isi "
+            "dataset, bukan dari seluruh gambar yang diunggah.")}
+
+    rasio = split or "8:1:1"
+    rencana = sess.rencana_split
+    bagian = await asyncio.to_thread(export.bagi_split, items,
+                                     export.baca_rasio(rasio), rencana)
+    peta = {it["img"].name: s for s, daftar in bagian.items() for it in daftar}
+    r = await asyncio.to_thread(export.ringkasan, items, True,
+                                export.baca_rasio(rasio), names, rencana)
+    hasil = await asyncio.to_thread(
+        versi.buat, sess.src, sess.user, rasio,
+        [it["img"].name for it in items], peta, r, catatan)
+    return {"ok": True, **hasil, **hitung,
+            # Rencana anti-bocor ikut dicatat ADA atau tidak: versi yang dibuat
+            # tanpa memeriksa isi gambar tidak boleh terlihat sama dengan yang
+            # sudah diperiksa.
+            "berencana": bool(rencana)}
+
+
+@router.post("/api/versi/hapus")
+async def versi_hapus(nomor: int = 0,
+                      sess: Session = Depends(current_session_api)):
+    if sess.src is None:
+        return {"ok": False, "error": "belum ada dataset terbuka"}
+    ok = await asyncio.to_thread(versi.hapus, sess.src, nomor)
+    return {"ok": ok, "error": "" if ok else f"versi v{nomor} tidak ada"}
+
+
 @router.get("/api/ekspor/ringkasan")
 async def ekspor_ringkasan(format: str = "yolo-seg", split: str = "",
                            sess: Session = Depends(current_session_api)):
@@ -129,7 +185,8 @@ async def ekspor_ringkasan(format: str = "yolo-seg", split: str = "",
 
 @router.get("/ekspor")
 async def ekspor(format: str = "yolo-seg", gambar: int = 1, split: str = "",
-                 tanda: str = "", sess: Session = Depends(current_session)):
+                 tanda: str = "", nomor: int = 0,
+                 sess: Session = Depends(current_session)):
     """
     Unduh dataset sebagai ZIP bertata letak ultralytics.
 
@@ -152,6 +209,22 @@ async def ekspor(format: str = "yolo-seg", gambar: int = 1, split: str = "",
     # menekan tombol bukan angka yang diterima sesudahnya.
     items, _ = await asyncio.to_thread(tugas.saring_dataset, items,
                                        sess.src, sess.user)
+
+    # Ekspor sebuah VERSI: isinya dikunci ke daftar dan peta yang dibekukan,
+    # bukan dihitung ulang. Gambar yang ditambahkan sesudah versi itu dibuat
+    # tidak ikut, dan yang sudah dihapus tidak membuatnya gagal.
+    rencana_dipakai = sess.rencana_split
+    if nomor:
+        v = await asyncio.to_thread(versi.baca, sess.src, nomor)
+        if v is None:
+            return Response(f"versi v{nomor} tidak ada", status_code=404,
+                            media_type="text/plain; charset=utf-8")
+        punya = set(v.get("gambar") or [])
+        items = [it for it in items if it["img"].name in punya]
+        rencana_dipakai = {"peta": v.get("peta") or {}, "versi": nomor}
+        split = v.get("rasio") or split
+        nama = f"{nama}-v{nomor}"
+
     if not items:
         # Ditolak dengan sebabnya, bukan ZIP kosong yang baru ketahuan salah
         # setelah diunduh dan dibuka.
@@ -161,7 +234,7 @@ async def ekspor(format: str = "yolo-seg", gambar: int = 1, split: str = "",
             status_code=409, media_type="text/plain; charset=utf-8")
     data = await asyncio.to_thread(export.zip_dataset, items, nama, format,
                                    bool(gambar), export.baca_rasio(split), names,
-                                   sess.rencana_split)
+                                   rencana_dipakai)
     berkas = f"{nama}-{format}.zip"
     r = Response(data, media_type="application/zip", headers={
         "Content-Disposition": f'attachment; filename="{berkas}"',
