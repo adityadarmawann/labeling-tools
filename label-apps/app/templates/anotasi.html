@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% block title %}Anotasi{% endblock %}
+{% block bodyclass %}berprojek{% endblock %}
+
+{% macro bilah(berlabel, jumlah) -%}
+{# Bilah dua warna, memakai komponen yang sama dengan bilah kemajuan grid,
+   supaya teal tetap berarti "sudah" dan merah tetap berarti "belum" di mana
+   pun ia muncul. #}
+<div class="lajur an-lajur">
+  {%- if berlabel %}<i class="p-ok" style="flex-grow:{{ berlabel }}"></i>{% endif -%}
+  {%- if jumlah - berlabel %}<i class="p-stop"
+      style="flex-grow:{{ jumlah - berlabel }}"></i>{% endif -%}
+</div>
+{%- endmacro %}
+
+{% block body %}
+<header>
+  <div class="top">
+    <h1>Anotasi</h1>
+    {% include "_header.html" %}
+  </div>
+</header>
+
+<main>
+{% include "_sisi.html" %}
+<div class="sisi-isi" id="an-isi" data-ds="{{ pr.ds }}">
+
+  {# ---------------------------------------------------- ringkasan orang #}
+  {% if per_pelabel %}
+  <section class="an-orang">
+    {%- for o in per_pelabel %}
+    <div class="an-kartu-orang{% if o.pelabel == aku %} an-aku{% endif %}">
+      <div class="an-orang-atas">
+        <span class="bg-avatar">{{ o.pelabel[:1] | upper }}</span>
+        <span class="an-orang-teks">
+          <b>{{ o.pelabel }}{% if o.pelabel == aku %} (kamu){% endif %}</b>
+          <span class="halus">{{ o.job }} tugas &middot;
+            {{ o.jumlah }} gambar</span>
+        </span>
+        <b class="an-persen">{{ o.persen }}%</b>
+      </div>
+      {{ bilah(o.berlabel, o.jumlah) }}
+      <span class="an-orang-kaki">{{ o.berlabel }} dikerjakan &middot;
+        {{ o.di_dataset }} di dataset</span>
+    </div>
+    {%- endfor %}
+  </section>
+  {% endif %}
+
+  {# ---------------------------------------------------- tiga kolom #}
+  <section class="an-papan">
+
+    <div class="an-kolom">
+      <div class="an-kolom-kepala">
+        <b>Belum ditugaskan</b>
+        <span class="an-hitung">{{ belum_ditugaskan }}</span>
+      </div>
+      {% if belum_ditugaskan %}
+      <div class="an-kosong">
+        <b>{{ belum_ditugaskan }} gambar menunggu dibagi</b>
+        {% if boleh_kelola %}
+        <a class="cta" href="/bagi?ds={{ pr.ds | urlquote }}"
+           style="display:inline-block;text-decoration:none;text-align:center">
+          Bagi tugas</a>
+        {% else %}
+        <span class="halus">Pemilik projek yang membaginya.</span>
+        {% endif %}
+      </div>
+      {% else %}
+      <div class="an-kosong"><b>Semuanya sudah dibagi</b>
+        <span class="halus">Tidak ada gambar yang menganggur di projek ini.</span>
+      </div>
+      {% endif %}
+    </div>
+
+    {% set dikerjakan = kartu | rejectattr("keadaan", "equalto", "selesai") | list %}
+    {% set selesai = kartu | selectattr("keadaan", "equalto", "selesai") | list %}
+
+    <div class="an-kolom">
+      <div class="an-kolom-kepala">
+        <b>Dikerjakan</b>
+        <span class="an-hitung">{{ dikerjakan | length }}</span>
+      </div>
+      {%- for k in dikerjakan %}
+      <article class="an-kartu{% if k.pelabel == aku %} an-aku{% endif %}"
+               data-id="{{ k.id }}">
+        <div class="an-kartu-atas">
+          <span class="an-kartu-judul">{{ k.pelabel }}</span>
+          {% if boleh_kelola %}
+          <button class="an-buang" type="button" data-id="{{ k.id }}"
+                  title="Bubarkan tugas ini" aria-label="Bubarkan">&times;</button>
+          {% endif %}
+        </div>
+        <span class="halus an-kartu-waktu">dibagi {{ k.dibuat }}</span>
+        {{ bilah(k.berlabel, k.jumlah) }}
+        <div class="an-kartu-angka">
+          <span><b>{{ k.berlabel }}</b> dikerjakan</span>
+          <span><b>{{ k.jumlah - k.berlabel }}</b> belum</span>
+          <b class="an-persen">{{ k.persen }}%</b>
+        </div>
+        {% if k.catatan %}
+        <p class="an-catatan">{{ k.catatan }}</p>
+        {% endif %}
+        {% if k.pelabel == aku or boleh_kelola %}
+        <a class="an-mulai" href="/?ds={{ pr.ds | urlquote }}&f=unlab">
+          {% if k.berlabel %}Lanjutkan{% else %}Mulai melabeli{% endif %} &rarr;</a>
+        {% endif %}
+      </article>
+      {%- else %}
+      <div class="an-kosong"><b>Belum ada yang dikerjakan</b>
+        <span class="halus">Tugas yang sudah dibagi muncul di sini.</span></div>
+      {%- endfor %}
+    </div>
+
+    <div class="an-kolom">
+      <div class="an-kolom-kepala">
+        <b>Selesai</b>
+        <span class="an-hitung">{{ selesai | length }}</span>
+      </div>
+      {%- for k in selesai %}
+      <article class="an-kartu an-selesai" data-id="{{ k.id }}">
+        <div class="an-kartu-atas">
+          <span class="an-kartu-judul">{{ k.pelabel }}</span>
+        </div>
+        <span class="halus an-kartu-waktu">dibagi {{ k.dibuat }}</span>
+        {{ bilah(k.jumlah, k.jumlah) }}
+        <div class="an-kartu-angka">
+          <span><b>{{ k.jumlah }}</b> gambar masuk dataset</span>
+          <b class="an-persen">100%</b>
+        </div>
+      </article>
+      {%- else %}
+      <div class="an-kosong"><b>Belum ada yang selesai</b>
+        {# Ini yang paling sering ditanyakan saat kolom ini kosong padahal
+           pekerjaannya sudah rampung: melabeli saja belum cukup. #}
+        <span class="halus">Tugas pindah ke sini setelah gambarnya
+          dimasukkan ke dataset, bukan cuma dilabeli.</span></div>
+      {%- endfor %}
+    </div>
+  </section>
+
+  <p class="an-kaki halus">{{ n_berlabel }} dari {{ n_semua }} gambar sudah
+    dikerjakan &middot; {{ n_dataset }} sudah masuk dataset</p>
+</div>
+</main>
+{% endblock %}
+
+{% block skrip %}<script src="{{ statik('anotasi.js') }}"></script>{% endblock %}

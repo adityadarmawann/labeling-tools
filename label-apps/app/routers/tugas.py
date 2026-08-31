@@ -49,6 +49,51 @@ def _kunci(sess: Session, paths: list[str]) -> list[str]:
     return out
 
 
+@router.get("/anotasi", response_class=HTMLResponse)
+async def halaman_papan(request: Request, ds: str = "",
+                        sess: Session = Depends(current_session),
+                        settings: Settings = Depends(get_settings)):
+    """
+    Papan anotasi: siapa mengerjakan apa, dan sudah sejauh mana.
+
+    Tiga kolom, sepadan dengan papan Roboflow. Yang menggerakkan kolomnya bukan
+    tombol melainkan keadaan: sebuah job pindah ke Dikerjakan begitu ada satu
+    gambarnya berlabel, dan ke Selesai begitu seluruhnya masuk dataset.
+    """
+    from ..services import projek as sp
+    from ..services import scanner
+
+    d = sp.temukan(settings.uploads_root, sess.user, ds)
+    if d is None:
+        return RedirectResponse("/pilih", status_code=303)
+    if str(sess.src or "") != str(d):
+        await asyncio.to_thread(sess.load, d)
+
+    data = svc.baca(d, sess.user)
+    ringkas = await asyncio.to_thread(sp.ringkas, d)
+    pr = {"nama": d.name, "path": str(d), **ringkas, "versi": 0,
+          "ds": ds if "/" in ds else d.name}
+
+    with sess.lock:
+        items = list(sess.items)
+    semua = {svc_tag.kunci_gambar(d, it["img"]) for it in items}
+    # "Sudah dikerjakan" berarti punya berkas anotasi, TERMASUK yang ditandai
+    # latar. Menandai gambar sebagai tanpa objek adalah keputusan yang sudah
+    # diambil; menghitungnya sebagai belum dikerjakan membuat kemajuan pelabel
+    # yang datasetnya banyak latar tampak macet.
+    berlabel = {svc_tag.kunci_gambar(d, it["img"]) for it in items
+                if scanner.severity(it) != "stop"}
+
+    papan = svc.papan(data, berlabel, semua)
+    return templates.TemplateResponse(request, "anotasi.html", {
+        "sess": sess, "pr": pr, "aktif": "anotasi",
+        "boleh_kelola": svc.boleh_kelola(data, sess.user),
+        "pemilik": data["pemilik"] or sess.user,
+        "aku": sess.user,
+        **papan,
+    })
+
+
 @router.get("/bagi", response_class=HTMLResponse)
 async def halaman_bagi(request: Request, ds: str = "",
                        sess: Session = Depends(current_session),

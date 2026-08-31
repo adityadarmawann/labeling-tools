@@ -391,8 +391,28 @@ def papan(data: dict, berlabel: set[str], semua: set[str]) -> dict:
         })
     kartu.sort(key=lambda k: k["dibuat"], reverse=True)
     belum = sorted(semua - ditugaskan)
+
+    # Ringkasan per orang, dan inilah yang paling sering ditanyakan: si aditya
+    # sudah berapa persen. Dijumlahkan dari kartunya, bukan dihitung ulang,
+    # supaya angka di ringkasan dan angka di kartu tidak pernah berbeda.
+    orang: dict[str, dict] = {}
+    for k in kartu:
+        o = orang.setdefault(k["pelabel"], {"pelabel": k["pelabel"], "job": 0,
+                                            "jumlah": 0, "berlabel": 0,
+                                            "di_dataset": 0})
+        o["job"] += 1
+        for f in ("jumlah", "berlabel", "di_dataset"):
+            o[f] += k[f]
+    for o in orang.values():
+        o["persen"] = round(o["berlabel"] * 100 / o["jumlah"]) if o["jumlah"] else 0
+    per_pelabel = sorted(orang.values(),
+                         key=lambda o: (-o["jumlah"], o["pelabel"]))
+
     return {
         "belum_ditugaskan": len(belum),
         "kartu": kartu,
+        "per_pelabel": per_pelabel,
         "n_dataset": sum(1 for k in semua if di_dataset(data, k)),
+        "n_semua": len(semua),
+        "n_berlabel": len(berlabel & semua),
     }

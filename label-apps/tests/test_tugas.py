@@ -402,3 +402,60 @@ def test_calon_pelabel_hanya_untuk_pemilik(klien, lingkungan):
     j = klien.get("/api/tugas/calon").json()
     assert j["ok"] and {a["akun"] for a in j["akun"]} >= {"paul", "anggi"}
     assert next(a for a in j["akun"] if a["akun"] == "paul")["anggota"] is True
+
+
+# ============================================================
+# PAPAN ANOTASI
+# ============================================================
+
+def test_papan_menampilkan_tiga_kolom_dan_ringkasan_per_orang(klien, lingkungan):
+    """Yang paling sering ditanyakan: si aditya sudah berapa persen."""
+    import pathlib
+
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    # 4 gambar, semuanya berlabel di fixture ini
+    d = _projek(ruang, "papan-uji", n=4)
+    klien.post(f"/setsrc?path={d}")
+    gambar = sorted(str(x) for x in d.glob("*.jpg"))
+
+    h = klien.get("/anotasi?ds=papan-uji").text
+    assert "Belum ditugaskan" in h and "Dikerjakan" in h and "Selesai" in h
+    assert "4 gambar menunggu dibagi" in h
+
+    klien.post("/api/tugas/bagi", json={"pelabel": "anggi",
+                                        "gambar": gambar[:2],
+                                        "catatan": "catatan uji"})
+    h = klien.get("/anotasi?ds=papan-uji").text
+    assert "anggi" in h and "catatan uji" in h
+    assert "100%" in h, "dua gambar berlabel dari dua ditugaskan"
+
+    # Belum masuk dataset, jadi belum pindah ke kolom Selesai.
+    assert "an-selesai" not in h
+    klien.post("/api/tugas/dataset", json={"gambar": gambar[:2]})
+    h = klien.get("/anotasi?ds=papan-uji").text
+    assert "an-selesai" in h, "job yang seluruhnya di dataset pindah ke Selesai"
+
+
+def test_papan_membubarkan_tugas_tidak_menghapus_labelnya(klien, lingkungan):
+    """Yang hilang cuma penugasannya."""
+    import pathlib
+
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = _projek(ruang, "bubar-uji", n=3)
+    klien.post(f"/setsrc?path={d}")
+    gambar = sorted(str(x) for x in d.glob("*.jpg"))
+    j = klien.post("/api/tugas/bagi", json={"pelabel": "anggi",
+                                            "gambar": gambar[:2]}).json()
+
+    n_json = len(list(d.glob("*.json")))
+    assert klien.post(f"/api/tugas/bubarkan?id={j['id']}").json()["ok"]
+    assert len(list(d.glob("*.json"))) == n_json, "label ikut terhapus"
+
+    h = klien.get("/anotasi?ds=bubar-uji").text
+    assert "3 gambar menunggu dibagi" in h, "gambarnya kembali menganggur"
