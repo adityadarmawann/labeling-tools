@@ -207,31 +207,46 @@ Buat akun dev sekali:
 ### Projek yang sama seperti prod
 
 ```bash
-./sinkron-dev.sh --lihat     # apa yang akan disalin
-./sinkron-dev.sh             # salin projek prod ke dev untuk akun yang sama
-./sinkron-dev.sh darma       # satu akun saja
+./sinkron-dev.sh --lihat     # keadaan sekarang, tanpa mengubah apa pun
+./sinkron-dev.sh             # SALIN  — potret hard link, dev terpisah dari prod
+./sinkron-dev.sh --tautan    # TAUTAN — dev dan prod berbagi folder yang sama
+./sinkron-dev.sh --lepas     # lepas tautan, kembali ke salinan
 ```
 
-Dengan begitu, login sebagai `darma` di dev menampilkan projek yang sama
-seperti di prod — berguna karena tampilan hanya bisa dinilai dengan foto
-sungguhan, bukan gambar uji 80x60.
+Keduanya membuat login `darma` di dev menampilkan projek yang sama seperti di
+prod — berguna karena tata letak hanya bisa dinilai dengan foto sungguhan,
+bukan gambar uji 80x60. Bedanya pada apa yang terjadi saat dev *menulis*.
 
-Yang dibuat adalah **hard link**, bukan salinan isi: 3 GB projek menambah
-pemakaian disk sekitar 2 MB. Itu aman karena setiap penulisan di aplikasi ini
-lewat berkas sementara lalu diganti namanya (`annotations.tulis_aman`,
-`annotate.py`, `scanner.py`). Mengganti nama memutus tautannya, jadi menyunting
-anotasi di dev melahirkan berkas baru di sisi dev dan berkas prod tidak
-tersentuh. Terukur: menulis ulang satu gambar di dev tidak mengubah md5 berkas
-prod-nya.
+| | SALIN | TAUTAN |
+|---|---|---|
+| Ikut berubah saat prod bertambah | tidak, jalankan lagi | ya, langsung |
+| Tambahan pemakaian disk | ~2 MB untuk 3 GB projek | nol |
+| Buang / gabung / ganti nama di dev | hanya kena dev | **kena berkas prod sungguhan** |
 
-Konsekuensinya ia **potret, bukan cermin hidup**. Kalau isi prod bertambah,
-jalankan lagi supaya dev menyusul. Sinkron berikutnya membuat dev persis
-seperti prod, jadi projek yang hanya ada di dev akan hilang — skrip
-memperingatkan sebelum melakukannya.
+**Pakai TAUTAN** untuk mengerjakan tata letak dan fitur: yang kamu lihat di dev
+persis yang ada di prod, tanpa perlu menyinkronkan lagi.
 
-Dev sengaja tidak menunjuk langsung ke folder prod. Dev punya tombol yang
-benar-benar mengubah berkas — ganti nama, gandakan, gabungkan, buang — dan satu
-bug yang sedang ditulis tidak boleh sampai mengenai anotasi tim.
+**Pakai SALIN** saat menyentuh `services/projek.py`, ekspor, atau apa pun yang
+memindahkan dan menghapus berkas — kesalahan di dev berhenti di dev. Yang tidak
+punya jalan pulang adalah `gabung`; `ke_sampah` masih memindah, bukan menghapus.
+
+Berpindah mode kapan saja, dan berpindah ke TAUTAN menyingkirkan salinan lama
+ke `<akun>.salinan-<tanggal>` alih-alih menghapusnya — isinya hard link, jadi
+menyimpannya nyaris tidak memakan ruang, dan selagi dev menulis langsung ke
+berkas prod, potret itu jaring pengaman yang paling murah yang bisa ada.
+
+Kenapa SALIN tidak memakan ruang: yang dibuat **hard link**, bukan salinan isi.
+Itu aman karena setiap penulisan di aplikasi ini lewat berkas sementara lalu
+diganti namanya (`annotations.tulis_aman`, `annotate.py`, `scanner.py`).
+Mengganti nama memutus tautannya, jadi menyunting anotasi di dev melahirkan
+berkas baru di sisi dev dan berkas prod tidak tersentuh. Terukur: menulis ulang
+satu gambar di dev tidak mengubah md5 berkas prod-nya.
+
+Satu hal yang tidak berhasil: menautkan **satu projek** ke dalam folder dev.
+Projeknya muncul di daftar, tetapi sampulnya 404 dan seluruh menu kelolanya
+ditolak — `_didalam()` me-resolve kedua sisi, dan projek itu resolve ke luar
+ruang kerja dev. Tautan harus di tingkat **folder akun**, dan di situ rootnya
+ikut resolve ke seberang sehingga penjaganya utuh.
 
 ### Menaikkan kode dev ke prod
 
