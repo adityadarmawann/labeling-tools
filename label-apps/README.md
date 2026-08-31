@@ -117,24 +117,40 @@ Dokumentasi API otomatis ada di `/docs`.
 ```
 label-apps/
 ├── run.py                  entrypoint: argumen CLI -> environment -> uvicorn
-├── requirements.txt
+├── start.sh                nyalakan mode dev atau prod (memuat env/*.env)
+├── deploy.sh               naikkan kode ke prod: uji, tukar proses, buktikan hidup
+├── sinkron-dev.sh          hadirkan projek prod di dev (tautan atau salinan)
 ├── .env.example            semua setelan yang bisa diatur
+├── env/                    dev.env, prod.env
+├── DEV.md                  dev & prod: menjalankan, menyinkronkan, deploy
+├── SPLITTING.md            algoritma pembagian train/valid/test anti-bocor
+├── PARITAS.md              kesetaraan dengan AnyLabeling desktop
 └── app/
     ├── main.py             perakitan aplikasi (tipis)
     ├── config.py           setelan, dibaca dari environment
     ├── security.py         password pbkdf2, nama berkas/akun yang aman
     ├── session.py          keadaan per akun + penyimpan sesi
     ├── deps.py             dependency: sesi, penjagaan localhost
+    ├── log.py              logger yang tetap terlihat di mode prod
     ├── templating.py       instance Jinja2 + filter
     ├── routers/            satu berkas per kelompok URL
-    │   ├── auth.py         /login  /logout
+    │   ├── auth.py         /login  /logout  /daftar
+    │   ├── admin.py        /akun + API kelola akun
     │   ├── datasets.py     /pilih  /setsrc  /rescan  /pickdir
+    │   ├── projek.py       /api/projek/* : kartu dataset dan operasinya
     │   ├── review.py       /  /view  /thumb  /markbg  /unmarkbg  /open
+    │   ├── annotate.py     kanvas: simpan bentuk, navigasi gambar
     │   └── uploads.py      /upload  /unzip  /useupload
     ├── services/           logika inti, tanpa HTTP
     │   ├── scanner.py      pindai dataset, nilai anotasi
+    │   ├── projek.py       ganti nama, gandakan, gabung, sampah
+    │   ├── split.py        pembagian train/valid/test anti-bocor
+    │   ├── export.py       susun ZIP dalam lima format
+    │   ├── impor.py        salin dataset dari folder lain
     │   ├── arsip.py        bongkar .zip unggahan dengan aman
+    │   ├── autolabel.py    SAM: MobileSAM, EfficientSAM, SAM 2
     │   ├── render.py       overlay mask + cache thumbnail
+    │   ├── riwayat.py      catat folder yang pernah dibuka
     │   ├── annotations.py  tulis/hapus anotasi latar
     │   └── anylabeling.py  jalankan AnyLabeling & dialog folder
     ├── templates/          Jinja2
@@ -162,142 +178,22 @@ cd ../labeling-tools-dev/label-apps && ./start.sh    # dev, port 8043
 ```
 
 Keduanya boleh hidup bersamaan. Setelannya di [env/dev.env](env/dev.env) dan
-[env/prod.env](env/prod.env).
+[env/prod.env](env/prod.env); akun, dataset, unggahan, dan thumbnail terpisah
+sepenuhnya, dan [tests/test_mode.py](tests/test_mode.py) gagal kalau salah
+satunya sampai sama.
 
-Pemisahan foldernya bukan sekadar kerapian. **Templat dan CSS dibaca dari disk
-tiap permintaan**, jadi kalau keduanya berbagi satu folder, menyunting
-`app.css` atau `view.html` langsung mengubah apa yang dilihat tim di 8042 —
-termasuk saat baru setengah jadi. Terukur: `touch app/static/app.css` membuat
-cap versi yang dilayani prod berubah pada permintaan berikutnya. Kode Python
-tidak begitu; prod memuatnya sekali saat menyala.
-
-Membuat worktree dev-nya, sekali saja:
+Foldernya dipisah karena templat dan CSS dibaca dari disk tiap permintaan:
+selama keduanya berbagi satu folder, menyunting `app.css` langsung mengubah
+apa yang dilihat tim di 8042.
 
 ```bash
-git worktree add ../labeling-tools-dev -b dev
+./sinkron-dev.sh --tautan   # hadirkan projek prod di dev
+./deploy.sh --dari-dev      # gabungkan dev ke main, uji, lalu naikkan (dari folder prod)
 ```
 
-lalu di `../labeling-tools-dev/label-apps` sediakan berkas yang tidak ikut git:
-`.venv`, `users.dev.json`, `dev-data/`, dan `yolo26n-seg.pt`.
-
-| | dev | prod |
-|---|---|---|
-| Port | 8043 | 8042 |
-| Alamat | `0.0.0.0` | `0.0.0.0` (atau `127.0.0.1` di belakang nginx) |
-| Berkas akun | `users.dev.json` | `users.json` |
-| Dataset | `./dev-data/datasets` | folder dataset sungguhan |
-| Unggahan | `./dev-data/unggahan` | folder unggahan sungguhan |
-| Thumbnail | `./dev-data/thumb` | `/tmp/labelapp_<pid>` |
-| Muat ulang saat kode berubah | ya | tidak |
-| Batas unggahan | 20 MB | 80 MB |
-| Masuk otomatis tanpa password | ya, **hanya dari mesin itu sendiri** | tidak |
-
-Tiga hal yang disengaja:
-
-**Semua path dev berbeda dari prod.** Akun, dataset, unggahan, dan thumbnail
-terpisah — mencoba-coba di dev tidak bisa merusak anotasi tim, dan akun uji
-tidak bisa dipakai masuk ke prod. Port juga berbeda supaya keduanya bisa hidup
-bersamaan. [tests/test_mode.py](tests/test_mode.py) gagal kalau salah satu
-setelan itu sampai sama, atau kalau folder dev bersarang di dalam folder prod.
-
-**dev adalah bawaan, prod harus diminta.** Menyalakan produksi perlu disengaja,
-bukan kebetulan.
-
-**Muat ulang otomatis hanya di dev.** Di produksi, restart mendadak saat kode
-tersentuh berarti semua orang kehilangan sesinya di tengah pekerjaan.
-
-### Membukanya dari laptop
-
-Dev mendengar di `0.0.0.0` seperti prod, jadi keduanya bisa dibuka dari laptop
-di jaringan kantor — asal ufw mengizinkan portnya:
-
-```bash
-sudo ufw allow from 103.182.240.26 to any port 8043 proto tcp
-```
-
-Yang menjaga dev tetap aman bukan alamat ikatannya, melainkan dua hal lain:
-ufw membatasi siapa yang bisa menjangkau portnya, dan `LABELAPP_DEV_AUTOLOGIN`
-hanya berlaku untuk permintaan dari mesin itu sendiri — `deps.sesi_otomatis`
-memakai `is_local()`, dan permintaan lewat proxy pun ditolak. Dari laptop,
-halaman login tetap muncul.
-
-Buat akun dev sekali:
-
-```bash
-.venv/bin/python run.py --users users.dev.json --adduser namamu
-```
-
-`users.dev.json` dan `dev-data/` tidak masuk repo.
-
-### Projek yang sama seperti prod
-
-```bash
-./sinkron-dev.sh --lihat     # keadaan sekarang, tanpa mengubah apa pun
-./sinkron-dev.sh             # SALIN  — potret hard link, dev terpisah dari prod
-./sinkron-dev.sh --tautan    # TAUTAN — dev dan prod berbagi folder yang sama
-./sinkron-dev.sh --lepas     # lepas tautan, kembali ke salinan
-```
-
-Keduanya membuat login `darma` di dev menampilkan projek yang sama seperti di
-prod — berguna karena tata letak hanya bisa dinilai dengan foto sungguhan,
-bukan gambar uji 80x60. Bedanya pada apa yang terjadi saat dev *menulis*.
-
-| | SALIN | TAUTAN |
-|---|---|---|
-| Ikut berubah saat prod bertambah | tidak, jalankan lagi | ya, langsung |
-| Tambahan pemakaian disk | ~2 MB untuk 3 GB projek | nol |
-| Buang / gabung / ganti nama di dev | hanya kena dev | **kena berkas prod sungguhan** |
-
-**Pakai TAUTAN** untuk mengerjakan tata letak dan fitur: yang kamu lihat di dev
-persis yang ada di prod, tanpa perlu menyinkronkan lagi.
-
-**Pakai SALIN** saat menyentuh `services/projek.py`, ekspor, atau apa pun yang
-memindahkan dan menghapus berkas — kesalahan di dev berhenti di dev. Yang tidak
-punya jalan pulang adalah `gabung`; `ke_sampah` masih memindah, bukan menghapus.
-
-Berpindah mode kapan saja, dan berpindah ke TAUTAN menyingkirkan salinan lama
-ke `<akun>.salinan-<tanggal>` alih-alih menghapusnya — isinya hard link, jadi
-menyimpannya nyaris tidak memakan ruang, dan selagi dev menulis langsung ke
-berkas prod, potret itu jaring pengaman yang paling murah yang bisa ada.
-
-Kenapa SALIN tidak memakan ruang: yang dibuat **hard link**, bukan salinan isi.
-Itu aman karena setiap penulisan di aplikasi ini lewat berkas sementara lalu
-diganti namanya (`annotations.tulis_aman`, `annotate.py`, `scanner.py`).
-Mengganti nama memutus tautannya, jadi menyunting anotasi di dev melahirkan
-berkas baru di sisi dev dan berkas prod tidak tersentuh. Terukur: menulis ulang
-satu gambar di dev tidak mengubah md5 berkas prod-nya.
-
-Satu hal yang tidak berhasil: menautkan **satu projek** ke dalam folder dev.
-Projeknya muncul di daftar, tetapi sampulnya 404 dan seluruh menu kelolanya
-ditolak — `_didalam()` me-resolve kedua sisi, dan projek itu resolve ke luar
-ruang kerja dev. Tautan harus di tingkat **folder akun**, dan di situ rootnya
-ikut resolve ke seberang sehingga penjaganya utuh.
-
-### Menaikkan kode dev ke prod
-
-Dijalankan dari folder **prod**, bukan dari worktree dev: yang menentukan apa
-yang tayang adalah folder yang dijalankan prod.
-
-```bash
-./deploy.sh --status     # apa yang sedang jalan, tanpa mengubah apa pun
-./deploy.sh --dari-dev   # gabungkan cabang dev ke main, lalu naikkan
-./deploy.sh              # naikkan apa yang sudah ada di main
-```
-
-[deploy.sh](deploy.sh) menolak berjalan kalau ada perubahan yang belum
-di-commit, menjalankan pytest lebih dulu, menyebutkan commit apa saja yang akan
-naik, lalu memastikan prod benar-benar menjawab sebelum menyatakan berhasil.
-Kalau tidak menjawab, ia menunjukkan log dan perintah untuk kembali ke commit
-sebelumnya.
-
-Satu hal yang membuatnya tidak selalu perlu dijalankan: **templat dan CSS
-dibaca dari disk tiap permintaan**, jadi perubahan tampilan sudah tayang di
-prod tanpa restart. Yang butuh restart hanya kode Python. `deploy.sh`
-mengatakan mana yang sedang kamu hadapi, supaya tidak ada sesi tim yang diputus
-tanpa alasan.
-
-Commit yang sedang dijalankan prod dicatat di `run/prod.commit` (tidak masuk
-repo).
+Selengkapnya — menyiapkan worktree dari nol, akses dari laptop, dua cara
+menghadirkan projek prod, langkah deploy, dan daftar kejanggalan beserta
+sebabnya — ada di [DEV.md](DEV.md).
 
 ## Paritas dengan AnyLabeling
 
