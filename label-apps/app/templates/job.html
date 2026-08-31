@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}Tugas {{ job.pelabel }}{% endblock %}
+{% block bodyclass %}berprojek{% endblock %}
+
+{% block body %}
+<header>
+  <div class="top">
+    <h1>Tugas {{ job.pelabel }}</h1>
+    {% include "_header.html" %}
+  </div>
+</header>
+
+<main>
+{% include "_sisi.html" %}
+<div class="sisi-isi" id="jb-isi" data-ds="{{ pr.ds }}" data-tid="{{ tid }}"
+     data-boleh="{{ 1 if boleh_ubah else 0 }}">
+
+  <a class="sisi-balik jb-balik" href="/anotasi?ds={{ pr.ds | urlquote }}">
+    &larr; Papan anotasi</a>
+
+  <div class="jb-tata">
+    {# ---------------------------------------------------------- kiri #}
+    <aside class="jb-samping">
+      <h3 class="jb-judul">Kemajuan</h3>
+      <div class="lajur an-lajur">
+        {%- if n_label %}<i class="p-ok" style="flex-grow:{{ n_label }}"></i>{% endif -%}
+        {%- if n - n_label %}<i class="p-stop"
+            style="flex-grow:{{ n - n_label }}"></i>{% endif -%}
+      </div>
+      <p class="jb-angka"><b>{{ n }}</b> gambar</p>
+      <ul class="jb-daftar">
+        <li><span class="jb-titik t-ok"></span>{{ n_label }} sudah dianotasi</li>
+        <li><span class="jb-titik t-stop"></span>{{ n - n_label }} belum</li>
+        <li><span class="jb-titik t-ds"></span>{{ n_dataset }} sudah di dataset</li>
+      </ul>
+
+      <h3 class="jb-judul">Catatan</h3>
+      {% if job.catatan %}
+      <p class="an-catatan">{{ job.catatan }}</p>
+      {% else %}
+      <p class="halus">Tidak ada catatan dari yang membagikan.</p>
+      {% endif %}
+
+      <h3 class="jb-judul">Ditugaskan ke</h3>
+      <div class="jb-orang">
+        <span class="bg-avatar">{{ job.pelabel[:1] | upper }}</span>
+        <span class="an-orang-teks">
+          <b>{{ job.pelabel }}{% if job.pelabel == aku %} (kamu){% endif %}</b>
+          <span class="halus">dibagi {{ job.dibuat }}{% if job.oleh %}
+            oleh {{ job.oleh }}{% endif %}</span>
+        </span>
+      </div>
+    </aside>
+
+    {# ---------------------------------------------------------- kanan #}
+    <section class="jb-utama">
+      <div class="seg jb-tab" id="jb-tab" role="group" aria-label="Saring gambar">
+        <label class="seg-opt" data-on>
+          <input type="radio" name="jb-saring" value="semua" checked>
+          Semua <b>{{ n }}</b></label>
+        <label class="seg-opt">
+          <input type="radio" name="jb-saring" value="belum">
+          Belum dianotasi <b>{{ n - n_label }}</b></label>
+        <label class="seg-opt">
+          <input type="radio" name="jb-saring" value="sudah">
+          Sudah dianotasi <b>{{ n_label }}</b></label>
+      </div>
+
+      {% if boleh_ubah %}
+      <div class="jb-aksi" id="jb-aksi">
+        <label class="jb-semua">
+          <input type="checkbox" id="jb-centang-semua"><span class="cb"></span>
+          <span id="jb-terpilih">0 dipilih</span></label>
+        <span class="spacer"></span>
+        <button class="chip" type="button" id="jb-keluarkan" disabled>
+          Keluarkan dari dataset</button>
+        <button class="chip aksi" type="button" id="jb-masukkan" disabled>
+          Tambahkan ke dataset</button>
+      </div>
+      {% else %}
+      <p class="halus jb-baca">Tugas ini milik <b>{{ job.pelabel }}</b>. Kamu bisa
+        melihatnya sebagai rujukan, tetapi yang memindahkannya ke dataset hanya
+        dia atau pemilik projek.</p>
+      {% endif %}
+
+      <div class="jb-kisi" id="jb-kisi">
+        {%- for x in isi %}
+        <figure class="jb-ubin" data-path="{{ x.it | pathmentah }}"
+                data-label="{{ 1 if x.berlabel else 0 }}"
+                data-ds="{{ 1 if x.di_dataset else 0 }}">
+          <label class="jb-gambar">
+            {% if boleh_ubah %}
+            <input type="checkbox" class="jb-pilih">
+            <span class="jb-tanda-pilih" aria-hidden="true">&check;</span>
+            {% endif %}
+            <img src="/thumb?path={{ x.it | imgpath }}&s=220" alt=""
+                 width="110" height="110" decoding="async">
+            {% if x.di_dataset %}
+            <span class="jb-cap jb-cap-ds" title="sudah di dataset">dataset</span>
+            {% elif x.berlabel %}
+            <span class="jb-cap jb-cap-ok" title="sudah dianotasi">anotasi</span>
+            {% endif %}
+          </label>
+          <figcaption class="bg-nama" title="{{ x.it.img.name }}">
+            {{ x.it.img.name }}</figcaption>
+        </figure>
+        {%- endfor %}
+      </div>
+      <div class="pkosong" id="jb-kosong" hidden>
+        <b>Tidak ada yang cocok</b>
+        Tidak ada gambar pada saringan ini.
+      </div>
+      <div class="jalur-status" id="jb-jalur"></div>
+    </section>
+  </div>
+</div>
+</main>
+{% endblock %}
+
+{% block skrip %}<script src="{{ statik('job.js') }}"></script>{% endblock %}

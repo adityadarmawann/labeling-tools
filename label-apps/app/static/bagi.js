@@ -53,6 +53,31 @@
     if (!j.ok) { wadah.innerHTML = `<span class="halus">${j.error}</span>`; return; }
 
     wadah.replaceChildren();
+
+    // Undangan yang belum dipakai ditampilkan lebih dulu: ia pekerjaan yang
+    // belum selesai, dan tautan yang tidak bisa dicabut berlaku selamanya.
+    for (const u of (j.undangan || [])) {
+      const el = document.createElement('div');
+      el.className = 'bg-orang-baris bg-menunggu';
+      el.innerHTML =
+        '<span class="bg-avatar" aria-hidden="true">@</span>'
+        + `<span class="bg-orang-teks"><b>${u.email}</b>`
+        + '<span class="halus">diundang, belum diterima</span></span>';
+      const x = document.createElement('button');
+      x.type = 'button';
+      x.className = 'bg-cabut';
+      x.textContent = '\u00d7';
+      x.title = 'Batalkan undangan ini';
+      x.onclick = async () => {
+        const r = await post('/api/tugas/batalkan-undangan?token='
+                             + encodeURIComponent(u.token));
+        if (!r.ok) { toast(r.error); return; }
+        toast('Undangan dibatalkan');
+        muatOrang();
+      };
+      el.appendChild(x);
+      wadah.appendChild(el);
+    }
     // Pemilik projek ikut didaftar: sering kali dialah yang mengerjakan
     // sendiri sebagian, dan tanpa barisnya ia harus mengundang dirinya.
     for (const a of j.akun) {
@@ -67,6 +92,28 @@
         + (a.akun === j.pemilik ? ' &middot; pemilik'
            : a.anggota ? ' &middot; anggota' : '') + '</span></span>'
         + '<span class="bg-orang-n"></span>';
+      // Mengeluarkan anggota hanya untuk tamu, bukan pemilik: pemilik projek
+      // tidak bisa mengeluarkan dirinya dari projeknya sendiri.
+      if (a.anggota && a.akun !== j.pemilik) {
+        const x = document.createElement('button');
+        x.type = 'button';
+        x.className = 'bg-cabut';
+        x.textContent = '\u00d7';
+        x.title = 'Keluarkan dari projek ini';
+        x.onclick = async (ev) => {
+          ev.stopPropagation();
+          if (!confirm(`Keluarkan ${a.nama} dari projek ini?\n\n`
+                       + 'Tugasnya ikut dibubarkan. Label yang sudah dibuat '
+                       + 'tetap ada.')) return;
+          const r = await post('/api/tugas/keluarkan-anggota?akun='
+                               + encodeURIComponent(a.akun));
+          if (!r.ok) { toast(r.error); return; }
+          toast(`${a.nama} dikeluarkan`);
+          if (pelabel === a.akun) pelabel = '';
+          muatOrang();
+        };
+        el.appendChild(x);
+      }
       el.onclick = () => {
         pelabel = pelabel === a.akun ? '' : a.akun;
         for (const b of wadah.querySelectorAll('.bg-orang-baris')) {

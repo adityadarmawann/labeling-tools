@@ -44,11 +44,28 @@ def statik(nama: str) -> str:
 
 
 def imgpath(item: dict) -> str:
-    """Path absolut gambar, sudah di-quote untuk dipakai di query string."""
+    """Path absolut gambar, sudah di-quote untuk dipakai di QUERY STRING."""
     return quote(str(item["img"].resolve()))
 
 
+def pathmentah(item: dict) -> str:
+    """
+    Path absolut gambar apa adanya, untuk atribut HTML seperti data-path.
+
+    imgpath TIDAK boleh dipakai di sini. Nilainya sudah di-quote untuk query
+    string, dan JavaScript yang membacanya lewat dataset mengirimkannya mentah
+    di dalam bodi JSON — tidak ada yang meng-unquote-nya lagi. Projek bernama
+    "Rantai 171819" karena itu mengirim path berisi %20, dan server menjawab
+    "tidak satu pun gambar itu ada di projek ini" untuk gambar yang jelas ada.
+
+    Terungkap hanya karena projek ujinya bernama dengan spasi; seluruh projek
+    tanpa spasi melewati jalur yang sama tanpa gejala apa pun.
+    """
+    return str(item["img"].resolve())
+
+
 templates.env.filters["imgpath"] = imgpath
+templates.env.filters["pathmentah"] = pathmentah
 templates.env.filters["urlquote"] = quote
 # Dipakai sebagai fungsi di templat: {{ statik("label.js") }}
 templates.env.globals["statik"] = statik

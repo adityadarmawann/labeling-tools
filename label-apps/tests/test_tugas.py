@@ -459,3 +459,110 @@ def test_papan_membubarkan_tugas_tidak_menghapus_labelnya(klien, lingkungan):
 
     h = klien.get("/anotasi?ds=bubar-uji").text
     assert "3 gambar menunggu dibagi" in h, "gambarnya kembali menganggur"
+
+
+# ============================================================
+# RINCIAN JOB
+# ============================================================
+
+def test_rincian_job_menyaring_dan_memindahkan_ke_dataset(klien, lingkungan):
+    """Melabeli dan menyatakan selesai adalah dua tindakan terpisah."""
+    import pathlib
+
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = _projek(ruang, "job-uji", n=4)
+    klien.post(f"/setsrc?path={d}")
+    gambar = sorted(str(x) for x in d.glob("*.jpg"))
+    tid = klien.post("/api/tugas/bagi",
+                     json={"pelabel": "paul", "gambar": gambar}).json()["id"]
+
+    h = klien.get(f"/tugas/{tid}?ds=job-uji").text
+    assert h.count('class="jb-ubin"') == 4
+    assert 'id="jb-masukkan"' in h
+    assert "0 sudah di dataset" in h
+
+    klien.post("/api/tugas/dataset", json={"gambar": gambar[:2]})
+    h = klien.get(f"/tugas/{tid}?ds=job-uji").text
+    assert h.count("jb-cap-ds") == 2, "cap dataset tidak muncul"
+    assert "2 sudah di dataset" in h
+
+    # Dikeluarkan lagi.
+    j = klien.post("/api/tugas/dataset",
+                   json={"gambar": gambar[:2], "keluarkan": True}).json()
+    assert j["ok"] and j["dikeluarkan"] == 2
+    assert "0 sudah di dataset" in klien.get(f"/tugas/{tid}?ds=job-uji").text
+
+
+def test_rincian_job_hanya_bisa_diubah_pelabelnya_atau_pemilik(klien, aplikasi,
+                                                               lingkungan):
+    import pathlib
+
+    from conftest import klien_baru
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = _projek(ruang, "job-hak", n=3)
+    klien.post(f"/setsrc?path={d}")
+    gambar = sorted(str(x) for x in d.glob("*.jpg"))
+    tid = klien.post("/api/tugas/bagi",
+                     json={"pelabel": "anggi", "gambar": gambar[:2]}).json()["id"]
+
+    # Pemilik: boleh.
+    assert 'id="jb-masukkan"' in klien.get(f"/tugas/{tid}?ds=job-hak").text
+
+    # Pelabelnya sendiri: boleh.
+    lain = klien_baru(aplikasi, "anggi", PW_ANGGI)
+    h = lain.get(f"/tugas/{tid}?ds=paul/job-hak").text
+    assert 'id="jb-masukkan"' in h
+
+    # Gambar yang bukan tugasnya tetap ditolak di rutenya.
+    j = lain.post("/api/tugas/dataset", json={"gambar": gambar[2:]}).json()
+    assert j["ok"] is False and "bukan tugasmu" in j["error"], j
+
+
+def test_job_yang_tidak_ada_kembali_ke_papan(klien, lingkungan):
+    import pathlib
+
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    _projek(ruang, "job-hilang", n=2)
+    r = klien.get("/tugas/tidak-ada?ds=job-hilang", follow_redirects=False)
+    assert r.status_code == 303 and "/anotasi" in r.headers["location"]
+
+
+def test_path_di_atribut_tidak_di_quote(klien, lingkungan):
+    """Regresi atas bug yang hanya muncul pada projek bernama dengan spasi.
+
+    imgpath meng-quote path untuk query string. Dipakai di data-path, nilainya
+    dibaca JavaScript lewat dataset dan dikirim MENTAH di dalam bodi JSON,
+    tanpa ada yang meng-unquote-nya lagi. Projek "Ada Spasi" karena itu
+    mengirim path berisi %20, dan server menjawab "tidak satu pun gambar itu
+    ada di projek ini" untuk gambar yang jelas ada.
+
+    Seluruh projek tanpa spasi melewati jalur yang sama tanpa gejala apa pun.
+    """
+    import pathlib
+
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = _projek(ruang, "Ada Spasi", n=2)
+    klien.post(f"/setsrc?path={d}")
+
+    h = klien.get("/bagi?ds=Ada Spasi").text
+    assert "%20" not in h.split('data-path="')[1].split('"')[0]
+
+    # Dan path dari atribut itu benar-benar diterima rutenya.
+    import re
+    paths = re.findall(r'class="bg-ubin" data-path="([^"]+)"', h)
+    assert paths, "tidak ada ubin"
+    j = klien.post("/api/tugas/bagi",
+                   json={"pelabel": "anggi", "gambar": paths}).json()
+    assert j["ok"] and j["n"] == 2, j

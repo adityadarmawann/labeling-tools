@@ -101,10 +101,8 @@
         {% if k.catatan %}
         <p class="an-catatan">{{ k.catatan }}</p>
         {% endif %}
-        {% if k.pelabel == aku or boleh_kelola %}
-        <a class="an-mulai" href="/?ds={{ pr.ds | urlquote }}&f=unlab">
-          {% if k.berlabel %}Lanjutkan{% else %}Mulai melabeli{% endif %} &rarr;</a>
-        {% endif %}
+        <a class="an-mulai" href="/tugas/{{ k.id }}?ds={{ pr.ds | urlquote }}">
+          Lihat isinya &rarr;</a>
       </article>
       {%- else %}
       <div class="an-kosong"><b>Belum ada yang dikerjakan</b>
@@ -128,6 +126,8 @@
           <span><b>{{ k.jumlah }}</b> gambar masuk dataset</span>
           <b class="an-persen">100%</b>
         </div>
+        <a class="an-mulai" href="/tugas/{{ k.id }}?ds={{ pr.ds | urlquote }}">
+          Lihat isinya &rarr;</a>
       </article>
       {%- else %}
       <div class="an-kosong"><b>Belum ada yang selesai</b>

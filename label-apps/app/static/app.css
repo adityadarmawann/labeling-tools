@@ -1548,3 +1548,69 @@ body.berprojek main{display:flex;gap:0;padding:0;align-items:stretch}
 @media (max-width:1000px){
   .an-papan{grid-template-columns:1fr}
 }
+
+/* ==================================================== rincian job */
+.jb-balik{display:inline-block;margin-bottom:12px}
+.jb-tata{display:flex;gap:18px;align-items:flex-start}
+.jb-samping{flex:0 0 264px;background:var(--panel);border:1px solid var(--line);
+  border-radius:10px;padding:14px 15px 16px;position:sticky;top:64px}
+.jb-judul{margin:14px 0 7px;font-size:11px;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--ink-faint)}
+.jb-judul:first-child{margin-top:0}
+.jb-angka{margin:9px 0 6px;font-size:12.5px;color:var(--ink-dim)}
+.jb-angka b{color:var(--ink);font-size:15px}
+.jb-daftar{list-style:none;margin:0;padding:0;display:flex;
+  flex-direction:column;gap:5px;font-size:12px;color:var(--ink-dim)}
+.jb-daftar li{display:flex;align-items:center;gap:8px}
+.jb-titik{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
+.jb-titik.t-ok{background:var(--ok)}
+.jb-titik.t-stop{background:var(--stop)}
+.jb-titik.t-ds{background:var(--latar)}
+.jb-orang{display:flex;gap:9px;align-items:center}
+
+.jb-utama{flex:1 1 0;min-width:0}
+.jb-tab{margin-bottom:10px}
+.jb-aksi{display:flex;gap:8px;align-items:center;flex-wrap:wrap;
+  padding:9px 11px;margin-bottom:11px;background:var(--panel);
+  border:1px solid var(--line);border-radius:9px}
+.jb-semua{display:flex;gap:8px;align-items:center;font-size:12.5px;
+  color:var(--ink-dim);cursor:pointer}
+.jb-baca{margin:0 0 11px}
+
+.jb-kisi{display:grid;gap:10px;
+  grid-template-columns:repeat(auto-fill,minmax(110px,1fr));
+  max-height:min(62vh,640px);overflow-y:auto;padding:2px}
+.jb-ubin{margin:0}
+.jb-gambar{position:relative;display:block;aspect-ratio:1;border-radius:7px;
+  overflow:hidden;background:var(--sunk);border:1px solid var(--line);
+  cursor:pointer}
+.jb-gambar img{width:100%;height:100%;object-fit:contain;display:block}
+/* Kotak centangnya sendiri disembunyikan; yang terlihat penandanya, supaya
+   sasaran kliknya seluruh gambar, bukan kotak 13 piksel di pojok. */
+.jb-pilih{position:absolute;opacity:0;width:0;height:0}
+.jb-tanda-pilih{position:absolute;top:6px;left:6px;width:18px;height:18px;
+  display:grid;place-items:center;border-radius:5px;font-size:12px;
+  background:var(--panel);border:1px solid var(--line2);color:transparent}
+.jb-pilih:checked ~ .jb-tanda-pilih{background:var(--aksi);
+  border-color:var(--aksi);color:var(--aksi-ink)}
+.jb-pilih:checked ~ img{opacity:.82}
+.jb-gambar:has(.jb-pilih:checked){border-color:var(--aksi);
+  box-shadow:0 0 0 2px var(--ok-lembut)}
+.jb-cap{position:absolute;left:6px;bottom:6px;font-size:9.5px;
+  padding:1px 6px;border-radius:4px;color:var(--on-ink)}
+.jb-cap-ok{background:var(--ok)}
+.jb-cap-ds{background:var(--latar)}
+
+@media (max-width:1000px){
+  .jb-tata{flex-direction:column}
+  .jb-samping{flex:1 1 auto;width:100%;position:static}
+}
+/* Angka di kontrol tersegmen menempel ke katanya: "Semua50". Diberi jarak di
+   sini, bukan spasi di templat, supaya tidak ada spasi yang ikut tersalin saat
+   teksnya dibaca alat bantu. */
+.seg-opt b{margin-left:5px}
+.bg-cabut{flex:0 0 auto;background:transparent;border:0;cursor:pointer;
+  color:var(--ink-faint);font-size:15px;line-height:1;padding:2px 5px}
+.bg-cabut:hover{color:var(--stop)}
+.bg-menunggu{cursor:default;opacity:.85}
+.bg-menunggu:hover{background:transparent}

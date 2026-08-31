@@ -94,6 +94,65 @@ async def halaman_papan(request: Request, ds: str = "",
     })
 
 
+@router.get("/tugas/{tid}", response_class=HTMLResponse)
+async def halaman_job(request: Request, tid: str, ds: str = "",
+                      sess: Session = Depends(current_session),
+                      settings: Settings = Depends(get_settings)):
+    """
+    Rincian satu job: apa saja isinya, mana yang sudah dikerjakan, dan mana
+    yang sudah dinyatakan masuk dataset.
+
+    Di sinilah pekerjaan yang sudah selesai dipindahkan ke dataset. Melabeli
+    dan menyatakan selesai sengaja dua tindakan terpisah: yang pertama
+    dilakukan berkali-kali sambil ragu, yang kedua sekali dan berakibat.
+    """
+    from ..services import projek as sp
+    from ..services import scanner
+
+    d = sp.temukan(settings.uploads_root, sess.user, ds)
+    if d is None:
+        return RedirectResponse("/pilih", status_code=303)
+    if str(sess.src or "") != str(d):
+        await asyncio.to_thread(sess.load, d)
+
+    data = svc.baca(d, sess.user)
+    job = data["tugas"].get(tid)
+    if job is None:
+        return RedirectResponse(f"/anotasi?ds={ds}", status_code=303)
+
+    ringkas = await asyncio.to_thread(sp.ringkas, d)
+    pr = {"nama": d.name, "path": str(d), **ringkas, "versi": 0,
+          "ds": ds if "/" in ds else d.name}
+
+    with sess.lock:
+        items = list(sess.items)
+    punya = set(job.get("gambar") or [])
+    isi = []
+    for it in items:
+        k = svc_tag.kunci_gambar(d, it["img"])
+        if k not in punya:
+            continue
+        isi.append({
+            "it": it, "kunci": k,
+            "berlabel": scanner.severity(it) != "stop",
+            "di_dataset": svc.di_dataset(data, k),
+        })
+    isi.sort(key=lambda x: x["it"]["img"].name)
+
+    n_label = sum(1 for x in isi if x["berlabel"])
+    n_ds = sum(1 for x in isi if x["di_dataset"])
+    return templates.TemplateResponse(request, "job.html", {
+        "sess": sess, "pr": pr, "aktif": "anotasi", "aku": sess.user,
+        "tid": tid, "job": job, "isi": isi,
+        "n": len(isi), "n_label": n_label, "n_dataset": n_ds,
+        "persen": round(n_label * 100 / len(isi)) if isi else 0,
+        # Yang boleh memindahkan ke dataset hanya pelabelnya sendiri dan
+        # pemilik projek. Sama persis dengan aturan menyunting labelnya.
+        "boleh_ubah": (sess.user == job.get("pelabel")
+                       or svc.boleh_kelola(data, sess.user)),
+    })
+
+
 @router.get("/bagi", response_class=HTMLResponse)
 async def halaman_bagi(request: Request, ds: str = "",
                        sess: Session = Depends(current_session),
@@ -157,21 +216,11 @@ async def calon(sess: Session = Depends(current_session_api),
             "anggota": a in data["anggota"] or a == data["pemilik"]}
            for a, r in sorted(users.items())]
     return {"ok": True, "akun": out, "pemilik": data["pemilik"],
-            "anggota": sorted(data["anggota"])}
-
-
-@router.get("/api/tugas/keadaan")
-async def keadaan(sess: Session = Depends(current_session_api)):
-    """Siapa pemiliknya, siapa anggotanya, dan apa yang boleh kulakukan."""
-    data, galat = _siap(sess)
-    if galat:
-        return {"ok": False, "error": galat}
-    return {"ok": True, "pemilik": data["pemilik"],
             "anggota": sorted(data["anggota"]),
-            "warisan": data["warisan"],
-            "boleh_kelola": svc.boleh_kelola(data, sess.user),
-            "n_tugas": len(data["tugas"]),
-            "n_dataset": len(data["dataset"])}
+            # Undangan yang belum dipakai ikut, supaya panelnya bisa
+            # menampilkan dan membatalkannya. Tautan yang tidak bisa dicabut
+            # berlaku selamanya, dan itu bukan yang dimaksud saat mengundang.
+            "undangan": svc.undangan_terbuka(data)}
 
 
 @router.post("/api/tugas/undang")
