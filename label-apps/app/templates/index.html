@@ -19,9 +19,12 @@
 {%- if qq %}&q={{ qq | urlquote }}{% endif %}
 {%- endmacro %}
 
-{% macro chip(nama, val, jumlah) -%}
+{# `warna` menautkan chip ke potongan bilah kemajuan di atasnya. Titiknya yang
+   menjadikan chip itu sekaligus keterangan bilah, jadi angkanya tidak perlu
+   ditulis dua kali. #}
+{% macro chip(nama, val, jumlah, warna="") -%}
 <a class="chip"{% if flt == val %} data-on{% endif %}
-   href="{{ tautan(val_f=val) }}">{{ nama }} <b>{{ jumlah }}</b></a>
+   href="{{ tautan(val_f=val) }}">{% if warna %}<i class="titik t-{{ warna }}"></i>{% endif %}{{ nama }} <b>{{ jumlah }}</b></a>
 {%- endmacro %}
 
 {% block body %}
@@ -32,19 +35,38 @@
     {% include "_header.html" %}
   </div>
 
-  {# Rekaman kesehatan dataset: satu tick = satu gambar #}
-  <div class="strip">
-    {%- for s in strip %}<i class="{{ s }}"></i>{% endfor -%}
+  {# Kemajuan dataset dalam satu bilah, satu warna per keadaan.
+     Sebelumnya ini deretan tick, satu per gambar. Deretan itu memang
+     memperlihatkan DI MANA pelabelan berhenti, tetapi hanya untuk 400 gambar
+     pertama, dan pada 476 gambar ia sudah terbaca seperti barcode: tidak ada
+     angka, tidak ada keterangan warna, dan proporsinya tidak bisa dibaca.
+
+     Keempat potongan di bawah saling lepas dan jumlahnya pas `total`.
+     Warnanya sama dengan garis tepi kartu di grid, jadi warna yang sama
+     berarti hal yang sama di dua tempat. #}
+  {% set selesai = total - n_stop %}
+  <div class="kemajuan">
+    <div class="lajur" role="img"
+         aria-label="{{ selesai }} dari {{ total }} gambar selesai">
+      {%- for n, k, nama in [(n_ok, "ok", "Sudah dilabeli"),
+                             (n_warn, "warn", "Perlu dicek"),
+                             (n_bg, "bg", "Latar"),
+                             (n_stop, "stop", "Belum dilabeli")] %}
+        {%- if n %}<i class="p-{{ k }}" style="flex-grow:{{ n }}"
+           title="{{ nama }}: {{ n }} gambar ({{ (n * 100 / total) | round | int }}%)"></i>{% endif -%}
+      {% endfor -%}
+    </div>
+    <span class="angka mono">{{ (selesai * 100 / total) | round | int if total else 0 }}% selesai</span>
   </div>
 
   <div class="bar">
     {{ chip("Semua", "all", total) }}
-    {{ chip("Perlu dicek", "issue", n_warn) }}
-    {{ chip("Sudah dilabeli", "sudah", n_sudah) }}
-    {{ chip("Belum dilabeli", "unlab", n_stop) }}
+    {{ chip("Perlu dicek", "issue", n_warn, "warn") }}
+    {{ chip("Sudah dilabeli", "sudah", n_sudah, "ok") }}
+    {{ chip("Belum dilabeli", "unlab", n_stop, "stop") }}
     {# Sampel negatif: sengaja ditandai tanpa objek. Berbeda dari "belum
        dilabeli" — yang ini sudah selesai diperiksa. #}
-    {{ chip("Latar", "bg", n_bg) }}
+    {{ chip("Latar", "bg", n_bg, "bg") }}
     <span class="spacer"></span>
     <span class="path mono">{{ n_obj }} objek</span>
     <button class="chip" onclick="rescan()">Pindai ulang</button>

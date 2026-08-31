@@ -76,10 +76,33 @@ h1{font-size:15px;font-weight:600;letter-spacing:.02em}
 .path{font-size:12px;color:var(--ink-faint)}
 
 /* rekaman kesehatan dataset: tiap tick = 1 gambar */
-.strip{display:flex;gap:1px;height:16px;margin:12px 0 0;border-radius:2px;overflow:hidden}
-.strip i{flex:1 1 auto;min-width:1px}
-.strip i.ok{background:var(--ok-pudar)}.strip i.warn{background:var(--warn)}
-.strip i.stop{background:var(--stop)}
+/* Kemajuan dataset: satu bilah membulat, satu warna per keadaan.
+   Warnanya sama dengan garis tepi kartu di grid (.card .rail), supaya warna
+   yang sama berarti hal yang sama di dua tempat. */
+.kemajuan{display:flex;align-items:center;gap:12px;margin:14px 0 0}
+.lajur{flex:1 1 auto;display:flex;height:10px;border-radius:999px;
+  overflow:hidden;background:var(--sunk);box-shadow:inset 0 0 0 1px var(--line)}
+/* flex-basis:0 supaya lebarnya murni dari flex-grow, yaitu jumlah gambarnya.
+   min-width supaya satu gambar di antara sepuluh ribu tetap terlihat: tanpa
+   itu potongan sekecil itu dibulatkan menjadi nol piksel dan keadaannya lenyap
+   dari bilah tanpa jejak. */
+.lajur i{display:block;flex-basis:0;min-width:4px}
+.lajur .p-ok{background:var(--ok)}
+.lajur .p-warn{background:var(--warn)}
+.lajur .p-bg{background:var(--latar)}
+.lajur .p-stop{background:var(--stop)}
+.kemajuan .angka{font-size:12px;color:var(--ink-dim);white-space:nowrap}
+
+/* Titik warna di chip. Ini yang menjadikan barisan chip sekaligus keterangan
+   bilah di atasnya, sehingga angkanya tidak perlu ditulis dua kali. */
+.chip .titik{display:inline-block;width:7px;height:7px;border-radius:50%;
+  margin-right:6px;vertical-align:middle;position:relative;top:-1px}
+.chip .titik.t-ok{background:var(--ok)}
+.chip .titik.t-warn{background:var(--warn)}
+.chip .titik.t-bg{background:var(--latar)}
+.chip .titik.t-stop{background:var(--stop)}
+/* Chip terpilih berlatar tinta; titiknya perlu tepian supaya tidak melebur. */
+.chip[data-on] .titik{box-shadow:0 0 0 1.5px var(--on-ink)}
 
 .bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px 0 13px}
 /* Aturan display milik kita sendiri lebih kuat daripada [hidden] bawaan
@@ -109,7 +132,6 @@ main{padding:20px 22px 60px}
 .card[data-s="warn"] .rail{background:var(--warn)}
 .card[data-s="stop"] .rail{background:var(--stop)}
 .card[data-s="bg"] .rail{background:var(--latar)}
-.strip i.bg{background:var(--latar-lembut)}
 .card img{width:100%;aspect-ratio:1;object-fit:contain;display:block;background:var(--sunk)}
 .meta{padding:9px 11px 10px}
 /* direction:rtl sengaja tidak dipakai: ia memindahkan titik ke depan sehingga

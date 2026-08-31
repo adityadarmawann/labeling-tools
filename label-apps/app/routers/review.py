@@ -18,7 +18,6 @@ from .datasets import picker_context
 router = APIRouter(tags=["review"])
 
 THUMB_MIN, THUMB_MAX = 32, 2000
-STRIP_MAX = 400          # tick di strip kesehatan dataset
 
 
 # Pilihan urutan. Kunci dipakai di URL, nilainya yang tampil di menu.
@@ -194,7 +193,6 @@ async def index(request: Request, f: str = "all",
         "cari": cari,
         "n_tampil": len(tampil),
         "severity": scanner.severity,
-        "strip": sev[:STRIP_MAX],
         "flt": f,
         "kelas": kelas,
         "tanpa": tanpa,
@@ -204,6 +202,11 @@ async def index(request: Request, f: str = "all",
         "mode": mode,
         "tanpa_nama": {k: v[0] for k, v in TANPA_KELAS.items()},
         "total": len(items),
+        # Empat keadaan yang saling lepas dan jumlahnya pas `total`; itu yang
+        # dipakai bilah kemajuan. n_sudah SENGAJA tumpang tindih dengan n_warn
+        # (chip "Sudah dilabeli" memang memuat yang perlu dicek), jadi ia tidak
+        # bisa dipakai sebagai potongan bilah.
+        "n_ok": sum(1 for s in sev if s == "ok"),
         "n_warn": sum(1 for s in sev if s == "warn"),
         "n_stop": sum(1 for s in sev if s == "stop"),
         "n_bg": sum(1 for s in sev if s == "bg"),

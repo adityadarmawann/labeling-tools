@@ -1008,6 +1008,29 @@ def jalankan_potret(d):
     cek("kotak cari tetap ringkas, tidak selebar barisnya",
         100 < lebar < 400, "lebar=%.0f" % lebar)
 
+    # Bilah kemajuan. Yang diperiksa geometrinya, karena di situlah kekeliruan
+    # yang tidak terlihat di HTML muncul: potongan yang lebarnya nol, ujung yang
+    # tidak membulat, atau bilah yang melebihi barisnya.
+    d.js("location.href = '/'")
+    time.sleep(1.2)
+    bilah = d.js("(function(){ const l = document.querySelector('.lajur');"
+                 " if (!l) return null;"
+                 " const r = l.getBoundingClientRect();"
+                 " const p = [...l.children].map(i => i.getBoundingClientRect().width);"
+                 " return {h: Math.round(r.height), w: Math.round(r.width),"
+                 "  radius: getComputedStyle(l).borderTopLeftRadius,"
+                 "  n: p.length, min: Math.min(...p),"
+                 "  jumlah: Math.round(p.reduce((a, b) => a + b, 0)),"
+                 "  titik: document.querySelectorAll('.chip .titik').length,"
+                 "  luber: r.right > innerWidth}; })()")
+    cek("bilah kemajuan: satu bilah membulat, tidak melebihi layar",
+        bilah and bilah["radius"] == "999px" and not bilah["luber"], f"{bilah}")
+    cek("bilah kemajuan: tiap potongan punya lebar, jumlahnya penuh",
+        bilah and bilah["n"] >= 1 and bilah["min"] >= 3
+        and abs(bilah["jumlah"] - bilah["w"]) <= 2, f"{bilah}")
+    cek("empat chip keadaan membawa titik warnanya",
+        bilah and bilah["titik"] == 4, f"{bilah}")
+
     # Grid: baris urutkan/cari dan dropdown kelas
     d.js("location.href = '/'")
     time.sleep(1.2)

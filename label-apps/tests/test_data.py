@@ -1761,6 +1761,48 @@ def test_saringan_latar_terpisah_dari_belum_dilabeli(klien, lingkungan):
     assert _chip(html, "Belum dilabeli") == 1
 
 
+def _potongan(html: str) -> dict:
+    """Potongan bilah kemajuan -> {keadaan: bobotnya}."""
+    import re
+    return {k: int(v) for k, v in
+            re.findall(r'class="p-(\w+)" style="flex-grow:(\d+)"', html)}
+
+
+def test_bilah_kemajuan_sepadan_dengan_isi_dataset(klien, lingkungan):
+    """Bilah kemajuan harus bisa dipercaya sebagai gambaran seluruh dataset.
+
+    Dua hal yang dijaga. Potongannya saling lepas dan jumlahnya pas jumlah
+    gambar — kalau tidak, satu gambar terhitung dua kali dan bilahnya
+    memperbesar kemajuan yang sebenarnya. Dan keadaan yang nol tidak
+    digambar sama sekali; potongan dengan lebar minimum akan terlihat sebagai
+    pekerjaan yang tidak pernah ada.
+    """
+    masuk(klien, "paul", PW_PAUL)
+    src = lingkungan["roots"] / "ds-alpha"          # 4 gambar, 2 berlabel
+    klien.post(f"/setsrc?path={src}")
+
+    html = klien.get("/").text
+    # Kedua gambar berlabel di dataset uji ini berstatus "perlu dicek", dan itu
+    # justru inti perkaranya: chip "Sudah dilabeli" ikut menghitung keduanya,
+    # jadi chip itu TIDAK bisa dipakai sebagai potongan bilah tanpa membuat dua
+    # gambar yang sama terhitung dua kali.
+    assert _potongan(html) == {"warn": 2, "stop": 2}, _potongan(html)
+    assert _chip(html, "Sudah dilabeli") == 2 and _chip(html, "Perlu dicek") == 2
+    assert "50% selesai" in html
+
+    klien.post(f"/markbg?path={_gambar(lingkungan, 'ds-alpha', 3)}")
+    html = klien.get("/").text
+    pot = _potongan(html)
+    assert pot == {"warn": 2, "bg": 1, "stop": 1}, pot
+    assert sum(pot.values()) == 4, "potongan tidak menjumlah seluruh gambar"
+    assert "75% selesai" in html, "latar itu sudah selesai diperiksa"
+
+    # Chip membawa titik warna yang sama dengan potongannya; itu yang
+    # menjadikan barisan chip sekaligus keterangan bilah.
+    for keadaan in ("ok", "warn", "stop", "bg"):
+        assert f'class="titik t-{keadaan}"' in html, keadaan
+
+
 def test_saringan_latar_bisa_digabung_dengan_urutan(klien, lingkungan):
     masuk(klien, "paul", PW_PAUL)
     src = lingkungan["roots"] / "ds-alpha"
