@@ -6,6 +6,7 @@
 #   ./deploy.sh -y              tanpa bertanya
 #   ./deploy.sh --lewati-uji    lewati pytest (hanya kalau baru saja dijalankan)
 #   ./deploy.sh --status        lihat apa yang sedang jalan, tanpa mengubah apa pun
+#   ./deploy.sh --dari-dev      gabungkan cabang dev ke main lebih dulu, lalu naikkan
 #
 # KENAPA PERLU SKRIP, BUKAN SEKADAR RESTART
 # -----------------------------------------
@@ -21,13 +22,14 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-UJI=1; TANYA=1; STATUS=0
+UJI=1; TANYA=1; STATUS=0; DARIDEV=0
 for a in "$@"; do
   case "$a" in
     --lewati-uji) UJI=0 ;;
+    --dari-dev)   DARIDEV=1 ;;
     -y|--ya)      TANYA=0 ;;
     --status)     STATUS=1 ;;
-    -h|--help)    sed -n '3,9p' "$0" | sed 's/^# \?//'; exit 0 ;;
+    -h|--help)    sed -n '3,10p' "$0" | sed 's/^# \?//'; exit 0 ;;
     *) echo "  Argumen tidak dikenal: $a"; exit 2 ;;
   esac
 done
@@ -58,6 +60,27 @@ ringkas() {
 }
 
 if [[ "$STATUS" == 1 ]]; then ringkas; exit 0; fi
+
+# ---------------------------------------------------------------- 0. dev -> main
+# Cabang dev hidup di worktree sendiri (../labeling-tools-dev). Menggabungkannya
+# dari sini, bukan dari sana, disengaja: yang menentukan apa yang tayang adalah
+# folder yang dijalankan prod.
+if [[ "$DARIDEV" == 1 ]]; then
+  echo "0/5  Menggabungkan cabang dev"
+  git rev-parse --verify --quiet dev >/dev/null || {
+    merah "     Cabang 'dev' tidak ada."; exit 1; }
+  N=$(git rev-list --count main..dev)
+  if [[ "$N" == 0 ]]; then
+    echo "     Tidak ada commit baru di dev."
+  else
+    git log --pretty='       %h %s' main..dev
+    git merge --no-edit dev | sed 's/^/     /'
+  fi
+elif git rev-parse --verify --quiet dev >/dev/null; then
+  N=$(git rev-list --count main..dev 2>/dev/null || echo 0)
+  [[ "$N" != 0 ]] && kuning "     Ada $N commit di cabang dev yang belum digabung " \
+                            "(pakai --dari-dev)."
+fi
 
 # ---------------------------------------------------------------- 1. periksa
 echo "1/5  Memeriksa keadaan repo"

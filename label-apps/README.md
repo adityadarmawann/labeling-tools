@@ -147,13 +147,38 @@ menerjemahkan HTTP ke `services/`.
 
 ## Dua mode: dev dan prod
 
-```bash
-./start.sh            # dev (bawaan) — port 8043, muat ulang otomatis
-./start.sh prod       # produksi — dipakai tim, port 8042
+Dua folder, satu `.git`. Prod berjalan dari checkout `main`; pengembangan
+berjalan dari worktree di cabang `dev`.
+
+```
+rvm/
+├── labeling-tools/       cabang main  ->  prod 8042, dipakai tim
+└── labeling-tools-dev/   cabang dev   ->  dev  8043, tempat ngoding
 ```
 
-Keduanya boleh hidup bersamaan; menyalakan dev tidak mengganggu tim.
-Setelannya di [env/dev.env](env/dev.env) dan [env/prod.env](env/prod.env).
+```bash
+cd ../labeling-tools-dev/label-apps && ./start.sh    # dev, port 8043
+./start.sh prod                                      # prod, port 8042
+```
+
+Keduanya boleh hidup bersamaan. Setelannya di [env/dev.env](env/dev.env) dan
+[env/prod.env](env/prod.env).
+
+Pemisahan foldernya bukan sekadar kerapian. **Templat dan CSS dibaca dari disk
+tiap permintaan**, jadi kalau keduanya berbagi satu folder, menyunting
+`app.css` atau `view.html` langsung mengubah apa yang dilihat tim di 8042 —
+termasuk saat baru setengah jadi. Terukur: `touch app/static/app.css` membuat
+cap versi yang dilayani prod berubah pada permintaan berikutnya. Kode Python
+tidak begitu; prod memuatnya sekali saat menyala.
+
+Membuat worktree dev-nya, sekali saja:
+
+```bash
+git worktree add ../labeling-tools-dev -b dev
+```
+
+lalu di `../labeling-tools-dev/label-apps` sediakan berkas yang tidak ikut git:
+`.venv`, `users.dev.json`, `dev-data/`, dan `yolo26n-seg.pt`.
 
 | | dev | prod |
 |---|---|---|
@@ -250,9 +275,13 @@ ikut resolve ke seberang sehingga penjaganya utuh.
 
 ### Menaikkan kode dev ke prod
 
+Dijalankan dari folder **prod**, bukan dari worktree dev: yang menentukan apa
+yang tayang adalah folder yang dijalankan prod.
+
 ```bash
 ./deploy.sh --status     # apa yang sedang jalan, tanpa mengubah apa pun
-./deploy.sh              # uji, konfirmasi, lalu ganti proses prod
+./deploy.sh --dari-dev   # gabungkan cabang dev ke main, lalu naikkan
+./deploy.sh              # naikkan apa yang sudah ada di main
 ```
 
 [deploy.sh](deploy.sh) menolak berjalan kalau ada perubahan yang belum
