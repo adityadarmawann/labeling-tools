@@ -1,23 +1,24 @@
 #!/usr/bin/env bash
 #
-# Hadirkan projek prod di dev. Dua cara, dan keduanya bisa ditukar kapan saja.
+# Hadirkan projek prod di dev.
 #
-#   ./sinkron-dev.sh             SALIN  — potret hard link, dev terpisah dari prod
-#   ./sinkron-dev.sh --tautan    TAUTAN — dev dan prod berbagi folder yang sama
-#   ./sinkron-dev.sh --lepas     lepas tautan, kembali ke salinan
-#   ./sinkron-dev.sh --lihat     keadaan sekarang, tanpa mengubah apa pun
-#   ./sinkron-dev.sh darma       batasi ke satu akun   (-y = tanpa bertanya)
+#   ./sinkron-dev.sh                                semua akun yang ada di keduanya
+#   ./sinkron-dev.sh darma --ke darma-dev           salin ke akun dev bernama lain
+#   ./sinkron-dev.sh darma --ke darma-dev --projek paragon
+#   ./sinkron-dev.sh --tautan                       dev dan prod berbagi folder
+#   ./sinkron-dev.sh --lepas                        lepas tautan, kembali menyalin
+#   ./sinkron-dev.sh --lihat                        keadaan sekarang, tanpa mengubah
+#   -y                                              tanpa bertanya
 #
-# MANA YANG DIPAKAI KAPAN
-# -----------------------
-# SALIN untuk mengerjakan services/projek.py, ekspor, atau apa pun yang
-# menghapus dan memindahkan berkas: kesalahan di dev berhenti di dev.
+# DUA CARA, DAN PILIHLAH SESUAI YANG SEDANG DIKERJAKAN
+# ----------------------------------------------------
+# SALIN (bawaan) memberi dev berkasnya sendiri. Itu yang dipakai kalau dev
+# dijadikan simulasi: apa pun yang dilakukan di sana — termasuk membuang dan
+# menggabungkan projek — berhenti di dev.
 #
-# TAUTAN untuk mengerjakan tata letak dan fitur: apa yang kamu lihat di dev
-# persis apa yang ada di prod, tanpa perlu menyinkronkan lagi. Harganya nyata —
-# buang, gabung, dan ganti nama di dev mengenai berkas prod SUNGGUHAN. Yang
-# tidak ada jalan pulangnya adalah gabung; ke_sampah masih memindah, bukan
-# menghapus.
+# TAUTAN membuat folder akun dev menunjuk langsung ke folder prod, jadi apa
+# yang terlihat di dev persis isi prod tanpa perlu menyinkronkan lagi. Harganya
+# nyata: buang, gabung, dan ganti nama di dev mengenai berkas prod SUNGGUHAN.
 #
 # KENAPA SALINANNYA TIDAK MEMAKAN RUANG
 # -------------------------------------
@@ -32,17 +33,20 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-MODE=salin; LIHAT=0; TANYA=1; AKUN=""
-for a in "$@"; do
-  case "$a" in
+MODE=salin; LIHAT=0; TANYA=1; AKUN=""; KE=""; PROJEK=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
     --tautan)  MODE=tautan ;;
     --lepas)   MODE=lepas ;;
     --lihat)   LIHAT=1 ;;
     -y|--ya)   TANYA=0 ;;
-    -h|--help) sed -n '3,10p' "$0" | sed 's/^# \?//'; exit 0 ;;
-    -*) echo "  Argumen tidak dikenal: $a"; exit 2 ;;
-    *)  AKUN="$a" ;;
+    --ke)      KE="${2:-}"; shift ;;
+    --projek)  PROJEK="${2:-}"; shift ;;
+    -h|--help) sed -n '3,11p' "$0" | sed 's/^# \?//'; exit 0 ;;
+    -*) echo "  Argumen tidak dikenal: $1"; exit 2 ;;
+    *)  AKUN="$1" ;;
   esac
+  shift
 done
 
 merah()  { printf '\033[31m%s\033[0m\n' "$1"; }
@@ -61,9 +65,12 @@ if [[ "$TUJUAN" == "$SUMBER" || "$TUJUAN" == "$SUMBER"/* ]]; then
   merah "  Folder dev ($TUJUAN) ada di dalam folder prod. Dihentikan."
   exit 1
 fi
+if [[ -n "$KE" && -z "$AKUN" ]]; then
+  merah "  --ke perlu tahu akun prod mana yang disalin. Contoh:"
+  echo   "    ./sinkron-dev.sh darma --ke darma-dev"
+  exit 2
+fi
 
-# Akun yang dipakai: harus ada di kedua berkas akun. Menyalin projek untuk akun
-# yang tidak bisa login di dev tidak ada gunanya.
 punya_dev() {
   .venv/bin/python -c "import json,sys;print(sys.argv[1] in json.load(open('users.dev.json')))" "$1"
 }
@@ -83,19 +90,28 @@ if [[ ${#DAFTAR[@]} -eq 0 ]]; then
   exit 1
 fi
 
-keadaan() {  # keadaan folder dev satu akun
+# Nama akun di sisi dev. Sengaja boleh berbeda: akun dev yang namanya sendiri
+# tidak bisa tertukar dengan akun prod saat menguji, dan tidak ada yang salah
+# kira sedang menyunting pekerjaan tim.
+ke_akun() { [[ -n "$KE" ]] && echo "$KE" || echo "$1"; }
+
+keadaan() {
   local d="$TUJUAN/$1"
-  if   [[ -L "$d" ]];                     then echo "TAUTAN ke $(readlink "$d")"
-  elif [[ -d "$d" && -n "$(ls -A "$d")" ]]; then echo "salinan, $(find "$d" -type f | wc -l) berkas"
+  if   [[ -L "$d" ]];                       then echo "TAUTAN ke $(readlink "$d")"
+  elif [[ -d "$d" && -n "$(ls -A "$d")" ]]; then
+    echo "salinan, $(find "$d" -mindepth 1 -maxdepth 1 -type d | wc -l) projek, $(find "$d" -type f | wc -l) berkas"
   else echo "kosong"; fi
 }
 
 echo "  Prod : $SUMBER"
 echo "  Dev  : $TUJUAN"
+[[ -n "$PROJEK" ]] && echo "  Projek: $PROJEK (hanya ini)"
 echo
 for n in "${DAFTAR[@]}"; do
-  printf "  %-10s prod: %-5s projek   dev: %s\n" "$n" \
-         "$(find "$SUMBER/$n" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)" "$(keadaan "$n")"
+  t=$(ke_akun "$n")
+  printf "  %-10s -> %-12s prod: %s projek   dev: %s\n" "$n" "$t" \
+         "$(find "$SUMBER/$n" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)" \
+         "$(keadaan "$t")"
 done
 echo
 [[ "$LIHAT" == 1 ]] && exit 0
@@ -108,66 +124,75 @@ tanya() {
 
 # ------------------------------------------------------------------ TAUTAN
 if [[ "$MODE" == tautan ]]; then
+  [[ -n "$PROJEK" ]] && { merah "  --tautan hanya bisa untuk seluruh akun."
+    echo "  Menautkan SATU projek gagal separuh: projeknya muncul di daftar,"
+    echo "  tetapi sampulnya 404 dan menu kelolanya ditolak, karena _didalam()"
+    echo "  me-resolve kedua sisi dan projek itu resolve ke luar ruang kerja dev."
+    exit 2; }
   kuning "  Setelah ini, buang/gabung/ganti nama di dev mengenai berkas prod SUNGGUHAN."
   tanya "Pasang tautan untuk: ${DAFTAR[*]}."
   for n in "${DAFTAR[@]}"; do
-    d="$TUJUAN/$n"
-    if [[ -L "$d" ]]; then
-      rm "$d"
+    d="$TUJUAN/$(ke_akun "$n")"
+    if [[ -L "$d" ]]; then rm "$d"
     elif [[ -d "$d" ]]; then
       # Salinan lama DISINGKIRKAN, bukan dihapus. Isinya cuma hard link, jadi
-      # menyimpannya nyaris tidak memakan ruang — dan selagi dev menulis
-      # langsung ke berkas prod, potret hari ini adalah jaring pengaman yang
-      # paling murah yang bisa ada.
-      cad="$d.salinan-$(date +%Y%m%d-%H%M%S)"
-      mv "$d" "$cad"
-      echo "  $n: salinan lama disingkirkan ke $(basename "$cad")"
+      # menyimpannya nyaris tidak memakan ruang.
+      cad="$d.salinan-$(date +%Y%m%d-%H%M%S)"; mv "$d" "$cad"
+      echo "  $(basename "$d"): salinan lama disingkirkan ke $(basename "$cad")"
     fi
     ln -sfn "$SUMBER/$n" "$d"
-    echo "  $n -> $(readlink "$d")"
+    echo "  $(basename "$d") -> $(readlink "$d")"
   done
   hijau "  Dev dan prod kini berbagi folder yang sama."
-  echo  "  Kembali ke salinan terpisah:  ./sinkron-dev.sh --lepas"
   exit 0
 fi
 
 # ------------------------------------------------------------------ LEPAS
 if [[ "$MODE" == lepas ]]; then
   for n in "${DAFTAR[@]}"; do
-    d="$TUJUAN/$n"
-    [[ -L "$d" ]] && { rm "$d"; echo "  $n: tautan dilepas"; }
+    d="$TUJUAN/$(ke_akun "$n")"
+    [[ -L "$d" ]] && { rm "$d"; echo "  $(basename "$d"): tautan dilepas"; }
   done
 fi
 
 # ------------------------------------------------------------------ SALIN
 for n in "${DAFTAR[@]}"; do
-  d="$TUJUAN/$n"
+  d="$TUJUAN/$(ke_akun "$n")"
   # rsync --delete dengan sumber dan tujuan yang sebenarnya satu folder adalah
   # cara tercepat kehilangan data. Ini yang mencegahnya.
   if [[ -L "$d" ]]; then
-    merah "  $n masih berupa TAUTAN ke prod; menyalin ke situ berarti menyalin"
-    merah "  folder prod ke dirinya sendiri. Lepas dulu: ./sinkron-dev.sh --lepas"
+    merah "  $(basename "$d") masih berupa TAUTAN ke prod; menyalin ke situ berarti"
+    merah "  menyalin folder prod ke dirinya sendiri. Lepas dulu: --lepas"
     exit 1
   fi
 done
 
-ADA=0
-for n in "${DAFTAR[@]}"; do
-  [[ -d "$TUJUAN/$n" && -n "$(ls -A "$TUJUAN/$n" 2>/dev/null)" ]] && ADA=1
-done
-[[ "$ADA" == 1 ]] && kuning "  Dev dibuat PERSIS seperti prod: projek yang hanya ada di dev akan hilang."
+if [[ -z "$PROJEK" ]]; then
+  ADA=0
+  for n in "${DAFTAR[@]}"; do
+    d="$TUJUAN/$(ke_akun "$n")"
+    [[ -d "$d" && -n "$(ls -A "$d" 2>/dev/null)" ]] && ADA=1
+  done
+  [[ "$ADA" == 1 ]] && kuning "  Dev dibuat PERSIS seperti prod: projek yang hanya ada di dev akan hilang."
+fi
 tanya "Salin ${DAFTAR[*]} dari prod ke dev."
 
 SEBELUM=$(df --output=used /home | tail -1)
 for n in "${DAFTAR[@]}"; do
-  s="$SUMBER/$n"
+  s="$SUMBER/$n"; d="$TUJUAN/$(ke_akun "$n")"
   [[ -d "$s" ]] || { kuning "  $n: tidak punya folder di prod, dilewati"; continue; }
-  mkdir -p "$TUJUAN/$n"
-  # --link-dest ke sumbernya sendiri: tiap berkas yang isinya sama dibuat
-  # sebagai hard link, bukan disalin isinya.
-  rsync -a --delete --link-dest="$s/" "$s/" "$TUJUAN/$n/"
-  echo "  $n: $(find "$TUJUAN/$n" -type f | wc -l) berkas siap di dev"
+  if [[ -n "$PROJEK" ]]; then
+    [[ -d "$s/$PROJEK" ]] || { merah "  projek '$PROJEK' tidak ada di $s"; exit 1; }
+    mkdir -p "$d/$PROJEK"
+    # Tanpa --delete: menyalin SATU projek tidak boleh menghapus projek lain
+    # yang sudah ada di dev.
+    rsync -a --link-dest="$s/$PROJEK/" "$s/$PROJEK/" "$d/$PROJEK/"
+    echo "  $(basename "$d")/$PROJEK: $(find "$d/$PROJEK" -type f | wc -l) berkas"
+  else
+    mkdir -p "$d"
+    rsync -a --delete --link-dest="$s/" "$s/" "$d/"
+    echo "  $(basename "$d"): $(find "$d" -type f | wc -l) berkas siap di dev"
+  fi
 done
 SESUDAH=$(df --output=used /home | tail -1)
 hijau "  Selesai. Tambahan pemakaian disk: $(( (SESUDAH - SEBELUM) / 1024 )) MB"
-echo  "  Jalankan lagi kapan pun ingin dev menyusul isi prod terbaru."

@@ -25,7 +25,12 @@ TERPISAH = ("PORT", "USERS_FILE", "DATASETS_ROOT", "UPLOADS_ROOT")
 # setelan yang sama persis — kalau dev membiarkannya kosong, ia memakai nilai
 # bawaan yang berbeda dari prod, dan alur yang diuji di dev bukan alur yang
 # nanti berjalan di produksi.
-PERILAKU = ("GOOGLE_DOMAIN", "DAFTAR_SENDIRI", "DAFTAR_LANGSUNG")
+#
+# Batas ukuran ikut di sini karena dev dipakai sebagai simulasi: unggahan yang
+# lolos di dev harus lolos di prod juga, dan yang ditolak harus ditolak di
+# keduanya. Batas yang berbeda memindahkan penemuan kegagalan ke tim.
+PERILAKU = ("GOOGLE_DOMAIN", "DAFTAR_SENDIRI", "DAFTAR_LANGSUNG",
+            "MAX_UPLOAD_MB", "MAX_ZIP_MB", "OPEN_MODE", "LOCK_LABELS")
 
 
 def _baca(nama: str) -> dict[str, str]:

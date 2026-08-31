@@ -17,6 +17,7 @@ Untuk algoritma splitting, lihat [SPLITTING.md](SPLITTING.md).
 | Setelan | `env/dev.env` | `env/prod.env` |
 | Muat ulang saat kode berubah | ya | tidak |
 | Masuk otomatis tanpa password | ya, hanya dari mesin itu sendiri | tidak |
+| Batas unggahan & arsip | sama dengan prod | 80 MB / 4096 MB |
 
 Keduanya boleh hidup bersamaan; menyalakan dev tidak mengganggu tim.
 
@@ -97,11 +98,15 @@ kill $(pgrep -f 'run\.py .*--port 8043')
 ## Akun
 
 Akun dev terpisah dari akun prod, dan itu disengaja: akun uji tidak boleh bisa
-dipakai masuk ke produksi.
+dipakai masuk ke produksi. Namanya pun sengaja dibedakan — `darma-dev`, bukan
+`darma` — supaya sekali lihat jelas kamu sedang berada di simulasi, bukan di
+pekerjaan tim.
 
 ```bash
-.venv/bin/python run.py --users users.dev.json --adduser namamu
+.venv/bin/python run.py --users users.dev.json --adduser darma-dev
 ```
+
+Akun dev sebaiknya admin, supaya halaman kelola akun ikut bisa dicoba.
 
 `LABELAPP_DEV_AUTOLOGIN=devuser` di `env/dev.env` membuat permintaan **dari
 mesin itu sendiri** masuk tanpa password. Penjaganya `is_local()` di
@@ -131,11 +136,16 @@ Tata letak hanya bisa dinilai dengan foto sungguhan, bukan gambar uji 80x60.
 cara:
 
 ```bash
-./sinkron-dev.sh --lihat     # sedang di mode mana
-./sinkron-dev.sh             # SALIN
-./sinkron-dev.sh --tautan    # TAUTAN
-./sinkron-dev.sh --lepas     # lepas tautan, kembali ke salinan
+./sinkron-dev.sh --lihat                                  # sedang di mode mana
+./sinkron-dev.sh darma --ke darma-dev --projek paragon    # satu projek saja
+./sinkron-dev.sh darma --ke darma-dev                     # semua projeknya
+./sinkron-dev.sh --tautan                                 # berbagi folder prod
+./sinkron-dev.sh --lepas                                  # lepas tautan
 ```
+
+`--ke` dipakai karena nama akun dev berbeda dari akun prod. `--projek`
+menyalin satu projek saja dan tidak menghapus projek lain yang sudah ada di
+dev; tanpa `--projek`, dev dibuat persis seperti prod.
 
 | | SALIN | TAUTAN |
 |---|---|---|
@@ -216,13 +226,42 @@ cd ../labeling-tools-dev/label-apps
 
 cp -al ../../labeling-tools/label-apps/.venv .venv            # hard link, ~0 byte
 cp -al ../../labeling-tools/label-apps/yolo26n-seg.pt .
-.venv/bin/python run.py --users users.dev.json --adduser namamu
+cp -al ../../labeling-tools/models ../models                 # bobot MobileSAM
+.venv/bin/python run.py --users users.dev.json --adduser darma-dev
 mkdir -p dev-data/{datasets,unggahan,thumb}
-./sinkron-dev.sh --tautan
+./sinkron-dev.sh darma --ke darma-dev --projek paragon
 ```
+
+`models/` duduk di akar worktree, sejajar `label-apps/`, bukan di dalamnya.
+Melewatkannya adalah kekeliruan yang paling mudah terjadi dan paling lambat
+ketahuan: seluruh 245 pytest tetap lolos, dan barulah tombol SAM menjawab
+"berkas MobileSAM tidak ada".
 
 `cp -al` untuk `.venv` aman: `pip` menulis berkas baru, jadi memasang paket di
 dev tidak mengubah venv prod.
+
+## Memastikan dev benar-benar bisa dipakai
+
+pytest membuat lingkungannya sendiri di `tmp_path`, jadi ia tidak pernah
+menyentuh worktree dev yang sungguhan. Worktree yang kekurangan `models/` atau
+`dev-data/` lolos seluruhnya, dan baru gagal saat tombolnya ditekan orang.
+
+[tests/sapu_dev.py](tests/sapu_dev.py) yang menutup celah itu: ia menembak
+server dev yang sedang berjalan, lewat jaringan, dengan akun dan dataset
+sungguhan.
+
+```bash
+.venv/bin/python tests/sapu_dev.py <sandi-darma-dev>
+```
+
+43 pemeriksaan: login, daftar projek, sampul, buka dataset, grid dan kelima
+saringannya, urut, cari, halaman Lihat, kanvas, thumbnail, tandai latar,
+simpan bentuk, SAM dari kotak, deteksi prompt teks, splitting sampai 100%,
+kelima format ekspor, pindai ulang, unggah gambar, unggah dan bongkar arsip,
+tambah gambar, gabung, gandakan, ganti nama, buang, pulihkan, dan halaman
+kelola akun.
+
+Ia MENULIS ke dataset dev lalu mengembalikannya. Jangan diarahkan ke prod.
 
 ## Yang dijaga pengujian
 
