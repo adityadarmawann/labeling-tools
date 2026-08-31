@@ -62,13 +62,15 @@ def build_parser() -> argparse.ArgumentParser:
                         "Default: <datasets-root>/_unggahan atau ~/labelapp-unggahan.")
     g.add_argument("--src", type=Path,
                    help="folder yang langsung dibuka setiap akun saat masuk.")
-    g.add_argument("--max-upload-mb", type=int, default=80,
-                   help="batas ukuran per berkas yang diunggah (default 80).")
+    g.add_argument("--max-upload-mb", type=int,
+                   help="batas ukuran per berkas yang diunggah. Tanpa ini, "
+                        "dipakai LABELAPP_MAX_UPLOAD_MB dari env, lalu 80.")
 
     g = ap.add_argument_group("AnyLabeling")
-    g.add_argument("--anylabeling", default="anylabeling",
-                   help="perintah untuk menjalankan AnyLabeling.")
-    g.add_argument("--open-mode", choices=["file", "dir"], default="file",
+    g.add_argument("--anylabeling",
+                   help="perintah untuk menjalankan AnyLabeling "
+                        "(default: LABELAPP_ANYLABELING, lalu 'anylabeling').")
+    g.add_argument("--open-mode", choices=["file", "dir"],
                    help="file = buka tepat berkas yang diklik (default). "
                         "dir = buka seluruh folder; tombol A/D aktif, tapi "
                         "AnyLabeling membuka berkas dari sesi sebelumnya.")
@@ -87,7 +89,16 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def to_environ(a: argparse.Namespace) -> None:
-    """Argumen CLI -> environment yang dibaca app.config."""
+    """Argumen CLI -> environment yang dibaca app.config.
+
+    Yang TIDAK diberikan di baris perintah tidak ditulis sama sekali. Dulu
+    beberapa argumen punya nilai bawaan di argparse, dan nilai bawaan itu ikut
+    ditulis — sehingga menimpa setelan dari env/dev.env dan env/prod.env yang
+    sudah dimuat start.sh. Akibatnya diam: dev.env menulis MAX_UPLOAD_MB=20,
+    banner tetap menyebut 80, dan tidak ada yang salah di layar mana pun.
+
+    Nilai bawaan yang sesungguhnya ada di app.config, satu tempat.
+    """
     env = {
         "USERS_FILE": a.users,
         "DATASETS_ROOT": a.datasets_root,

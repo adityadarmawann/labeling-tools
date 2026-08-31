@@ -84,3 +84,39 @@ def test_setelan_perilaku_disebut_di_kedua_mode(dev, prod, kunci):
         f"nilai bawaan dan berperilaku lain dari produksi")
     assert dev[kunci] == prod[kunci], (
         f"LABELAPP_{kunci} beda: dev={dev[kunci]!r} prod={prod[kunci]!r}")
+
+
+# ============================================================
+# ENV vs BARIS PERINTAH
+# ============================================================
+
+def test_setelan_env_tidak_ditimpa_nilai_bawaan_argparse(monkeypatch):
+    """Regresi atas kekeliruan yang tidak terlihat di layar mana pun.
+
+    start.sh memuat env/dev.env lalu memanggil run.py hanya dengan --host,
+    --port, --users, dan kedua root. Selama argparse punya nilai bawaan untuk
+    --max-upload-mb, nilai bawaan itu ikut ditulis ke environment dan menimpa
+    setelan yang barusan dimuat: dev.env menulis 20, aplikasi memakai 80, dan
+    banner pun menyebut 80 dengan yakin.
+    """
+    import sys
+
+    sys.path.insert(0, str(AKAR))
+    import run
+
+    monkeypatch.setenv("LABELAPP_MAX_UPLOAD_MB", "20")
+    monkeypatch.setenv("LABELAPP_OPEN_MODE", "dir")
+    monkeypatch.setenv("LABELAPP_ANYLABELING", "anylabeling-uji")
+
+    a = run.build_parser().parse_args(["--port", "8043"])
+    run.to_environ(a)
+
+    import os
+    assert os.environ["LABELAPP_MAX_UPLOAD_MB"] == "20"
+    assert os.environ["LABELAPP_OPEN_MODE"] == "dir"
+    assert os.environ["LABELAPP_ANYLABELING"] == "anylabeling-uji"
+
+    # Yang DIBERIKAN di baris perintah tetap menang atas env.
+    b = run.build_parser().parse_args(["--max-upload-mb", "5"])
+    run.to_environ(b)
+    assert os.environ["LABELAPP_MAX_UPLOAD_MB"] == "5"

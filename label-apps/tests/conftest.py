@@ -28,7 +28,15 @@ sys.path.insert(0, str(ROOT))
 
 # Tidak diperiksa saat memotret folder aplikasi: besar, berubah sendiri, dan
 # bukan milik aplikasi.
-ABAIKAN = {".venv", "__pycache__", ".pytest_cache", ".git", ".ruff_cache"}
+#
+# dev-data, logs, dan run wajib ada di sini. Ketiganya isi runtime, bukan kode,
+# dan dev-data khususnya bisa memuat SELURUH dataset — sekali disinkronkan dari
+# prod ia berisi puluhan ribu berkas. Penjaga ini berjalan dua kali untuk SETIAP
+# tes, jadi memindainya membuat satu suite yang tadinya puluhan detik menjadi
+# beberapa menit. Lebih buruk lagi, server dev yang menyala menulis thumbnail ke
+# situ selagi tes berjalan, dan tes yang tidak bersalah pun gagal.
+ABAIKAN = {".venv", "__pycache__", ".pytest_cache", ".git", ".ruff_cache",
+           "dev-data", "logs", "run"}
 
 
 def _potret_folder_aplikasi() -> dict[str, tuple[int, int]]:
