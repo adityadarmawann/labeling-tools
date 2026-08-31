@@ -204,6 +204,35 @@ Buat akun dev sekali:
 
 `users.dev.json` dan `dev-data/` tidak masuk repo.
 
+### Projek yang sama seperti prod
+
+```bash
+./sinkron-dev.sh --lihat     # apa yang akan disalin
+./sinkron-dev.sh             # salin projek prod ke dev untuk akun yang sama
+./sinkron-dev.sh darma       # satu akun saja
+```
+
+Dengan begitu, login sebagai `darma` di dev menampilkan projek yang sama
+seperti di prod — berguna karena tampilan hanya bisa dinilai dengan foto
+sungguhan, bukan gambar uji 80x60.
+
+Yang dibuat adalah **hard link**, bukan salinan isi: 3 GB projek menambah
+pemakaian disk sekitar 2 MB. Itu aman karena setiap penulisan di aplikasi ini
+lewat berkas sementara lalu diganti namanya (`annotations.tulis_aman`,
+`annotate.py`, `scanner.py`). Mengganti nama memutus tautannya, jadi menyunting
+anotasi di dev melahirkan berkas baru di sisi dev dan berkas prod tidak
+tersentuh. Terukur: menulis ulang satu gambar di dev tidak mengubah md5 berkas
+prod-nya.
+
+Konsekuensinya ia **potret, bukan cermin hidup**. Kalau isi prod bertambah,
+jalankan lagi supaya dev menyusul. Sinkron berikutnya membuat dev persis
+seperti prod, jadi projek yang hanya ada di dev akan hilang — skrip
+memperingatkan sebelum melakukannya.
+
+Dev sengaja tidak menunjuk langsung ke folder prod. Dev punya tombol yang
+benar-benar mengubah berkas — ganti nama, gandakan, gabungkan, buang — dan satu
+bug yang sedang ditulis tidak boleh sampai mengenai anotasi tim.
+
 ### Menaikkan kode dev ke prod
 
 ```bash
