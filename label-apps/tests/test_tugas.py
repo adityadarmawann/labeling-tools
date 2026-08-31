@@ -232,3 +232,98 @@ def test_rute_bagi_hanya_untuk_pemilik(klien, lingkungan):
     j = klien.post("/api/tugas/bagi", json={"pelabel": "anggi",
                                             "gambar": gambar}).json()
     assert j["ok"] is False and "pemilik" in j["error"], j
+
+
+# ============================================================
+# UNDANGAN LEWAT TAUTAN
+# ============================================================
+
+def test_undangan_sekali_pakai(tmp_path):
+    """Tautan yang diteruskan ke orang lain tidak boleh menambah anggota lagi."""
+    d = _ds(tmp_path)
+    r = tugas.undang_email(d, "darma", "rizky@higo.id")
+    tok = r["token"]
+
+    ok = tugas.pakai_undangan(d, tok, "rizky")
+    assert ok["ok"] and ok["pemilik"] == "darma"
+    assert "rizky" in tugas.baca(d, "darma")["anggota"]
+
+    lagi = tugas.pakai_undangan(d, tok, "orang-lain")
+    assert lagi["ok"] is False and "sudah dipakai" in lagi["error"]
+    assert "orang-lain" not in tugas.baca(d, "darma")["anggota"]
+
+
+def test_undangan_tak_dikenal_dan_pemilik_sendiri_ditolak(tmp_path):
+    d = _ds(tmp_path)
+    tok = tugas.undang_email(d, "darma", "x@higo.id")["token"]
+    assert tugas.pakai_undangan(d, "bukan-token", "rizky")["ok"] is False
+    assert tugas.pakai_undangan(d, tok, "darma")["ok"] is False
+
+
+def test_undangan_ditemukan_tanpa_menyebut_nama_projek(tmp_path):
+    """Tokennya sengaja tidak memuat nama projek: tautan yang menyebutnya sudah
+    membocorkan isinya sebelum ada yang menerima undangannya."""
+    root = tmp_path / "unggahan"
+    d = _ds(root / "darma", "rahasia")
+    tok = tugas.undang_email(d, "darma", "rizky@higo.id")["token"]
+    assert projek.cari_undangan(root, tok) == d
+    assert projek.cari_undangan(root, "token-palsu-panjang-sekali") is None
+    assert projek.cari_undangan(root, "pendek") is None
+
+
+def test_undangan_terbuka_dan_pembatalannya(tmp_path):
+    d = _ds(tmp_path)
+    tok = tugas.undang_email(d, "darma", "rizky@higo.id")["token"]
+    assert len(tugas.undangan_terbuka(tugas.baca(d, "darma"))) == 1
+    tugas.batalkan_undangan(d, "darma", tok)
+    assert tugas.undangan_terbuka(tugas.baca(d, "darma")) == []
+    assert tugas.pakai_undangan(d, tok, "rizky")["ok"] is False
+
+
+def test_rute_undangan_untuk_email_yang_sudah_punya_akun(klien, lingkungan):
+    """Menyuruh orang yang sudah punya akun menerima tautan cuma menambah satu
+    langkah yang tidak menghasilkan apa-apa."""
+    import json as _json
+    import pathlib
+
+    masuk(klien, "paul", PW_PAUL)
+    # beri anggi sebuah email di berkas akun
+    f = lingkungan["users"]
+    u = _json.loads(f.read_text())
+    u["anggi"]["email"] = "anggi@higo.id"
+    f.write_text(_json.dumps(u))
+
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    from tests.test_projek import _projek
+    d = _projek(ruang, "undang-uji", n=2)
+    klien.post(f"/setsrc?path={d}")
+
+    j = klien.post("/api/tugas/undang-email?email=anggi@higo.id").json()
+    assert j["ok"] and j["sudah_terdaftar"] is True and j["akun"] == "anggi", j
+    assert "anggi" in tugas.baca(d, "paul")["anggota"]
+
+    j = klien.post("/api/tugas/undang-email?email=belum-punya@higo.id").json()
+    assert j["ok"] and j["sudah_terdaftar"] is False
+    assert "/undangan/" in j["tautan"], j
+
+
+def test_rute_undangan_dibuka_menjadikan_anggota(klien, aplikasi, lingkungan):
+    import pathlib
+
+    from conftest import klien_baru
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    from tests.test_projek import _projek
+    d = _projek(ruang, "undang-buka", n=2)
+    klien.post(f"/setsrc?path={d}")
+    tautan = klien.post("/api/tugas/undang-email?email=baru@higo.id").json()["tautan"]
+    jalur = "/undangan/" + tautan.rsplit("/", 1)[1]
+
+    lain = klien_baru(aplikasi, "anggi", PW_ANGGI)
+    h = lain.get(jalur).text
+    assert "Kamu bergabung" in h and "undang-buka" in h
+    assert "anggi" in tugas.baca(d, "paul")["anggota"]
+
+    # Dibuka kedua kalinya, tautannya sudah mati.
+    assert "tidak berlaku" in lain.get(jalur).text

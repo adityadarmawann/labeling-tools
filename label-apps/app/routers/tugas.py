@@ -14,11 +14,15 @@ from __future__ import annotations
 import asyncio
 
 from fastapi import APIRouter, Depends, Request
+from fastapi.responses import HTMLResponse
 
-from ..deps import current_session_api
+from ..config import Settings, get_settings
+from ..deps import current_session, current_session_api
 from ..services import tag as svc_tag
+from ..services import projek as svc_projek
 from ..services import tugas as svc
 from ..session import Session
+from ..templating import templates
 
 router = APIRouter(tags=["tugas"])
 
@@ -74,6 +78,78 @@ async def keluarkan_anggota(akun: str = "",
         return {"ok": False, "error": "hanya pemilik projek yang bisa mengeluarkan"}
     r = await asyncio.to_thread(svc.keluarkan_anggota, sess.src, sess.user, akun)
     return {"ok": True, **r}
+
+
+@router.post("/api/tugas/undang-email")
+async def undang_email(email: str = "", request: Request = None,
+                       sess: Session = Depends(current_session_api)):
+    """
+    Undangan untuk orang yang belum punya akun di sini.
+
+    Yang dikembalikan sebuah tautan untuk disalin. Pengirimannya lewat surel
+    menyusul; yang dibuat di sini tetap sama persis, jadi menambahkan pengirim
+    nanti tidak mengubah apa pun yang sudah terlanjur dibagikan.
+    """
+    data, galat = _siap(sess)
+    if galat:
+        return {"ok": False, "error": galat}
+    if not svc.boleh_kelola(data, sess.user):
+        return {"ok": False, "error": "hanya pemilik projek yang bisa mengundang"}
+
+    # Kalau alamat itu sudah dipakai sebuah akun, langsung jadikan anggota:
+    # menyuruh orang yang sudah punya akun menerima tautan undangan cuma
+    # menambah satu langkah yang tidak menghasilkan apa-apa.
+    from ..security import load_users
+    from ..config import get_settings as _gs
+    users = load_users(_gs().users_file)
+    for akun, rec in users.items():
+        if str(rec.get("email") or "").lower() == email.strip().lower():
+            r = await asyncio.to_thread(svc.undang, sess.src, sess.user, akun)
+            return {"ok": True, "akun": akun, "sudah_terdaftar": True, **r}
+
+    try:
+        r = await asyncio.to_thread(svc.undang_email, sess.src, sess.user, email)
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
+    asal = str(request.base_url).rstrip("/") if request else ""
+    return {"ok": True, "sudah_terdaftar": False, "email": r["email"],
+            "tautan": f"{asal}/undangan/{r['token']}"}
+
+
+@router.post("/api/tugas/batalkan-undangan")
+async def batalkan_undangan(token: str = "",
+                            sess: Session = Depends(current_session_api)):
+    data, galat = _siap(sess)
+    if galat:
+        return {"ok": False, "error": galat}
+    if not svc.boleh_kelola(data, sess.user):
+        return {"ok": False, "error": "hanya pemilik projek yang bisa membatalkan"}
+    r = await asyncio.to_thread(svc.batalkan_undangan, sess.src, sess.user, token)
+    return {"ok": True, **r}
+
+
+@router.get("/undangan/{token}", response_class=HTMLResponse)
+async def halaman_undangan(request: Request, token: str,
+                           sess: Session = Depends(current_session),
+                           settings: Settings = Depends(get_settings)):
+    """
+    Menerima undangan. Butuh sesi, jadi yang belum punya akun dialihkan ke
+    halaman masuk lebih dulu lalu kembali ke sini.
+    """
+    d = await asyncio.to_thread(svc_projek.cari_undangan,
+                                settings.uploads_root, token)
+    if d is None:
+        return templates.TemplateResponse(request, "undangan.html", {
+            "sess": sess, "galat": "Undangan ini tidak dikenal atau sudah "
+                                   "dibatalkan.", "pr": None})
+    hasil = await asyncio.to_thread(svc.pakai_undangan, d, token, sess.user)
+    if not hasil.get("ok"):
+        return templates.TemplateResponse(request, "undangan.html", {
+            "sess": sess, "galat": hasil["error"], "pr": None})
+    return templates.TemplateResponse(request, "undangan.html", {
+        "sess": sess, "galat": "",
+        "pr": {"nama": hasil["nama"], "pemilik": hasil["pemilik"],
+               "ds": f"{hasil['pemilik']}/{hasil['nama']}"}})
 
 
 @router.post("/api/tugas/bagi")

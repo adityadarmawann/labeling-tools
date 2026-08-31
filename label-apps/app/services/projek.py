@@ -266,6 +266,32 @@ def punya_tamu(uploads_root: Path, akun: str) -> list[dict]:
     return out
 
 
+def cari_undangan(uploads_root: Path, token: str) -> Path | None:
+    """
+    Projek pemilik undangan bertoken ini.
+
+    Ditelusuri, bukan disimpan di daftar terpusat, karena tokennya sengaja
+    tidak memuat nama projek: tautan yang menyebut nama projek sudah
+    membocorkan isinya sebelum ada yang menerima undangannya.
+    """
+    from . import tugas
+
+    if not token or len(token) < 12:
+        return None
+    root = Path(uploads_root)
+    if not root.is_dir():
+        return None
+    for folder_akun in sorted(root.iterdir()):
+        if not folder_akun.is_dir():
+            continue
+        for d in sorted(folder_akun.iterdir()):
+            if not d.is_dir() or not (d / tugas.BERKAS).is_file():
+                continue
+            if token in tugas.baca(d, folder_akun.name)["undangan"]:
+                return d
+    return None
+
+
 def ringkas(d: Path) -> dict:
     """Angka satu projek untuk kepala halaman dan sidebar.
 

@@ -67,7 +67,7 @@ def _p(ds: Path) -> Path:
 
 def kosong(pemilik: str = "") -> dict:
     return {"versi": VERSI, "pemilik": pemilik, "anggota": {},
-            "tugas": {}, "dataset": [], "warisan": True}
+            "tugas": {}, "dataset": [], "undangan": {}, "warisan": True}
 
 
 def baca(ds: Path, pemilik: str = "") -> dict:
@@ -94,6 +94,7 @@ def baca(ds: Path, pemilik: str = "") -> dict:
             "anggota": d.get("anggota") or {},
             "tugas": d.get("tugas") or {},
             "dataset": d.get("dataset") or [],
+            "undangan": d.get("undangan") or {},
             "warisan": False}
 
 
@@ -232,6 +233,76 @@ def undang(ds: Path, pemilik: str, akun: str) -> dict:
         _tulis(ds, data)
     log.info("%r diundang ke projek %s oleh %r", akun, Path(ds).name, pemilik)
     return {"anggota": sorted(data["anggota"])}
+
+
+def undang_email(ds: Path, pemilik: str, email: str) -> dict:
+    """
+    Undangan untuk alamat surel, bukan akun.
+
+    Dipakai saat orangnya belum punya akun di sini. Yang dibuat sebuah token
+    rahasia; siapa pun yang membukanya sambil masuk sebagai akun mana pun akan
+    bergabung ke projek ini. Karena itu ia sekali pakai dan panjang.
+
+    Tokennya TIDAK memuat nama projek. Tautan yang menyebut nama projek sudah
+    membocorkan isinya sebelum ada yang menerima undangannya.
+    """
+    email = " ".join(str(email or "").split())[:120].strip()
+    if "@" not in email:
+        raise ValueError("bukan alamat surel")
+    token = secrets.token_urlsafe(18)
+    with _kunci:
+        data = baca(ds, pemilik)
+        data["pemilik"] = data["pemilik"] or pemilik
+        data["undangan"][token] = {
+            "email": email, "oleh": pemilik,
+            "dibuat": datetime.now().strftime("%Y-%m-%d %H:%M"), "dipakai": "",
+        }
+        _tulis(ds, data)
+    log.info("undangan dibuat untuk %r di projek %s", email, Path(ds).name)
+    return {"token": token, "email": email}
+
+
+def pakai_undangan(ds: Path, token: str, akun: str) -> dict:
+    """
+    Terima undangan sebagai `akun`.
+
+    Sekali pakai: token yang sudah dipakai ditolak, supaya tautan yang
+    diteruskan ke orang lain tidak menambah anggota yang tidak diundang.
+    """
+    with _kunci:
+        data = baca(ds)
+        u = data["undangan"].get(token)
+        if not u:
+            return {"ok": False, "error": "undangan tidak dikenal"}
+        if u.get("dipakai"):
+            return {"ok": False, "error": f"undangan ini sudah dipakai "
+                                          f"{u['dipakai']}"}
+        if akun == data["pemilik"]:
+            return {"ok": False, "error": "kamu pemilik projek ini"}
+        u["dipakai"] = akun
+        u["diterima"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+        if akun not in data["anggota"]:
+            data["anggota"][akun] = {
+                "peran": "pelabel", "sejak": datetime.now().strftime("%Y-%m-%d"),
+                "lewat": u.get("email", ""),
+            }
+        _tulis(ds, data)
+    log.info("undangan diterima oleh %r di projek %s", akun, Path(ds).name)
+    return {"ok": True, "pemilik": data["pemilik"], "nama": Path(ds).name}
+
+
+def undangan_terbuka(data: dict) -> list[dict]:
+    """Undangan yang belum dipakai, untuk ditampilkan di panel anggota."""
+    return [{"token": t, **u} for t, u in data["undangan"].items()
+            if not u.get("dipakai")]
+
+
+def batalkan_undangan(ds: Path, pemilik: str, token: str) -> dict:
+    with _kunci:
+        data = baca(ds, pemilik)
+        ada = data["undangan"].pop(token, None)
+        _tulis(ds, data)
+    return {"dibatalkan": bool(ada)}
 
 
 def keluarkan_anggota(ds: Path, pemilik: str, akun: str) -> dict:

@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Undangan{% endblock %}
+
+{% block body %}
+<main>
+  <div class="card-form">
+    {% if galat %}
+    <h2>Undangan tidak berlaku</h2>
+    <p class="sub">{{ galat }}</p>
+    <p class="kartu-kaki">Minta pemilik projeknya membuatkan undangan baru.</p>
+    <a class="cta" href="/pilih" style="display:inline-block;text-align:center;
+       text-decoration:none">Ke daftar projek</a>
+    {% else %}
+    <h2>Kamu bergabung</h2>
+    <p class="sub">Sekarang kamu anggota projek
+      <b class="mono">{{ pr.nama }}</b> milik <b>{{ pr.pemilik }}</b>.</p>
+    {# Yang paling sering ditanyakan orang baru: aku boleh apa di sini.
+       Dijawab di sini sekali, bukan dibiarkan ditemukan sendiri. #}
+    <p class="sub">Kamu bisa melihat seluruh gambarnya, tetapi hanya bisa
+      menyunting label gambar yang ditugaskan kepadamu.</p>
+    <a class="cta" href="/?ds={{ pr.ds | urlquote }}"
+       style="display:inline-block;text-align:center;text-decoration:none">
+      Buka projeknya</a>
+    {% endif %}
+  </div>
+</main>
+{% endblock %}
