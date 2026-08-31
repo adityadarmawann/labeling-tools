@@ -132,7 +132,14 @@ def lingkungan(tmp_path, monkeypatch):
     # get_settings di-cache per proses; bersihkan supaya tiap tes memakai
     # tmp_path miliknya sendiri, bukan milik tes sebelumnya.
     get_settings.cache_clear()
-    yield {"tmp": tmp_path, "users": users, "roots": roots}
+    # `ruang` = ruang kerja akun paul. Dataset yang HANYA dibaca boleh tinggal
+    # di `roots` (folder bersama), tetapi yang akan ditambahi harus di sini:
+    # tambah.boleh_ditambahi menolak folder di luar ruang kerja, dan sejak
+    # /setsrc menjaga kepemilikan, folder di luar keduanya tidak bisa dibuka
+    # sama sekali.
+    ruang = tmp_path / "unggahan" / "paul"
+    ruang.mkdir(parents=True, exist_ok=True)
+    yield {"tmp": tmp_path, "users": users, "roots": roots, "ruang": ruang}
     get_settings.cache_clear()
 
 

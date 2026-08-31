@@ -13,8 +13,9 @@ import asyncio
 
 from fastapi import APIRouter, Depends, Request
 
-from ..deps import current_session_api
+from ..deps import current_session_api, bodi_json
 from ..services import tag as svc
+from ..services import tugas as svc_tugas
 from ..session import Session
 
 router = APIRouter(tags=["tag"])
@@ -23,6 +24,15 @@ router = APIRouter(tags=["tag"])
 # satu bodi JSON tidak pernah membuat server menahan daftar tak berhingga di
 # memori; 50 ribu sudah jauh di atas dataset terbesar tim ini.
 MAKS_SEKALI = 50_000
+
+
+def _daftar(nilai) -> list[str]:
+    """Terima daftar tag, atau satu tag sebagai string."""
+    if nilai is None:
+        return []
+    if isinstance(nilai, str):
+        return [nilai]
+    return [str(x) for x in nilai]
 
 
 def _kunci(sess: Session, paths: list[str]) -> list[str]:
@@ -44,7 +54,7 @@ async def pasang(request: Request,
                  sess: Session = Depends(current_session_api)):
     if sess.src is None:
         return {"ok": False, "error": "belum ada dataset terbuka"}
-    body = await request.json()
+    body = await bodi_json(request)
     paths = body.get("paths") or []
 
     if body.get("tanpa_batch"):
@@ -66,11 +76,26 @@ async def pasang(request: Request,
     if not kunci:
         return {"ok": False, "error": "tidak satu pun gambar itu ada di dataset ini"}
 
+    # Menandai gambar itu MENULIS keterangan tentangnya, jadi ia tunduk pada
+    # aturan yang sama dengan menyunting labelnya. Sebelumnya halaman /view
+    # menghitung `boleh_tag` untuk menyembunyikan kotaknya, tetapi rutenya
+    # sendiri tidak pernah memeriksa — dan aturan yang cuma berlaku di
+    # tampilan bukan aturan.
+    tdata = svc_tugas.baca(sess.src, sess.user)
+    tolak = [k for k in kunci if not svc_tugas.boleh_labeli(tdata, sess.user, k)]
+    if tolak:
+        return {"ok": False, "error": (
+            f"{len(tolak)} gambar ditugaskan ke orang lain; hanya pelabelnya "
+            f"atau pemilik projek yang bisa menandainya")}
+
     batch = body.get("batch")
     r = await asyncio.to_thread(
         svc.pasang, sess.src, kunci,
-        tambah=[str(t) for t in (body.get("tambah") or [])],
-        buang=[str(t) for t in (body.get("buang") or [])],
+        # String tunggal dibungkus jadi satu unsur. Tanpa ini "abc" dipecah
+        # per huruf oleh iterasinya sendiri, dan tiga tag bernama a, b, dan c
+        # lahir dari satu tag yang dimaksud.
+        tambah=_daftar(body.get("tambah")),
+        buang=_daftar(body.get("buang")),
         batch=None if batch is None else str(batch))
     data = await asyncio.to_thread(svc.baca, sess.src)
     return {"ok": True, **r, **svc.hitung(data)}

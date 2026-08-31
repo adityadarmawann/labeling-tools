@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from ..config import Settings, get_settings
-from ..deps import current_session, current_session_api
+from ..deps import current_session, current_session_api, bodi_json
 from ..services import tag as svc_tag
 from ..services import projek as svc_projek
 from ..services import tugas as svc
@@ -37,6 +37,25 @@ def _siap(sess: Session) -> tuple[dict | None, str]:
     if sess.src is None:
         return None, "belum ada dataset terbuka"
     return svc.baca(sess.src, sess.user), ""
+
+
+def _akun_sah(nama: str, settings: Settings) -> str:
+    """
+    Pesan penolakan kalau `nama` bukan akun terdaftar, atau "".
+
+    Sebelumnya nama apa pun diterima: yang tidak terdaftar, yang 300 karakter,
+    bahkan "../../etc/passwd". Job untuk pelabel hantu mengunci gambarnya —
+    tidak ada yang bisa menyuntingnya lagi kecuali pemilik projek, dan tidak
+    ada satu pun layar yang menjelaskan kenapa.
+    """
+    from ..security import load_users
+
+    if not nama:
+        return "belum memilih pelabelnya"
+    if nama not in load_users(settings.users_file):
+        return (f"akun '{nama[:40]}' tidak terdaftar; buatkan akunnya dulu di "
+                f"halaman Kelola akun, atau undang lewat alamat surel")
+    return ""
 
 
 def _kunci(sess: Session, paths: list[str]) -> list[str]:
@@ -246,12 +265,16 @@ async def calon(sess: Session = Depends(current_session_api),
 
 
 @router.post("/api/tugas/undang")
-async def undang(akun: str = "", sess: Session = Depends(current_session_api)):
+async def undang(akun: str = "", sess: Session = Depends(current_session_api),
+                 settings: Settings = Depends(get_settings)):
     data, galat = _siap(sess)
     if galat:
         return {"ok": False, "error": galat}
     if not svc.boleh_kelola(data, sess.user):
         return {"ok": False, "error": "hanya pemilik projek yang bisa mengundang"}
+    tolak = _akun_sah(akun, settings)
+    if tolak:
+        return {"ok": False, "error": tolak}
     r = await asyncio.to_thread(svc.undang, sess.src, sess.user, akun)
     return {"ok": True, **r}
 
@@ -287,16 +310,24 @@ async def undang_email(email: str = "", request: Request = None,
     # Kalau alamat itu sudah dipakai sebuah akun, langsung jadikan anggota:
     # menyuruh orang yang sudah punya akun menerima tautan undangan cuma
     # menambah satu langkah yang tidak menghasilkan apa-apa.
+    alamat = (email or "").strip()
+    if not alamat:
+        return {"ok": False, "error": "alamat surel masih kosong"}
+
     from ..security import load_users
     from ..config import get_settings as _gs
     users = load_users(_gs().users_file)
     for akun, rec in users.items():
-        if str(rec.get("email") or "").lower() == email.strip().lower():
+        # `or None` penting: akun tanpa email punya kolom kosong, dan
+        # membandingkannya dengan alamat kosong membuat orang pertama yang
+        # kebetulan belum mengisi email jadi anggota tanpa pernah diundang.
+        surel_akun = str(rec.get("email") or "").strip().lower()
+        if surel_akun and surel_akun == alamat.lower():
             r = await asyncio.to_thread(svc.undang, sess.src, sess.user, akun)
             return {"ok": True, "akun": akun, "sudah_terdaftar": True, **r}
 
     try:
-        r = await asyncio.to_thread(svc.undang_email, sess.src, sess.user, email)
+        r = await asyncio.to_thread(svc.undang_email, sess.src, sess.user, alamat)
     except ValueError as e:
         return {"ok": False, "error": str(e)}
     asal = str(request.base_url).rstrip("/") if request else ""
@@ -341,17 +372,19 @@ async def halaman_undangan(request: Request, token: str,
 
 
 @router.post("/api/tugas/bagi")
-async def bagi(request: Request, sess: Session = Depends(current_session_api)):
+async def bagi(request: Request, sess: Session = Depends(current_session_api),
+               settings: Settings = Depends(get_settings)):
     """Buat satu job: sekumpulan gambar untuk satu pelabel."""
     data, galat = _siap(sess)
     if galat:
         return {"ok": False, "error": galat}
     if not svc.boleh_kelola(data, sess.user):
         return {"ok": False, "error": "hanya pemilik projek yang bisa membagi tugas"}
-    body = await request.json()
+    body = await bodi_json(request)
     pelabel = str(body.get("pelabel") or "").strip()
-    if not pelabel:
-        return {"ok": False, "error": "belum memilih pelabelnya"}
+    tolak = _akun_sah(pelabel, settings)
+    if tolak:
+        return {"ok": False, "error": tolak}
     kunci = _kunci(sess, [str(p) for p in (body.get("gambar") or [])])
     if not kunci:
         return {"ok": False, "error": "tidak satu pun gambar itu ada di projek ini"}
@@ -364,13 +397,18 @@ async def bagi(request: Request, sess: Session = Depends(current_session_api)):
 @router.post("/api/tugas/ubah")
 async def ubah(id: str = "", pelabel: str = "", catatan: str | None = None,
                judul: str | None = None,
-               sess: Session = Depends(current_session_api)):
+               sess: Session = Depends(current_session_api),
+               settings: Settings = Depends(get_settings)):
     """Tugaskan ulang, ubah catatan, atau ganti judul job."""
     data, galat = _siap(sess)
     if galat:
         return {"ok": False, "error": galat}
     if not svc.boleh_kelola(data, sess.user):
         return {"ok": False, "error": "hanya pemilik projek yang bisa mengubah tugas"}
+    if pelabel:
+        tolak = _akun_sah(pelabel, settings)
+        if tolak:
+            return {"ok": False, "error": tolak}
     try:
         r = await asyncio.to_thread(svc.ubah_job, sess.src, sess.user, id,
                                     pelabel=pelabel or None,
@@ -404,7 +442,7 @@ async def ke_dataset(request: Request,
     data, galat = _siap(sess)
     if galat:
         return {"ok": False, "error": galat}
-    body = await request.json()
+    body = await bodi_json(request)
     kunci = _kunci(sess, [str(p) for p in (body.get("gambar") or [])])
     if not kunci:
         return {"ok": False, "error": "tidak satu pun gambar itu ada di projek ini"}
@@ -419,4 +457,14 @@ async def ke_dataset(request: Request,
         r = await asyncio.to_thread(svc.keluarkan, sess.src, kunci, sess.user)
     else:
         r = await asyncio.to_thread(svc.masukkan, sess.src, kunci, sess.user)
+
+    # `total` dihitung ulang atas gambar yang BENAR-BENAR ada di dataset
+    # sekarang. Angka mentah dari berkasnya ikut menghitung catatan milik
+    # gambar yang berkasnya sudah dibuang, dan angka yang lebih besar daripada
+    # isi ZIP-nya membuat orang mengira ekspornya kehilangan sesuatu.
+    with sess.lock:
+        items = list(sess.items)
+    ada = {svc_tag.kunci_gambar(sess.src, it["img"]) for it in items}
+    data = await asyncio.to_thread(svc.baca, sess.src, sess.user)
+    r["total"] = sum(1 for k in data["dataset"] if k in ada)
     return {"ok": True, **r}

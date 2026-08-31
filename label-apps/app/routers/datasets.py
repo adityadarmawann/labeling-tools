@@ -44,6 +44,58 @@ async def picker(request: Request,
                                       picker_context(request, sess, settings))
 
 
+def boleh_buka(d: Path, sess: Session, settings: Settings) -> str:
+    """
+    Pesan penolakan kalau akun ini tidak boleh membuka folder itu, atau "".
+
+    Tiga yang boleh, dan cuma tiga:
+
+    1. Folder dataset bersama (`datasets_root`). Isinya memang untuk dilihat
+       bersama, dan tidak bisa ditambahi dari sini.
+    2. Ruang kerja akun ini sendiri.
+    3. Projek akun lain yang MENGUNDANG akun ini.
+
+    Tanpa penjagaan ini, `?ds=` yang dijaga rapi jadi tidak ada artinya:
+    /setsrc menerima path apa adanya, dan projek yang belum pernah ditugaskan
+    membolehkan siapa saja menyuntingnya. Satu permintaan dengan path tebakan
+    sudah cukup untuk menulis anotasi ke projek orang lain dan mengunduh ZIP-nya.
+    """
+    from ..services import tugas as svc_tugas
+
+    try:
+        d = d.resolve()
+    except OSError:
+        return "folder tidak bisa dibaca"
+
+    akar_bersama = settings.datasets_root
+    if akar_bersama:
+        try:
+            d.relative_to(Path(akar_bersama).resolve())
+            return ""
+        except ValueError:
+            pass
+
+    unggahan = Path(settings.uploads_root).resolve()
+    try:
+        sisa = d.relative_to(unggahan).parts
+    except ValueError:
+        return ("folder itu di luar ruang kerjamu dan bukan dataset bersama; "
+                "salin dulu ke ruang kerjamu lewat halaman Unggah data")
+    if not sisa:
+        return "itu folder induk unggahan, bukan sebuah projek"
+    if sisa[0] == sess.user:
+        return ""
+
+    # Projek akun lain: boleh hanya kalau diundang. Yang tidak diundang tidak
+    # dibedakan dari projek yang tidak ada — membedakannya berarti memberi tahu
+    # orang luar projek apa saja yang dimiliki orang lain.
+    projek_lain = unggahan / sisa[0] / sisa[1] if len(sisa) > 1 else None
+    if projek_lain and svc_tugas.boleh_lihat(
+            svc_tugas.baca(projek_lain, sisa[0]), sess.user):
+        return ""
+    return "folder tidak ada di server"
+
+
 @router.post("/setsrc")
 async def set_source(path: str = "",
                      sess: Session = Depends(current_session_api),
@@ -54,6 +106,9 @@ async def set_source(path: str = "",
     d = Path(raw).expanduser()
     if not d.is_dir():
         return {"ok": False, "error": "folder tidak ada di server"}
+    tolak = await asyncio.to_thread(boleh_buka, d, sess, settings)
+    if tolak:
+        return {"ok": False, "error": tolak}
     n = len(await asyncio.to_thread(sess.load, d))
     if not n:
         return {"ok": False, "error": "tidak ada gambar terbaca di folder itu"}
@@ -106,6 +161,14 @@ async def versi_buat(split: str = "", catatan: str = "",
     """
     if sess.src is None:
         return {"ok": False, "error": "belum ada dataset terbuka"}
+    # Versi adalah keputusan tentang isi projek, bukan tentang satu job.
+    # Pemilik projek yang memutuskannya. Sebelumnya tombolnya cuma
+    # disembunyikan lewat boleh_kelola, dan rutenya menerima siapa saja:
+    # anggota biasa bisa MENGHAPUS PERMANEN versi milik pemiliknya, dan versi
+    # tidak masuk sampah.
+    tdata = await asyncio.to_thread(tugas.baca, sess.src, sess.user)
+    if not tugas.boleh_kelola(tdata, sess.user):
+        return {"ok": False, "error": "hanya pemilik projek yang mengurus versi"}
     with sess.lock:
         items = list(sess.items)
         names = dict(sess.names)
@@ -138,6 +201,14 @@ async def versi_hapus(nomor: int = 0,
                       sess: Session = Depends(current_session_api)):
     if sess.src is None:
         return {"ok": False, "error": "belum ada dataset terbuka"}
+    # Versi adalah keputusan tentang isi projek, bukan tentang satu job.
+    # Pemilik projek yang memutuskannya. Sebelumnya tombolnya cuma
+    # disembunyikan lewat boleh_kelola, dan rutenya menerima siapa saja:
+    # anggota biasa bisa MENGHAPUS PERMANEN versi milik pemiliknya, dan versi
+    # tidak masuk sampah.
+    tdata = await asyncio.to_thread(tugas.baca, sess.src, sess.user)
+    if not tugas.boleh_kelola(tdata, sess.user):
+        return {"ok": False, "error": "hanya pemilik projek yang mengurus versi"}
     ok = await asyncio.to_thread(versi.hapus, sess.src, nomor)
     return {"ok": ok, "error": "" if ok else f"versi v{nomor} tidak ada"}
 
@@ -201,12 +272,11 @@ async def ekspor(format: str = "yolo-seg", gambar: int = 1, split: str = "",
     # Isi ZIP-nya harus sama persis dengan yang dihitung ringkasan di panelnya.
     # Kalau ringkasan menyaring dan unduhan tidak, angka yang dibaca sebelum
     # menekan tombol bukan angka yang diterima sesudahnya.
-    items, _ = await asyncio.to_thread(tugas.saring_dataset, items,
-                                       sess.src, sess.user)
-
-    # Ekspor sebuah VERSI: isinya dikunci ke daftar dan peta yang dibekukan,
-    # bukan dihitung ulang. Gambar yang ditambahkan sesudah versi itu dibuat
-    # tidak ikut, dan yang sudah dihapus tidak membuatnya gagal.
+    # Urutannya penting. Versi disaring LEBIH DULU, baru isi dataset — dan
+    # untuk versi, saringan dataset tidak dipakai sama sekali. Kalau
+    # dibalik, gambar yang dikeluarkan dari dataset sesudah versinya dibuat
+    # ikut hilang dari versi itu: kartunya bilang 4 gambar, ZIP-nya berisi 2,
+    # dan versi yang isinya bisa berubah bukan versi.
     rencana_dipakai = sess.rencana_split
     if nomor:
         v = await asyncio.to_thread(versi.baca, sess.src, nomor)
@@ -218,6 +288,9 @@ async def ekspor(format: str = "yolo-seg", gambar: int = 1, split: str = "",
         rencana_dipakai = {"peta": v.get("peta") or {}, "versi": nomor}
         split = v.get("rasio") or split
         nama = f"{nama}-v{nomor}"
+    else:
+        items, _ = await asyncio.to_thread(tugas.saring_dataset, items,
+                                           sess.src, sess.user)
 
     if not items:
         # Ditolak dengan sebabnya, bukan ZIP kosong yang baru ketahuan salah

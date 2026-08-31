@@ -236,3 +236,50 @@ def test_penyunting_tag_di_halaman_lihat(klien, lingkungan):
     klien.post("/api/tag/pasang", json={"paths": [g], "tambah": ["ulang-foto"]})
     h = klien.get(f"/view?path={g}").text
     assert "ulang-foto" in h and "Belum ada tag." not in h
+
+
+def test_menandai_gambar_orang_lain_ditolak_di_rutenya(klien, aplikasi, lingkungan):
+    """TEMUAN 3. /view menyembunyikan kotaknya, rutenya dulu tidak memeriksa.
+
+    Aturan yang cuma berlaku di tampilan bukan aturan: kanvas dan halaman lain
+    tetap bisa mengirim permintaan ini langsung.
+    """
+    import pathlib
+
+    from conftest import klien_baru
+    from tests.test_data import masuk, PW_ANGGI, PW_PAUL
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    from tests.test_projek import _projek
+    d = _projek(ruang, "tag-hak", n=3)
+    klien.post(f"/setsrc?path={d}")
+    g = sorted(str(x) for x in d.glob("*.jpg"))
+    klien.post("/api/tugas/bagi", json={"pelabel": "anggi", "gambar": g[:1]})
+    klien.post("/api/tugas/undang?akun=anggi")
+
+    lain = klien_baru(aplikasi, "anggi", PW_ANGGI)
+    lain.post(f"/setsrc?path={d}")
+
+    # Jatahnya sendiri: boleh.
+    assert lain.post("/api/tag/pasang",
+                     json={"paths": g[:1], "tambah": ["ok"]}).json()["ok"] is True
+    # Gambar orang lain: ditolak, dan tidak menulis apa pun.
+    j = lain.post("/api/tag/pasang",
+                  json={"paths": g[1:], "tambah": ["curang"]}).json()
+    assert j["ok"] is False and "ditugaskan ke orang lain" in j["error"]
+    assert "curang" not in (d / ".tag.json").read_text()
+
+
+def test_tag_berupa_string_tidak_dipecah_per_huruf(klien, lingkungan):
+    """TEMUAN 12. "abc" pernah melahirkan tiga tag: a, b, dan c."""
+    from tests.test_data import masuk, PW_PAUL
+
+    masuk(klien, "paul", PW_PAUL)
+    src = lingkungan["roots"] / "ds-alpha"
+    klien.post(f"/setsrc?path={src}")
+    g = sorted(str(p) for p in src.glob("*.jpg"))
+
+    j = klien.post("/api/tag/pasang",
+                   json={"paths": g[:1], "tambah": "sesi-pagi"}).json()
+    assert j["ok"] and j["tag"] == {"sesi-pagi": 1}, j

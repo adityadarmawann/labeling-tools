@@ -169,7 +169,12 @@ def jalankan(base: str, sandi: str) -> int:
     cek("ganti nama projek", r.get("ok"), r.get("error", ""))
     cek("buang ke sampah",
         c.post("/api/projek/sampah", params={"nama": "sapu-tiga"}).json().get("ok"))
-    sampah = c.get("/api/projek/daftar").json().get("sampah") or []
+    # Yang dipulihkan HARUS yang barusan dibuang, bukan isi sampah paling
+    # atas. Sampah menumpuk dari uji-uji sebelumnya, dan memulihkan yang lama
+    # gagal karena namanya bentrok dengan projek yang masih ada — kegagalan
+    # yang menuduh kode padahal yang salah keadaan sisa.
+    sampah = [s for s in (c.get("/api/projek/daftar").json().get("sampah") or [])
+              if s.get("nama") == "sapu-tiga"]
     r = c.post("/api/projek/pulihkan",
                params={"folder": sampah[0]["folder"]}).json() if sampah else {}
     cek("pulihkan dari sampah", r.get("ok"), r.get("error", ""))

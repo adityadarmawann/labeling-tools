@@ -120,7 +120,21 @@ class Session:
 
         Nama akun tetap memakai safe_slug: akun memang selalu berupa slug.
         """
-        from .services.projek import bersihkan_nama
+        from .services.projek import bersihkan_nama, temukan
+
+        # Nama boleh berbentuk "pemilik/projek" untuk projek yang mengundang
+        # akun ini. Tanpa itu, mengunggah dari halaman projek tamu dijawab
+        # berhasil tetapi berkasnya mendarat di projek SENDIRI yang kebetulan
+        # bernama sama, dan tidak ada satu layar pun yang menyebutkannya.
+        if "/" in (ds or ""):
+            d = temukan(self.settings.uploads_root, self.user, ds)
+            if d is not None:
+                return d
+            # Tidak diundang: jangan diam-diam jatuh ke projek sendiri. Nama
+            # yang tidak boleh dibuka harus menghasilkan folder yang jelas
+            # bukan projek siapa pun.
+            return (self.settings.uploads_root / safe_slug(self.user)
+                    / bersihkan_nama(ds.replace("/", "-")))
         return (self.settings.uploads_root / safe_slug(self.user)
                 / bersihkan_nama(ds))
 

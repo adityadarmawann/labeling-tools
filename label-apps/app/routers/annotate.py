@@ -18,7 +18,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import HTMLResponse
 
-from ..deps import current_session, current_session_api, is_local
+from ..deps import current_session, current_session_api, is_local, bodi_json
 from ..services import annotations, autolabel, scanner, tugas
 from ..services.autolabel import TidakAdaObjek
 from ..session import Session
@@ -123,7 +123,14 @@ async def halaman(request: Request, path: str = "",
     if not sess.items:
         return templates.TemplateResponse(request, "notfound.html", {"sess": sess},
                                           status_code=404)
-    it = sess.find(path) or sess.items[0]
+    # Path kosong berarti "buka yang pertama", dan itu memang dipakai. Path
+    # yang DISEBUT tetapi tidak dikenal beda perkara: diam-diam membuka gambar
+    # lain membuat orang menyunting gambar yang bukan yang diklik. /view sudah
+    # menjawab 404 untuk hal yang sama.
+    it = sess.find(path) if path else sess.items[0]
+    if it is None:
+        return templates.TemplateResponse(request, "notfound.html", {"sess": sess},
+                                          status_code=404)
     mentah = baca_mentah(it["img"].with_suffix(".json"))
     with sess.lock:
         items = sess.items
@@ -192,7 +199,7 @@ async def api_sam(request: Request, sess: Session = Depends(current_session_api)
     `point_labels` (1 = bagian objek, 0 = bukan objek). Titik berlabel 0
     dipakai untuk memangkas mask yang meluber tanpa menggambar ulang.
     """
-    body = await request.json()
+    body = await bodi_json(request)
     it = sess.find(body.get("path", ""))
     if not it:
         return {"ok": False, "error": "berkas tidak dikenal di dataset ini"}
@@ -233,7 +240,7 @@ async def api_deteksi(request: Request, sess: Session = Depends(current_session_
     lama pada pemakaian pertama; ukurannya sudah disebutkan di antarmuka
     sebelum tombolnya ditekan.
     """
-    body = await request.json()
+    body = await bodi_json(request)
     it = sess.find(body.get("path", ""))
     if not it:
         return {"ok": False, "error": "berkas tidak dikenal di dataset ini"}
@@ -273,7 +280,7 @@ async def api_simpan(request: Request, sess: Session = Depends(current_session_a
     itu penanda "latar", sama artinya dengan Mark Null di Roboflow, bukan
     "belum dilabeli".
     """
-    body = await request.json()
+    body = await bodi_json(request)
     it = sess.find(body.get("path", ""))
     if not it:
         return {"ok": False, "error": "berkas tidak dikenal di dataset ini"}

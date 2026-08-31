@@ -924,7 +924,7 @@ def test_impor_menyalin_dan_tidak_pernah_menyentuh_sumber(klien, lingkungan):
     from conftest import PW_PAUL, buat_dataset, masuk
     masuk(klien, "paul", PW_PAUL)
 
-    sumber = buat_dataset(lingkungan["tmp"] / "sumber" / "asal-ku", 3, 2)
+    sumber = buat_dataset(lingkungan["roots"] / "sumber" / "asal-ku", 3, 2)
     (sumber / "data.yaml").write_text("names: [botol, kaleng]\n")
     sebelum = _sidik(sumber)
 
@@ -952,7 +952,7 @@ def test_impor_menolak_tujuan_di_dalam_sumber(lingkungan):
     from app.services import impor
     from conftest import buat_dataset
 
-    sumber = buat_dataset(lingkungan["tmp"] / "s2", 2, 1)
+    sumber = buat_dataset(lingkungan["roots"] / "s2", 2, 1)
     with pytest.raises(impor.ImporTolak):
         impor.impor_folder(sumber, sumber / "di-dalam")
 
@@ -961,7 +961,7 @@ def test_impor_melewati_berkas_asing_dan_melaporkannya(lingkungan):
     from app.services import impor
     from conftest import buat_dataset
 
-    sumber = buat_dataset(lingkungan["tmp"] / "s3", 2, 1)
+    sumber = buat_dataset(lingkungan["roots"] / "s3", 2, 1)
     (sumber / "catatan.sh").write_text("rm -rf /")
     (sumber / "besar.mp4").write_bytes(b"x" * 100)
     tujuan = lingkungan["tmp"] / "hasil3"
@@ -1003,7 +1003,7 @@ def test_impor_ulang_tidak_menggandakan_berkas_yang_isinya_sama(lingkungan):
     from app.services import impor
     from conftest import buat_dataset
 
-    sumber = buat_dataset(lingkungan["tmp"] / "s4b", 3, 2)
+    sumber = buat_dataset(lingkungan["roots"] / "s4b", 3, 2)
     tujuan = lingkungan["tmp"] / "hasil4b"
 
     a = impor.impor_folder(sumber, tujuan)
@@ -1019,7 +1019,7 @@ def test_impor_menolak_kalau_disk_hampir_penuh(lingkungan, monkeypatch):
     from app.services import impor
     from conftest import buat_dataset
 
-    sumber = buat_dataset(lingkungan["tmp"] / "s5", 2, 1)
+    sumber = buat_dataset(lingkungan["roots"] / "s5", 2, 1)
     monkeypatch.setattr(_shutil, "disk_usage",
                         lambda p: _shutil._ntuple_diskusage(100, 100, 1024))
     with pytest.raises(impor.ImporTolak, match="disk"):
@@ -1036,7 +1036,7 @@ def test_riwayat_path_diingat_lintas_sesi(klien, aplikasi, lingkungan):
     from app.session import store
 
     masuk(klien, "paul", PW_PAUL)
-    src = buat_dataset(lingkungan["tmp"] / "riw" / "ds-riwayat", 2, 1)
+    src = buat_dataset(lingkungan["roots"] / "riw" / "ds-riwayat", 2, 1)
     assert klien.post(f"/setsrc?path={src}").json()["ok"] is True
     # Riwayat path ikut pindah ke halaman Unggah data bersama kotak pathnya.
     klien.post("/api/projek/baru?nama=uji-riwayat")
@@ -1106,7 +1106,7 @@ def test_impor_melaporkan_kemajuannya_selagi_menyalin(klien, lingkungan):
     from app.services import impor
     from conftest import buat_dataset
 
-    sumber = buat_dataset(lingkungan["tmp"] / "s6", impor.LAPOR_TIAP * 3, 0)
+    sumber = buat_dataset(lingkungan["roots"] / "s6", impor.LAPOR_TIAP * 3, 0)
     jejak = []
 
     asli = impor.catat_maju
@@ -1184,7 +1184,7 @@ def test_tambah_menjaga_rasio_split_yang_sudah_ada(klien, lingkungan):
     100:10:10.
     """
     masuk(klien, "paul", PW_PAUL)
-    proyek = _proyek_bersplit(lingkungan["tmp"] / "unggahan" / "paul" / "proyek")
+    proyek = _proyek_bersplit(lingkungan["ruang"] / "proyek")
     assert klien.post("/useupload?ds=proyek").json()["n"] == 100
     baru = _gambar_baru(lingkungan["tmp"] / "baru", 20)
 
@@ -1198,7 +1198,7 @@ def test_tambah_menaruh_label_di_split_yang_sama_dengan_gambarnya(klien,
     """Label yang terpisah dari gambarnya membuat gambar itu tampak belum
     dilabeli, dan labelnya menjadi yatim di split lain."""
     masuk(klien, "paul", PW_PAUL)
-    proyek = _proyek_bersplit(lingkungan["tmp"] / "unggahan" / "paul" / "p2")
+    proyek = _proyek_bersplit(lingkungan["ruang"] / "p2")
     klien.post("/useupload?ds=p2")
     baru = _gambar_baru(lingkungan["tmp"] / "baru2", 20)
     klien.post(f"/tambah/impor?path={baru}")
@@ -1211,7 +1211,7 @@ def test_tambah_menaruh_label_di_split_yang_sama_dengan_gambarnya(klien,
 
 def test_tambah_dua_kali_tidak_menggandakan(klien, lingkungan):
     masuk(klien, "paul", PW_PAUL)
-    proyek = _proyek_bersplit(lingkungan["tmp"] / "unggahan" / "paul" / "p3")
+    proyek = _proyek_bersplit(lingkungan["ruang"] / "p3")
     klien.post("/useupload?ds=p3")
     baru = _gambar_baru(lingkungan["tmp"] / "baru3", 20)
 
@@ -1231,7 +1231,7 @@ def test_tambah_berkas_senama_tapi_beda_isi_tetap_masuk_berpasangan(klien,
     import numpy as np
 
     masuk(klien, "paul", PW_PAUL)
-    proyek = _proyek_bersplit(lingkungan["tmp"] / "unggahan" / "paul" / "p4")
+    proyek = _proyek_bersplit(lingkungan["ruang"] / "p4")
     klien.post("/useupload?ds=p4")
     klien.post(f"/tambah/impor?path={_gambar_baru(lingkungan['tmp'] / 'baru4', 5)}")
 
@@ -1257,7 +1257,7 @@ def test_tambah_ditolak_kalau_dataset_dibuka_dari_path_server(klien, lingkungan)
     from conftest import buat_dataset
 
     masuk(klien, "paul", PW_PAUL)
-    luar = buat_dataset(lingkungan["tmp"] / "luar" / "ds", 3, 1)
+    luar = buat_dataset(lingkungan["roots"] / "luar" / "ds", 3, 1)
     klien.post(f"/setsrc?path={luar}")
     sebelum = sorted(p.name for p in luar.iterdir())
 
@@ -1275,7 +1275,7 @@ def test_tambah_ditolak_kalau_dataset_dibuka_dari_path_server(klien, lingkungan)
 
 def test_tambah_satu_berkas_lewat_unggahan(klien, lingkungan):
     masuk(klien, "paul", PW_PAUL)
-    proyek = _proyek_bersplit(lingkungan["tmp"] / "unggahan" / "paul" / "p6")
+    proyek = _proyek_bersplit(lingkungan["ruang"] / "p6")
     klien.post("/useupload?ds=p6")
     gbr = (proyek / "train" / "images" / "train0.jpg").read_bytes()
 
@@ -1293,7 +1293,7 @@ def test_tambah_satu_berkas_lewat_unggahan(klien, lingkungan):
 def test_tambah_menolak_jenis_berkas_yang_bukan_gambar_atau_anotasi(klien,
                                                                     lingkungan):
     masuk(klien, "paul", PW_PAUL)
-    _proyek_bersplit(lingkungan["tmp"] / "unggahan" / "paul" / "p7")
+    _proyek_bersplit(lingkungan["ruang"] / "p7")
     klien.post("/useupload?ds=p7")
     for nama in ("catatan.sh", "data.yaml", "arsip.zip"):
         assert klien.put(f"/tambah?name={nama}",
@@ -1347,7 +1347,7 @@ def test_field_per_bentuk_tidak_bergeser_saat_ada_bentuk_dilewati(lingkungan):
     from app.routers import annotate
     from app.services import scanner
 
-    d, ip = _dataset_satu(lingkungan["tmp"], BENTUK_UJI)
+    d, ip = _dataset_satu(lingkungan["roots"], BENTUK_UJI)
     items, _ = scanner.scan(d)
     it = items[0]
     assert len(it["shapes"]) == 2, "poligon 2 titik memang harus dilewati"
@@ -1372,7 +1372,7 @@ def test_description_bertahan_saat_disimpan_ulang_dari_web(klien, lingkungan):
     from app.services import scanner
 
     masuk(klien, "paul", PW_PAUL)
-    d, ip = _dataset_satu(lingkungan["tmp"], BENTUK_UJI)
+    d, ip = _dataset_satu(lingkungan["roots"], BENTUK_UJI)
     klien.post(f"/setsrc?path={d}")
 
     items, _ = scanner.scan(d)
@@ -1397,7 +1397,7 @@ def test_titik_di_luar_gambar_dikurung_saat_menyimpan(klien, lingkungan):
     import json as _json
 
     masuk(klien, "paul", PW_PAUL)
-    d, ip = _dataset_satu(lingkungan["tmp"], BENTUK_UJI)
+    d, ip = _dataset_satu(lingkungan["roots"], BENTUK_UJI)
     klien.post(f"/setsrc?path={d}")
 
     liar = [{"label": "botol", "shape_type": "polygon", "flags": {},
@@ -1427,7 +1427,7 @@ def test_flag_bawaan_dataset_selalu_ditawarkan(klien, lingkungan, monkeypatch):
     get_settings.cache_clear()
 
     masuk(klien, "paul", PW_PAUL)
-    d, ip = _dataset_satu(lingkungan["tmp"], BENTUK_UJI)
+    d, ip = _dataset_satu(lingkungan["roots"], BENTUK_UJI)
     klien.post(f"/setsrc?path={d}")
     html = klien.get(f"/label?path={ip}").text
     data = _json.loads(re.search(r'id="data-awal"[^>]*>(.*?)</script>',
@@ -1453,7 +1453,7 @@ def test_catatan_tingkat_gambar_bisa_dibaca_dan_ditulis(klien, lingkungan):
     import json as _json
 
     masuk(klien, "paul", PW_PAUL)
-    d, ip = _dataset_satu(lingkungan["tmp"], BENTUK_UJI)
+    d, ip = _dataset_satu(lingkungan["roots"], BENTUK_UJI)
     jp = ip.with_suffix(".json")
     isi = _json.loads(jp.read_text())
     isi["image_text"] = "foto dari batch pagi"
@@ -1479,7 +1479,7 @@ def test_daftar_berkas_membawa_penanda_split(klien, lingkungan):
     import json as _json
 
     masuk(klien, "paul", PW_PAUL)
-    proyek = _proyek_bersplit(lingkungan["tmp"] / "unggahan" / "paul" / "psplit",
+    proyek = _proyek_bersplit(lingkungan["ruang"] / "psplit",
                               n=(2, 1, 1))
     klien.post("/useupload?ds=psplit")
     ip = proyek / "train" / "images" / "train0.jpg"
@@ -1503,7 +1503,7 @@ def test_deteksi_teks_mengembalikan_banyak_objek(klien, lingkungan, monkeypatch)
     from app.services import autolabel
 
     masuk(klien, "paul", PW_PAUL)
-    d, ip = _dataset_satu(lingkungan["tmp"], BENTUK_UJI)
+    d, ip = _dataset_satu(lingkungan["roots"], BENTUK_UJI)
     klien.post(f"/setsrc?path={d}")
 
     dipanggil = {}
@@ -1536,7 +1536,7 @@ def test_deteksi_teks_membatasi_nilai_yang_di_luar_akal(klien, lingkungan,
     from app.services import autolabel
 
     masuk(klien, "paul", PW_PAUL)
-    d, ip = _dataset_satu(lingkungan["tmp"], BENTUK_UJI)
+    d, ip = _dataset_satu(lingkungan["roots"], BENTUK_UJI)
     klien.post(f"/setsrc?path={d}")
 
     dilihat = {}
@@ -1558,7 +1558,7 @@ def test_deteksi_teks_membatasi_nilai_yang_di_luar_akal(klien, lingkungan,
 def test_deteksi_teks_menolak_model_yang_bukan_model_teks(lingkungan):
     from app.services import autolabel
 
-    d, ip = _dataset_satu(lingkungan["tmp"], BENTUK_UJI)
+    d, ip = _dataset_satu(lingkungan["roots"], BENTUK_UJI)
     with pytest.raises(autolabel.TidakAdaObjek, match="tidak menerima prompt teks"):
         autolabel.dari_teks(ip, ["botol"], "mobilesam")
     with pytest.raises(autolabel.TidakAdaObjek, match="belum ada nama kelas"):
@@ -1615,7 +1615,7 @@ def test_grid_bisa_diurutkan_menurut_waktu_dilabeli(klien, lingkungan):
     dan langsung melihat hasilnya di depan.
     """
     masuk(klien, "paul", PW_PAUL)
-    d = _dataset_berwaktu(lingkungan["tmp"], {"aaa": 300, "bbb": 100, "ccc": 200})
+    d = _dataset_berwaktu(lingkungan["roots"], {"aaa": 300, "bbb": 100, "ccc": 200})
     klien.post(f"/setsrc?path={d}")
 
     assert _grid_nama(klien) == ["aaa.jpg", "bbb.jpg", "ccc.jpg"]          # bawaan: abjad
@@ -1629,7 +1629,7 @@ def test_grid_urutan_waktu_ikut_berubah_setelah_menyimpan(klien, lingkungan):
     kalau dibekukan, urutan 'terbaru dilabeli' tidak berubah sampai dipindai
     ulang, dan justru itu yang membuatnya tidak berguna."""
     masuk(klien, "paul", PW_PAUL)
-    d = _dataset_berwaktu(lingkungan["tmp"], {"aaa": 300, "bbb": 100, "ccc": 200})
+    d = _dataset_berwaktu(lingkungan["roots"], {"aaa": 300, "bbb": 100, "ccc": 200})
     klien.post(f"/setsrc?path={d}")
     assert _grid_nama(klien, s="label-baru")[0] == "aaa.jpg"
 
@@ -1645,7 +1645,7 @@ def test_grid_urutan_waktu_ikut_berubah_setelah_menyimpan(klien, lingkungan):
 
 def test_grid_urut_objek_dan_cari_nama(klien, lingkungan):
     masuk(klien, "paul", PW_PAUL)
-    d = _dataset_berwaktu(lingkungan["tmp"], {"aaa": 300, "bbb": 100, "ccc": 200})
+    d = _dataset_berwaktu(lingkungan["roots"], {"aaa": 300, "bbb": 100, "ccc": 200})
     klien.post(f"/setsrc?path={d}")
     # jumlah objeknya 1, 2, 3 sesuai urutan pembuatan
     assert _grid_nama(klien, s="objek-banyak") == ["ccc.jpg", "bbb.jpg", "aaa.jpg"]
@@ -1658,7 +1658,7 @@ def test_grid_urutan_bertahan_saat_saringan_diklik(klien, lingkungan):
     """Mengklik chip saringan tidak boleh diam-diam mengembalikan urutan ke
     bawaan — orang akan menyangka daftarnya yang berubah, bukan urutannya."""
     masuk(klien, "paul", PW_PAUL)
-    d = _dataset_berwaktu(lingkungan["tmp"], {"aaa": 300, "bbb": 100, "ccc": 200})
+    d = _dataset_berwaktu(lingkungan["roots"], {"aaa": 300, "bbb": 100, "ccc": 200})
     klien.post(f"/setsrc?path={d}")
     html = klien.get("/?s=label-baru&q=b").text
     for potongan in ("s=label-baru", "q=b"):
@@ -1668,7 +1668,7 @@ def test_grid_urutan_bertahan_saat_saringan_diklik(klien, lingkungan):
 def test_grid_urutan_tak_dikenal_kembali_ke_bawaan(klien, lingkungan):
     """Nilai asing di URL tidak boleh menggagalkan halaman."""
     masuk(klien, "paul", PW_PAUL)
-    d = _dataset_berwaktu(lingkungan["tmp"], {"aaa": 300, "bbb": 100, "ccc": 200})
+    d = _dataset_berwaktu(lingkungan["roots"], {"aaa": 300, "bbb": 100, "ccc": 200})
     klien.post(f"/setsrc?path={d}")
     assert _grid_nama(klien, s="tidak-ada-urutan-ini") == ["aaa.jpg", "bbb.jpg", "ccc.jpg"]
 
@@ -1889,7 +1889,7 @@ def test_saringan_kelas_mode_dan_menuntut_semuanya_dalam_satu_gambar(klien,
     sama". Keduanya dibutuhkan, jadi aturannya bisa dipilih.
     """
     masuk(klien, "paul", PW_PAUL)
-    d = _ds_dua_kelas(lingkungan["tmp"])
+    d = _ds_dua_kelas(lingkungan["roots"])
     klien.post(f"/setsrc?path={d}")
 
     assert _grid_nama(klien, f="all", c=["botol", "kaleng"]) == \
@@ -1914,7 +1914,7 @@ def test_mengurutkan_tidak_merusak_saringan_kelas_yang_aktif(klien, lingkungan,
     mendadak kosong. `x` dan `m` bahkan tidak ikut sama sekali.
     """
     masuk(klien, "paul", PW_PAUL)
-    d = _ds_dua_kelas(tmp_path)
+    d = _ds_dua_kelas(lingkungan["roots"])
     klien.post(f"/setsrc?path={d}")
     html = klien.get("/?c=botol&c=kaleng&m=dan").text
     form = html[html.index('class="bar bar-urut"'):]
@@ -1936,7 +1936,7 @@ def test_tombol_kartu_membedakan_melabeli_dari_menyunting(klien, lingkungan,
     sana, dan ke situlah kamu masuk justru kalau tanda latarnya salah.
     """
     masuk(klien, "paul", PW_PAUL)
-    d = _ds_dua_kelas(tmp_path)
+    d = _ds_dua_kelas(lingkungan["roots"])
     klien.post(f"/setsrc?path={d}")
     kosong = d / "d-kosong.jpg"
     klien.post(f"/markbg?path={kosong}")
@@ -1966,7 +1966,7 @@ def test_saringan_kelas_tidak_menumpuk_chip_di_samping_tombolnya(klien, lingkung
     dan lepas centangnya.
     """
     masuk(klien, "paul", PW_PAUL)
-    d = _ds_dua_kelas(tmp_path)
+    d = _ds_dua_kelas(lingkungan["roots"])
     klien.post(f"/setsrc?path={d}")
     html = klien.get("/?c=botol&c=kaleng&m=dan&x=latar").text
     bar = html[html.index('id="menu-kelas"'):]
@@ -1994,7 +1994,7 @@ def test_mode_dan_tidak_menawarkan_latar_dan_belum_dilabeli(klien, lingkungan):
     antarmukanya sendiri.
     """
     masuk(klien, "paul", PW_PAUL)
-    d = _ds_dua_kelas(lingkungan["tmp"])
+    d = _ds_dua_kelas(lingkungan["roots"])
     klien.post(f"/setsrc?path={d}")
 
     # mode "semuanya": x diabaikan, yang menentukan hanya kelasnya

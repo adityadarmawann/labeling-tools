@@ -23,21 +23,21 @@
   <nav class="sisi-menu" aria-label="Bagian projek">
     <span class="sisi-judul">DATA</span>
 
-    <a class="sisi-item" href="/unggah?ds={{ pr.nama | urlquote }}"
+    <a class="sisi-item" href="/unggah?ds={{ pr.ds | urlquote }}"
        {% if aktif == 'unggah' %}data-on aria-current="page"{% endif %}>
       <span class="sisi-ikon" aria-hidden="true">&uarr;</span>Unggah data</a>
 
-    <a class="sisi-item" href="/?ds={{ pr.nama | urlquote }}&f=unlab"
+    <a class="sisi-item" href="/?ds={{ pr.ds | urlquote }}&f=unlab"
        {% if aktif == 'anotasi' %}data-on aria-current="page"{% endif %}>
       <span class="sisi-ikon" aria-hidden="true">&#9998;</span>Anotasi
       {%- if pr.belum %}<b class="sisi-angka">{{ pr.belum }}</b>{% endif %}</a>
 
-    <a class="sisi-item" href="/?ds={{ pr.nama | urlquote }}"
+    <a class="sisi-item" href="/?ds={{ pr.ds | urlquote }}"
        {% if aktif == 'dataset' %}data-on aria-current="page"{% endif %}>
       <span class="sisi-ikon" aria-hidden="true">&#9635;</span>Dataset
       {%- if pr.jumlah %}<b class="sisi-angka">{{ pr.jumlah }}</b>{% endif %}</a>
 
-    <a class="sisi-item" href="/versi?ds={{ pr.nama | urlquote }}"
+    <a class="sisi-item" href="/versi?ds={{ pr.ds | urlquote }}"
        {% if aktif == 'versi' %}data-on aria-current="page"{% endif %}>
       <span class="sisi-ikon" aria-hidden="true">&#9707;</span>Versi
       {%- if pr.versi %}<b class="sisi-angka">{{ pr.versi }}</b>{% endif %}</a>

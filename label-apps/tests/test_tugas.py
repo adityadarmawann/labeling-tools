@@ -937,3 +937,234 @@ def test_papan_bisa_diurutkan(klien, lingkungan):
     assert judul("&urut=pelabel")[0] == "Satu"
     # Nilai urut yang tidak dikenal jatuh ke bawaan, bukan menggagalkan halaman.
     assert klien.get("/anotasi?ds=urut-uji&urut=ngawur").status_code == 200
+
+
+# ============================================================
+# TEMUAN AUDIT QA
+# ============================================================
+
+def test_panggilan_yang_tidak_mengubah_apa_pun_tidak_melahirkan_berkas(tmp_path):
+    """TEMUAN 1. Projek warisan tidak boleh berubah gara-gara panggilan sia-sia.
+
+    Semua operasi ini dulu memanggil _tulis() tanpa syarat. Satu
+    POST /api/tugas/bubarkan?id=tidakada pada projek warisan melahirkan
+    .tugas.json berisi dataset kosong: projeknya berhenti jadi warisan, dan
+    ekspornya terjun dari seluruhnya jadi nol tanpa satu pun tindakan yang
+    benar-benar mengubah sesuatu.
+    """
+    d = _ds(tmp_path)
+    tugas.bubarkan(d, "darma", "tidak-ada")
+    tugas.batalkan_undangan(d, "darma", "token-hantu")
+    tugas.keluarkan_anggota(d, "darma", "bukan-anggota")
+    tugas.keluarkan(d, ["tidak-ada.jpg"], "darma")
+
+    assert not (d / tugas.BERKAS).exists(), "berkas lahir tanpa ada yang berubah"
+    data = tugas.baca(d, "darma")
+    assert data["warisan"] is True
+    assert tugas.di_dataset(data, "apa pun.jpg") is True
+
+
+def test_ekspor_projek_warisan_tidak_hangus_oleh_bubarkan_hantu(klien, lingkungan):
+    """TEMUAN 1, lewat rutenya, sampai ke akibat yang sebenarnya."""
+    import pathlib
+
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = _projek(ruang, "warisan-utuh", n=3)
+    klien.post(f"/setsrc?path={d}")
+
+    sebelum = klien.get("/api/ekspor/ringkasan?format=yolo-seg&split=8:1:1").json()
+    assert sebelum["n_dataset"] == 3
+
+    klien.post("/api/tugas/bubarkan?id=tidak-ada")
+    klien.post("/api/tugas/batalkan-undangan?token=hantu")
+    klien.post("/api/tugas/keluarkan-anggota?akun=bukan-anggota")
+
+    sesudah = klien.get("/api/ekspor/ringkasan?format=yolo-seg&split=8:1:1").json()
+    assert sesudah["n_dataset"] == 3, "ekspor hangus karena panggilan sia-sia"
+    assert klien.get("/ekspor?format=yolo-seg&gambar=0").status_code == 200
+
+
+def test_setsrc_tidak_bisa_membuka_projek_akun_lain(klien, aplikasi, lingkungan):
+    """TEMUAN 2. ?ds= dijaga rapi, /setsrc dulu tidak.
+
+    Akibatnya penjagaan itu tidak ada artinya: satu permintaan dengan path
+    tebakan sudah cukup untuk membuka projek orang lain, dan karena projek
+    warisan membolehkan siapa saja menyunting, juga untuk menulis anotasi ke
+    dalamnya lalu mengunduh ZIP-nya.
+    """
+    import pathlib
+
+    from conftest import klien_baru
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    milik_paul = _projek(ruang, "rahasia-paul", n=2)
+
+    lain = klien_baru(aplikasi, "anggi", PW_ANGGI)
+    j = lain.post(f"/setsrc?path={milik_paul}").json()
+    assert j["ok"] is False, "projek orang lain terbuka lewat path"
+
+    # Diundang: baru boleh.
+    klien.post(f"/setsrc?path={milik_paul}")
+    klien.post("/api/tugas/undang?akun=anggi")
+    assert lain.post(f"/setsrc?path={milik_paul}").json()["ok"] is True
+
+    # Folder di luar kedua akar tetap ditolak, siapa pun akunnya.
+    luar = lingkungan["tmp"] / "luar-sekali"
+    luar.mkdir(exist_ok=True)
+    assert klien.post(f"/setsrc?path={luar}").json()["ok"] is False
+
+
+def test_setsrc_tetap_membuka_dataset_bersama(klien, lingkungan):
+    """Yang bersama memang untuk dilihat bersama; penjagaannya tidak boleh
+    ikut menutup itu."""
+    masuk(klien, "paul", PW_PAUL)
+    j = klien.post(f"/setsrc?path={lingkungan['roots'] / 'ds-alpha'}").json()
+    assert j["ok"] is True and j["n"] == 4
+
+
+def test_versi_beku_juga_terhadap_pengeluaran_dari_dataset(klien, lingkungan):
+    """TEMUAN 6. Saringan dataset dulu berjalan SEBELUM saringan versi.
+
+    Akibatnya gambar yang dikeluarkan dari dataset sesudah versinya dibuat ikut
+    hilang dari versi itu: kartunya bilang 4 gambar, ZIP-nya berisi 2. Versi
+    yang isinya bisa berubah bukan versi.
+    """
+    import io
+    import pathlib
+    import zipfile
+
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = _projek(ruang, "versi-beku", n=4)
+    klien.post(f"/setsrc?path={d}")
+    g = sorted(str(x) for x in d.glob("*.jpg"))
+    klien.post("/api/tugas/bagi", json={"pelabel": "paul", "gambar": g})
+    klien.post("/api/tugas/dataset", json={"gambar": g})
+    assert klien.post("/api/versi/buat?split=8:1:1").json()["n"] == 4
+
+    def n_label(url):
+        r = klien.get(url)
+        assert r.status_code == 200, r.status_code
+        z = zipfile.ZipFile(io.BytesIO(r.content))
+        return len([x for x in z.namelist()
+                    if "/labels/" in x and x.endswith(".txt")])
+
+    assert n_label("/ekspor?nomor=1&format=yolo-seg&gambar=0") == 4
+
+    # Dua dikeluarkan dari dataset: ekspor biasa turun, versi TIDAK.
+    klien.post("/api/tugas/dataset", json={"gambar": g[:2], "keluarkan": True})
+    assert klien.get(
+        "/api/ekspor/ringkasan?format=yolo-seg&split=8:1:1").json()["n_dataset"] == 2
+    assert n_label("/ekspor?nomor=1&format=yolo-seg&gambar=0") == 4
+
+    # Bahkan saat dataset dikosongkan sama sekali, versinya tetap bisa diunduh.
+    klien.post("/api/tugas/dataset", json={"gambar": g, "keluarkan": True})
+    assert klien.get("/ekspor?format=yolo-seg&gambar=0").status_code == 409
+    assert n_label("/ekspor?nomor=1&format=yolo-seg&gambar=0") == 4
+
+
+def test_versi_hanya_bisa_diurus_pemilik_projek(klien, aplikasi, lingkungan):
+    """TEMUAN 4. Versi tidak masuk sampah; menghapusnya permanen."""
+    import pathlib
+
+    from conftest import klien_baru
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = _projek(ruang, "versi-hak", n=3)
+    klien.post(f"/setsrc?path={d}")
+    g = sorted(str(x) for x in d.glob("*.jpg"))
+    klien.post("/api/tugas/bagi", json={"pelabel": "anggi", "gambar": g})
+    klien.post("/api/tugas/dataset", json={"gambar": g})
+    klien.post("/api/versi/buat?split=8:1:1")
+
+    lain = klien_baru(aplikasi, "anggi", PW_ANGGI)
+    lain.post(f"/setsrc?path={d}")
+    for rute in ("/api/versi/buat?split=8:1:1", "/api/versi/hapus?nomor=1"):
+        j = lain.post(rute).json()
+        assert j["ok"] is False and "pemilik" in j["error"], (rute, j)
+
+    from app.services import versi as svc_versi
+    assert len(svc_versi.daftar(d)) == 1, "versi pemilik terhapus oleh anggota"
+
+
+def test_bodi_json_cacat_dijawab_pesan_bukan_500(klien, lingkungan):
+    """TEMUAN 7. 500 membuatnya terlihat seperti server yang rusak."""
+    masuk(klien, "paul", PW_PAUL)
+    src = lingkungan["roots"] / "ds-alpha"
+    klien.post(f"/setsrc?path={src}")
+
+    for rute in ("/api/tugas/bagi", "/api/tugas/dataset", "/api/tag/pasang",
+                 "/api/simpan"):
+        for isi in (b"", b"bukan json", b"[1,2,3]", b'"teks"'):
+            r = klien.post(rute, content=isi,
+                           headers={"Content-Type": "application/json"})
+            assert r.status_code == 200, (rute, isi, r.status_code)
+            assert r.json()["ok"] is False, (rute, isi)
+
+
+def test_akun_hantu_tidak_bisa_ditugaskan(klien, lingkungan):
+    """TEMUAN 10. Job untuk pelabel yang tidak ada mengunci gambarnya."""
+    import pathlib
+
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = _projek(ruang, "akun-hantu", n=2)
+    klien.post(f"/setsrc?path={d}")
+    g = sorted(str(x) for x in d.glob("*.jpg"))
+
+    for nama in ("tidak-terdaftar", "x" * 300, "../../etc/passwd", ""):
+        j = klien.post("/api/tugas/bagi",
+                       json={"pelabel": nama, "gambar": g}).json()
+        assert j["ok"] is False, nama
+        j = klien.post(f"/api/tugas/undang?akun={nama}").json()
+        assert j["ok"] is False, nama
+
+    assert tugas.baca(d, "paul")["tugas"] == {}
+
+
+def test_undang_email_kosong_tidak_mengangkat_siapa_pun(klien, lingkungan):
+    """TEMUAN 5. Alamat kosong dulu cocok dengan akun pertama tanpa email."""
+    import pathlib
+
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = _projek(ruang, "undang-kosong", n=2)
+    klien.post(f"/setsrc?path={d}")
+
+    j = klien.post("/api/tugas/undang-email?email=").json()
+    assert j["ok"] is False and "kosong" in j["error"], j
+    assert tugas.baca(d, "paul")["anggota"] == {}
+
+
+def test_label_menolak_path_yang_tidak_dikenal(klien, lingkungan):
+    """TEMUAN 14. Diam-diam membuka gambar lain berarti menyunting yang salah."""
+    masuk(klien, "paul", PW_PAUL)
+    src = lingkungan["roots"] / "ds-alpha"
+    klien.post(f"/setsrc?path={src}")
+
+    assert klien.get("/label").status_code == 200          # tanpa path: yang pertama
+    assert klien.get("/label?path=/tmp/bukan-punyaku.jpg").status_code == 404
+
+
+def test_ds_yang_ditolak_dikembalikan_ke_daftar_projek(klien, lingkungan):
+    """TEMUAN 13. Halaman terbuka berisi projek lain adalah jawaban paling
+    menyesatkan."""
+    masuk(klien, "paul", PW_PAUL)
+    src = lingkungan["roots"] / "ds-alpha"
+    klien.post(f"/setsrc?path={src}")
+
+    r = klien.get("/?ds=orang-lain/rahasia", follow_redirects=False)
+    assert r.status_code == 303 and "/pilih" in r.headers["location"]

@@ -125,3 +125,24 @@ __all__ = ["Settings", "Session", "NeedsLogin", "is_local", "current_session",
            "current_session_api", "require_local", "optional_session",
            "login_redirect", "SettingsDep", "SessionDep", "ApiSessionDep",
            "LocalOnly"]
+
+
+async def bodi_json(request) -> dict:
+    """
+    Bodi JSON sebuah permintaan, selalu berupa dict.
+
+    request.json() melempar kalau bodinya kosong, bukan JSON, atau JSON yang
+    sah tetapi bukan objek — misalnya sebuah larik. Dibiarkan, tiap kesalahan
+    ketik di sisi pemanggil muncul sebagai 500 Internal Server Error, yang
+    membuatnya terlihat seperti server yang rusak alih-alih permintaan yang
+    salah bentuk.
+
+    Mengembalikan dict kosong lebih baik daripada melempar: rutenya sudah punya
+    pemeriksaan sendiri untuk medan yang hilang, dan pesannya jauh lebih
+    menjelaskan daripada "bodi tidak valid".
+    """
+    try:
+        b = await request.json()
+    except Exception:
+        return {}
+    return b if isinstance(b, dict) else {}

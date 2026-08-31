@@ -356,7 +356,7 @@ def test_rute_splitting_dipakai_ekspor_dan_bisa_dilupakan(klien, lingkungan,
     from tests.test_data import masuk, PW_PAUL
 
     masuk(klien, "paul", PW_PAUL)
-    d = _ds_bersesi(tmp_path)
+    d = _ds_bersesi(lingkungan["roots"])
     klien.post(f"/setsrc?path={d}")
 
     j = klien.post("/api/split/jalankan?split=60,20,20").json()
@@ -394,7 +394,7 @@ def test_kemajuan_dilaporkan_dan_bisa_dihentikan(klien, lingkungan, tmp_path):
     from tests.test_data import masuk, PW_PAUL
 
     masuk(klien, "paul", PW_PAUL)
-    d = _ds_bersesi(tmp_path, n_sesi=6, per_sesi=4)
+    d = _ds_bersesi(lingkungan["roots"], n_sesi=6, per_sesi=4)
     klien.post(f"/setsrc?path={d}")
     klien.post("/api/split/jalankan?split=80,10,10")
 
@@ -540,7 +540,7 @@ def test_kelima_format_memakai_pembagian_yang_sama_persis(klien, lingkungan,
     from tests.test_data import masuk, PW_PAUL
 
     masuk(klien, "paul", PW_PAUL)
-    d = _ds_bersesi(tmp_path, n_sesi=12, per_sesi=6)
+    d = _ds_bersesi(lingkungan["roots"], n_sesi=12, per_sesi=6)
     klien.post(f"/setsrc?path={d}")
     j = klien.post("/api/split/jalankan?split=80,10,10").json()
     assert j["ok"], j
@@ -584,7 +584,7 @@ def test_rasio_diubah_sesudahnya_tidak_diam_diam_mengubah_isi_zip(klien,
     from tests.test_data import masuk, PW_PAUL
 
     masuk(klien, "paul", PW_PAUL)
-    d = _ds_bersesi(tmp_path, n_sesi=12, per_sesi=6)
+    d = _ds_bersesi(lingkungan["roots"], n_sesi=12, per_sesi=6)
     klien.post(f"/setsrc?path={d}")
     j = klien.post("/api/split/jalankan?split=80,10,10").json()
 
@@ -610,7 +610,7 @@ def test_zip_membawa_catatan_cara_membelahnya(klien, lingkungan, tmp_path):
     from tests.test_data import masuk, PW_PAUL
 
     masuk(klien, "paul", PW_PAUL)
-    d = _ds_bersesi(tmp_path, n_sesi=12, per_sesi=6)
+    d = _ds_bersesi(lingkungan["roots"], n_sesi=12, per_sesi=6)
     klien.post(f"/setsrc?path={d}")
 
     def info(fmt):
@@ -642,7 +642,7 @@ def test_unduhan_menandai_balasannya_supaya_bisa_ditunggu(klien, lingkungan,
     from tests.test_data import masuk, PW_PAUL
 
     masuk(klien, "paul", PW_PAUL)
-    d = _ds_bersesi(tmp_path, n_sesi=4, per_sesi=3)
+    d = _ds_bersesi(lingkungan["roots"], n_sesi=4, per_sesi=3)
     klien.post(f"/setsrc?path={d}")
     r = klien.get("/ekspor?format=yolo-seg&tanda=uji123")
     assert "unduh_siap=uji123" in r.headers.get("set-cookie", "")

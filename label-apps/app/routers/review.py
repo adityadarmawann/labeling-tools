@@ -182,7 +182,12 @@ async def index(request: Request, f: str = "all",
         # memegang aturannya: projek sendiri, atau projek orang lain yang
         # mengundang akun ini. Selain itu None, dan tidak ada yang terbuka.
         d = svc_projek.temukan(settings.uploads_root, sess.user, ds)
-        if d and str(sess.src or "") != str(d):
+        if d is None:
+            # Diam-diam menampilkan projek lain yang kebetulan masih terbuka
+            # adalah jawaban yang paling menyesatkan: halamannya terbuka,
+            # isinya bukan yang diminta, dan tidak ada yang menyebutkan itu.
+            return RedirectResponse("/pilih", status_code=303)
+        if str(sess.src or "") != str(d):
             await asyncio.to_thread(sess.load, d)
 
     # Belum memilih dataset -> tampilkan pemilih, bukan grid kosong.

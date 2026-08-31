@@ -55,7 +55,11 @@ async def halaman_unggah(request: Request, ds: str = "",
     # baru mendarat di akar dan merusak pembagian yang sudah jalan.
     ringkas = await asyncio.to_thread(projek.ringkas, d)
     berisi = ringkas["jumlah"] > 0
-    pr = {"nama": nama, "path": str(d), **ringkas, "versi": 0}
+    # `ds` dibawa apa adanya, termasuk awalan pemilik untuk projek tamu.
+    # Tanpa itu tautan sidebar membuang awalannya dan pindah diam-diam ke
+    # projek sendiri yang kebetulan bernama sama.
+    pr = {"nama": nama, "path": str(d), **ringkas, "versi": 0,
+          "ds": ds if "/" in ds else nama}
     return templates.TemplateResponse(request, "unggah.html", {
         "sess": sess,
         "local": is_local(request),

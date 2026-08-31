@@ -98,6 +98,23 @@ def baca(ds: Path, pemilik: str = "") -> dict:
             "warisan": False}
 
 
+def _tanpa_perubahan(data: dict, hasil: dict) -> dict:
+    """
+    Kembalikan hasil TANPA menulis berkasnya.
+
+    Ini bukan penghematan I/O. Projek yang belum pernah ditugaskan tidak punya
+    berkas ini sama sekali, dan itulah yang membuatnya dibaca sebagai warisan:
+    semua boleh menyunting, semua terhitung masuk dataset. Menulis berkas
+    kosong pada projek seperti itu — misalnya saat membubarkan job yang tidak
+    ada — mengubahnya jadi projek berdataset KOSONG, dan ekspornya terjun ke
+    nol tanpa satu pun tindakan yang benar-benar mengubah sesuatu.
+
+    Karena itu setiap operasi tulis harus memastikan ada yang berubah lebih
+    dulu, dan berhenti di sini kalau tidak.
+    """
+    return hasil
+
+
 def _tulis(ds: Path, data: dict) -> None:
     simpan = {k: v for k, v in data.items() if k != "warisan"}
     p = _p(ds)
@@ -233,10 +250,13 @@ def keluarkan(ds: Path, kunci_daftar: list[str], pemilik: str = "") -> dict:
         data = baca(ds, pemilik)
         buang = set(kunci_daftar)
         sebelum = len(data["dataset"])
-        data["dataset"] = [k for k in data["dataset"] if k not in buang]
+        sisa = [k for k in data["dataset"] if k not in buang]
+        if len(sisa) == sebelum:
+            return _tanpa_perubahan(data, {"dikeluarkan": 0,
+                                           "total": len(data["dataset"])})
+        data["dataset"] = sisa
         _tulis(ds, data)
-    return {"dikeluarkan": sebelum - len(data["dataset"]),
-            "total": len(data["dataset"])}
+    return {"dikeluarkan": sebelum - len(sisa), "total": len(sisa)}
 
 
 # ============================================================
@@ -324,18 +344,24 @@ def undangan_terbuka(data: dict) -> list[dict]:
 def batalkan_undangan(ds: Path, pemilik: str, token: str) -> dict:
     with _kunci:
         data = baca(ds, pemilik)
-        ada = data["undangan"].pop(token, None)
+        if token not in data["undangan"]:
+            return _tanpa_perubahan(data, {"dibatalkan": False})
+        data["undangan"].pop(token, None)
         _tulis(ds, data)
-    return {"dibatalkan": bool(ada)}
+    return {"dibatalkan": True}
 
 
 def keluarkan_anggota(ds: Path, pemilik: str, akun: str) -> dict:
     with _kunci:
         data = baca(ds, pemilik)
+        punya_job = [t for t, v in data["tugas"].items()
+                     if v.get("pelabel") == akun]
+        if akun not in data["anggota"] and not punya_job:
+            return _tanpa_perubahan(data, {"anggota": sorted(data["anggota"])})
         data["anggota"].pop(akun, None)
         # Tugasnya ikut dibubarkan: job tanpa pelabel yang masih berhak
         # menyunting adalah pekerjaan yang tidak bisa dilanjutkan siapa pun.
-        for tid in [t for t, v in data["tugas"].items() if v.get("pelabel") == akun]:
+        for tid in punya_job:
             data["tugas"].pop(tid, None)
         _tulis(ds, data)
     return {"anggota": sorted(data["anggota"])}
@@ -414,9 +440,11 @@ def ubah_job(ds: Path, pemilik: str, tid: str, *, pelabel: str | None = None,
 def bubarkan(ds: Path, pemilik: str, tid: str) -> dict:
     with _kunci:
         data = baca(ds, pemilik)
-        ada = data["tugas"].pop(tid, None)
+        if tid not in data["tugas"]:
+            return _tanpa_perubahan(data, {"dibubarkan": False})
+        data["tugas"].pop(tid, None)
         _tulis(ds, data)
-    return {"dibubarkan": bool(ada)}
+    return {"dibubarkan": True}
 
 
 # ============================================================
