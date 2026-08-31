@@ -4,7 +4,7 @@
 {# Setiap tautan saringan membawa urutan dan pencarian yang sedang aktif.
    Tanpa itu, mengklik satu chip diam-diam mengembalikan urutan ke bawaan —
    dan orang menyangka daftarnya yang berubah, bukan urutannya. #}
-{% macro tautan(val_f=none, val_c=none, val_s=none, val_q=none, val_x=none, val_m=none) -%}
+{% macro tautan(val_f=none, val_c=none, val_s=none, val_q=none, val_x=none, val_m=none, val_tg=none, val_bt=none) -%}
 {%- set ff = val_f if val_f is not none else flt -%}
 {%- set cc = val_c if val_c is not none else kelas -%}
 {%- if cc is string -%}{%- set cc = [cc] if cc else [] -%}{%- endif -%}
@@ -12,11 +12,15 @@
 {%- set qq = val_q if val_q is not none else cari -%}
 {%- set xx = val_x if val_x is not none else tanpa -%}
 {%- set mm = val_m if val_m is not none else mode -%}
+{%- set gg = val_tg if val_tg is not none else tag_pilih -%}
+{%- set bb = val_bt if val_bt is not none else batch_pilih -%}
 ?f={{ ff }}{% for k in cc %}&c={{ k | urlquote }}{% endfor %}
 {%- for k in xx %}&x={{ k }}{% endfor %}
 {%- if mm and mm != "atau" %}&m={{ mm }}{% endif %}
 {%- if ss and ss != 'nama' %}&s={{ ss }}{% endif %}
 {%- if qq %}&q={{ qq | urlquote }}{% endif %}
+{%- for g in gg %}&tg={{ g | urlquote }}{% endfor %}
+{%- if bb %}&bt={{ bb | urlquote }}{% endif %}
 {%- endmacro %}
 
 {# `warna` menautkan chip ke potongan bilah kemajuan di atasnya. Titiknya yang
@@ -184,6 +188,63 @@
      tidak ada keterangan yang hilang. #}
   {%- set n_pilih = (kelas | length) + (tanpa | length) %}
   <div class="bar" style="padding-top:0">
+    {#- Muncul hanya kalau ada yang pernah ditandai. Dropdown kosong yang
+        selalu ada cuma menambah satu hal untuk dibuka lalu ditutup lagi. -#}
+    {%- if tag_hitung.tag or tag_hitung.batch %}
+    <span class="menu menu-kiri" id="menu-tag">
+      <button class="chip" id="tag-tombol"
+              {%- if tag_pilih or batch_pilih %} data-on{% endif %}>
+        {%- if batch_pilih %}{{ batch_pilih }}
+        {%- elif tag_pilih | length == 1 %}{{ tag_pilih[0] }}
+        {%- elif tag_pilih %}{{ tag_pilih | length }} tag
+        {%- else %}Tag{% endif %} &#9662;</button>
+      <span class="menu-isi" id="tag-isi">
+        <form method="get" action="/">
+          <input type="hidden" name="f" value="{{ flt }}">
+          {% if urut and urut != 'nama' %}<input type="hidden" name="s" value="{{ urut }}">{% endif %}
+          {% if cari %}<input type="hidden" name="q" value="{{ cari }}">{% endif %}
+          {%- for k in kelas %}<input type="hidden" name="c" value="{{ k }}">{% endfor %}
+          {%- for x in tanpa %}<input type="hidden" name="x" value="{{ x }}">{% endfor %}
+
+          {% if tag_hitung.tag %}
+          <span class="menu-judul">Punya salah satu tag</span>
+          <div class="kelas-daftar">
+            {%- for nama, n in tag_hitung.tag.items() %}
+            <label class="kelas-baris">
+              <input type="checkbox" name="tg" value="{{ nama }}"
+                     {% if nama in tag_pilih %}checked{% endif %}>
+              <span class="cb"></span><span class="kelas-nama">{{ nama }}</span>
+              <span class="kelas-n">{{ n }}</span></label>
+            {%- endfor %}
+          </div>
+          {% endif %}
+
+          {% if tag_hitung.batch %}
+          <span class="menu-pisah"></span>
+          <span class="menu-judul">Dari unggahan</span>
+          <div class="kelas-daftar">
+            <label class="kelas-baris">
+              <input type="radio" name="bt" value=""
+                     {% if not batch_pilih %}checked{% endif %}>
+              <span class="cb"></span><span class="kelas-nama">semua unggahan</span></label>
+            {%- for nama, n in tag_hitung.batch.items() %}
+            <label class="kelas-baris">
+              <input type="radio" name="bt" value="{{ nama }}"
+                     {% if nama == batch_pilih %}checked{% endif %}>
+              <span class="cb"></span><span class="kelas-nama">{{ nama }}</span>
+              <span class="kelas-n">{{ n }}</span></label>
+            {%- endfor %}
+          </div>
+          {% endif %}
+
+          <div class="menu-kaki">
+            <button class="chip aksi" type="submit">Terapkan</button>
+            <a class="chip" href="{{ tautan(val_tg=[], val_bt='') }}">Bersihkan</a>
+          </div>
+        </form>
+      </span>
+    </span>
+    {%- endif %}
     <span class="menu menu-kiri" id="menu-kelas">
       <button class="chip kelas-tombol" id="kelas-tombol"
               {%- if kelas or tanpa %} data-on
@@ -273,6 +334,14 @@
     <a href="/view?path={{ p }}"><img loading="lazy" src="/thumb?path={{ p }}&s=320"></a>
     <div class="meta">
       <div class="fn mono">{%- if it.split %}<span class="split">{{ it.split }}</span>{% endif %}{{ it.img.name }}</div>
+      {%- set tg = tag_dari.get(it | id) %}
+      {%- if tg and (tg.tag or tg.batch) %}
+      <div class="kartu-tag">
+        {%- for x in tg.tag %}<span class="tg-pil">{{ x }}</span>{% endfor %}
+        {%- if tg.batch %}<span class="tg-pil tg-batch"
+           title="dari unggahan {{ tg.batch }}">{{ tg.batch }}</span>{% endif %}
+      </div>
+      {%- endif %}
       {%- set milik = pelabel_dari.get(it | id) %}
       {%- if milik %}
       <div class="tugas-cap{% if milik == sess.user %} tugas-aku{% endif %}"

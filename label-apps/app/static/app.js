@@ -185,6 +185,18 @@ async function dariDrop(dt) {
  * kelas mustahil kalau menunya hilang begitu centang pertama disentuh.
  */
 (() => {
+  // Dropdown tag: bentuknya sama dengan dropdown kelas, jadi pembukaannya
+  // dipasang di sini juga daripada menyalin satu blok lagi.
+  const mt = document.getElementById('menu-tag');
+  if (mt) {
+    document.getElementById('tag-tombol').onclick = ev => {
+      ev.stopPropagation();
+      mt.toggleAttribute('data-buka');
+    };
+    mt.addEventListener('click', ev => ev.stopPropagation());
+    document.addEventListener('click', () => mt.removeAttribute('data-buka'));
+  }
+
   const m = document.getElementById('menu-kelas');
   if (!m) return;
   document.getElementById('kelas-tombol').onclick = ev => {

@@ -168,6 +168,11 @@ async def index(request: Request, f: str = "all",
                 # Projek yang mau dibuka, dipakai tautan di sidebar.
                 # Tanpa ini, menekan "Dataset" di sidebar projek A
                 # menampilkan projek B yang kebetulan masih terbuka.
+                # Tag dan nama unggahan yang dipilih. Keduanya keterangan yang
+                # dipasang orang, dan satu-satunya cara menemukan kembali
+                # sekelompok gambar yang tidak punya ciri lain yang bisa dicari.
+                tag_q: list[str] = Query([], alias="tg"),
+                batch_q: str = Query("", alias="bt"),
                 ds: str = "",
                 sess: Session = Depends(current_session),
                 settings: Settings = Depends(get_settings)):
@@ -227,7 +232,28 @@ async def index(request: Request, f: str = "all",
                 if siapa == sess.user:
                     tugasku_id.add(id(it))
 
+    tdata_tag = svc_tag.baca(sess.src)
+    tag_dari = {}
+    if tdata_tag["gambar"]:
+        for it in items:
+            r = svc_tag.untuk(tdata_tag, svc_tag.kunci_gambar(sess.src, it["img"]))
+            if r["tag"] or r["batch"]:
+                tag_dari[id(it)] = r
+
     tampil = _filter(items, f, kelas, tanpa, mode, tugasku=tugasku_id)
+
+    # Saringan tag dan unggahan dipasang SESUDAH saringan lain, dan sengaja
+    # bersifat "punya salah satu": "sesi pagi atau lampu redup" adalah satu
+    # pertanyaan, dan menuntut keduanya sekaligus hampir tidak pernah yang
+    # dimaksud saat menandai gambar.
+    tag_pilih = [x for x in dict.fromkeys(tag_q) if x]
+    if tag_pilih:
+        pilih = set(tag_pilih)
+        tampil = [it for it in tampil
+                  if pilih & set((tag_dari.get(id(it)) or {}).get("tag") or [])]
+    if batch_q:
+        tampil = [it for it in tampil
+                  if (tag_dari.get(id(it)) or {}).get("batch") == batch_q]
     if cari:
         pola = cari.lower()
         tampil = [it for it in tampil if pola in it["img"].name.lower()]
@@ -263,6 +289,10 @@ async def index(request: Request, f: str = "all",
         "n_obj": sum(len(i["shapes"]) for i in items),
         # Penugasan: siapa pemilik tiap gambar, dan berapa jatahku. Kosong di
         # projek yang belum pernah dibagi, dan chip-nya pun tidak muncul.
+        "tag_dari": tag_dari,
+        "tag_hitung": svc_tag.hitung(tdata_tag),
+        "tag_pilih": tag_pilih,
+        "batch_pilih": batch_q,
         "pelabel_dari": pelabel_dari,
         "n_tugasku": len(tugasku_id),
         "ada_tugas": bool(pelabel_dari),
@@ -302,10 +332,19 @@ async def view(request: Request, path: str = "",
         k = str(s["label"])
         hitung[k] = hitung.get(k, 0) + 1
 
+    from ..services import tag as svc_tag
+    from ..services import tugas as svc_tugas
+
+    tdata = svc_tag.baca(sess.src)
+    kunci = svc_tag.kunci_gambar(sess.src, it["img"])
     return templates.TemplateResponse(request, "view.html", {
         "sess": sess, "local": is_local(request), "it": it,
         "sev": scanner.severity(it), "prev_it": prev_it, "next_it": next_it,
         "posisi": posisi, "hitung": dict(sorted(hitung.items())),
+        "tag": svc_tag.untuk(tdata, kunci),
+        # Menandai gambar itu MENULIS keterangan tentangnya, jadi ia tunduk
+        # pada aturan yang sama dengan menyunting labelnya.
+        "boleh_tag": not svc_tugas.tolak_tulis(sess.src, sess.user, it["img"]),
     })
 
 

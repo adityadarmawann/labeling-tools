@@ -94,6 +94,33 @@
     </section>
 
     <section class="lh-kotak">
+      <h3>Tag</h3>
+      {# Tag itu keterangan yang dipasang ORANG, bukan yang disimpulkan dari
+         isi gambar: "sesi pagi", "lampu redup", "ulang foto". Gunanya satu,
+         menemukan kembali sekelompok gambar yang tidak punya ciri lain yang
+         bisa dicari. #}
+      <div class="lh-tag" id="lh-tag" data-path="{{ it | pathmentah }}"
+           data-boleh="{{ 1 if boleh_tag else 0 }}">
+        {%- for x in tag.tag %}
+        <span class="tg-pil tg-sunting" data-tag="{{ x }}">{{ x }}{% if boleh_tag %}
+          <button type="button" class="tg-buang" data-tag="{{ x }}"
+                  aria-label="Hapus tag {{ x }}">&times;</button>{% endif %}</span>
+        {%- else %}
+        <span class="halus" id="lh-tag-kosong">Belum ada tag.</span>
+        {%- endfor %}
+      </div>
+      {% if boleh_tag %}
+      <div class="row lh-tag-baris">
+        <input type="text" id="lh-tag-baru" placeholder="tambah tag lalu Enter"
+               autocomplete="off">
+      </div>
+      {% endif %}
+      {% if tag.batch %}
+      <p class="halus lh-batch">Dari unggahan <b>{{ tag.batch }}</b></p>
+      {% endif %}
+    </section>
+
+    <section class="lh-kotak">
       <h3>Berkas</h3>
       <dl class="lh-berkas">
         <dt>Nama</dt><dd class="nm mono">{{ it.img.name }}</dd>
@@ -110,3 +137,5 @@
 </div>
 </main>
 {% endblock %}
+
+{% block skrip %}<script src="{{ statik('lihat.js') }}"></script>{% endblock %}

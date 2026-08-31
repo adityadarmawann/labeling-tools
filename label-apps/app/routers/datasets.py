@@ -12,6 +12,7 @@ from ..deps import current_session, current_session_api, is_local, require_local
 from ..log import catat
 from ..services import (anylabeling, export, riwayat, scanner, split,
                         tugas, versi)
+from ..services import tag as svc_tag
 
 _log = catat("labelapp.split")
 from ..session import Session
@@ -232,9 +233,19 @@ async def ekspor(format: str = "yolo-seg", gambar: int = 1, split: str = "",
             "belum ada gambar yang dimasukkan ke dataset. Buka Anotasi, pilih "
             "gambar yang sudah selesai, lalu tekan Tambahkan ke dataset.",
             status_code=409, media_type="text/plain; charset=utf-8")
+    # Tag ikut sebagai berkas terpisah: tidak satu pun format dataset punya
+    # tempat untuknya, dan menyembunyikannya berarti keterangan yang sudah
+    # dipasang orang hilang begitu datanya keluar dari aplikasi ini.
+    tdata_tag = await asyncio.to_thread(svc_tag.baca, sess.src)
+    tag_peta = {}
+    for it in items:
+        r = svc_tag.untuk(tdata_tag, svc_tag.kunci_gambar(sess.src, it["img"]))
+        if r["tag"] or r["batch"]:
+            tag_peta[it["img"].name] = r
+
     data = await asyncio.to_thread(export.zip_dataset, items, nama, format,
                                    bool(gambar), export.baca_rasio(split), names,
-                                   rencana_dipakai)
+                                   rencana_dipakai, tag_peta)
     berkas = f"{nama}-{format}.zip"
     r = Response(data, media_type="application/zip", headers={
         "Content-Disposition": f'attachment; filename="{berkas}"',

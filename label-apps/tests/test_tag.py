@@ -151,3 +151,84 @@ def test_tag_tanpa_dataset_terbuka_ditolak_dengan_jelas(klien, lingkungan):
     masuk(klien, "paul", PW_PAUL)
     j = klien.get("/api/tag/daftar").json()
     assert j["ok"] is False and "dataset" in j["error"]
+
+
+# ============================================================
+# SARINGAN DI GRID DAN EKSPOR
+# ============================================================
+
+def test_grid_menyaring_menurut_tag_dan_unggahan(klien, lingkungan):
+    """"sesi pagi atau lampu redup" adalah satu pertanyaan.
+
+    Karena itu beberapa tag yang dicentang berarti "punya salah satu",
+    sedangkan unggahan hanya satu karena sebuah gambar cuma datang dari satu.
+    """
+    from tests.test_data import masuk, PW_PAUL
+
+    masuk(klien, "paul", PW_PAUL)
+    src = lingkungan["roots"] / "ds-alpha"
+    klien.post(f"/setsrc?path={src}")
+    g = sorted(str(p) for p in src.glob("*.jpg"))
+    assert len(g) >= 4
+
+    # Belum ada tag: dropdownnya tidak muncul sama sekali.
+    assert 'id="menu-tag"' not in klien.get("/").text
+
+    klien.post("/api/tag/pasang", json={"paths": g[:2], "tambah": ["pagi"],
+                                        "batch": "Unggahan A"})
+    klien.post("/api/tag/pasang", json={"paths": g[1:3], "tambah": ["redup"]})
+
+    h = klien.get("/").text
+    assert 'id="menu-tag"' in h and h.count("kartu-tag") == 3
+
+    assert klien.get("/?f=all&tg=pagi").text.count('class="card"') == 2
+    assert klien.get("/?f=all&tg=redup").text.count('class="card"') == 2
+    # Beririsan satu, jadi gabungannya tiga, bukan empat.
+    assert klien.get("/?f=all&tg=pagi&tg=redup").text.count('class="card"') == 3
+    assert klien.get("/?f=all&bt=Unggahan A").text.count('class="card"') == 2
+    assert klien.get("/?f=all&tg=pagi&bt=Unggahan A").text.count('class="card"') == 2
+
+
+def test_tag_ikut_ke_dalam_zip_sebagai_berkas_terpisah(klien, lingkungan):
+    """Tidak satu pun format dataset punya tempat untuk tag.
+
+    Menyembunyikannya berarti keterangan yang sudah dipasang orang hilang
+    begitu datanya keluar dari aplikasi ini.
+    """
+    import io
+    import zipfile
+
+    from tests.test_data import masuk, PW_PAUL
+
+    masuk(klien, "paul", PW_PAUL)
+    src = lingkungan["roots"] / "ds-alpha"
+    klien.post(f"/setsrc?path={src}")
+    g = sorted(str(p) for p in src.glob("*.jpg"))
+    klien.post("/api/tag/pasang", json={"paths": g[:2], "tambah": ["pagi", "redup"],
+                                        "batch": "Unggahan A"})
+
+    for fmt in ("yolo-seg", "coco", "voc"):
+        r = klien.get(f"/ekspor?format={fmt}&gambar=0")
+        assert r.status_code == 200, fmt
+        z = zipfile.ZipFile(io.BytesIO(r.content))
+        assert "tags.csv" in z.namelist(), fmt
+        baris = z.read("tags.csv").decode().splitlines()
+        assert baris[0] == "berkas,tag,unggahan"
+        assert len(baris) == 3, baris          # kepala + dua gambar
+        assert "pagi;redup" in baris[1] and "Unggahan A" in baris[1]
+
+
+def test_penyunting_tag_di_halaman_lihat(klien, lingkungan):
+    from tests.test_data import masuk, PW_PAUL
+
+    masuk(klien, "paul", PW_PAUL)
+    src = lingkungan["roots"] / "ds-alpha"
+    klien.post(f"/setsrc?path={src}")
+    g = sorted(str(p) for p in src.glob("*.jpg"))[0]
+
+    h = klien.get(f"/view?path={g}").text
+    assert "Belum ada tag." in h and 'id="lh-tag-baru"' in h
+
+    klien.post("/api/tag/pasang", json={"paths": [g], "tambah": ["ulang-foto"]})
+    h = klien.get(f"/view?path={g}").text
+    assert "ulang-foto" in h and "Belum ada tag." not in h

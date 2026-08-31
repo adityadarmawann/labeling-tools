@@ -624,16 +624,47 @@ def catatan_split(items: list[dict], bagian: dict, rencana: dict | None,
     return "\n".join(b) + "\n"
 
 
+def tambah_tags_csv(data: bytes, tag_peta: dict) -> bytes:
+    """
+    Sisipkan tags.csv ke dalam ZIP yang sudah jadi.
+
+    Ditempelkan sesudahnya, bukan di dalam tiap penulis format, karena tidak
+    satu pun format dataset punya tempat untuk tag: YOLO cuma angka kelas dan
+    koordinat, VOC per-berkas tanpa medan bebas. Menaruhnya sebagai berkas
+    terpisah membuat ia terbaca alat apa pun tanpa mengubah format datanya.
+
+    Pemisah antar-tag titik koma, dan itu sebabnya koma maupun titik koma
+    dibuang dari nama tag sejak ia diketik (tag.bersihkan_tag).
+    """
+    import csv
+    import io as _io
+
+    if not tag_peta:
+        return data
+    baris = _io.StringIO()
+    w = csv.writer(baris, lineterminator="\n")
+    w.writerow(["berkas", "tag", "unggahan"])
+    for nama in sorted(tag_peta):
+        r = tag_peta[nama]
+        w.writerow([nama, ";".join(r.get("tag") or []), r.get("batch") or ""])
+
+    buf = _io.BytesIO(data)
+    with zipfile.ZipFile(buf, "a", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("tags.csv", baris.getvalue())
+    return buf.getvalue()
+
+
 def zip_dataset(items: list[dict], nama: str, format: str,
                 sertakan_gambar: bool = True, rasio=RASIO_BAWAAN,
-                names: dict | None = None, rencana: dict | None = None) -> bytes:
+                names: dict | None = None, rencana: dict | None = None,
+                tag_peta: dict | None = None) -> bytes:
     """Satu pintu untuk semua format."""
     if format in ("yolo", "yolo-seg"):
         # Lewat kata kunci, bukan posisi: urutan parameter kedua fungsi ini
         # tidak sama, dan pemanggilan posisional akan menyerahkan `names`
         # sebagai `rencana` tanpa satu pun kesalahan yang terlihat.
-        return zip_yolo(items, nama, format == "yolo-seg", sertakan_gambar,
-                        rasio, names=names, rencana=rencana)
+        return tambah_tags_csv(zip_yolo(items, nama, format == "yolo-seg", sertakan_gambar,
+                        rasio, names=names, rencana=rencana), tag_peta)
 
     if format not in ("coco", "voc", "createml"):
         raise ValueError(f"format '{format}' tidak dikenal")
@@ -677,7 +708,7 @@ def zip_dataset(items: list[dict], nama: str, format: str,
             if sertakan_gambar:
                 for it in daftar:
                     z.write(it["img"], f"{split}/{nama_dipakai[id(it)]}")
-    return buf.getvalue()
+    return tambah_tags_csv(buf.getvalue(), tag_peta)
 
 
 def _nama_unik(sudah: dict, nama: str) -> str:

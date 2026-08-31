@@ -1646,3 +1646,20 @@ body.berprojek main{display:flex;gap:0;padding:0;align-items:stretch}
    lain: teal untuk train, kuning valid, biru test. */
 .lajur .p-warn{background:var(--warn)}
 .lajur .p-bg{background:var(--latar)}
+
+/* Tag pada kartu grid. Dipisah dari .labs (kelas objek) karena keduanya
+   menjawab pertanyaan berbeda: kelas itu ISI gambarnya, tag itu keterangan
+   yang dipasang orang tentang gambarnya. */
+.kartu-tag{display:flex;gap:4px;flex-wrap:wrap;margin-top:5px}
+.tg-pil{font-size:10px;padding:1px 7px;border-radius:999px;
+  background:var(--warn-bg);color:var(--ink-dim);max-width:100%;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tg-pil.tg-batch{background:var(--sunk);color:var(--ink-faint)}
+.lh-tag{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px}
+.tg-pil.tg-sunting{display:inline-flex;align-items:center;gap:3px;
+  font-size:11px;padding:2px 4px 2px 8px}
+.tg-buang{background:transparent;border:0;cursor:pointer;color:var(--ink-faint);
+  font-size:13px;line-height:1;padding:0 3px}
+.tg-buang:hover{color:var(--stop)}
+.lh-tag-baris input{width:100%;font-size:12px}
+.lh-batch{margin:8px 0 0}

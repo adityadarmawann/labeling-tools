@@ -1386,15 +1386,20 @@ def jalankan_potret(d):
     cek("Gabungkan menyalin isinya tanpa menghapus sumbernya",
         "projek-satu 2" in nama and "projek-satu" in nama, nama)
 
-    # Halaman Lihat: gambar dan ketiga kotak keterangan harus terlihat
+    # Halaman Lihat: gambar dan seluruh kotak keterangan harus terlihat
     # BERSAMAAN, tanpa halaman perlu digulir sama sekali.
     d.js("location.href = '/'")
     time.sleep(1.2)
     d.js("location.href = document.querySelector('a[href^=\"/view\"]').href")
     time.sleep(1.5)
     simpan("lihat")
-    n_kotak = d.js("document.querySelectorAll('.lh-sisi .lh-kotak').length")
-    cek("ketiga kotak keterangan ada", n_kotak == 3, "jumlah=%s" % n_kotak)
+    # Diperiksa lewat JUDULNYA, bukan jumlahnya. Angka telanjang membuat uji
+    # ini gagal tiap kali ada kotak yang ditambahkan, tanpa memberi tahu kotak
+    # mana yang sebenarnya hilang.
+    judul = d.js("[...document.querySelectorAll('.lh-sisi .lh-kotak h3')]"
+                 ".map(h => h.firstChild.textContent.trim())")
+    cek("kotak keterangan lengkap",
+        judul == ["Temuan", "Objek per kelas", "Tag", "Berkas"], str(judul))
     cek("halaman Lihat tidak bisa digulir",
         d.js("document.documentElement.scrollHeight <= "
              "document.documentElement.clientHeight + 2"),
