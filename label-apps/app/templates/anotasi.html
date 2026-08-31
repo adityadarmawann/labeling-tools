@@ -47,6 +47,18 @@
   </section>
   {% endif %}
 
+  {# ---------------------------------------------------- urutan #}
+  <form class="an-urut" method="get" action="/anotasi">
+    <input type="hidden" name="ds" value="{{ pr.ds }}">
+    <label class="halus" for="an-urut">Urutkan</label>
+    <select class="chip" id="an-urut" name="urut" onchange="this.form.submit()">
+      {%- for nilai, nama in urut_pilihan.items() %}
+      <option value="{{ nilai }}"{% if urut == nilai %} selected{% endif %}>{{ nama }}</option>
+      {%- endfor %}
+    </select>
+    <noscript><button class="chip" type="submit">Terapkan</button></noscript>
+  </form>
+
   {# ---------------------------------------------------- tiga kolom #}
   <section class="an-papan">
 
@@ -93,15 +105,33 @@
       </div>
       {%- for k in dikerjakan %}
       <article class="an-kartu{% if k.pelabel == aku %} an-aku{% endif %}"
-               data-id="{{ k.id }}">
+               data-id="{{ k.id }}" data-pelabel="{{ k.pelabel }}">
         <div class="an-kartu-atas">
-          <span class="an-kartu-judul">{{ k.pelabel }}</span>
+          {#- Judulnya nama unggahan asalnya, bukan nama pelabel: dua job untuk
+              orang yang sama tanpa judul tampak kembar, dan pelabelnya sudah
+              disebut sebaris di bawah. -#}
+          <span class="an-kartu-judul" title="{{ k.judul }}">{{ k.judul }}</span>
           {% if boleh_kelola %}
-          <button class="an-buang" type="button" data-id="{{ k.id }}"
-                  title="Bubarkan tugas ini" aria-label="Bubarkan">&times;</button>
+          <span class="menu an-menu" id="an-menu-{{ k.id }}">
+            <button class="an-titik" type="button" data-menu="{{ k.id }}"
+                    title="Kelola tugas ini" aria-label="Kelola">&#8942;</button>
+            <span class="menu-isi">
+              <a class="menu-aksi" href="/tugas/{{ k.id }}?ds={{ pr.ds | urlquote }}">
+                Lihat isinya</a>
+              <button class="menu-aksi" type="button" data-aksi="pelabel"
+                      data-id="{{ k.id }}">Tugaskan ulang&hellip;</button>
+              <button class="menu-aksi" type="button" data-aksi="catatan"
+                      data-id="{{ k.id }}">Ubah catatan&hellip;</button>
+              <button class="menu-aksi" type="button" data-aksi="judul"
+                      data-id="{{ k.id }}">Ganti judul&hellip;</button>
+              <span class="menu-pisah"></span>
+              <button class="menu-aksi menu-bahaya" type="button" data-aksi="bubar"
+                      data-id="{{ k.id }}">Bubarkan tugas</button>
+            </span>
+          </span>
           {% endif %}
         </div>
-        <span class="halus an-kartu-waktu">dibagi {{ k.dibuat }}</span>
+        <span class="halus an-kartu-waktu">{{ k.pelabel }} &middot; dibagi {{ k.dibuat }}</span>
         {{ bilah(k.berlabel, k.jumlah) }}
         <div class="an-kartu-angka">
           <span><b>{{ k.berlabel }}</b> dikerjakan</span>
@@ -132,9 +162,9 @@
       {%- for k in selesai %}
       <article class="an-kartu an-selesai" data-id="{{ k.id }}">
         <div class="an-kartu-atas">
-          <span class="an-kartu-judul">{{ k.pelabel }}</span>
+          <span class="an-kartu-judul" title="{{ k.judul }}">{{ k.judul }}</span>
         </div>
-        <span class="halus an-kartu-waktu">dibagi {{ k.dibuat }}</span>
+        <span class="halus an-kartu-waktu">{{ k.pelabel }} &middot; dibagi {{ k.dibuat }}</span>
         {{ bilah(k.jumlah, k.jumlah) }}
         <div class="an-kartu-angka">
           <span><b>{{ k.jumlah }}</b> gambar masuk dataset</span>

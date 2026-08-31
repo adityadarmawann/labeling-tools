@@ -203,7 +203,11 @@
     try {
       j = await send('/api/tugas/bagi', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
+        // Judul job diambil dari nama unggahannya kalau halaman ini
+        // memang dibatasi ke satu unggahan. Dua job untuk orang yang
+        // sama tanpa judul tampak kembar di papan.
         body: JSON.stringify({ pelabel, gambar: daftar,
+                               judul: isi.dataset.batch || '',
                                catatan: ($('bg-catatan').value || '').trim() }),
       });
     } catch (e) { pr.gagal('Gagal menghubungi server'); tombol.disabled = false; return; }

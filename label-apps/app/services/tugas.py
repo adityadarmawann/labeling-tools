@@ -342,7 +342,7 @@ def keluarkan_anggota(ds: Path, pemilik: str, akun: str) -> dict:
 
 
 def tugaskan(ds: Path, pemilik: str, pelabel: str, gambar: list[str],
-             catatan: str = "") -> dict:
+             catatan: str = "", judul: str = "") -> dict:
     """
     Buat satu job: sekumpulan gambar untuk satu orang.
 
@@ -365,6 +365,10 @@ def tugaskan(ds: Path, pemilik: str, pelabel: str, gambar: list[str],
         tid = "t" + secrets.token_hex(4)
         data["tugas"][tid] = {
             "pelabel": pelabel,
+            # Judulnya disimpan saat dibagi, bukan diturunkan tiap kali dibaca:
+            # gambar bisa berpindah job, dan judul yang ikut berubah membuat
+            # kartu yang sama tampak jadi kartu lain.
+            "judul": " ".join((judul or "").split())[:80],
             "dibuat": datetime.now().strftime("%Y-%m-%d %H:%M"),
             "oleh": pemilik,
             "catatan": (catatan or "").strip()[:400],
@@ -375,6 +379,36 @@ def tugaskan(ds: Path, pemilik: str, pelabel: str, gambar: list[str],
              tid, len(milik), pelabel, Path(ds).name, len(gambar) - len(milik))
     return {"id": tid, "pelabel": pelabel, "n": len(milik),
             "dilewati": len(gambar) - len(milik)}
+
+
+def ubah_job(ds: Path, pemilik: str, tid: str, *, pelabel: str | None = None,
+             catatan: str | None = None, judul: str | None = None) -> dict:
+    """
+    Ubah satu job tanpa membubarkannya.
+
+    Menugaskan ulang lebih baik daripada membubarkan lalu membagi lagi:
+    membubarkan mengembalikan gambarnya ke kolom pertama, dan siapa pun bisa
+    mengambilnya lebih dulu sebelum pembagian ulangnya sempat dikerjakan.
+    """
+    with _kunci:
+        data = baca(ds, pemilik)
+        job = data["tugas"].get(tid)
+        if job is None:
+            raise KeyError(tid)
+        if pelabel:
+            job["pelabel"] = pelabel
+            if pelabel != data["pemilik"] and pelabel not in data["anggota"]:
+                data["anggota"][pelabel] = {
+                    "peran": "pelabel",
+                    "sejak": datetime.now().strftime("%Y-%m-%d"),
+                }
+        if catatan is not None:
+            job["catatan"] = " ".join(catatan.split())[:400]
+        if judul is not None:
+            job["judul"] = " ".join(judul.split())[:80]
+        _tulis(ds, data)
+    log.info("job %s diubah di %s oleh %r", tid, Path(ds).name, pemilik)
+    return {"id": tid, "pelabel": job["pelabel"]}
 
 
 def bubarkan(ds: Path, pemilik: str, tid: str) -> dict:
@@ -389,8 +423,19 @@ def bubarkan(ds: Path, pemilik: str, tid: str) -> dict:
 # PAPAN
 # ============================================================
 
+URUT_PAPAN = {
+    "terbaru": "Terbaru dibagi",
+    "terlama": "Terlama dibagi",
+    "maju": "Paling maju",
+    "tertinggal": "Paling tertinggal",
+    "terbanyak": "Gambar terbanyak",
+    "pelabel": "Nama pelabel",
+}
+
+
 def papan(data: dict, berlabel: set[str], semua: set[str],
-          batch_dari: dict[str, str] | None = None) -> dict:
+          batch_dari: dict[str, str] | None = None,
+          urut: str = "terbaru") -> dict:
     """
     Bahan untuk papan Anotasi: tiga kolom.
 
@@ -398,6 +443,7 @@ def papan(data: dict, berlabel: set[str], semua: set[str],
     tugas menyimpan siapa mengerjakan apa; yang tahu sebuah gambar sudah punya
     objek atau belum cuma pemindainya.
     """
+    bd = batch_dari or {}
     ditugaskan = set()
     kartu = []
     for tid, t in data["tugas"].items():
@@ -407,21 +453,45 @@ def papan(data: dict, berlabel: set[str], semua: set[str],
         n_dataset = sum(1 for k in g if di_dataset(data, k))
         keadaan = (SELESAI if g and n_dataset == len(g)
                    else JALAN if n_label else BARU)
+        # Judul: yang disimpan saat dibagi, atau unggahan yang paling banyak
+        # menyumbang isinya, atau tanggalnya. Dua job untuk orang yang sama
+        # tanpa judul tampak kembar, dan menebak mana yang mana dari
+        # tanggalnya saja lebih lambat daripada membacanya.
+        judul = t.get("judul") or ""
+        if not judul and g:
+            asal: dict[str, int] = {}
+            for k in g:
+                b = bd.get(k)
+                if b:
+                    asal[b] = asal.get(b, 0) + 1
+            if asal:
+                judul = max(asal.items(), key=lambda x: x[1])[0]
         kartu.append({
             "id": tid, "pelabel": t.get("pelabel", ""),
+            "judul": judul or f"Dibagi {t.get('dibuat', '')[:10]}",
             "dibuat": t.get("dibuat", ""), "catatan": t.get("catatan", ""),
             "jumlah": len(g), "berlabel": n_label,
             "di_dataset": n_dataset, "keadaan": keadaan,
             "persen": round(n_label * 100 / len(g)) if g else 0,
         })
-    kartu.sort(key=lambda k: k["dibuat"], reverse=True)
+    # Urutan kartu. "terbaru" bawaannya, karena pekerjaan yang baru dibagi
+    # itulah yang paling sering dicari sesudah membaginya.
+    URUT = {
+        "terbaru": (lambda k: k["dibuat"], True),
+        "terlama": (lambda k: k["dibuat"], False),
+        "maju": (lambda k: k["persen"], True),
+        "tertinggal": (lambda k: k["persen"], False),
+        "pelabel": (lambda k: k["pelabel"].lower(), False),
+        "terbanyak": (lambda k: k["jumlah"], True),
+    }
+    kunci_urut, turun = URUT.get(urut, URUT["terbaru"])
+    kartu.sort(key=kunci_urut, reverse=turun)
     belum = sorted(semua - ditugaskan)
 
     # Yang belum ditugaskan dikelompokkan per UNGGAHAN, bukan disebut sebagai
     # satu angka gabungan. Satu angka 378 tidak memberi tahu apa pun tentang
     # asalnya: satu unggahan besar dan lima unggahan kecil terlihat sama, dan
     # keputusan membaginya justru hampir selalu per unggahan.
-    bd = batch_dari or {}
     kelompok: dict[str, int] = {}
     for k in belum:
         kelompok[bd.get(k) or ""] = kelompok.get(bd.get(k) or "", 0) + 1
@@ -446,6 +516,7 @@ def papan(data: dict, berlabel: set[str], semua: set[str],
                          key=lambda o: (-o["jumlah"], o["pelabel"]))
 
     return {
+        "urut": urut if urut in URUT_PAPAN else "terbaru",
         "belum_ditugaskan": len(belum),
         "belum_batch": belum_batch,
         "kartu": kartu,

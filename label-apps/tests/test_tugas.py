@@ -869,3 +869,71 @@ def test_kolom_dataset_menautkan_ke_gambarnya(klien, lingkungan):
     h = klien.get("/anotasi?ds=dataset-tautan").text
     assert "Lihat semua 2 gambar di dataset" in h
     assert 'href="/?ds=dataset-tautan"' in h
+
+
+def test_kartu_papan_berjudul_unggahan_dan_punya_menu(klien, lingkungan):
+    """Dua job untuk orang yang sama tanpa judul tampak kembar."""
+    import pathlib
+
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = _projek(ruang, "judul-uji", n=6)
+    klien.post(f"/setsrc?path={d}")
+    g = sorted(str(x) for x in d.glob("*.jpg"))
+    klien.post("/api/tag/pasang", json={"paths": g[:3], "batch": "Folder pagi"})
+
+    # Judul diambil dari unggahan yang paling banyak menyumbang isinya.
+    tid = klien.post("/api/tugas/bagi",
+                     json={"pelabel": "anggi", "gambar": g[:3]}).json()["id"]
+    h = klien.get("/anotasi?ds=judul-uji").text
+    assert "Folder pagi" in h
+    assert 'data-aksi="pelabel"' in h and 'data-aksi="bubar"' in h
+
+    # Job tanpa unggahan jatuh ke tanggalnya, bukan kosong.
+    klien.post("/api/tugas/bagi", json={"pelabel": "anggi", "gambar": g[3:]})
+    assert "Dibagi 20" in klien.get("/anotasi?ds=judul-uji").text
+
+    # Menugaskan ulang memindahkan haknya, tanpa membubarkan.
+    j = klien.post(f"/api/tugas/ubah?id={tid}&pelabel=paul").json()
+    assert j["ok"] and j["pelabel"] == "paul"
+    data = tugas.baca(d, "paul")
+    assert data["tugas"][tid]["pelabel"] == "paul"
+    assert len(data["tugas"][tid]["gambar"]) == 3, "gambarnya ikut hilang"
+
+    j = klien.post(f"/api/tugas/ubah?id={tid}&catatan=periksa ulang").json()
+    assert j["ok"]
+    assert "periksa ulang" in klien.get("/anotasi?ds=judul-uji").text
+
+    j = klien.post(f"/api/tugas/ubah?id={tid}&judul=Batch khusus").json()
+    assert j["ok"] and "Batch khusus" in klien.get("/anotasi?ds=judul-uji").text
+
+
+def test_papan_bisa_diurutkan(klien, lingkungan):
+    import pathlib
+
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = _projek(ruang, "urut-uji", n=6)
+    klien.post(f"/setsrc?path={d}")
+    g = sorted(str(x) for x in d.glob("*.jpg"))
+    klien.post("/api/tugas/bagi", json={"pelabel": "anggi", "gambar": g[:1],
+                                        "judul": "Satu"})
+    klien.post("/api/tugas/bagi", json={"pelabel": "paul", "gambar": g[1:5],
+                                        "judul": "Empat"})
+
+    import re
+
+    def judul(urut=""):
+        h = klien.get(f"/anotasi?ds=urut-uji{urut}").text
+        return re.findall(r'an-kartu-judul" title="([^"]+)"', h)
+
+    assert set(judul()) == {"Satu", "Empat"}
+    assert judul("&urut=terbanyak")[0] == "Empat"
+    # Menurut nama pelabel, menaik: anggi lebih dulu daripada paul.
+    assert judul("&urut=pelabel")[0] == "Satu"
+    # Nilai urut yang tidak dikenal jatuh ke bawaan, bukan menggagalkan halaman.
+    assert klien.get("/anotasi?ds=urut-uji&urut=ngawur").status_code == 200

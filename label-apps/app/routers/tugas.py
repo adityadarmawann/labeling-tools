@@ -50,7 +50,7 @@ def _kunci(sess: Session, paths: list[str]) -> list[str]:
 
 
 @router.get("/anotasi", response_class=HTMLResponse)
-async def halaman_papan(request: Request, ds: str = "",
+async def halaman_papan(request: Request, ds: str = "", urut: str = "terbaru",
                         sess: Session = Depends(current_session),
                         settings: Settings = Depends(get_settings)):
     """
@@ -94,12 +94,13 @@ async def halaman_papan(request: Request, ds: str = "",
             if b:
                 batch_dari[k] = b
 
-    papan = svc.papan(data, berlabel, semua, batch_dari)
+    papan = svc.papan(data, berlabel, semua, batch_dari, urut)
     return templates.TemplateResponse(request, "anotasi.html", {
         "sess": sess, "pr": pr, "aktif": "anotasi",
         "boleh_kelola": svc.boleh_kelola(data, sess.user),
         "pemilik": data["pemilik"] or sess.user,
         "aku": sess.user,
+        "urut_pilihan": svc.URUT_PAPAN,
         **papan,
     })
 
@@ -355,7 +356,27 @@ async def bagi(request: Request, sess: Session = Depends(current_session_api)):
     if not kunci:
         return {"ok": False, "error": "tidak satu pun gambar itu ada di projek ini"}
     r = await asyncio.to_thread(svc.tugaskan, sess.src, sess.user, pelabel,
-                                kunci, str(body.get("catatan") or ""))
+                                kunci, str(body.get("catatan") or ""),
+                                str(body.get("judul") or ""))
+    return {"ok": True, **r}
+
+
+@router.post("/api/tugas/ubah")
+async def ubah(id: str = "", pelabel: str = "", catatan: str | None = None,
+               judul: str | None = None,
+               sess: Session = Depends(current_session_api)):
+    """Tugaskan ulang, ubah catatan, atau ganti judul job."""
+    data, galat = _siap(sess)
+    if galat:
+        return {"ok": False, "error": galat}
+    if not svc.boleh_kelola(data, sess.user):
+        return {"ok": False, "error": "hanya pemilik projek yang bisa mengubah tugas"}
+    try:
+        r = await asyncio.to_thread(svc.ubah_job, sess.src, sess.user, id,
+                                    pelabel=pelabel or None,
+                                    catatan=catatan, judul=judul)
+    except KeyError:
+        return {"ok": False, "error": f"tugas {id} tidak ada"}
     return {"ok": True, **r}
 
 

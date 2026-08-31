@@ -13,7 +13,8 @@
 <main>
 {% include "_sisi.html" %}
 <div class="sisi-isi bg-isi" id="bg-isi"
-     data-ds="{{ pr.ds }}" data-pemilik="{{ pemilik }}">
+     data-ds="{{ pr.ds }}" data-pemilik="{{ pemilik }}"
+     data-batch="{{ batch }}">
 
   {% if not boleh_kelola %}
   <div class="pkosong" style="max-width:640px">
