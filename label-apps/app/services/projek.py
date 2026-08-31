@@ -200,6 +200,72 @@ def _usia(t: float) -> str:
     return datetime.fromtimestamp(t).strftime("%d %b %Y")
 
 
+def temukan(uploads_root: Path, akun: str, ds: str) -> Path | None:
+    """
+    Folder projek yang boleh dibuka `akun`, dari nama di URL.
+
+    Dua bentuk yang diterima:
+        "paragon"          projek milik akun ini sendiri
+        "darma/paragon"    projek milik orang lain yang mengundang akun ini
+
+    Bentuk kedua yang membuat penugasan lintas akun mungkin. Ia tetap dijaga:
+    yang tidak diundang mendapat None, sama seperti kalau projeknya tidak ada.
+    Membedakan "tidak ada" dari "tidak boleh" berarti memberi tahu orang luar
+    projek apa saja yang dimiliki orang lain.
+    """
+    from . import tugas
+
+    ds = (ds or "").strip().strip("/")
+    if not ds:
+        return None
+    root = Path(uploads_root)
+    if "/" in ds:
+        pemilik, _, nama = ds.partition("/")
+        pemilik, nama = bersihkan_nama(pemilik), bersihkan_nama(nama)
+        if not pemilik or not nama:
+            return None
+        d = root / pemilik / nama
+        if not _didalam(d, root) or not d.is_dir():
+            return None
+        if pemilik == akun:
+            return d
+        data = tugas.baca(d, pemilik)
+        return d if tugas.boleh_lihat(data, akun) else None
+
+    d = root / akun / bersihkan_nama(ds)
+    return d if _didalam(d, root / akun) and d.is_dir() else None
+
+
+def punya_tamu(uploads_root: Path, akun: str) -> list[dict]:
+    """
+    Projek milik akun LAIN yang mengundang `akun`.
+
+    Ditelusuri dengan membaca berkas tugas tiap projek, bukan lewat daftar
+    terpusat. Satu daftar terpusat berarti dua sumber kebenaran yang harus
+    dijaga tetap sama, dan yang menang saat berbeda tidak pernah jelas.
+    """
+    from . import tugas
+
+    root = Path(uploads_root)
+    out = []
+    if not root.is_dir():
+        return out
+    for folder_akun in sorted(root.iterdir()):
+        if not folder_akun.is_dir() or folder_akun.name == akun:
+            continue
+        for d in sorted(folder_akun.iterdir()):
+            if not d.is_dir() or d.name.startswith(".") or d.name in _SEMBUNYI:
+                continue
+            if not (d / tugas.BERKAS).is_file():
+                continue
+            data = tugas.baca(d, folder_akun.name)
+            if akun in data["anggota"]:
+                out.append({"pemilik": folder_akun.name, "nama": d.name,
+                            "path": str(d.resolve()),
+                            "ds": f"{folder_akun.name}/{d.name}"})
+    return out
+
+
 def ringkas(d: Path) -> dict:
     """Angka satu projek untuk kepala halaman dan sidebar.
 

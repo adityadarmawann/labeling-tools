@@ -39,13 +39,13 @@ async def halaman_unggah(request: Request, ds: str = "",
     berbeda, pada hari berbeda; memaksa keduanya bersamaan berarti memaksa
     seluruh gambar siap sebelum boleh memberi nama.
     """
-    nama = projek.bersihkan_nama(ds)
-    d = Path(settings.uploads_root) / sess.user / nama if nama else None
-    if not nama or d is None or not d.is_dir():
+    d = projek.temukan(settings.uploads_root, sess.user, ds)
+    if d is None:
         # Tanpa projek yang jelas, halaman ini tidak punya tujuan menyimpan.
         # Dikembalikan ke daftar projek, bukan menampilkan halaman yang
         # tombolnya semua menolak.
         return RedirectResponse("/pilih", status_code=303)
+    nama = d.name
     # Dua jalur, dan yang menentukan bukan pilihan pengguna melainkan keadaan
     # projeknya. Projek kosong menerima apa saja lewat /upload, termasuk .zip
     # dan data.yaml, lalu dipindai dari nol. Projek yang sudah berisi harus
@@ -84,10 +84,10 @@ async def halaman_versi(request: Request, ds: str = "",
     baru muncul belakangan membuat orang mengira fiturnya tidak ada; menu yang
     ada dan mengatakan "belum" tidak.
     """
-    nama = projek.bersihkan_nama(ds)
-    d = Path(settings.uploads_root) / sess.user / nama if nama else None
-    if not nama or d is None or not d.is_dir():
+    d = projek.temukan(settings.uploads_root, sess.user, ds)
+    if d is None:
         return RedirectResponse("/pilih", status_code=303)
+    nama = d.name
     ringkas = await asyncio.to_thread(projek.ringkas, d)
     pr = {"nama": nama, "path": str(d), **ringkas, "versi": 0}
     return templates.TemplateResponse(request, "versi.html", {

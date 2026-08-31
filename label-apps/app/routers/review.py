@@ -10,7 +10,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from ..config import Settings, get_settings
 from ..deps import current_session, current_session_api, is_local, require_local
 from ..security import safe_slug
-from ..services import annotations, anylabeling, render, scanner, tambah
+from ..services import (annotations, anylabeling, render, scanner, tambah,
+                        tugas)
 from ..services.annotations import Menolak
 from ..session import Session
 from ..templating import templates
@@ -165,10 +166,11 @@ async def index(request: Request, f: str = "all",
                 settings: Settings = Depends(get_settings)):
     if ds:
         from ..services import projek as svc_projek
-        d = Path(settings.uploads_root) / sess.user / svc_projek.bersihkan_nama(ds)
-        # Dibatasi ke ruang kerja akun ini: `ds` datang dari URL, dan tanpa
-        # batas itu ia jadi jalan membuka folder mana pun di server.
-        if d.is_dir() and str(sess.src or "") != str(d):
+        # `ds` datang dari URL, jadi ia diselesaikan lewat projek.temukan yang
+        # memegang aturannya: projek sendiri, atau projek orang lain yang
+        # mengundang akun ini. Selain itu None, dan tidak ada yang terbuka.
+        d = svc_projek.temukan(settings.uploads_root, sess.user, ds)
+        if d and str(sess.src or "") != str(d):
             await asyncio.to_thread(sess.load, d)
 
     # Belum memilih dataset -> tampilkan pemilih, bukan grid kosong.
@@ -305,6 +307,11 @@ def _set_bg(sess: Session, path: str, on: bool):
     it = sess.find(path)
     if not it:
         return {"ok": False, "error": "berkas tidak dikenal di dataset ini"}
+    # Menandai latar itu MENULIS anotasi (berkas dengan shapes kosong), jadi ia
+    # tunduk pada aturan yang sama dengan menyimpan bentuk.
+    tolak = tugas.tolak_tulis(sess.src, sess.user, it["img"])
+    if tolak:
+        return {"ok": False, "error": tolak}
     try:
         with sess.lock:
             if on:

@@ -19,7 +19,7 @@ from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import HTMLResponse
 
 from ..deps import current_session, current_session_api, is_local
-from ..services import annotations, autolabel, scanner
+from ..services import annotations, autolabel, scanner, tugas
 from ..services.autolabel import TidakAdaObjek
 from ..session import Session
 from ..templating import templates
@@ -270,6 +270,12 @@ async def api_simpan(request: Request, sess: Session = Depends(current_session_a
     it = sess.find(body.get("path", ""))
     if not it:
         return {"ok": False, "error": "berkas tidak dikenal di dataset ini"}
+    # Diperiksa di RUTE, bukan hanya disembunyikan dari kanvas. Kanvas orang
+    # lain tetap bisa mengirim permintaan ini, dan aturan yang cuma berlaku di
+    # tampilan bukan aturan.
+    tolak = tugas.tolak_tulis(sess.src, sess.user, it["img"])
+    if tolak:
+        return {"ok": False, "error": tolak}
 
     bentuk = []
     W, H = it["W"], it["H"]
