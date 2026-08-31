@@ -118,6 +118,13 @@ h1{font-size:15px;font-weight:600;letter-spacing:.02em}
 .chip:hover{border-color:var(--ink-faint);color:var(--ink)}
 .chip[data-on]{background:var(--ink);color:var(--on-ink);border-color:var(--ink);font-weight:600}
 .chip b{font-variant-numeric:tabular-nums}
+/* Keterangan kecil di samping label isian. Dulu hanya ada di label.css, yang
+   cuma dimuat halaman kanvas, padahal kelas ini dipakai juga di halaman kelola
+   akun. Di sana delapan potong teks yang mestinya kecil dan redup tampil
+   sebagai teks biasa, dan tidak ada yang tampak salah sampai keduanya
+   dibandingkan berdampingan. */
+.halus{font-size:10.5px;color:var(--ink-faint);margin-top:10px;display:block;
+  text-transform:none;letter-spacing:0;font-weight:400}
 .spacer{flex:1}
 
 main{padding:20px 22px 60px}
@@ -765,9 +772,6 @@ input:focus{outline:0;border-color:var(--ok)}
   font-size:11px;color:var(--ink-faint);transition:transform .15s}
 .psumber[open] > summary::after{transform:rotate(180deg)}
 .psumber[open] > summary{border-bottom:1px solid var(--line)}
-.sumber-isi{padding:4px 16px 16px}
-.seg-sumber{margin:14px 0}
-.sumber-ket{font-size:12px;color:var(--ink-dim);line-height:1.55;margin:0 0 4px}
 .lipat-blok{margin-top:18px;padding-top:12px;border-top:1px solid var(--line)}
 
 /* ------------------------------------------------------------ layar sempit */

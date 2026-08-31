@@ -130,25 +130,6 @@ document.addEventListener('click', ev => {
   setsrc(a.dataset.path);
 });
 
-// Riwayat path: sekali klik hanya MENGISI kotaknya, tidak langsung membuka.
-// Dua tombol di sebelahnya berbeda akibat (menyalin vs membuka di tempat),
-// jadi pilihan itu tetap harus dibuat sadar, bukan tersirat dari satu klik.
-document.addEventListener('click', async ev => {
-  const t = ev.target.closest && ev.target.closest('button.riw, button.lupa');
-  if (!t) return;
-  ev.preventDefault();
-  const p = t.dataset.path;
-  if (t.classList.contains('riw')) {
-    const box = document.getElementById('pathbox');
-    box.value = p;
-    box.focus();
-    toast('Path terisi, pilih menyalin atau membuka di tempat');
-    return;
-  }
-  const j = await post('/lupakan-path?path=' + encodeURIComponent(p));
-  if (j.ok) t.closest('.row').remove();
-});
-
 // ---------------------------------------------------------------- unggah
 
 // Tiap berkas dikirim satu-satu lewat PUT dengan bodi mentah. Tanpa multipart,
@@ -1361,15 +1342,12 @@ const Progres = (() => {
     document.getElementById('projek-hitung').hidden = !milik;
   });
 
-  segPasang(document.getElementById('seg-sumber'), v => {
-    document.querySelectorAll('[data-sumber]').forEach(
-      n2 => { n2.hidden = n2.dataset.sumber !== v; });
-  });
+  /* Dialog "Projek baru": menanyakan nama, itu saja.
 
-  /* Dialog "Projek baru". Satu pintu, dibuka dari tombol di kepala halaman
-     dan otomatis saat ada berkas diseret ke mana pun — kalau tidak, .drop
-     yang berada di dalam dialog tertutup membuat tarik-lepas mati diam
-     tanpa memberi tahu apa-apa. */
+     Dulu ia juga terbuka sendiri begitu ada berkas diseret ke halaman ini,
+     karena kotak seretnya memang berada di dalamnya. Sekarang kotak seretnya
+     ada di halaman Unggah data, jadi membuka dialog nama saat orang menyeret
+     folder justru menyesatkan: yang muncul bukan tempat menaruhnya. */
   const dlgProjek = document.getElementById('dlg-projek');
   let fokusSemula = null;
 
@@ -1423,13 +1401,6 @@ const Progres = (() => {
   document.addEventListener('keydown', ev => {
     if (ev.key === 'Escape' && !dlgProjek.hidden) bukaDlg(false);
   });
-  document.addEventListener('dragenter', ev => {
-    if ([...(ev.dataTransfer ? ev.dataTransfer.types : [])].includes('Files')
-        && dlgProjek.hidden) {
-      bukaDlg(true);
-    }
-  });
-
   document.getElementById('buka-sampah').onclick = () => {
     lipatSampah.open = true;
     lipatSampah.scrollIntoView({block: 'nearest', behavior: 'smooth'});
