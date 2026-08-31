@@ -91,6 +91,50 @@ def test_kartu_membawa_angka_yang_dipakai_tampilan(tmp_path):
 
 
 # ============================================================
+# BUAT
+# ============================================================
+
+def test_projek_kosong_dibuat_dan_langsung_terlihat(tmp_path):
+    """Projek dibuat lebih dulu, diisi belakangan.
+
+    Daftar dulu membuang folder tanpa gambar, dan itu benar selama projek
+    hanya lahir bersama unggahannya. Sejak keduanya dipisah, membuangnya
+    berarti orang menekan "Projek baru", berhasil, lalu kembali ke halaman
+    yang tidak menampilkan apa-apa.
+    """
+    root = tmp_path / "ruang"
+    root.mkdir()
+    r = projek.buat(root, "Botol Kaleng")
+    assert (root / r["nama"]).is_dir()
+
+    kartu = {p["nama"]: p for p in projek.daftar(root)}
+    assert r["nama"] in kartu
+    assert kartu[r["nama"]]["jumlah"] == 0
+    assert kartu[r["nama"]]["kosong"] is True
+    assert kartu[r["nama"]]["sampul"] == ""
+
+
+def test_buat_menolak_nama_kembar_dan_nama_yang_menunjuk_keluar(tmp_path):
+    root = tmp_path / "ruang"
+    _projek(root, "sudah-ada")
+    with pytest.raises(projek.Tolak):
+        projek.buat(root, "sudah-ada")
+    for jahat in ("../keluar", "", "   "):
+        try:
+            d = projek.buat(root, jahat)
+        except projek.Tolak:
+            continue
+        assert projek._didalam(root / d["nama"], root), (jahat, d)
+
+
+def test_projek_berisi_tidak_ditandai_kosong(tmp_path):
+    root = tmp_path / "ruang"
+    _projek(root, "berisi", n=2)
+    kartu = {p["nama"]: p for p in projek.daftar(root)}
+    assert kartu["berisi"]["kosong"] is False
+
+
+# ============================================================
 # GANTI NAMA
 # ============================================================
 

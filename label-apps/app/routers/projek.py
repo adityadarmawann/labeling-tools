@@ -179,6 +179,14 @@ async def sampul(path: str = "", sess: Session = Depends(current_session),
                     headers={"Cache-Control": "private, max-age=300"})
 
 
+@router.post("/api/projek/baru")
+async def baru(nama: str = "", sess: Session = Depends(current_session_api),
+               settings: Settings = Depends(get_settings)):
+    """Projek kosong. Gambarnya diunggah belakangan, di halaman projek itu."""
+    root = _ruang(sess, settings)
+    return await asyncio.to_thread(_jawab, projek.buat, root, nama)
+
+
 @router.post("/api/projek/ganti-nama")
 async def ganti_nama(nama: str = "", baru: str = "",
                      sess: Session = Depends(current_session_api),

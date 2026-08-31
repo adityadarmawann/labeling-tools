@@ -192,11 +192,15 @@ def daftar(root: Path | None) -> list[dict]:
         if not d.is_dir() or d.name.startswith(".") or d.name in _SEMBUNYI:
             continue
         s = _survei(d)
-        if not s["gambar"]:
-            continue
+        # Projek KOSONG tetap ditampilkan. Dulu dibuang, dan itu benar selama
+        # projek hanya lahir bersama unggahannya. Sejak projek dibuat lebih
+        # dulu lalu diisi belakangan, membuangnya berarti orang menekan "Projek
+        # baru", berhasil, lalu kembali ke halaman yang tidak menampilkan
+        # apa-apa.
         out.append({
             "nama": d.name, "path": str(d.resolve()),
             "jumlah": s["gambar"], "anotasi": s["anotasi"], "lebih": s["lebih"],
+            "kosong": s["gambar"] == 0,
             "diubah": s["diubah"], "usia": _usia(s["diubah"]),
             "sampul": str(s["sampul"]) if s["sampul"] else "",
         })
@@ -206,6 +210,23 @@ def daftar(root: Path | None) -> list[dict]:
 # ============================================================
 # OPERASI
 # ============================================================
+
+def buat(root: Path, nama: str) -> dict:
+    """
+    Projek kosong, tanpa satu berkas pun.
+
+    Membuat projek dan mengisinya dipisah karena itulah bentuk pekerjaannya:
+    satu projek diisi berkali-kali, dari sumber yang berbeda, pada hari yang
+    berbeda. Menyatukan keduanya memaksa orang menyiapkan seluruh gambarnya
+    sebelum boleh memberi nama.
+    """
+    d = _folder(root, nama)
+    if d.exists():
+        raise Tolak(f"sudah ada projek bernama '{d.name}'")
+    d.mkdir(parents=True)
+    log.info("projek dibuat: %r", d.name)
+    return {"nama": d.name, "path": str(d.resolve())}
+
 
 def ganti_nama(root: Path, lama: str, baru: str) -> dict:
     src = _folder(root, lama)
