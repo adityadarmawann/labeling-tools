@@ -91,8 +91,15 @@ def _diruang(sess, settings) -> bool:
         return False
 
 
-def _filter(items: list[dict], flt: str, kelas, tanpa=(), mode="atau") -> list[dict]:
-    if flt == "issue":
+def _filter(items: list[dict], flt: str, kelas, tanpa=(), mode="atau", *,
+            tugasku=frozenset()) -> list[dict]:
+    if flt == "tugasku":
+        # Gambar yang ditugaskan kepadaku. Bukan sekadar kenyamanan: di projek
+        # 10.000 gambar, jatah seseorang bisa 200, dan tanpa saringan ini ia
+        # menggulir sembilan ribu delapan ratus gambar milik orang lain untuk
+        # menemukan pekerjaannya sendiri.
+        items = [i for i in items if id(i) in tugasku]
+    elif flt == "issue":
         items = [i for i in items if i["issues"] and i["shapes"]]
     elif flt == "bg":
         # Gambar yang SENGAJA ditandai tanpa objek — sampel negatif. Ia berbeda
@@ -203,7 +210,24 @@ async def index(request: Request, f: str = "all",
     # menghasilkan saringan yang tidak bisa dibuat lewat antarmukanya sendiri.
     if mode_q == "dan":
         tanpa = []
-    tampil = _filter(items, f, kelas, tanpa, mode)
+    # Penugasan dibaca sekali per permintaan. Kunci per gambar dihitung dari
+    # akar projek, sama seperti di berkas tag, supaya satu gambar tidak punya
+    # dua nama di dua berkas pendamping.
+    from ..services import tag as svc_tag
+    from ..services import tugas as svc_tugas
+    tdata = svc_tugas.baca(sess.src, sess.user)
+    pelabel_dari = {}
+    tugasku_id = set()
+    if not tdata["warisan"]:
+        for it in items:
+            k = svc_tag.kunci_gambar(sess.src, it["img"])
+            siapa = svc_tugas.pelabel_gambar(tdata, k)
+            if siapa:
+                pelabel_dari[id(it)] = siapa
+                if siapa == sess.user:
+                    tugasku_id.add(id(it))
+
+    tampil = _filter(items, f, kelas, tanpa, mode, tugasku=tugasku_id)
     if cari:
         pola = cari.lower()
         tampil = [it for it in tampil if pola in it["img"].name.lower()]
@@ -237,6 +261,12 @@ async def index(request: Request, f: str = "all",
         "n_bg": sum(1 for s in sev if s == "bg"),
         "n_sudah": sum(1 for s in sev if s in ("ok", "warn")),
         "n_obj": sum(len(i["shapes"]) for i in items),
+        # Penugasan: siapa pemilik tiap gambar, dan berapa jatahku. Kosong di
+        # projek yang belum pernah dibagi, dan chip-nya pun tidak muncul.
+        "pelabel_dari": pelabel_dari,
+        "n_tugasku": len(tugasku_id),
+        "ada_tugas": bool(pelabel_dari),
+        "pemilik_projek": tdata["pemilik"],
         "kelas_hitung": dict(sorted(kelas_hitung.items())),
         # Dataset yang dibuka langsung dari path server tidak boleh ditambahi,
         # dan alasannya ikut dikirim supaya tombolnya bisa menjelaskan diri

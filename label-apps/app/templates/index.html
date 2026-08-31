@@ -67,6 +67,9 @@
     {# Sampel negatif: sengaja ditandai tanpa objek. Berbeda dari "belum
        dilabeli" — yang ini sudah selesai diperiksa. #}
     {{ chip("Latar", "bg", n_bg, "bg") }}
+    {#- Muncul hanya kalau projeknya sudah pernah dibagi. Chip bernilai nol
+        yang selalu ada cuma menambah satu hal untuk dibaca tiap kali. -#}
+    {%- if ada_tugas %}{{ chip("Tugasku", "tugasku", n_tugasku) }}{% endif %}
     <span class="spacer"></span>
     <span class="path mono">{{ n_obj }} objek</span>
     <button class="chip" onclick="rescan()">Pindai ulang</button>
@@ -270,6 +273,11 @@
     <a href="/view?path={{ p }}"><img loading="lazy" src="/thumb?path={{ p }}&s=320"></a>
     <div class="meta">
       <div class="fn mono">{%- if it.split %}<span class="split">{{ it.split }}</span>{% endif %}{{ it.img.name }}</div>
+      {%- set milik = pelabel_dari.get(it | id) %}
+      {%- if milik %}
+      <div class="tugas-cap{% if milik == sess.user %} tugas-aku{% endif %}"
+           title="ditugaskan ke {{ milik }}">{{ milik }}</div>
+      {%- endif %}
       <div class="labs">
         {%- for l in it.shapes | map(attribute='label') | map('string') | unique | sort %}
         {%- if loop.index <= 4 %}<span class="lab">{{ l }}</span>{% endif %}

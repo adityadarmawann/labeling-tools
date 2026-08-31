@@ -18,7 +18,7 @@
 })();
 </script>
 </head>
-<body class="lab">
+<body class="lab"{% if not boleh_ubah %} data-baca-saja{% endif %}>
 
 <div class="lab-top">
   <a class="chip" href="/">Grid</a>
@@ -101,6 +101,15 @@
     <span class="tool-sep"></span>
     <button class="tool tool-simpan" id="btn-simpan" title="Simpan (Ctrl+S)"><img src="/static/icons/save.png" alt=""></button>
   </div>
+
+  {% if not boleh_ubah %}
+  {# Dikatakan sekali di atas kanvas, bukan dibiarkan ditemukan saat Simpan
+     ditekan. Kanvasnya sendiri tetap bisa dipakai memperbesar dan melihat
+     objeknya: itu justru gunanya membuka gambar orang lain. #}
+  <div class="lab-baca">
+    <b>Hanya bisa dilihat.</b> {{ alasan_tolak }}
+  </div>
+  {% endif %}
 
   <div class="lab-tengah">
     {# Baris ini menirukan bar Auto Labeling di AnyLabeling: pilih model,

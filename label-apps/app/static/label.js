@@ -1,4 +1,11 @@
 'use strict';
+
+/* Kanvas baca-saja.
+   Penjaga sungguhannya di server (tugas.tolak_tulis); yang di sini semata
+   supaya orang tidak menggambar setengah jam lalu kehilangan semuanya saat
+   Simpan menolak. Karena itu ia menghentikan di pintu masuk penulisan, bukan
+   menyembunyikan kanvasnya. */
+const BACA_SAJA = document.body.hasAttribute('data-baca-saja');
 /*
  * Kanvas anotasi.
  *
@@ -2374,6 +2381,13 @@ function pesan(t) { el('pesan').textContent = t; status(t); }
  */
 async function simpan(diam = false) {
   clearTimeout(waktuAutosave);
+  // Satu pintu untuk seluruh jalur penulisan: tombol Simpan, Ctrl+S, dan
+  // simpan otomatis semuanya lewat sini. Menjaganya di sini saja berarti tidak
+  // ada jalur yang lupa dijaga.
+  if (BACA_SAJA) {
+    if (!diam) toast('Gambar ini ditugaskan ke orang lain; kamu hanya bisa melihat');
+    return;
+  }
   const tanpaKelas = S.shapes.filter(s => !s.label).length;
   if (tanpaKelas) { toast(`${tanpaKelas} bentuk belum punya kelas`); return; }
   status('Menyimpan…');

@@ -414,3 +414,14 @@ kbd{font-family:ui-monospace,"SF Mono",Menlo,monospace; font-size:10.5px;
 .pan[data-lipat]{padding-bottom:9px}
 .pan h3:hover{color:var(--ink)}
 .pan h3:focus-visible{outline:2px solid var(--ok); outline-offset:2px}
+
+/* Kanvas yang hanya bisa dilihat. Alatnya diredupkan dan dimatikan, bukan
+   dihilangkan: alat yang lenyap menyisakan teka-teki, alat yang mati beserta
+   alasannya di atasnya tidak. */
+.lab-baca { grid-column: 1 / -1; margin: 0 0 8px; padding: 8px 12px;
+  border-radius: 7px; font-size: 12.5px; line-height: 1.5;
+  background: var(--warn-bg); color: var(--ink); }
+body[data-baca-saja] .tool-simpan,
+body[data-baca-saja] .lab-auto,
+body[data-baca-saja] #btn-del,
+body[data-baca-saja] #btn-undo { opacity: .4; pointer-events: none; }

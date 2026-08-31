@@ -566,3 +566,74 @@ def test_path_di_atribut_tidak_di_quote(klien, lingkungan):
     j = klien.post("/api/tugas/bagi",
                    json={"pelabel": "anggi", "gambar": paths}).json()
     assert j["ok"] and j["n"] == 2, j
+
+
+# ============================================================
+# GRID DAN KANVAS
+# ============================================================
+
+def test_grid_menyaring_tugasku_dan_menandai_pemiliknya(klien, aplikasi,
+                                                        lingkungan):
+    """Di projek 10.000 gambar, jatah seseorang bisa 200.
+
+    Tanpa saringan ini ia menggulir sembilan ribu delapan ratus gambar milik
+    orang lain untuk menemukan pekerjaannya sendiri.
+    """
+    import pathlib
+
+    from conftest import klien_baru
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = _projek(ruang, "grid-tugas", n=4)
+    klien.post(f"/setsrc?path={d}")
+    gambar = sorted(str(x) for x in d.glob("*.jpg"))
+
+    # Belum dibagi: chipnya tidak muncul sama sekali.
+    assert "Tugasku" not in klien.get("/").text
+
+    klien.post("/api/tugas/bagi", json={"pelabel": "anggi", "gambar": gambar[:2]})
+    klien.post("/api/tugas/bagi", json={"pelabel": "paul", "gambar": gambar[2:]})
+
+    h = klien.get("/").text
+    assert "Tugasku" in h and h.count("tugas-cap") == 4
+    assert klien.get("/?f=tugasku").text.count('class="card"') == 2
+
+    lain = klien_baru(aplikasi, "anggi", PW_ANGGI)
+    assert lain.get("/?ds=paul/grid-tugas&f=tugasku").text.count('class="card"') == 2
+
+
+def test_kanvas_jujur_sejak_dibuka_bukan_menolak_saat_disimpan(klien, aplikasi,
+                                                               lingkungan):
+    """Kanvas yang membiarkan orang menggambar lalu menolak saat Simpan ditekan
+    membuang pekerjaannya; yang jujur sejak dibuka tidak."""
+    import pathlib
+
+    from conftest import klien_baru
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = _projek(ruang, "kanvas-hak", n=3)
+    klien.post(f"/setsrc?path={d}")
+    gambar = sorted(str(x) for x in d.glob("*.jpg"))
+    klien.post("/api/tugas/bagi", json={"pelabel": "anggi", "gambar": gambar[:1]})
+
+    # Pemilik: boleh menyunting apa pun, termasuk yang ditugaskan ke orang lain.
+    assert "data-baca-saja" not in klien.get(f"/label?path={gambar[0]}").text
+
+    lain = klien_baru(aplikasi, "anggi", PW_ANGGI)
+    lain.get("/?ds=paul/kanvas-hak")
+
+    # Jatahnya sendiri: kanvas penuh.
+    assert "data-baca-saja" not in lain.get(f"/label?path={gambar[0]}").text
+
+    # Bukan jatahnya: baca saja, beserta alasannya di layar.
+    h = lain.get(f"/label?path={gambar[1]}").text
+    assert "data-baca-saja" in h
+    assert "Hanya bisa dilihat" in h and "belum ditugaskan" in h
+
+    # Dan rutenya tetap menolak walau kanvasnya dipaksa mengirim.
+    j = lain.post("/api/simpan", json={"path": gambar[1], "shapes": []}).json()
+    assert j["ok"] is False

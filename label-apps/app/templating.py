@@ -66,6 +66,10 @@ def pathmentah(item: dict) -> str:
 
 templates.env.filters["imgpath"] = imgpath
 templates.env.filters["pathmentah"] = pathmentah
+# Identitas objek item, dipakai templat grid untuk mencari penugasan gambar itu
+# di peta yang dihitung router. Memakai id() daripada path supaya tidak ada
+# pembentukan string ribuan kali per halaman.
+templates.env.filters["id"] = id
 templates.env.filters["urlquote"] = quote
 # Dipakai sebagai fungsi di templat: {{ statik("label.js") }}
 templates.env.globals["statik"] = statik

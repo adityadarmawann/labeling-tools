@@ -137,7 +137,14 @@ async def halaman(request: Request, path: str = "",
                    "n": len(x["shapes"]), "sev": scanner.severity(x),
                    "split": x.get("split", "")} for x in items]
 
+    # Hak sunting gambar INI, dihitung sekali di server. Kanvas yang membiarkan
+    # orang menggambar lalu menolak saat Simpan ditekan membuang pekerjaannya;
+    # yang jujur sejak dibuka tidak.
+    tolak = tugas.tolak_tulis(sess.src, sess.user, it["img"]) if sess.src else ""
+
     return templates.TemplateResponse(request, "label.html", {
+        "boleh_ubah": not tolak,
+        "alasan_tolak": tolak,
         "sess": sess,
         "local": is_local(request),
         "it": it,

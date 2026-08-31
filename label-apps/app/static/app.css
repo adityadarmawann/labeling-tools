@@ -1614,3 +1614,9 @@ body.berprojek main{display:flex;gap:0;padding:0;align-items:stretch}
 .bg-cabut:hover{color:var(--stop)}
 .bg-menunggu{cursor:default;opacity:.85}
 .bg-menunggu:hover{background:transparent}
+
+/* Penanda siapa yang ditugaskan pada sebuah gambar, di kartu grid. */
+.tugas-cap{display:inline-block;margin-top:5px;font-size:10px;padding:1px 7px;
+  border-radius:999px;background:var(--sunk);color:var(--ink-dim);
+  max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tugas-cap.tugas-aku{background:var(--ok-lembut);color:var(--aksi);font-weight:600}
