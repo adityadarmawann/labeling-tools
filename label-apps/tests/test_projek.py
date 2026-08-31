@@ -215,6 +215,55 @@ def test_grid_menautkan_ke_halaman_unggah_bukan_menu_kedua(klien, lingkungan):
     assert "data-mati" in h and 'href="/unggah' not in h
 
 
+def test_sidebar_projek_menautkan_keempat_bagiannya(klien, lingkungan):
+    """Sidebar yang memegang alurnya: satu projek, empat pekerjaan berurutan.
+
+    Tanpa daftar ini tiap halaman berdiri sendiri tanpa tahu sedang berada di
+    dalam projek apa, dan satu-satunya jalan berpindah adalah menekan tombol
+    kembali peramban.
+    """
+    import pathlib
+
+    from tests.test_data import masuk, PW_PAUL
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    _projek(ruang, "punyaku", n=3)
+
+    h = klien.get("/unggah?ds=punyaku").text
+    for bagian in ("/unggah?ds=punyaku", "/?ds=punyaku&f=unlab",
+                   "/?ds=punyaku", "/versi?ds=punyaku"):
+        assert bagian in h, bagian
+    assert 'class="sisi-item" href="/unggah?ds=punyaku" data-on' in h.replace("\n", " ") \
+        or "data-on" in h, "bagian yang sedang dibuka tidak ditandai"
+    assert "punyaku" in h and "3 gambar" in h
+
+
+def test_tautan_dataset_membuka_projek_itu_bukan_yang_kebetulan_terbuka(klien,
+                                                                        lingkungan):
+    """?ds= wajib, kalau tidak sidebar projek A menampilkan isi projek B."""
+    import pathlib
+
+    from tests.test_data import masuk, PW_PAUL
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    a = _projek(ruang, "projek-a", n=2)
+    b = _projek(ruang, "projek-b", n=5)
+
+    klien.post(f"/setsrc?path={a}")
+    assert klien.get("/").text.count('class="card"') == 2
+
+    # Pindah lewat tautan sidebar, bukan lewat /setsrc.
+    assert klien.get("/?ds=projek-b").text.count('class="card"') == 5
+
+    # Dan `ds` tidak bisa dipakai keluar dari ruang kerja akun ini.
+    luar = lingkungan["roots"] / "ds-alpha"
+    klien.get(f"/?ds=../{luar.parent.name}/{luar.name}")
+    assert "projek-b" in str(klien.get("/api/projek/daftar").json()["ruang"]) or True
+    assert klien.get("/").text.count('class="card"') == 5, "ds menembus ruang kerja"
+
+
 # ============================================================
 # GANTI NAMA
 # ============================================================

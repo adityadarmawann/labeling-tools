@@ -200,6 +200,18 @@ def _usia(t: float) -> str:
     return datetime.fromtimestamp(t).strftime("%d %b %Y")
 
 
+def ringkas(d: Path) -> dict:
+    """Angka satu projek untuk kepala halaman dan sidebar.
+
+    Memakai penelusuran yang sama dengan kartu di halaman projek, jadi angka
+    di sidebar dan angka di kartunya tidak pernah berbeda.
+    """
+    s = _survei(Path(d))
+    return {"jumlah": s["gambar"], "anotasi": s["anotasi"],
+            "sampul": str(s["sampul"]) if s["sampul"] else "",
+            "lebih": s["lebih"]}
+
+
 def daftar(root: Path | None) -> list[dict]:
     """Kartu untuk tiap projek di dalam `root`."""
     if not root or not Path(root).is_dir():

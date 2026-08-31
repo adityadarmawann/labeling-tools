@@ -1,18 +1,23 @@
 {% extends "base.html" %}
 {% block title %}Unggah data{% endblock %}
 
+{% block bodyclass %}berprojek{% endblock %}
+
 {% block body %}
 <header>
   <div class="top">
     <h1>Unggah data</h1>
-    {% if projek %}<span class="path mono">{{ projek.nama }}</span>{% endif %}
     {% include "_header.html" %}
   </div>
+</header>
 
-  {# Penunjuk tahap duduk di header yang lengket. Di tahap 2 dengan ribuan
-     thumbnail, ini satu-satunya yang memberitahu masih ada tahap sesudahnya.
-     data-on = tahap sekarang, data-selesai = tahap yang sudah dilewati;
-     keduanya dipindahkan JavaScript. #}
+<main>
+{% include "_sisi.html" %}
+<div class="sisi-isi">
+
+  {# Penunjuk tahap. Di tahap 2 dengan ribuan thumbnail, ini satu-satunya yang
+     memberitahu masih ada tahap sesudahnya. data-on = tahap sekarang,
+     data-selesai = tahap yang sudah dilewati; keduanya dipindahkan JavaScript. #}
   <nav class="ug-langkah" id="ug-langkah" aria-label="Tahap unggahan">
     <span class="ug-langkah-item" id="ug-langkah-1" data-on>
       <span class="ug-langkah-no">1</span>Pilih berkas</span>
@@ -23,9 +28,7 @@
     <span class="ug-langkah-item" id="ug-langkah-3">
       <span class="ug-langkah-no">3</span>Unggah</span>
   </nav>
-</header>
 
-<main>
 <div class="ug-halaman" id="ug-halaman"
      data-projek="{{ projek.nama }}" data-path="{{ projek.path }}"
      data-berisi="{{ 1 if berisi else 0 }}" data-tata="{{ tata }}">
@@ -110,11 +113,17 @@
             <span><span class="mono">data.yaml</span> &middot; tanpa berkas ini
               kelasnya jadi angka</span>
           </div>
+          {# Projek yang sudah berisi tidak menerima arsip: membongkarnya ke
+             dataset yang sudah berfolder menumpahkan isinya di luar folder
+             itu. Entrinya disembunyikan, bukan dibiarkan lalu ditolak, supaya
+             daftar format ini tidak menjanjikan yang tidak akan diterima. #}
+          {% if not berisi %}
           <div class="ug-format-grup">
             <b>Arsip</b>
             <span><span class="mono">.zip</span> &middot; dibongkar sendiri di
               server</span>
           </div>
+          {% endif %}
         </div>
       </section>
 
@@ -255,6 +264,7 @@
     </div>
   </section>
 
+</div>
 </div>
 </main>
 {% endblock %}

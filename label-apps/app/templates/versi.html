@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Versi{% endblock %}
+{% block bodyclass %}berprojek{% endblock %}
+
+{% block body %}
+<header>
+  <div class="top">
+    <h1>Versi</h1>
+    {% include "_header.html" %}
+  </div>
+</header>
+
+<main>
+{% include "_sisi.html" %}
+<div class="sisi-isi">
+  <div class="pkosong" style="max-width:640px">
+    <b>Belum ada versi</b>
+    Versi adalah pembagian train/valid/test yang dibekukan: sekali dibuat, isinya
+    tetap dan bisa diunduh ulang kapan saja, walau gambar barunya sudah bertambah.
+    Itu yang membuat hasil pelatihan bisa ditelusuri kembali ke data yang persis
+    dipakai.
+    <span style="display:block;margin-top:10px">Sekarang splitting masih dijalankan
+    dari halaman <a href="/?ds={{ pr.nama | urlquote }}">Dataset</a> dan hasilnya
+    langsung diunduh sebagai ZIP, tanpa disimpan.</span>
+  </div>
+</div>
+</main>
+{% endblock %}

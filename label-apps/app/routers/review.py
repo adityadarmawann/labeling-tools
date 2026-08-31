@@ -157,8 +157,20 @@ async def index(request: Request, f: str = "all",
                 # Aturan penggabungan centang: "atau" (bawaan, seperti Roboflow)
                 # atau "dan" (semuanya harus ada dalam satu gambar).
                 mode_q: str = Query("atau", alias="m"),
+                # Projek yang mau dibuka, dipakai tautan di sidebar.
+                # Tanpa ini, menekan "Dataset" di sidebar projek A
+                # menampilkan projek B yang kebetulan masih terbuka.
+                ds: str = "",
                 sess: Session = Depends(current_session),
                 settings: Settings = Depends(get_settings)):
+    if ds:
+        from ..services import projek as svc_projek
+        d = Path(settings.uploads_root) / sess.user / svc_projek.bersihkan_nama(ds)
+        # Dibatasi ke ruang kerja akun ini: `ds` datang dari URL, dan tanpa
+        # batas itu ia jadi jalan membuka folder mana pun di server.
+        if d.is_dir() and str(sess.src or "") != str(d):
+            await asyncio.to_thread(sess.load, d)
+
     # Belum memilih dataset -> tampilkan pemilih, bukan grid kosong.
     if sess.src is None:
         return templates.TemplateResponse(request, "pick.html",

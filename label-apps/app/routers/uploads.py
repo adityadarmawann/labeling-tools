@@ -53,16 +53,45 @@ async def halaman_unggah(request: Request, ds: str = "",
     # ada di sana: dataset bersplit tetap terbagi train/valid/test, dataset
     # YOLO tetap punya images/ dan labels/. Menyamakan keduanya berarti gambar
     # baru mendarat di akar dan merusak pembagian yang sudah jalan.
-    berisi = await asyncio.to_thread(projek.punya_gambar, d)
+    ringkas = await asyncio.to_thread(projek.ringkas, d)
+    berisi = ringkas["jumlah"] > 0
+    pr = {"nama": nama, "path": str(d), **ringkas, "versi": 0}
     return templates.TemplateResponse(request, "unggah.html", {
         "sess": sess,
         "local": is_local(request),
-        "projek": {"nama": nama, "path": str(d)},
+        "projek": pr,
+        # Dipakai berkas sisipan _sisi.html, yang sama untuk semua halaman
+        # projek. Namanya pendek karena ia disebut belasan kali di situ.
+        "pr": pr,
+        "aktif": "unggah",
         "berisi": berisi,
         "tata": tambah.tata_letak(d) if berisi else "",
         "max_upload_mb": settings.max_upload_mb,
         "max_zip_mb": settings.max_zip_mb,
         "riwayat": riwayat.baca(settings, sess.user),
+    })
+
+
+@router.get("/versi", response_class=HTMLResponse)
+async def halaman_versi(request: Request, ds: str = "",
+                        sess: Session = Depends(current_session),
+                        settings: Settings = Depends(get_settings)):
+    """
+    Versi dataset: pembagian train/valid/test yang dibekukan dan bisa diunduh
+    ulang kapan saja.
+
+    Menunya sudah ada di sidebar sejak sekarang, halamannya menyusul. Menu yang
+    baru muncul belakangan membuat orang mengira fiturnya tidak ada; menu yang
+    ada dan mengatakan "belum" tidak.
+    """
+    nama = projek.bersihkan_nama(ds)
+    d = Path(settings.uploads_root) / sess.user / nama if nama else None
+    if not nama or d is None or not d.is_dir():
+        return RedirectResponse("/pilih", status_code=303)
+    ringkas = await asyncio.to_thread(projek.ringkas, d)
+    pr = {"nama": nama, "path": str(d), **ringkas, "versi": 0}
+    return templates.TemplateResponse(request, "versi.html", {
+        "sess": sess, "projek": pr, "pr": pr, "aktif": "versi",
     })
 
 

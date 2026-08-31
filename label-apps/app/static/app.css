@@ -1367,3 +1367,53 @@ input:focus{outline:0;border-color:var(--ok)}
 @media (prefers-reduced-motion:reduce){
   .ug-drop-ikon,.ug-gambar,.ug-buang{transition:none}
 }
+
+/* ==================================================== sidebar projek
+   Sepadan dengan panel kiri Roboflow: satu projek punya beberapa pekerjaan
+   berurutan, dan tanpa daftar ini tiap halaman terasa berdiri sendiri tanpa
+   tahu sedang berada di dalam projek apa. */
+body.berprojek main{display:flex;gap:0;padding:0;align-items:stretch}
+
+.sisi{flex:0 0 224px;display:flex;flex-direction:column;gap:14px;
+  padding:16px 14px 22px;background:var(--panel);
+  border-right:1px solid var(--line);min-height:calc(100vh - 52px)}
+.sisi-balik{font-size:11.5px;color:var(--ink-faint);text-decoration:none}
+.sisi-balik:hover{color:var(--ink-dim)}
+
+.sisi-projek{display:flex;gap:10px;align-items:center;min-width:0}
+.sisi-sampul{width:44px;height:44px;flex:0 0 auto;border-radius:8px;
+  object-fit:cover;background:var(--sunk);border:1px solid var(--line)}
+.sisi-sampul-kosong{display:grid;place-items:center;color:var(--ink-faint);
+  font-size:18px}
+.sisi-teks{display:flex;flex-direction:column;min-width:0}
+/* Nama projek boleh panjang. Dipotong dengan elipsis, bukan dibungkus ke baris
+   kedua: sidebar yang tingginya berubah-ubah menggeser seluruh menunya. */
+.sisi-nama{font-size:13.5px;color:var(--ink);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.sisi-sub{font-size:11px;color:var(--ink-faint);font-variant-numeric:tabular-nums}
+
+.sisi-menu{display:flex;flex-direction:column;gap:1px}
+.sisi-judul{font-size:10px;letter-spacing:.09em;color:var(--ink-faint);
+  margin:2px 0 5px;padding-left:9px}
+.sisi-item{display:flex;align-items:center;gap:9px;padding:8px 9px;
+  border-radius:7px;font-size:13px;color:var(--ink-dim);text-decoration:none;
+  transition:.12s}
+.sisi-item:hover{background:var(--hover);color:var(--ink)}
+.sisi-item[data-on]{background:var(--ok-lembut);color:var(--aksi);font-weight:600}
+.sisi-ikon{flex:0 0 16px;text-align:center;font-size:12px;opacity:.85}
+.sisi-angka{margin-left:auto;font-size:11px;font-weight:500;
+  color:var(--ink-faint);font-variant-numeric:tabular-nums}
+.sisi-item[data-on] .sisi-angka{color:var(--aksi)}
+
+.sisi-isi{flex:1 1 0;min-width:0;padding:18px 22px 60px}
+
+/* Di layar sempit sidebar jadi baris mendatar di atas isinya. Menyembunyikannya
+   sama sekali akan memutus satu-satunya jalan berpindah bagian. */
+@media (max-width:900px){
+  body.berprojek main{flex-direction:column}
+  .sisi{flex:0 0 auto;min-height:0;border-right:0;
+    border-bottom:1px solid var(--line);padding:12px 16px}
+  .sisi-menu{flex-direction:row;flex-wrap:wrap;gap:4px}
+  .sisi-judul{display:none}
+  .sisi-isi{padding:16px}
+}
