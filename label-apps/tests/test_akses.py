@@ -155,6 +155,28 @@ def test_tombol_desktop_disembunyikan_dari_jaringan(klien, klien_lokal, lingkung
         "/unggah?ds=uji-desktop-lokal").text
 
 
+def test_dokumentasi_api_tidak_terbuka_tanpa_login(klien, aplikasi):
+    """/openapi.json menyebutkan SETIAP rute beserta nama parameternya.
+
+    Bawaan FastAPI membukanya untuk siapa saja yang bisa menjangkau portnya,
+    termasuk daftar rute kelola akun, tanpa login sama sekali. Firewall memang
+    membatasi siapa yang bisa menjangkau, tetapi itu lapis yang berbeda dan
+    tidak berlaku bagi siapa pun yang sudah berada di jaringan itu.
+    """
+    from fastapi.testclient import TestClient
+
+    tamu = TestClient(aplikasi)
+    for jalur in ("/openapi.json", "/docs"):
+        r = tamu.get(jalur, follow_redirects=False)
+        assert r.status_code in (302, 303, 307), (jalur, r.status_code)
+        assert "/login" in r.headers.get("location", ""), jalur
+
+    masuk(klien, "paul", PW_PAUL)
+    r = klien.get("/openapi.json")
+    assert r.status_code == 200 and "paths" in r.json()
+    assert klien.get("/docs").status_code == 200
+
+
 # ---------------------------------------------------------------- penjaga insiden
 
 def test_setelan_uji_seluruhnya_menunjuk_ke_tmp(klien, lingkungan):

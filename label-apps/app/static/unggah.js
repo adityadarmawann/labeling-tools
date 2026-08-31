@@ -426,6 +426,16 @@
 
     tombol.disabled = true;
     const pr = Progres.mulai('Menyalin ke ' + PROJEK, { di: jalur });
+    // Sama seperti berkas dari laptop: projek yang sudah berisi harus lewat
+    // jalur yang menghormati tata letaknya. /impor menyalin folder apa adanya
+    // ke akar projek, dan pada dataset bersplit itu menumpahkan isinya di luar
+    // train/valid/test.
+    if (BERISI) {
+      pr.taktentu('Membuka dataset…');
+      const buka = await post('/setsrc?path=' + encodeURIComponent(PATH));
+      if (!buka.ok) { pr.gagal(buka.error || 'Gagal membuka dataset');
+                      tombol.disabled = false; return; }
+    }
     // Penyalinan berjalan di thread terpisah di server sementara permintaan
     // /impor menggantung sampai selesai, jadi kemajuannya ditanyakan lewat
     // permintaan terpisah. Tanpa ini, menyalin 22 ribu berkas tampak seperti
@@ -441,8 +451,10 @@
     }, 500);
 
     try {
-      const j = await post('/impor?path=' + encodeURIComponent(path)
-                         + '&ds=' + encodeURIComponent(PROJEK));
+      const j = await post(BERISI
+        ? '/tambah/impor?path=' + encodeURIComponent(path)
+        : '/impor?path=' + encodeURIComponent(path)
+          + '&ds=' + encodeURIComponent(PROJEK));
       clearInterval(pantau);
       if (!j.ok) { pr.gagal(j.error); tombol.disabled = false; return; }
       pr.selesai(`${(j.n || 0).toLocaleString('id-ID')} gambar masuk ke ${PROJEK}`);

@@ -11,12 +11,14 @@ import shutil
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
+from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import get_settings
-from .deps import NeedsLogin, login_redirect
+from .deps import NeedsLogin, current_session, login_redirect
+from .session import Session
 from .routers import (admin, annotate, auth, datasets, projek, review, tag,
                       uploads)
 
@@ -54,11 +56,27 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
+    # Halaman dokumentasi bawaan FastAPI dimatikan lalu dipasang ulang dengan
+    # penjaga sesi. Bawaannya terbuka untuk siapa saja yang bisa menjangkau
+    # portnya: /openapi.json menyebutkan SETIAP rute beserta nama parameternya,
+    # termasuk rute kelola akun, tanpa perlu login sama sekali. Aplikasinya
+    # sendiri tidak memakai halaman itu; yang memakainya cuma kita saat
+    # mengembangkan, dan kita memang punya akun.
     app = FastAPI(title="Labeling Tools — papan periksa anotasi",
                   description="Papan periksa anotasi untuk dataset "
                               "AnyLabeling / labelme / YOLO-seg, dipakai bersama satu tim.",
                   version="0.1.0",
+                  docs_url=None, redoc_url=None, openapi_url=None,
                   lifespan=lifespan)
+
+    @app.get("/openapi.json", include_in_schema=False)
+    async def _openapi(sess: Session = Depends(current_session)):
+        return app.openapi()
+
+    @app.get("/docs", include_in_schema=False)
+    async def _docs(sess: Session = Depends(current_session)):
+        return get_swagger_ui_html(openapi_url="/openapi.json",
+                                   title="Labeling Tools — API")
 
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 

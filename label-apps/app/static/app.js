@@ -1061,9 +1061,24 @@ const Progres = (() => {
    * memindahkan folder, biasanya seketika, tapi bisa lama kalau berkasnya di
    * disk jaringan. Yang tidak boleh terjadi adalah layar diam tanpa tanda.
    */
-  async function kirim(url, params, pesan, pantau) {
+  async function kirim(url, params, pesan, pantau, batalUrl) {
     const pr = Progres.mulai(pesan, {di: note});
     pr.taktentu('menunggu server…');
+    // Tombolnya disisipkan SEBELAH panel progres, bukan di dalamnya: modul
+    // Progres memiliki isi wadahnya dan menulisnya ulang tiap kali berubah.
+    let stop = null;
+    if (batalUrl) {
+      stop = document.createElement('button');
+      stop.className = 'chip';
+      stop.type = 'button';
+      stop.textContent = 'Hentikan';
+      stop.onclick = () => {
+        stop.disabled = true;
+        stop.textContent = 'Menghentikan…';
+        post(batalUrl);
+      };
+      note.parentElement.appendChild(stop);
+    }
     let ketuk = null;
     if (pantau) {
       ketuk = setInterval(async () => {
@@ -1087,6 +1102,7 @@ const Progres = (() => {
       return null;
     } finally {
       if (ketuk) clearInterval(ketuk);
+      if (stop) stop.remove();
     }
     if (!j.ok) { pr.gagal(j.error || 'gagal'); toast(j.error || 'gagal'); }
     else pr.selesai();
@@ -1138,8 +1154,13 @@ const Progres = (() => {
       return;
     }
     if (a === 'duplikat') {
+      // Menggandakan projek 1,3 GB memakan menit; tanpa tombol henti,
+      // satu klik keliru harus ditunggu sampai selesai. Server sudah bisa
+      // dihentikan (projek.duplikat membuang salinan setengah jadi), yang
+      // belum ada cuma tombolnya.
       const j = await kirim('/api/projek/duplikat', {nama},
-                            `Menduplikat ${nama}`, '/api/projek/kemajuan');
+                            `Menduplikat ${nama}`, '/api/projek/kemajuan',
+                            '/api/projek/batal');
       if (j && j.ok) { toast(`Salinan dibuat: ${j.nama}`); muat(); }
       return;
     }
