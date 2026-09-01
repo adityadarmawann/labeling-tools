@@ -441,6 +441,53 @@ async def bubarkan(id: str = "", sess: Session = Depends(current_session_api)):
     return {"ok": True, **r}
 
 
+@router.post("/api/tugas/dataset-siap")
+async def dataset_siap(request: Request,
+                       sess: Session = Depends(current_session_api),
+                       settings: Settings = Depends(get_settings)):
+    """
+    Masukkan borongan gambar yang sudah dianotasi tetapi belum ditugaskan.
+
+    Gambar seperti ini tidak punya jalan lain sama sekali. Halaman job hanya
+    memuat yang sudah dibagi, dan halaman Dataset justru belum memuatnya —
+    jadi tanpa rute ini satu-satunya cara memasukkannya adalah membagikannya
+    lebih dulu ke seseorang, padahal pekerjaannya sudah selesai.
+
+    Yang dimasukkan dipilih di server, bukan dikirim peramban: daftar path dari
+    luar bisa memuat gambar yang sedang dikerjakan orang lain.
+    """
+    data, galat = _siap(sess)
+    if galat:
+        return {"ok": False, "error": galat}
+    if not svc.boleh_kelola(data, sess.user):
+        return {"ok": False, "error": "hanya pemilik projek yang bisa "
+                                      "memasukkan gambar yang belum ditugaskan"}
+    from ..services import scanner
+
+    body = await bodi_json(request)
+    batch = str(body.get("batch") or "")
+
+    with sess.lock:
+        items = list(sess.items)
+    semua, berlabel, batch_dari = set(), set(), {}
+    tdata_tag = svc_tag.baca(sess.src)
+    for it in items:
+        k = svc_tag.kunci_gambar(sess.src, it["img"])
+        semua.add(k)
+        if scanner.severity(it) != "stop":
+            berlabel.add(k)
+        b = svc_tag.untuk(tdata_tag, k)["batch"]
+        if b:
+            batch_dari[k] = b
+
+    kunci = svc.belum_ditugaskan_siap(data, berlabel, semua, batch, batch_dari)
+    if not kunci:
+        return {"ok": False, "error": "tidak ada gambar yang sudah dianotasi "
+                                      "dan belum ditugaskan di sini"}
+    r = await asyncio.to_thread(svc.masukkan, sess.src, kunci, data["pemilik"])
+    return {"ok": True, **r}
+
+
 @router.post("/api/tugas/dataset")
 async def ke_dataset(request: Request,
                      sess: Session = Depends(current_session_api)):

@@ -388,6 +388,25 @@ def bekukan_lama(uploads_root: Path) -> list[dict]:
     return hasil
 
 
+def belum_ditugaskan_siap(data: dict, berlabel: set[str], semua: set[str],
+                          batch: str = "",
+                          batch_dari: dict[str, str] | None = None) -> list[str]:
+    """
+    Gambar yang sudah dianotasi tetapi tidak ditugaskan ke siapa pun.
+
+    Dipakai tombol borongan di kolom "Belum ditugaskan". Aturannya dihitung di
+    sini, bukan dikirim peramban sebagai daftar path: daftar yang datang dari
+    luar bisa memuat gambar yang justru sedang dikerjakan orang lain, dan
+    memasukkannya berarti menyatakan pekerjaan orang selesai tanpa ia tahu.
+    """
+    bd = batch_dari or {}
+    ditugaskan = {k for t in data["tugas"].values() for k in (t.get("gambar") or [])}
+    return sorted(k for k in semua
+                  if k in berlabel and k not in ditugaskan
+                  and not sudah_dimasukkan(data, k)
+                  and (not batch or (bd.get(k) or "") == batch))
+
+
 def masukkan(ds: Path, kunci_daftar: list[str], pemilik: str = "") -> dict:
     """Nyatakan sekumpulan gambar masuk dataset."""
     with _kunci:
@@ -689,10 +708,23 @@ def papan(data: dict, berlabel: set[str], semua: set[str],
     # asalnya: satu unggahan besar dan lima unggahan kecil terlihat sama, dan
     # keputusan membaginya justru hampir selalu per unggahan.
     kelompok: dict[str, int] = {}
+    # Berapa di antaranya yang SUDAH dianotasi tetapi belum dimasukkan. Gambar
+    # seperti itu pekerjaannya sudah selesai tetapi tidak pernah lewat job,
+    # jadi tidak ada halaman job yang bisa memasukkannya borongan — dan satu
+    # per satu pun tidak bisa, karena halaman Dataset justru belum memuatnya.
+    #
+    # Syaratnya harus sama persis dengan belum_ditugaskan_siap(). Tombol yang
+    # menghitung dengan aturan sendiri akan menawarkan "masukkan 2" lalu
+    # rutenya menjawab tidak ada apa-apa untuk dimasukkan.
+    siap_kelompok: dict[str, int] = {}
     for k in belum:
-        kelompok[bd.get(k) or ""] = kelompok.get(bd.get(k) or "", 0) + 1
+        b = bd.get(k) or ""
+        kelompok[b] = kelompok.get(b, 0) + 1
+        if k in berlabel and not sudah_dimasukkan(data, k):
+            siap_kelompok[b] = siap_kelompok.get(b, 0) + 1
     belum_batch = sorted(
-        ({"batch": nama, "n": n} for nama, n in kelompok.items()),
+        ({"batch": nama, "n": n, "siap": siap_kelompok.get(nama, 0)}
+         for nama, n in kelompok.items()),
         key=lambda x: (x["batch"] == "", -x["n"], x["batch"]))
 
     # Ringkasan per orang, dan inilah yang paling sering ditanyakan: si aditya
@@ -715,6 +747,7 @@ def papan(data: dict, berlabel: set[str], semua: set[str],
         "urut": urut if urut in URUT_PAPAN else "terbaru",
         "belum_ditugaskan": len(belum),
         "belum_batch": belum_batch,
+        "belum_siap": sum(siap_kelompok.values()),
         "kartu": kartu,
         "per_pelabel": per_pelabel,
         "n_dataset": sum(1 for k in semua if di_dataset(data, k)),

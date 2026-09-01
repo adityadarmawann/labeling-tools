@@ -1539,3 +1539,60 @@ def test_projek_lama_dibekukan_saat_aplikasi_menyala(lingkungan, tmp_path):
 
     # Dijalankan dua kali tidak menambah apa-apa.
     assert svc.bekukan_lama(unggahan) == []
+
+
+def test_yang_sudah_dianotasi_tanpa_job_bisa_dimasukkan_borongan(klien,
+                                                                lingkungan):
+    """Gambar seperti ini tidak punya jalan lain sama sekali.
+
+    Halaman job hanya memuat yang sudah dibagi, dan halaman Dataset justru
+    belum memuatnya. Tanpa rute borongan, satu-satunya cara memasukkannya
+    adalah membagikannya lebih dulu ke seseorang — padahal pekerjaannya sudah
+    selesai.
+    """
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    d = _projek(_ruang(klien), "siap-borongan", n=4, label=False)
+    g = sorted(d.glob("*.jpg"))
+    for q in g[:3]:
+        q.with_suffix(".json").write_text(json.dumps({
+            "version": "0.4.36", "flags": {}, "imagePath": q.name,
+            "imageHeight": 40, "imageWidth": 60, "imageData": None,
+            "shapes": [{"label": "botol", "shape_type": "polygon",
+                        "points": [[2, 2], [30, 2], [30, 30]]}]}))
+    klien.post(f"/setsrc?path={d}")
+    # Satu di antaranya dibagi: yang sedang dikerjakan orang TIDAK boleh ikut.
+    klien.post("/api/tugas/bagi", json={"pelabel": "anggi",
+                                        "gambar": [str(g[0])]})
+
+    h = klien.get("/anotasi?ds=siap-borongan").text
+    assert "Masukkan semua 2 yang sudah dianotasi" in h, h[h.find("Belum ditugaskan"):][:400]
+
+    r = klien.post("/api/tugas/dataset-siap", json={}).json()
+    assert r["ok"] and r["ditambah"] == 2, r
+    data = tugas.baca(d, "paul")
+    assert sorted(data["dataset"]) == sorted([g[1].name, g[2].name])
+    assert g[0].name not in data["dataset"], "gambar yang sedang dikerjakan ikut"
+    assert g[3].name not in data["dataset"], "gambar tanpa anotasi ikut"
+
+    # Sudah tidak ada yang tersisa, dan halamannya berhenti menawarkannya.
+    assert klien.post("/api/tugas/dataset-siap", json={}).json()["ok"] is False
+    assert "yang sudah dianotasi" not in klien.get("/anotasi?ds=siap-borongan").text
+
+
+def test_borongan_hanya_untuk_pemilik_projek(klien, aplikasi, lingkungan):
+    """Menyatakan gambar yang tak bertuan selesai adalah keputusan kurasi."""
+    from conftest import klien_baru
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    d = _projek(_ruang(klien), "borongan-hak", n=2)
+    klien.post(f"/setsrc?path={d}")
+    klien.post("/api/tugas/undang?akun=anggi")
+
+    tamu = klien_baru(aplikasi, "anggi", PW_ANGGI)
+    tamu.get("/?ds=paul/borongan-hak")
+    r = tamu.post("/api/tugas/dataset-siap", json={}).json()
+    assert r["ok"] is False and "pemilik projek" in r["error"]
+    assert tugas.baca(d, "paul")["dataset"] == []

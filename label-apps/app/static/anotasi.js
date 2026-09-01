@@ -30,6 +30,27 @@
     m.addEventListener('click', ev => ev.stopPropagation());
   }
 
+  // ---- masukkan borongan yang sudah dianotasi tetapi belum ditugaskan
+  for (const b of document.querySelectorAll('.an-siap')) {
+    b.onclick = async () => {
+      const batch = b.dataset.siap || '';
+      const n = (b.textContent.match(/\d+/) || [''])[0];
+      // Ditanyakan lebih dulu karena akibatnya tidak terlihat di halaman ini:
+      // gambarnya pindah ke Dataset, dan sejak itu ikut terekspor.
+      if (!confirm(`Masukkan ${n} gambar yang sudah dianotasi ke dataset?\n\n`
+                   + 'Gambarnya pindah ke halaman Dataset dan ikut terekspor. '
+                   + 'Bisa dikeluarkan lagi lewat halaman tugasnya.')) return;
+      b.disabled = true;
+      const j = await send('/api/tugas/dataset-siap', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ batch }),
+      });
+      if (!j.ok) { toast(j.error); b.disabled = false; return; }
+      toast(`${j.ditambah} gambar masuk dataset`);
+      location.reload();
+    };
+  }
+
   async function kirim(url, pesan) {
     const j = await post(url);
     if (!j.ok) { toast(j.error); return false; }

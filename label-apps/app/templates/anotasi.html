@@ -67,6 +67,10 @@
         <b>Belum ditugaskan</b>
         <span class="an-hitung">{{ belum_ditugaskan }}</span>
       </div>
+      {% if boleh_kelola and belum_siap %}
+      <button class="an-siap an-siap-semua" type="button" data-siap="">
+        Masukkan semua {{ belum_siap }} yang sudah dianotasi</button>
+      {% endif %}
       {% if belum_ditugaskan %}
       {#- Satu baris per UNGGAHAN, bukan satu angka gabungan. Angka 378 tidak
           memberi tahu apa pun tentang asalnya: satu unggahan besar dan lima
@@ -80,6 +84,15 @@
           <span class="an-batch-n">{{ b.n }}</span>
         </div>
         {% if boleh_kelola %}
+        {#- Gambar yang sudah dianotasi tetapi tidak pernah dibagi tidak punya
+            jalan lain sama sekali: halaman job cuma memuat yang sudah dibagi,
+            dan halaman Dataset justru belum memuatnya. Tanpa tombol ini,
+            satu-satunya cara memasukkannya adalah membagikannya lebih dulu ke
+            seseorang — padahal pekerjaannya sudah selesai. -#}
+        {% if b.siap %}
+        <button class="an-siap" type="button" data-siap="{{ b.batch }}">
+          Masukkan {{ b.siap }} yang sudah dianotasi</button>
+        {% endif %}
         <a class="an-mulai" href="/bagi?ds={{ pr.ds | urlquote }}{% if b.batch %}&batch={{ b.batch | urlquote }}{% endif %}">
           Bagi tugas &rarr;</a>
         {% endif %}
