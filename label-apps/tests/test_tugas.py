@@ -1315,3 +1315,154 @@ def test_medan_berjenis_salah_dijawab_pesan(klien, lingkungan):
         r = klien.post(rute, json=isi)
         assert r.status_code == 200, (rute, isi, r.status_code)
         assert r.json()["ok"] is False, (rute, isi)
+
+
+# ============================================================
+# DATASET = HASIL "TAMBAHKAN KE DATASET", BUKAN ISI FOLDER
+# ============================================================
+
+def _ruang(klien):
+    import pathlib
+    return pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+
+
+def test_gambar_baru_menunggu_di_anotasi_bukan_langsung_di_dataset(klien,
+                                                                   lingkungan):
+    """Alurnya: unggah, kerjakan di Anotasi, baru masuk dataset.
+
+    Sebelumnya gambar yang baru diunggah — belum dilabeli, belum ditugaskan,
+    belum diperiksa siapa pun — langsung tampil di halaman Dataset dan
+    langsung ikut terekspor, seolah sudah jadi.
+    """
+    masuk(klien, "paul", PW_PAUL)
+    asli = (lingkungan["roots"] / "ds-beta" / "ds-beta-00.jpg").read_bytes()
+    klien.put("/upload?ds=alur&name=a.jpg", content=asli)
+    klien.put("/upload?ds=alur&name=b.jpg", content=asli)
+    klien.post("/useupload?ds=alur")
+
+    h = klien.get("/").text
+    assert h.count('class="card"') == 0
+    assert "Belum ada gambar yang masuk dataset" in h
+    j = klien.get("/api/ekspor/ringkasan?format=yolo-seg&split=8:1:1").json()
+    assert j["n_dataset"] == 0 and j["n_semua"] == 2
+
+    d = _ruang(klien) / "alur"
+    klien.post("/api/tugas/dataset", json={"gambar": [str(d / "a.jpg")]})
+    h = klien.get("/").text
+    assert h.count('class="card"') == 1
+    assert "1</b> gambar lain di projek ini belum masuk dataset" in h
+    assert klien.get("/api/ekspor/ringkasan?format=yolo-seg&split=8:1:1"
+                     ).json()["n_dataset"] == 1
+
+
+def test_isi_lama_dibekukan_sebelum_gambar_baru_mendarat(klien, lingkungan):
+    """Projek yang sudah ada tidak boleh kehilangan datasetnya.
+
+    Aturan "hanya yang dimasukkan yang masuk dataset" tidak bisa diberlakukan
+    surut: projek berisi ribuan gambar yang lahir sebelum alur ini ada tidak
+    pernah melewati tombol Tambahkan ke dataset satu kali pun. Menerapkannya
+    apa adanya membuat ekspornya nol pada hari fiturnya dipasang.
+
+    Karena itu isi lamanya dibekukan masuk tepat sebelum gambar baru mendarat,
+    dan yang baru itulah yang menunggu.
+    """
+    import pathlib
+
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    d = _projek(_ruang(klien), "warisan", n=4)
+    klien.post(f"/setsrc?path={d}")
+    assert klien.get("/").text.count('class="card"') == 4, "projek lama utuh"
+
+    asli = (lingkungan["roots"] / "ds-beta" / "ds-beta-00.jpg").read_bytes()
+    klien.put("/upload?ds=warisan&name=baru.jpg", content=asli)
+    klien.post("/rescan")
+
+    h = klien.get("/").text
+    assert h.count('class="card"') == 4, "yang lama harus tetap di dataset"
+    assert "1</b> gambar lain di projek ini belum masuk dataset" in h
+
+
+def test_semua_jalur_penambah_gambar_tunduk_pada_aturan_yang_sama(klien,
+                                                                  lingkungan):
+    """Satu rute yang lupa membekukan dasarnya membatalkan seluruh aturan.
+
+    Gambar bisa masuk projek lewat enam pintu: unggah berkas, bongkar arsip,
+    impor dari server, tambah ke dataset terbuka, tambah-impor, dan gabung
+    projek. Yang dijaga di sini bukan salah satunya, melainkan bahwa tidak ada
+    satu pun yang menyelinapkan gambar langsung ke dataset.
+    """
+    import io
+    import pathlib
+    import zipfile
+
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = _ruang(klien)
+    asli = (lingkungan["roots"] / "ds-beta" / "ds-beta-00.jpg").read_bytes()
+
+    def n_dataset(nama):
+        klien.post(f"/setsrc?path={ruang / nama}")
+        klien.post("/rescan")
+        j = klien.get("/api/ekspor/ringkasan?format=yolo-seg&split=8:1:1").json()
+        return j.get("n_dataset", 0), j.get("n_semua", 0)
+
+    # 1. unggah berkas ke projek yang sudah punya isi
+    d = _projek(ruang, "pintu-unggah", n=2)
+    klien.put("/upload?ds=pintu-unggah&name=x.jpg", content=asli)
+    assert n_dataset("pintu-unggah") == (2, 3)
+
+    # 2. bongkar arsip
+    d = _projek(ruang, "pintu-zip", n=2)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("dari-zip.jpg", asli)
+    klien.put("/upload?ds=pintu-zip&name=isi.zip", content=buf.getvalue())
+    klien.post("/unzip?ds=pintu-zip&name=isi.zip")
+    assert n_dataset("pintu-zip") == (2, 3)
+
+    # 3. impor folder dari server ke projek yang sudah ada
+    d = _projek(ruang, "pintu-impor", n=2)
+    sumber = _projek(ruang, "sumber-impor", n=1)
+    klien.post(f"/impor?path={sumber}&ds=pintu-impor")
+    assert n_dataset("pintu-impor") == (2, 3)
+
+    # 4. tambah ke dataset yang sedang terbuka
+    d = _projek(ruang, "pintu-tambah", n=2)
+    klien.post(f"/setsrc?path={d}")
+    klien.put("/tambah?name=y.jpg", content=asli)
+    assert n_dataset("pintu-tambah") == (2, 3)
+
+    # 5. tambah-impor
+    d = _projek(ruang, "pintu-tambah-impor", n=2)
+    klien.post(f"/setsrc?path={d}")
+    klien.post(f"/tambah/impor?path={sumber}")
+    assert n_dataset("pintu-tambah-impor") == (2, 3)
+
+    # 6. gabung projek
+    d = _projek(ruang, "pintu-gabung", n=2)
+    klien.post("/api/projek/gabung?sumber=sumber-impor&tujuan=pintu-gabung")
+    assert n_dataset("pintu-gabung") == (2, 3)
+
+
+def test_pekerjaan_yang_dibagi_bisa_dibuka_di_kanvas(klien, lingkungan):
+    """Halaman job satu-satunya jalan ke kanvas untuk gambar di luar dataset.
+
+    Halaman Dataset hanya menampilkan yang sudah masuk. Tanpa tautan di ubin
+    job, gambar yang sudah dibagi ke seorang pelabel tidak bisa dibuka dari
+    mana pun — dan justru gambar itu yang paling perlu dilabeli.
+    """
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    d = _projek(_ruang(klien), "kerjakan", n=3, label=False)
+    klien.post(f"/setsrc?path={d}")
+    g = sorted(str(q) for q in d.glob("*.jpg"))
+    r = klien.post("/api/tugas/bagi", json={"pelabel": "anggi", "gambar": g})
+    tid = r.json()["id"]
+
+    h = klien.get(f"/tugas/{tid}?ds=kerjakan").text
+    assert h.count('class="jb-buka"') == 3, "ubin job tanpa tautan ke kanvas"
+    assert klien.get(f"/label?path={g[0]}").status_code == 200

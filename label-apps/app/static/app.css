@@ -81,6 +81,18 @@ body.berprojek header{padding-bottom:13px}
 /* Kumpulan alat di atas grid. Bilah kemajuan tidak perlu jarak atas lagi —
    yang di atasnya sekarang tepi kolom, bukan judul halaman. */
 .alat{margin-bottom:2px}
+.ds-catatan{font-size:12.5px;color:var(--ink-dim);margin:0 0 10px;
+  padding:8px 11px;border:1px solid var(--line);border-radius:8px;
+  background:var(--sunk)}
+.ds-catatan a{color:var(--aksi);text-decoration:none;margin-left:4px}
+.ds-catatan a:hover{text-decoration:underline}
+
+/* Tautan ke kanvas pada tiap ubin job. Dibuat kecil dan di bawah gambarnya,
+   bukan menutupi gambar: kotak centang di atasnya yang dipakai berulang kali,
+   dan tautan yang menutupi setengah ubin membuat memilih jadi salah klik. */
+.jb-buka{display:block;text-align:center;font-size:11.5px;color:var(--aksi);
+  text-decoration:none;padding:3px 0 1px}
+.jb-buka:hover{text-decoration:underline}
 .alat .kemajuan{margin-top:0}
 h1{font-size:15px;font-weight:600;letter-spacing:.02em}
 .path{font-size:12px;color:var(--ink-faint)}

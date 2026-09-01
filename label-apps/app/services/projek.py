@@ -414,12 +414,21 @@ def konteks(d: Path, uploads_root: Path, aku: str) -> dict:
     URL akan kehilangan awalannya begitu satu chip diklik, lalu diam-diam
     menunjuk ke projek sendiri yang kebetulan bernama sama.
     """
+    from . import tugas as svc_tugas
     from . import versi as svc_versi
     pemilik = pemilik_dari(uploads_root, d)
     s = ringkas(d)
+    # Kedua lencana menghitung hal yang sama dengan halaman yang dibukanya.
+    # Lencana Dataset yang menyebut 476 sementara halamannya menampilkan 38
+    # bukan sekadar salah angka: ia menyangkal saringan halamannya sendiri,
+    # dan yang membacanya menyimpulkan gambarnya hilang.
+    data = svc_tugas.baca(d, pemilik)
+    n_dataset = len(data["dataset"]) if data["kurasi"] else s["jumlah"]
     return {"nama": d.name, "path": str(d), **s, "pemilik": pemilik,
             "ds": d.name if pemilik == aku else f"{pemilik}/{d.name}",
-            "belum": max(s["jumlah"] - s["anotasi"], 0),
+            "n_dataset": n_dataset,
+            # Yang dikelola halaman Anotasi: gambar yang belum masuk dataset.
+            "belum": max(s["jumlah"] - n_dataset, 0),
             "versi": len(svc_versi.daftar(d))}
 
 

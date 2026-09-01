@@ -257,6 +257,14 @@ async def gabung(sumber: str = "", tujuan: str = "",
     (`/api/impor/kemajuan`), karena mesin penyalinnya memang sama.
     """
     root = _ruang(sess, settings)
+    # Isi projek tujuan dibekukan jadi datasetnya lebih dulu. Gambar yang
+    # datang dari projek lain tetap gambar baru bagi projek ini: ia belum
+    # ditugaskan, belum diperiksa, dan belum dinyatakan masuk dataset.
+    from ..services import tugas as svc_tugas
+    d_tujuan = root / projek.bersihkan_nama(tujuan)
+    if d_tujuan.is_dir():
+        await asyncio.to_thread(svc_tugas.dasar, d_tujuan,
+                                projek.pemilik_dari(settings.uploads_root, d_tujuan))
     r = await asyncio.to_thread(_jawab, projek.gabung, root, sumber, tujuan,
                                 kunci=sess.user)
     if r.get("ok") and sess.src and sess.src.name == projek.bersihkan_nama(tujuan):

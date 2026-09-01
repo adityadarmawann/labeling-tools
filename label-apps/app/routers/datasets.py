@@ -113,7 +113,8 @@ async def pick_dir(sess: Session = Depends(current_session_api),
 
 @router.post("/api/versi/buat")
 async def versi_buat(split: str = "", catatan: str = "",
-                     sess: Session = Depends(current_session_api)):
+                     sess: Session = Depends(current_session_api),
+                     settings: Settings = Depends(get_settings)):
     """
     Bekukan pembagian yang berlaku sekarang jadi satu versi.
 
@@ -135,7 +136,7 @@ async def versi_buat(split: str = "", catatan: str = "",
         items = list(sess.items)
         names = dict(sess.names)
     items, hitung = await asyncio.to_thread(tugas.saring_dataset, items,
-                                            sess.src, sess.user)
+                                            sess.src, settings.uploads_root)
     if not items:
         return {"ok": False, "error": (
             "belum ada gambar yang dimasukkan ke dataset. Versi dibuat dari isi "
@@ -177,7 +178,8 @@ async def versi_hapus(nomor: int = 0,
 
 @router.get("/api/ekspor/ringkasan")
 async def ekspor_ringkasan(format: str = "yolo-seg", split: str = "",
-                           sess: Session = Depends(current_session_api)):
+                           sess: Session = Depends(current_session_api),
+                           settings: Settings = Depends(get_settings)):
     """Angka yang ditampilkan sebelum orang menekan unduh."""
     if sess.src is None:
         return {"ok": False, "error": "belum ada dataset terbuka"}
@@ -202,7 +204,7 @@ async def ekspor_ringkasan(format: str = "yolo-seg", split: str = "",
     # Yang diekspor HANYA yang sudah dinyatakan masuk dataset. Lihat
     # tugas.saring_dataset; projek yang belum pernah dibagi tidak terpengaruh.
     items, hitung = await asyncio.to_thread(tugas.saring_dataset, items,
-                                            sess.src, sess.user)
+                                            sess.src, settings.uploads_root)
     rencana = sess.rencana_split
     r = await asyncio.to_thread(export.ringkasan, items, format == "yolo-seg",
                                 export.baca_rasio(split), names, rencana)
@@ -213,7 +215,8 @@ async def ekspor_ringkasan(format: str = "yolo-seg", split: str = "",
 @router.get("/ekspor")
 async def ekspor(format: str = "yolo-seg", gambar: int = 1, split: str = "",
                  tanda: str = "", nomor: int = 0,
-                 sess: Session = Depends(current_session)):
+                 sess: Session = Depends(current_session),
+                 settings: Settings = Depends(get_settings)):
     """
     Unduh dataset sebagai ZIP bertata letak ultralytics.
 
@@ -252,7 +255,7 @@ async def ekspor(format: str = "yolo-seg", gambar: int = 1, split: str = "",
         nama = f"{nama}-v{nomor}"
     else:
         items, _ = await asyncio.to_thread(tugas.saring_dataset, items,
-                                           sess.src, sess.user)
+                                           sess.src, settings.uploads_root)
 
     if not items:
         # Ditolak dengan sebabnya, bukan ZIP kosong yang baru ketahuan salah
@@ -320,13 +323,14 @@ def ringkas_rencana(r: dict | None) -> dict | None:
 
 @router.post("/api/split/jalankan")
 async def split_jalankan(split_q: str = Query("", alias="split"),
-                         sess: Session = Depends(current_session_api)):
+                         sess: Session = Depends(current_session_api),
+                         settings: Settings = Depends(get_settings)):
     if sess.src is None:
         return {"ok": False, "error": "belum ada dataset terbuka"}
     with sess.lock:
         items = list(sess.items)
     items, hitung = await asyncio.to_thread(tugas.saring_dataset, items,
-                                            sess.src, sess.user)
+                                            sess.src, settings.uploads_root)
     if not items:
         return {"ok": False, "error": (
             "belum ada gambar yang dimasukkan ke dataset. Splitting bekerja "

@@ -521,7 +521,7 @@ def test_angka_sidebar_dihitung_bukan_disalin(klien, lingkungan):
     """
     import pathlib
 
-    from app.services import projek, versi
+    from app.services import projek, tugas, versi
     from tests.test_data import masuk, PW_PAUL
 
     masuk(klien, "paul", PW_PAUL)
@@ -537,14 +537,25 @@ def test_angka_sidebar_dihitung_bukan_disalin(klien, lingkungan):
     versi.buat(d, "paul", "8:1:1", [q.name for q in sorted(d.glob("*.jpg"))],
                {}, {})
 
-    pr = projek.konteks(d, lingkungan["roots"] / "_unggahan", "paul")
-    assert (pr["jumlah"], pr["anotasi"], pr["belum"], pr["versi"]) == (5, 2, 3, 1)
+    unggahan = lingkungan["roots"] / "_unggahan"
+    # Selama kurasinya belum dimulai, seluruh isi projek adalah datasetnya dan
+    # tidak ada yang menunggu di Anotasi.
+    pr = projek.konteks(d, unggahan, "paul")
+    assert (pr["jumlah"], pr["anotasi"], pr["n_dataset"], pr["belum"],
+            pr["versi"]) == (5, 2, 5, 0, 1)
+
+    # Begitu dua gambar dimasukkan, kedua lencana berpindah bersama: Dataset
+    # menyebut yang masuk, Anotasi menyebut sisanya.
+    tugas.masukkan(d, [q.name for q in sorted(d.glob("*.jpg"))[:2]], "paul")
+    pr = projek.konteks(d, unggahan, "paul")
+    assert (pr["jumlah"], pr["n_dataset"], pr["belum"]) == (5, 2, 3)
 
     # Dan angka yang sama muncul di setiap halaman yang memasang sidebar.
     for url in ("/?ds=berangka", "/unggah?ds=berangka", "/anotasi?ds=berangka",
                 "/versi?ds=berangka"):
         menu = klien.get(url).text
         menu = menu[menu.find('<nav class="sisi-menu"'):menu.find("</nav>")]
+        assert ">Dataset<b class=\"sisi-angka\">2<" in menu, (url, menu)
         assert ">Anotasi<b class=\"sisi-angka\">3<" in menu, (url, menu)
         assert ">Versi<b class=\"sisi-angka\">1<" in menu, (url, menu)
 

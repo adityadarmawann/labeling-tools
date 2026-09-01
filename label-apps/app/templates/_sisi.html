@@ -35,7 +35,7 @@
     <a class="sisi-item" href="/?ds={{ pr.ds | urlquote }}"
        {% if aktif == 'dataset' %}data-on aria-current="page"{% endif %}>
       <span class="sisi-ikon" aria-hidden="true">&#9635;</span>Dataset
-      {%- if pr.jumlah %}<b class="sisi-angka">{{ pr.jumlah }}</b>{% endif %}</a>
+      {%- if pr.n_dataset %}<b class="sisi-angka">{{ pr.n_dataset }}</b>{% endif %}</a>
 
     <a class="sisi-item" href="/versi?ds={{ pr.ds | urlquote }}"
        {% if aktif == 'versi' %}data-on aria-current="page"{% endif %}>

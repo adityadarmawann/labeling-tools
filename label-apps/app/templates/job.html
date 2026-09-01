@@ -101,6 +101,13 @@
             <span class="jb-cap jb-cap-ok" title="sudah dianotasi">anotasi</span>
             {% endif %}
           </label>
+          {#- Satu-satunya jalan ke kanvas untuk gambar yang belum masuk
+              dataset. Halaman Dataset hanya menampilkan yang sudah masuk, jadi
+              tanpa tautan ini pekerjaan yang sudah dibagi tidak bisa dibuka
+              dari mana pun — dan yang paling perlu dilabeli justru itu. -#}
+          <a class="jb-buka" href="/label?path={{ x.it | imgpath }}"
+             title="Buka {{ x.it.img.name }} di kanvas">
+            {{ 'Perbaiki' if x.berlabel else 'Labeli' }}</a>
           <figcaption class="bg-nama" title="{{ x.it.img.name }}">
             {{ x.it.img.name }}</figcaption>
         </figure>

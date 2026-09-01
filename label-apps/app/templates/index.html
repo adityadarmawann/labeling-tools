@@ -58,6 +58,15 @@
    saringan itu memang milik daftar gambar di bawahnya, bukan milik halaman.
    Kepala jadi sependek lima halaman projek lainnya, dan sidebarnya sejajar. #}
 <div class="alat">
+  {#- Grid yang menampilkan 38 dari 476 tanpa mengatakan apa-apa terbaca
+      seperti gambarnya hilang. Yang di luar dataset bukan hilang: ia sedang
+      menunggu dikerjakan, dan tautannya ke tempat mengerjakannya. -#}
+  {% if pr and n_luar %}
+  <p class="ds-catatan">
+    <b>{{ n_luar }}</b> gambar lain di projek ini belum masuk dataset.
+    <a href="/anotasi?ds={{ pr.ds | urlquote }}">Kerjakan di Anotasi &rarr;</a>
+  </p>
+  {% endif %}
 
   {# Kemajuan dataset dalam satu bilah, satu warna per keadaan.
      Sebelumnya ini deretan tick, satu per gambar. Deretan itu memang
@@ -397,8 +406,19 @@
   </div>
   {%- else %}
   <div class="empty" style="grid-column:1/-1">
+    {%- if pr and not total and n_projek %}
+    {#- Bedanya penting. "Tidak ada yang cocok" menyuruh orang mengubah
+        saringan, dan tidak ada saringan yang akan menolongnya: datasetnya
+        memang masih kosong, dan yang mengisinya ada di halaman lain. -#}
+    <strong>Belum ada gambar yang masuk dataset</strong>
+    <p>Projek ini punya {{ n_projek }} gambar yang masih dikerjakan. Gambar
+      masuk ke sini setelah dilabeli lalu dimasukkan lewat
+      <b>Tambahkan ke dataset</b>.</p>
+    <p><a class="btn" href="/anotasi?ds={{ pr.ds | urlquote }}">Buka Anotasi</a></p>
+    {%- else %}
     <strong>Tidak ada yang cocok</strong>
     <p>Ubah saringan di atas, atau pindai ulang setelah menambah anotasi.</p>
+    {%- endif %}
   </div>
   {%- endfor %}
 </div>

@@ -468,10 +468,15 @@ async def ke_dataset(request: Request,
                                       f"hanya pelabelnya atau pemilik projek "
                                       f"yang bisa memasukkannya ke dataset"}
 
+    # Pemiliknya diambil dari data yang sudah dibaca lewat letak folder, bukan
+    # dari akun pemanggil. Rute inilah satu-satunya penulis berkas tugas yang
+    # penjaganya bukan boleh_kelola, jadi tanpa ini folder dataset bersama yang
+    # belum berpemilik mencatat pemanggil pertamanya sebagai pemilik.
+    pemilik = data["pemilik"]
     if body.get("keluarkan"):
-        r = await asyncio.to_thread(svc.keluarkan, sess.src, kunci, sess.user)
+        r = await asyncio.to_thread(svc.keluarkan, sess.src, kunci, pemilik)
     else:
-        r = await asyncio.to_thread(svc.masukkan, sess.src, kunci, sess.user)
+        r = await asyncio.to_thread(svc.masukkan, sess.src, kunci, pemilik)
 
     # `total` dihitung ulang atas gambar yang BENAR-BENAR ada di dataset
     # sekarang. Angka mentah dari berkasnya ikut menghitung catatan milik

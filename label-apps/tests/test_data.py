@@ -75,6 +75,19 @@ def test_hasil_unggahan_bisa_dibuka_sebagai_dataset(klien, lingkungan):
     r = klien.post("/useupload?ds=batch-2")
     assert r.json()["ok"] is True
     assert r.json()["n"] == 2
+
+    # Terbaca dua, tetapi halaman Dataset belum menampilkannya: gambar yang
+    # baru diunggah belum dilabeli dan belum dimasukkan siapa pun. Halamannya
+    # mengatakan itu, bukan diam lalu tampak kosong tanpa sebab.
+    h = klien.get("/").text
+    assert h.count('class="card"') == 0
+    assert "Belum ada gambar yang masuk dataset" in h
+
+    # Dan setelah dimasukkan, keduanya muncul.
+    import pathlib
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    klien.post("/api/tugas/dataset", json={
+        "gambar": [str(ruang / "batch-2" / n) for n in ("satu.jpg", "dua.jpg")]})
     assert klien.get("/").text.count('class="card"') == 2
 
 

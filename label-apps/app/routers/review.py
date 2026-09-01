@@ -195,7 +195,21 @@ async def index(request: Request, f: str = "all",
                                           picker_context(request, sess, settings))
 
     with sess.lock:
-        items = list(sess.items)
+        seluruh = list(sess.items)
+
+    # Halaman ini adalah "Dataset", dan datasetnya HANYA gambar yang sudah
+    # dinyatakan masuk lewat Tambahkan ke dataset. Tanpa saringan ini, gambar
+    # yang baru diunggah — belum dilabeli, belum ditugaskan, belum diperiksa
+    # siapa pun — langsung tampil di sini seolah sudah jadi, padahal alurnya
+    # justru: unggah, kerjakan di Anotasi, baru masuk dataset.
+    #
+    # Ekspor, splitting, dan versi sudah memakai saringan yang sama sejak
+    # awal. Yang tertinggal cuma halamannya, dan itu membuat halaman ini
+    # menyebut angka yang berbeda dari yang benar-benar diekspor.
+    items, hitung_ds = await asyncio.to_thread(
+        tugas.saring_dataset, seluruh, sess.src,
+        settings.uploads_root)
+    n_luar = hitung_ds["n_semua"] - hitung_ds["n_dataset"]
 
     kelas_hitung: dict[str, int] = {}
     for it in items:
@@ -276,6 +290,11 @@ async def index(request: Request, f: str = "all",
         "sess": sess,
         "pr": pr,
         "aktif": "dataset",
+        # Berapa gambar projek ini yang BELUM masuk dataset. Halamannya
+        # menyebutkannya dan menautkan ke Anotasi: grid yang menampilkan 38
+        # dari 476 tanpa mengatakan apa-apa terbaca seperti gambarnya hilang.
+        "n_luar": n_luar,
+        "n_projek": hitung_ds["n_semua"],
         "local": is_local(request),
         "items": tampil,
         "urut": urut,

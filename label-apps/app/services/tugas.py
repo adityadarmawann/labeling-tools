@@ -97,12 +97,17 @@ def baca(ds: Path, pemilik: str = "") -> dict:
             "dataset": d.get("dataset") or [],
             "undangan": d.get("undangan") or {},
             # Kurasi dimulai saat orang pertama kali menekan "Tambahkan ke
-            # dataset", BUKAN saat berkas ini lahir. Dulu keduanya disamakan,
-            # dan akibatnya tindakan paling wajar seorang pemilik projek —
-            # mengundang rekannya — mengosongkan ekspor projek berisi ribuan
-            # gambar. Berkas ini lahir karena banyak sebab; hanya satu di
+            # dataset", BUKAN saat berkas ini lahir. Berkas ini lahir karena
+            # banyak sebab — mengundang, membagi, menandai — dan hanya satu di
             # antaranya berarti "aku mulai memilih isi dataset".
-            "kurasi": bool(d.get("kurasi")),
+            #
+            # Daftar dataset yang berisi dibaca sebagai kurasi yang sudah
+            # berjalan, sekalipun penandanya tidak ada. Hanya masukkan() yang
+            # bisa mengisi daftar itu, jadi isinya adalah buktinya sendiri —
+            # dan berkas yang ditulis sebelum penanda ini ada memang berisi
+            # daftar tanpa penanda. Tanpa aturan ini, projek yang pemiliknya
+            # sudah memilih 38 gambar tetap menampilkan seluruh 476-nya.
+            "kurasi": bool(d.get("kurasi")) or bool(d.get("dataset")),
             "warisan": False}
 
 
@@ -238,7 +243,7 @@ def di_dataset(data: dict, kunci: str) -> bool:
     return (not data["kurasi"]) or kunci in data["dataset"]
 
 
-def saring_dataset(items: list, ds: Path, akun: str = "") -> tuple[list, dict]:
+def saring_dataset(items: list, ds: Path, uploads_root: Path) -> tuple[list, dict]:
     """
     Hanya gambar yang sudah dinyatakan masuk dataset, beserta angkanya.
 
@@ -247,12 +252,15 @@ def saring_dataset(items: list, ds: Path, akun: str = "") -> tuple[list, dict]:
     berakibat, dan yang berakibat itu justru di sini: splitting, versi, dan
     ekspor semuanya bekerja pada hasil saringan ini.
 
-    Projek warisan mengembalikan seluruhnya apa adanya. Tanpa itu, ekspor empat
-    projek yang sudah ada akan mendadak kosong pada hari fitur ini dipasang.
+    Projek yang kurasinya belum pernah dimulai mengembalikan seluruhnya apa
+    adanya. Tanpa itu, ekspor projek yang sudah ada akan mendadak kosong pada
+    hari fitur ini dipasang. Begitu ada gambar baru masuk, dasar() membekukan
+    isi lamanya lebih dulu, jadi keadaan itu tidak pernah dipakai untuk
+    memutihkan gambar yang belum dikerjakan.
     """
     from .tag import kunci_gambar
 
-    data = baca(ds, akun)
+    data = baca_projek(ds, uploads_root)
     if not data["kurasi"]:
         return list(items), {"n_semua": len(items), "n_dataset": len(items),
                              "warisan": True}
@@ -276,6 +284,60 @@ def sudah_dimasukkan(data: dict, kunci: str) -> bool:
     projek yang belum pernah dikurasi, padahal belum ada yang dikerjakan.
     """
     return kunci in data["dataset"]
+
+
+def gambar_sekarang(ds: Path) -> list[str]:
+    """Kunci seluruh gambar yang ADA di projek saat ini.
+
+    Berkas pendamping dan folder bertitik dilewati dengan aturan yang sama
+    seperti di pemindai: .versi/ berisi .json, bukan gambar, tetapi folder
+    bertitik apa pun bisa berisi apa saja.
+    """
+    from ..config import IMG_EXT
+
+    d = Path(ds)
+    out = []
+    for p in sorted(d.rglob("*")):
+        if p.suffix.lower() not in IMG_EXT or not p.is_file():
+            continue
+        if any(bagian.startswith(".") for bagian in p.relative_to(d).parts):
+            continue
+        out.append(kunci_gambar(d, p))
+    return out
+
+
+def dasar(ds: Path, pemilik: str = "") -> dict:
+    """
+    Bekukan isi projek yang SEKARANG sebagai datasetnya, sekali saja.
+
+    Dipanggil tepat sebelum gambar baru masuk, dari setiap jalur yang menambah
+    gambar. Gunanya satu: memisahkan "sudah ada sebelum alurnya berlaku" dari
+    "baru datang dan belum diapa-apakan".
+
+    Tanpa ini, projek yang belum pernah dikurasi menghitung SELURUH isinya
+    sebagai dataset, jadi gambar yang baru diunggah — belum dilabeli, belum
+    ditugaskan, belum dimasukkan siapa pun — langsung muncul di halaman
+    Dataset dan langsung ikut terekspor. Itu persis kebalikan dari alurnya:
+    unggah dulu, kerjakan, baru masukkan.
+
+    Dan tanpa membekukan yang lama lebih dulu, satu-satunya cara memenuhi
+    aturan itu adalah mengosongkan dataset projek yang sudah ada — yang berarti
+    ekspor projek berisi ribuan gambar mendadak nol pada hari fiturnya dipasang.
+
+    Idempoten: projek yang kurasinya sudah berjalan tidak disentuh sama sekali.
+    """
+    with _kunci:
+        data = baca(ds, pemilik)
+        if data["kurasi"]:
+            return _tanpa_perubahan(data, {"dibekukan": 0,
+                                           "total": len(data["dataset"])})
+        data["pemilik"] = data["pemilik"] or pemilik
+        data["kurasi"] = True
+        data["dataset"] = sorted(set(data["dataset"]) | set(gambar_sekarang(ds)))
+        _tulis(ds, data)
+    log.info("dasar dataset %s: %s gambar yang sudah ada dibekukan masuk",
+             Path(ds).name, len(data["dataset"]))
+    return {"dibekukan": len(data["dataset"]), "total": len(data["dataset"])}
 
 
 def masukkan(ds: Path, kunci_daftar: list[str], pemilik: str = "") -> dict:

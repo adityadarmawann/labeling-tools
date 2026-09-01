@@ -82,6 +82,17 @@ def jalankan(base: str, sandi: str) -> int:
             f'{t.text.count(chr(34) + "card" + chr(34))} kartu')
     cek("urutkan", c.get("/", params={"s": "nama-turun"}).status_code == 200)
     cek("cari nama berkas", c.get("/", params={"q": "IMG"}).status_code == 200)
+    # Halaman Dataset hanya memuat yang sudah dimasukkan, dan mengatakan berapa
+    # yang belum. Grid yang menampilkan 38 dari 476 tanpa keterangan terbaca
+    # seperti gambarnya hilang.
+    h = c.get("/", params={"ds": PROJEK}).text
+    n_kartu = h.count('class="card"')
+    j = c.get("/api/ekspor/ringkasan",
+              params={"format": "yolo-seg", "split": "8:1:1"}).json()
+    cek("grid sama dengan isi ekspor", n_kartu == j.get("n_dataset"),
+        f'{n_kartu} kartu vs {j.get("n_dataset")} diekspor dari {j.get("n_semua")}')
+    cek("yang di luar dataset disebutkan",
+        "belum masuk dataset" in h or n_kartu == j.get("n_semua"))
 
     # ---------------------------------------------------------- satu gambar
     p1 = unquote(re.findall(r'/view\?path=([^"&]+)', c.get("/").text)[0])
@@ -92,8 +103,18 @@ def jalankan(base: str, sandi: str) -> int:
     cek("gambar penuh", c.get("/gambar", params={"path": p1}).status_code == 200)
 
     # ---------------------------------------------------------- tulis, lalu pulihkan
-    belum = unquote(re.findall(
-        r'/view\?path=([^"&]+)', c.get("/", params={"f": "unlab"}).text)[0])
+    # Gambar yang belum dilabeli TIDAK ada di halaman Dataset — halaman itu
+    # hanya memuat yang sudah dinyatakan masuk. Yang belum dikerjakan ada di
+    # papan Anotasi, di dalam job yang sudah dibagi, dan dari situlah pelabel
+    # membukanya. Mengambilnya dari sini sekaligus menguji bahwa jalan itu ada.
+    tid = re.findall(r'/tugas/(t[0-9a-f]+)', c.get("/anotasi", params={"ds": PROJEK}).text)
+    cek("papan anotasi punya job", bool(tid), f"{len(tid)} tautan job")
+    ubin = re.findall(r'data-path="([^"]+)"\s+data-label="0"',
+                      c.get(f"/tugas/{tid[0]}", params={"ds": PROJEK}).text)
+    cek("job memuat gambar yang belum dilabeli", bool(ubin), f"{len(ubin)} ubin")
+    belum = ubin[0]
+    cek("kanvas terbuka dari job",
+        c.get("/label", params={"path": belum}).status_code == 200)
     cek("tandai latar", c.post("/markbg", params={"path": belum}).json().get("ok"))
     cek("batalkan latar", c.post("/unmarkbg", params={"path": belum}).json().get("ok"))
     r = c.post("/api/simpan", json={"path": belum, "shapes": [
@@ -104,8 +125,11 @@ def jalankan(base: str, sandi: str) -> int:
     # berkasnya harus benar-benar dibuang, bukan dikosongkan.
     c.post("/api/simpan", json={"path": belum, "shapes": []})
     c.post("/unmarkbg", params={"path": belum})
+    # Atributnya ditulis di baris terpisah di templat, jadi dicocokkan dengan
+    # pola, bukan dengan satu spasi yang kebetulan.
     cek("anotasi uji dikembalikan",
-        c.get("/", params={"f": "unlab"}).text.count('class="card"') > 0)
+        bool(re.search(re.escape(f'data-path="{belum}"') + r'\s+data-label="0"',
+                       c.get(f"/tugas/{tid[0]}", params={"ds": PROJEK}).text)))
 
     # ---------------------------------------------------------- model
     r = c.post("/api/sam", json={"path": p1, "box": [200, 400, 900, 1400]}).json()
