@@ -36,7 +36,22 @@ MAKS_UBIN = 400
 def _siap(sess: Session) -> tuple[dict | None, str]:
     if sess.src is None:
         return None, "belum ada dataset terbuka"
-    return svc.baca(sess.src, sess.user), ""
+    return svc.baca_projek(sess.src, get_settings().uploads_root), ""
+
+
+def _paths(nilai):
+    """
+    Daftar path dari bodi. None kalau bentuknya bukan larik atau teks.
+
+    Dibedakan dari daftar kosong dengan sengaja: yang kosong itu permintaan
+    tanpa isi, yang salah bentuk itu permintaan yang keliru, dan keduanya
+    pantas dijawab berbeda.
+    """
+    if nilai is None:
+        return []
+    if isinstance(nilai, (list, tuple)):
+        return [str(x) for x in nilai]
+    return [str(nilai)] if isinstance(nilai, str) else None
 
 
 def _akun_sah(nama: str, settings: Settings) -> str:
@@ -88,7 +103,7 @@ async def halaman_papan(request: Request, ds: str = "", urut: str = "terbaru",
     if str(sess.src or "") != str(d):
         await asyncio.to_thread(sess.load, d)
 
-    data = svc.baca(d, sess.user)
+    data = svc.baca_projek(d, settings.uploads_root)
     ringkas = await asyncio.to_thread(sp.ringkas, d)
     pr = {"nama": d.name, "path": str(d), **ringkas, "versi": 0,
           "ds": ds if "/" in ds else d.name}
@@ -145,7 +160,7 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
     if str(sess.src or "") != str(d):
         await asyncio.to_thread(sess.load, d)
 
-    data = svc.baca(d, sess.user)
+    data = svc.baca_projek(d, settings.uploads_root)
     job = data["tugas"].get(tid)
     if job is None:
         return RedirectResponse(f"/anotasi?ds={ds}", status_code=303)
@@ -165,7 +180,7 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
         isi.append({
             "it": it, "kunci": k,
             "berlabel": scanner.severity(it) != "stop",
-            "di_dataset": svc.di_dataset(data, k),
+            "di_dataset": svc.sudah_dimasukkan(data, k),
         })
     isi.sort(key=lambda x: x["it"]["img"].name)
 
@@ -202,7 +217,7 @@ async def halaman_bagi(request: Request, ds: str = "", batch: str = "",
     if str(sess.src or "") != str(d):
         await asyncio.to_thread(sess.load, d)
 
-    data = svc.baca(d, sess.user)
+    data = svc.baca_projek(d, settings.uploads_root)
     ringkas = await asyncio.to_thread(sp.ringkas, d)
     pr = {"nama": d.name, "path": str(d), **ringkas, "versi": 0,
           "ds": ds if "/" in ds else d.name}
@@ -385,7 +400,10 @@ async def bagi(request: Request, sess: Session = Depends(current_session_api),
     tolak = _akun_sah(pelabel, settings)
     if tolak:
         return {"ok": False, "error": tolak}
-    kunci = _kunci(sess, [str(p) for p in (body.get("gambar") or [])])
+    minta = _paths(body.get("gambar"))
+    if minta is None:
+        return {"ok": False, "error": "daftar gambar harus berupa larik"}
+    kunci = _kunci(sess, minta)
     if not kunci:
         return {"ok": False, "error": "tidak satu pun gambar itu ada di projek ini"}
     r = await asyncio.to_thread(svc.tugaskan, sess.src, sess.user, pelabel,
@@ -443,7 +461,10 @@ async def ke_dataset(request: Request,
     if galat:
         return {"ok": False, "error": galat}
     body = await bodi_json(request)
-    kunci = _kunci(sess, [str(p) for p in (body.get("gambar") or [])])
+    minta = _paths(body.get("gambar"))
+    if minta is None:
+        return {"ok": False, "error": "daftar gambar harus berupa larik"}
+    kunci = _kunci(sess, minta)
     if not kunci:
         return {"ok": False, "error": "tidak satu pun gambar itu ada di projek ini"}
 

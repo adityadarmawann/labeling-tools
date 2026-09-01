@@ -15,6 +15,16 @@
 {% include "_sisi.html" %}
 <div class="sisi-isi">
 
+  {% if not boleh_unggah %}
+  <div class="pkosong" style="max-width:640px">
+    <b>Hanya pemilik projek yang bisa menambah gambar</b>
+    Projek ini milik <b>{{ pemilik }}</b>. Kamu bisa melihat seluruh gambarnya
+    dan mengerjakan yang ditugaskan kepadamu.
+    <span style="display:block;margin-top:10px">
+      <a href="/?ds={{ pr.ds | urlquote }}">Buka datasetnya</a></span>
+  </div>
+  {% else %}
+
   {# Penunjuk tahap. Di tahap 2 dengan ribuan thumbnail, ini satu-satunya yang
      memberitahu masih ada tahap sesudahnya. data-on = tahap sekarang,
      data-selesai = tahap yang sudah dilewati; keduanya dipindahkan JavaScript. #}
@@ -30,7 +40,7 @@
   </nav>
 
 <div class="ug-halaman" id="ug-halaman"
-     data-projek="{{ projek.nama }}" data-path="{{ projek.path }}"
+     data-projek="{{ pr.ds }}" data-path="{{ projek.path }}"
      data-berisi="{{ 1 if berisi else 0 }}" data-tata="{{ tata }}">
 
   {# ---------------------------------------------------------- nama & tag
@@ -265,6 +275,7 @@
   </section>
 
 </div>
+  {% endif %}
 </div>
 </main>
 {% endblock %}

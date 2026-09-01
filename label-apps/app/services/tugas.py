@@ -67,7 +67,8 @@ def _p(ds: Path) -> Path:
 
 def kosong(pemilik: str = "") -> dict:
     return {"versi": VERSI, "pemilik": pemilik, "anggota": {},
-            "tugas": {}, "dataset": [], "undangan": {}, "warisan": True}
+            "tugas": {}, "dataset": [], "undangan": {},
+            "kurasi": False, "warisan": True}
 
 
 def baca(ds: Path, pemilik: str = "") -> dict:
@@ -95,7 +96,27 @@ def baca(ds: Path, pemilik: str = "") -> dict:
             "tugas": d.get("tugas") or {},
             "dataset": d.get("dataset") or [],
             "undangan": d.get("undangan") or {},
+            # Kurasi dimulai saat orang pertama kali menekan "Tambahkan ke
+            # dataset", BUKAN saat berkas ini lahir. Dulu keduanya disamakan,
+            # dan akibatnya tindakan paling wajar seorang pemilik projek —
+            # mengundang rekannya — mengosongkan ekspor projek berisi ribuan
+            # gambar. Berkas ini lahir karena banyak sebab; hanya satu di
+            # antaranya berarti "aku mulai memilih isi dataset".
+            "kurasi": bool(d.get("kurasi")),
             "warisan": False}
+
+
+def baca_projek(ds: Path, uploads_root: Path) -> dict:
+    """
+    Berkas tugas sebuah projek, dengan pemilik yang diambil dari LETAKNYA.
+
+    Ini yang harus dipakai rute, bukan baca() langsung. baca() menerima
+    pemilik sebagai nilai cadangan, dan rute yang mengoperkan akun pemanggil
+    ke situ membuat siapa pun yang menyentuh folder lebih dulu jadi pemiliknya.
+    """
+    from .projek import pemilik_dari
+
+    return baca(ds, pemilik_dari(uploads_root, ds))
 
 
 def _tanpa_perubahan(data: dict, hasil: dict) -> dict:
@@ -161,7 +182,11 @@ def boleh_labeli(data: dict, akun: str, kunci: str) -> bool:
     sebagai rujukan, dan dua orang yang menyunting gambar yang sama tanpa
     saling tahu berakhir dengan yang terakhir menimpa yang pertama.
     """
-    if data["warisan"] or akun == data["pemilik"]:
+    if akun == data["pemilik"]:
+        return True
+    # Projek yang belum diorganisasi sama sekali berperilaku seperti sebelum
+    # penugasan ada: siapa pun yang bisa membukanya boleh menyuntingnya.
+    if not data["tugas"] and not data["anggota"]:
         return True
     return pelabel_gambar(data, kunci) == akun
 
@@ -199,13 +224,18 @@ def alasan_tolak(data: dict, akun: str, kunci: str) -> str:
 
 def di_dataset(data: dict, kunci: str) -> bool:
     """
-    Apakah satu gambar sudah dinyatakan masuk dataset.
+    Apakah satu gambar terhitung masuk dataset.
 
-    Projek warisan menjawab True untuk semuanya: sebelum penugasan ada, seluruh
-    isi projek memang dataset itu sendiri, dan menjawab False akan membuat
-    ekspor projek lama mendadak kosong.
+    Selama kurasinya belum dimulai, SELURUH isi projek adalah datasetnya —
+    persis kelakuan aplikasi ini sebelum penugasan ada. Yang mengubahnya cuma
+    satu tindakan: seseorang menekan "Tambahkan ke dataset" untuk pertama
+    kalinya. Sejak saat itu, yang di dataset hanya yang disebutkan.
+
+    Sengaja TIDAK bergantung pada ada atau tidaknya berkas tugas. Berkas itu
+    lahir karena mengundang, membagi, atau menandai; tidak satu pun berarti
+    "aku mulai memilih isi dataset".
     """
-    return data["warisan"] or kunci in data["dataset"]
+    return (not data["kurasi"]) or kunci in data["dataset"]
 
 
 def saring_dataset(items: list, ds: Path, akun: str = "") -> tuple[list, dict]:
@@ -223,7 +253,7 @@ def saring_dataset(items: list, ds: Path, akun: str = "") -> tuple[list, dict]:
     from .tag import kunci_gambar
 
     data = baca(ds, akun)
-    if data["warisan"]:
+    if not data["kurasi"]:
         return list(items), {"n_semua": len(items), "n_dataset": len(items),
                              "warisan": True}
     dipakai = [it for it in items
@@ -232,12 +262,34 @@ def saring_dataset(items: list, ds: Path, akun: str = "") -> tuple[list, dict]:
                      "warisan": False}
 
 
+def sudah_dimasukkan(data: dict, kunci: str) -> bool:
+    """
+    Apakah gambar ini DISEBUT dalam daftar dataset, apa adanya.
+
+    Berbeda dari di_dataset, dan bedanya penting. di_dataset menjawab "apakah
+    ia ikut diekspor" — selama kurasinya belum dimulai, jawabannya ya untuk
+    semuanya. Yang ini menjawab "apakah seseorang sudah menekan Tambahkan ke
+    dataset untuknya", dan itu yang menggerakkan kolom ketiga di papan serta
+    cap di halaman rincian job.
+
+    Memakai di_dataset di sana membuat setiap job langsung tampak selesai pada
+    projek yang belum pernah dikurasi, padahal belum ada yang dikerjakan.
+    """
+    return kunci in data["dataset"]
+
+
 def masukkan(ds: Path, kunci_daftar: list[str], pemilik: str = "") -> dict:
     """Nyatakan sekumpulan gambar masuk dataset."""
     with _kunci:
         data = baca(ds, pemilik)
         ada = set(data["dataset"])
         baru = [k for k in kunci_daftar if k not in ada]
+        if not baru and data["kurasi"]:
+            return _tanpa_perubahan(data, {"ditambah": 0,
+                                           "total": len(data["dataset"])})
+        # Menyalakan kurasi adalah keputusan besar: sejak ini, gambar yang
+        # tidak disebutkan TIDAK ikut diekspor. Karena itu hanya di sini.
+        data["kurasi"] = True
         data["dataset"] = data["dataset"] + baru
         _tulis(ds, data)
     log.info("%s gambar masuk dataset di %s", len(baru), Path(ds).name)
@@ -248,6 +300,12 @@ def keluarkan(ds: Path, kunci_daftar: list[str], pemilik: str = "") -> dict:
     """Kembalikan gambar dari dataset ke daftar yang masih dikerjakan."""
     with _kunci:
         data = baca(ds, pemilik)
+        if not data["kurasi"]:
+            # Belum ada yang dimasukkan, jadi tidak ada yang bisa dikeluarkan.
+            # Menjawab "berhasil, 0 dikeluarkan" membuat orang mengira
+            # datasetnya kosong padahal seluruh isinya justru terhitung masuk.
+            return _tanpa_perubahan(data, {"dikeluarkan": 0, "total": 0,
+                                           "belum_dikurasi": True})
         buang = set(kunci_daftar)
         sebelum = len(data["dataset"])
         sisa = [k for k in data["dataset"] if k not in buang]
@@ -478,7 +536,7 @@ def papan(data: dict, berlabel: set[str], semua: set[str],
         g = [k for k in (t.get("gambar") or []) if k in semua]
         ditugaskan.update(g)
         n_label = sum(1 for k in g if k in berlabel)
-        n_dataset = sum(1 for k in g if di_dataset(data, k))
+        n_dataset = sum(1 for k in g if sudah_dimasukkan(data, k))
         keadaan = (SELESAI if g and n_dataset == len(g)
                    else JALAN if n_label else BARU)
         # Judul: yang disimpan saat dibagi, atau unggahan yang paling banyak

@@ -13,6 +13,7 @@ import asyncio
 
 from fastapi import APIRouter, Depends, Request
 
+from ..config import Settings, get_settings
 from ..deps import current_session_api, bodi_json
 from ..services import tag as svc
 from ..services import tugas as svc_tugas
@@ -26,13 +27,22 @@ router = APIRouter(tags=["tag"])
 MAKS_SEKALI = 50_000
 
 
-def _daftar(nilai) -> list[str]:
-    """Terima daftar tag, atau satu tag sebagai string."""
+def _daftar(nilai):
+    """
+    Daftar tag dari bodi: larik, atau satu tag sebagai string.
+
+    Mengembalikan None kalau bentuknya lain. Diam-diam menganggapnya kosong
+    lebih buruk daripada 500 yang digantikannya: permintaannya dijawab
+    berhasil, tidak ada tag yang terpasang, dan tidak ada satu pun tanda
+    bahwa yang dikirim memang salah bentuk.
+    """
     if nilai is None:
         return []
     if isinstance(nilai, str):
         return [nilai]
-    return [str(x) for x in nilai]
+    if isinstance(nilai, (list, tuple)):
+        return [str(x) for x in nilai]
+    return None
 
 
 def _kunci(sess: Session, paths: list[str]) -> list[str]:
@@ -51,7 +61,8 @@ def _kunci(sess: Session, paths: list[str]) -> list[str]:
 
 @router.post("/api/tag/pasang")
 async def pasang(request: Request,
-                 sess: Session = Depends(current_session_api)):
+                 sess: Session = Depends(current_session_api),
+                 settings: Settings = Depends(get_settings)):
     if sess.src is None:
         return {"ok": False, "error": "belum ada dataset terbuka"}
     body = await bodi_json(request)
@@ -81,7 +92,12 @@ async def pasang(request: Request,
     # menghitung `boleh_tag` untuk menyembunyikan kotaknya, tetapi rutenya
     # sendiri tidak pernah memeriksa — dan aturan yang cuma berlaku di
     # tampilan bukan aturan.
-    tdata = svc_tugas.baca(sess.src, sess.user)
+    tdata = svc_tugas.baca_projek(sess.src, settings.uploads_root)
+    tambah = _daftar(body.get("tambah"))
+    buang = _daftar(body.get("buang"))
+    if tambah is None or buang is None:
+        return {"ok": False, "error": "daftar tag harus berupa larik atau satu teks"}
+
     tolak = [k for k in kunci if not svc_tugas.boleh_labeli(tdata, sess.user, k)]
     if tolak:
         return {"ok": False, "error": (
@@ -94,8 +110,7 @@ async def pasang(request: Request,
         # String tunggal dibungkus jadi satu unsur. Tanpa ini "abc" dipecah
         # per huruf oleh iterasinya sendiri, dan tiga tag bernama a, b, dan c
         # lahir dari satu tag yang dimaksud.
-        tambah=_daftar(body.get("tambah")),
-        buang=_daftar(body.get("buang")),
+        tambah=tambah, buang=buang,
         batch=None if batch is None else str(batch))
     data = await asyncio.to_thread(svc.baca, sess.src)
     return {"ok": True, **r, **svc.hitung(data)}

@@ -225,7 +225,7 @@ async def index(request: Request, f: str = "all",
     # dua nama di dua berkas pendamping.
     from ..services import tag as svc_tag
     from ..services import tugas as svc_tugas
-    tdata = svc_tugas.baca(sess.src, sess.user)
+    tdata = svc_tugas.baca_projek(sess.src, settings.uploads_root)
     pelabel_dari = {}
     tugasku_id = set()
     if not tdata["warisan"]:

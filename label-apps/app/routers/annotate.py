@@ -293,7 +293,12 @@ async def api_simpan(request: Request, sess: Session = Depends(current_session_a
 
     bentuk = []
     W, H = it["W"], it["H"]
-    for s in body.get("shapes", []):
+    bentuk_masuk = body.get("shapes")
+    if not isinstance(bentuk_masuk, (list, tuple)):
+        return {"ok": False, "error": "daftar bentuk tidak berbentuk larik"}
+    for s in bentuk_masuk:
+        if not isinstance(s, dict):
+            return {"ok": False, "error": "ada bentuk yang bukan objek"}
         # Dikurung ke dalam gambar di sini juga, bukan hanya di kanvas.
         # Penulisan YOLO (scanner.tulis_yolo) selalu mengurung, jadi titik di
         # luar gambar membuat `.json` dan `.txt` menyimpan bentuk yang berbeda

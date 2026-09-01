@@ -126,15 +126,21 @@ class Session:
         # akun ini. Tanpa itu, mengunggah dari halaman projek tamu dijawab
         # berhasil tetapi berkasnya mendarat di projek SENDIRI yang kebetulan
         # bernama sama, dan tidak ada satu layar pun yang menyebutkannya.
+        # Bentuk "pemilik/projek" hanya sah kalau pemiliknya memang akun ini.
+        # Mengunggah berarti mengubah isi projek, dan itu pengelolaan — tamu
+        # yang diundang boleh melabeli, tidak boleh menambah gambar. Dulu
+        # bentuk ini diterima apa adanya, sehingga tamu menulis berkas ke
+        # projek pemiliknya padahal /api/simpan menolaknya untuk gambar yang
+        # sama.
         if "/" in (ds or ""):
-            d = temukan(self.settings.uploads_root, self.user, ds)
-            if d is not None:
-                return d
-            # Tidak diundang: jangan diam-diam jatuh ke projek sendiri. Nama
-            # yang tidak boleh dibuka harus menghasilkan folder yang jelas
-            # bukan projek siapa pun.
-            return (self.settings.uploads_root / safe_slug(self.user)
-                    / bersihkan_nama(ds.replace("/", "-")))
+            pemilik, _, nama = ds.partition("/")
+            if bersihkan_nama(pemilik) != safe_slug(self.user):
+                # Diarahkan ke nama yang jelas bukan projek siapa pun, supaya
+                # kegagalannya terlihat alih-alih mendarat diam-diam di projek
+                # lain milik pengunggahnya sendiri.
+                return (self.settings.uploads_root / safe_slug(self.user)
+                        / bersihkan_nama(ds.replace("/", "-")))
+            ds = nama
         return (self.settings.uploads_root / safe_slug(self.user)
                 / bersihkan_nama(ds))
 

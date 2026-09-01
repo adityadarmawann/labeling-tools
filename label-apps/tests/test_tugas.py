@@ -45,8 +45,17 @@ def test_berkas_lahir_saat_pertama_kali_menugaskan(tmp_path):
     assert (d / tugas.BERKAS).is_file()
     data = tugas.baca(d, "darma")
     assert data["warisan"] is False
-    # Sejak ada berkasnya, dataset TIDAK lagi otomatis berisi semuanya.
-    assert tugas.di_dataset(data, "a.jpg") is False
+    # Berkasnya lahir, tetapi kurasinya BELUM dimulai: seluruh isi projek
+    # masih terhitung dataset. Yang memulainya cuma "Tambahkan ke dataset".
+    assert data["kurasi"] is False
+    assert tugas.di_dataset(data, "a.jpg") is True
+    assert tugas.sudah_dimasukkan(data, "a.jpg") is False
+
+    tugas.masukkan(d, ["a.jpg"], "darma")
+    data = tugas.baca(d, "darma")
+    assert data["kurasi"] is True
+    assert tugas.di_dataset(data, "a.jpg") is True
+    assert tugas.di_dataset(data, "b.jpg") is False
 
 
 def test_berkas_tugas_rusak_dibaca_sebagai_warisan(tmp_path):
@@ -680,12 +689,13 @@ def test_ekspor_dan_splitting_hanya_memakai_isi_dataset(klien, lingkungan):
     gambar = sorted(str(x) for x in d.glob("*.jpg"))
     klien.post("/api/tugas/bagi", json={"pelabel": "paul", "gambar": gambar})
 
-    # Berkas tugas sudah ada, dataset masih kosong: ekspor DITOLAK dengan
-    # sebabnya, bukan mengirim ZIP kosong.
-    r = klien.get("/ekspor?format=yolo-seg&gambar=0")
-    assert r.status_code == 409 and "Tambahkan ke dataset" in r.text
-    j = klien.post("/api/split/jalankan?split=8:1:1").json()
-    assert j["ok"] is False and "dataset" in j["error"]
+    # Membagi tugas TIDAK memulai kurasi. Selama belum ada yang dimasukkan,
+    # seluruh isi projek masih terhitung dataset — persis seperti sebelum
+    # penugasan ada. Ini yang dulu salah: satu tindakan sah mengosongkan
+    # ekspor projek berisi ribuan gambar.
+    j = klien.get("/api/ekspor/ringkasan?format=yolo-seg&split=8:1:1").json()
+    assert j["n_dataset"] == 5, j
+    assert klien.get("/ekspor?format=yolo-seg&gambar=0").status_code == 200
 
     klien.post("/api/tugas/dataset", json={"gambar": gambar[:2]})
     j = klien.get("/api/ekspor/ringkasan?format=yolo-seg&split=8:1:1").json()
@@ -818,8 +828,14 @@ def test_versi_tanpa_gambar_di_dataset_ditolak(klien, lingkungan):
     gambar = sorted(str(x) for x in d.glob("*.jpg"))
     klien.post("/api/tugas/bagi", json={"pelabel": "paul", "gambar": gambar})
 
+    # Sebelum kurasi dimulai, seluruh isinya terhitung dataset, jadi versinya
+    # BOLEH dibuat. Yang ditolak justru sesudah dikurasi lalu dikosongkan.
+    assert klien.post("/api/versi/buat?split=8:1:1").json()["n"] == 2
+
+    klien.post("/api/tugas/dataset", json={"gambar": gambar})
+    klien.post("/api/tugas/dataset", json={"gambar": gambar, "keluarkan": True})
     j = klien.post("/api/versi/buat?split=8:1:1").json()
-    assert j["ok"] is False and "dataset" in j["error"]
+    assert j["ok"] is False and "dataset" in j["error"], j
 
 
 def test_kolom_belum_ditugaskan_dikelompokkan_per_unggahan(klien, lingkungan):
@@ -1168,3 +1184,134 @@ def test_ds_yang_ditolak_dikembalikan_ke_daftar_projek(klien, lingkungan):
 
     r = klien.get("/?ds=orang-lain/rahasia", follow_redirects=False)
     assert r.status_code == 303 and "/pilih" in r.headers["location"]
+
+
+# ============================================================
+# TEMUAN AUDIT QA PUTARAN KEDUA
+# ============================================================
+
+def test_mengundang_tidak_mengosongkan_dataset(klien, lingkungan):
+    """QA2 #4, dan ini akar seluruh perkaranya.
+
+    Berkas tugas lahir karena banyak sebab: mengundang, membagi, menandai.
+    Tidak satu pun berarti "aku mulai memilih isi dataset". Dulu keduanya
+    disamakan, sehingga tindakan pertama seorang pemilik projek — mengundang
+    rekannya — mengosongkan ekspor projek berisi ribuan gambar.
+    """
+    import pathlib
+
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = _projek(ruang, "undang-utuh", n=4)
+    klien.post(f"/setsrc?path={d}")
+
+    assert klien.post("/api/tugas/undang?akun=anggi").json()["ok"]
+    assert (d / tugas.BERKAS).is_file(), "berkas memang lahir"
+
+    j = klien.get("/api/ekspor/ringkasan?format=yolo-seg&split=8:1:1").json()
+    assert j["n_dataset"] == 4, "ekspor hangus karena mengundang"
+    assert klien.get("/ekspor?format=yolo-seg&gambar=0").status_code == 200
+
+    # Yang memulai kurasi cuma satu tindakan.
+    klien.post("/api/tugas/dataset", json={"gambar": [str(next(d.glob("*.jpg")))]})
+    j = klien.get("/api/ekspor/ringkasan?format=yolo-seg&split=8:1:1").json()
+    assert j["n_dataset"] == 1
+
+
+def test_pemilik_projek_dari_letak_folder_bukan_dari_pembacanya(tmp_path):
+    """QA2 #2. Siapa pun yang menyentuh folder pertama kali jadi pemiliknya.
+
+    Satu permintaan dari akun biasa cukup untuk mengangkat dirinya jadi
+    pemilik folder dataset BERSAMA, lalu mengunci adminnya sendiri di luar.
+    """
+    unggahan = tmp_path / "datasets" / "_unggahan"
+    milik_darma = unggahan / "darma" / "punyaku"
+    milik_darma.mkdir(parents=True)
+    bersama = tmp_path / "datasets" / "ds-tim"
+    bersama.mkdir(parents=True)
+
+    assert projek.pemilik_dari(unggahan, milik_darma) == "darma"
+    # Folder bersama TIDAK punya pemilik: tidak ada yang boleh membagi tugas
+    # atau mengurus versi di sana.
+    assert projek.pemilik_dari(unggahan, bersama) == ""
+
+    data = tugas.baca_projek(bersama, unggahan)
+    assert data["pemilik"] == ""
+    for siapa in ("darma", "rizky", "siapa saja"):
+        assert tugas.boleh_kelola(data, siapa) is False
+
+
+def test_penjaga_folder_bekerja_pada_tata_letak_produksi(tmp_path):
+    """QA2 #1. Di produksi ruang unggahan berada DI DALAM dataset bersama.
+
+    Kalau folder bersama diperiksa lebih dulu, setiap projek setiap akun lolos
+    lewat cabang itu dan seluruh penjagaan tidak menjaga apa pun.
+    """
+    ds = tmp_path / "datasets"
+    up = ds / "_unggahan"
+    (up / "darma" / "punyaku").mkdir(parents=True)
+    (up / "aditya" / "rahasia").mkdir(parents=True)
+    (ds / "ds-tim").mkdir()
+
+    assert projek.boleh_buka(up / "darma" / "punyaku", "darma", up, ds) == ""
+    assert projek.boleh_buka(ds / "ds-tim", "darma", up, ds) == ""
+    assert projek.boleh_buka(up / "aditya" / "rahasia", "darma", up, ds) != ""
+    assert projek.boleh_buka(tmp_path / "di-luar", "darma", up, ds) != ""
+
+
+def test_impor_dan_survei_tunduk_pada_aturan_yang_sama(klien, lingkungan):
+    """QA2 #3. Menghitung isi sebuah folder sudah membocorkan isinya."""
+    masuk(klien, "paul", PW_PAUL)
+    luar = lingkungan["tmp"] / "di-luar-segalanya"
+    luar.mkdir(exist_ok=True)
+
+    j = klien.get(f"/api/impor/survei?path={luar}").json()
+    assert j["ok"] is False, "isi folder di luar akar bisa dihitung"
+    j = klien.post(f"/impor?path={luar}&ds=curian").json()
+    assert j["ok"] is False
+
+
+def test_tamu_tidak_bisa_mengunggah_ke_projek_pemiliknya(klien, aplikasi,
+                                                          lingkungan):
+    """QA2, SEDANG. /api/simpan menolaknya, /upload dulu tidak."""
+    import pathlib
+
+    from conftest import klien_baru
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = _projek(ruang, "tamu-unggah", n=2)
+    klien.post(f"/setsrc?path={d}")
+    klien.post("/api/tugas/undang?akun=anggi")
+
+    lain = klien_baru(aplikasi, "anggi", PW_ANGGI)
+    lain.put("/upload?ds=paul/tamu-unggah&name=sisipan.jpg", content=b"x" * 64)
+    assert not (d / "sisipan.jpg").exists(), "tamu menulis ke projek pemiliknya"
+
+    # Halamannya pun mengatakannya, bukan diam lalu gagal.
+    h = lain.get("/unggah?ds=paul/tamu-unggah").text
+    assert "Hanya pemilik projek yang bisa menambah gambar" in h
+
+
+def test_medan_berjenis_salah_dijawab_pesan(klien, lingkungan):
+    """QA2, SEDANG. Enam 500 tersisa dari jenis medan yang salah."""
+    masuk(klien, "paul", PW_PAUL)
+    src = lingkungan["roots"] / "ds-alpha"
+    klien.post(f"/setsrc?path={src}")
+    g = sorted(str(p) for p in src.glob("*.jpg"))
+
+    kasus = [
+        ("/api/tag/pasang", {"paths": g[:1], "tambah": 5}),
+        ("/api/tag/pasang", {"paths": 5, "tambah": ["a"]}),
+        ("/api/tugas/bagi", {"pelabel": "paul", "gambar": 5}),
+        ("/api/tugas/dataset", {"gambar": 5}),
+        ("/api/simpan", {"path": g[0], "shapes": 5}),
+        ("/api/simpan", {"path": g[0], "shapes": [5]}),
+    ]
+    for rute, isi in kasus:
+        r = klien.post(rute, json=isi)
+        assert r.status_code == 200, (rute, isi, r.status_code)
+        assert r.json()["ok"] is False, (rute, isi)

@@ -17,12 +17,12 @@ def test_unggah_berkas_normal(klien, lingkungan):
     r = klien.put("/upload?ds=batch-1&name=foto.png", content=b"x" * 500)
     assert r.json() == {"ok": True, "name": "foto.png", "bytes": 500,
                         "arsip": False}
-    assert (lingkungan["tmp"] / "unggahan" / "anggi" / "batch-1" / "foto.png").exists()
+    assert (lingkungan["roots"] / "_unggahan" / "anggi" / "batch-1" / "foto.png").exists()
 
 
 def test_nama_berkas_disterilkan_dan_tetap_di_folder_akun(klien, lingkungan):
     masuk(klien, "anggi", PW_ANGGI)
-    unggahan = lingkungan["tmp"] / "unggahan"
+    unggahan = lingkungan["roots"] / "_unggahan"
 
     # Nama bermuatan `..` DITOLAK, bukan ditafsirkan jadi path lain. Unggahan
     # folder yang sah tidak pernah memuatnya, jadi menolak lebih jelas.
@@ -61,8 +61,8 @@ def test_berkas_lebih_besar_dari_batas_ditolak(klien, lingkungan):
     assert r.json()["ok"] is False
     assert "1 MB" in r.json()["error"]
     # tidak ada berkas setengah jadi yang tertinggal
-    assert not list((lingkungan["tmp"] / "unggahan").rglob("*.part"))
-    assert not list((lingkungan["tmp"] / "unggahan").rglob("besar.png"))
+    assert not list((lingkungan["roots"] / "_unggahan").rglob("*.part"))
+    assert not list((lingkungan["roots"] / "_unggahan").rglob("besar.png"))
 
 
 def test_hasil_unggahan_bisa_dibuka_sebagai_dataset(klien, lingkungan):
@@ -274,7 +274,7 @@ def test_unggah_folder_mempertahankan_struktur_yolo(klien, lingkungan):
         r = klien.put(f"/upload?ds=folder-uji&name={nama}", content=b"0 0.5 0.5 0.2 0.2\n")
         assert r.json()["ok"] is True, nama
 
-    d = lingkungan["tmp"] / "unggahan" / "anggi" / "folder-uji" / "ds"
+    d = lingkungan["roots"] / "_unggahan" / "anggi" / "folder-uji" / "ds"
     assert (d / "images" / "a.jpg").exists()
     assert (d / "labels" / "a.txt").exists()
     # dan pemindai mengenalinya sebagai dataset YOLO
@@ -342,7 +342,7 @@ def test_data_yaml_diterima_unggahan(klien, lingkungan):
     for nama in ("data.yaml", "sub/data.yml", "dataset.yaml"):
         r = klien.put(f"/upload?ds=rf&name={nama}", content=b"names: ['a']\n")
         assert r.json()["ok"] is True, (nama, r.json())
-    d = lingkungan["tmp"] / "unggahan" / "anggi" / "rf"
+    d = lingkungan["roots"] / "_unggahan" / "anggi" / "rf"
     assert (d / "data.yaml").exists() and (d / "sub" / "data.yml").exists()
 
 
@@ -382,7 +382,7 @@ def test_unggah_zip_lalu_dibongkar_di_server(klien, lingkungan):
     assert r["ok"] is True, r
     assert r["n"] == 5, r
 
-    d = lingkungan["tmp"] / "unggahan" / "anggi" / "rfzip"
+    d = lingkungan["roots"] / "_unggahan" / "anggi" / "rfzip"
     assert (d / "data.yaml").exists()
     assert (d / "train" / "images" / "a.jpg").exists()
     assert not (d / "export.zip").exists(), "arsip seharusnya dibuang setelah dibongkar"
@@ -411,7 +411,7 @@ def test_zip_slip_ditolak(klien, lingkungan):
     r = klien.post("/unzip?ds=slip&name=x.zip").json()
     assert r["ok"] is True, r
 
-    unggahan = lingkungan["tmp"] / "unggahan"
+    unggahan = lingkungan["roots"] / "_unggahan"
     milik = unggahan / "anggi"
     for p in unggahan.rglob("*"):
         if p.is_file():
@@ -435,7 +435,7 @@ def test_isi_zip_yang_tidak_didukung_dilewati_bukan_menggagalkan(klien, lingkung
     r = klien.post("/unzip?ds=campur&name=c.zip").json()
     assert r["ok"] is True and r["n"] == 1, r
     assert r["dilewati"] == 2, r
-    d = lingkungan["tmp"] / "unggahan" / "anggi" / "campur"
+    d = lingkungan["roots"] / "_unggahan" / "anggi" / "campur"
     assert (d / "a.jpg").exists()
     assert not (d / "jahat.sh").exists()
     # zip di dalam zip tidak ikut ditulis, jadi pembongkaran tidak pernah berlapis
@@ -887,7 +887,7 @@ def test_bentuk_tanpa_luas_tidak_dinilai_sebagai_mask_kecil(lingkungan):
 def test_unggah_tidak_bisa_keluar_folder_akun(klien, lingkungan):
     from conftest import PW_ANGGI, masuk
     masuk(klien, "anggi", PW_ANGGI)
-    unggahan = lingkungan["tmp"] / "unggahan"
+    unggahan = lingkungan["roots"] / "_unggahan"
 
     for jahat in ("../../../etc/lolos.png", "/etc/lolos2.png",
                   "a/../../../../lolos3.png"):
@@ -930,7 +930,7 @@ def test_impor_menyalin_dan_tidak_pernah_menyentuh_sumber(klien, lingkungan):
 
     r = klien.post(f"/impor?path={sumber}&ds=salinanku").json()
     assert r["ok"] is True, r
-    salinan = lingkungan["tmp"] / "unggahan" / "paul" / "salinanku"
+    salinan = lingkungan["roots"] / "_unggahan" / "paul" / "salinanku"
     assert r["disalin"] == 6                      # 3 gambar + 2 anotasi + yaml
     assert (salinan / "data.yaml").exists()
 

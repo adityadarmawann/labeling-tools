@@ -45,55 +45,10 @@ async def picker(request: Request,
 
 
 def boleh_buka(d: Path, sess: Session, settings: Settings) -> str:
-    """
-    Pesan penolakan kalau akun ini tidak boleh membuka folder itu, atau "".
+    """Pembungkus tipis; aturannya ada di services.projek.boleh_buka."""
+    from ..services.projek import boleh_buka as aturan
 
-    Tiga yang boleh, dan cuma tiga:
-
-    1. Folder dataset bersama (`datasets_root`). Isinya memang untuk dilihat
-       bersama, dan tidak bisa ditambahi dari sini.
-    2. Ruang kerja akun ini sendiri.
-    3. Projek akun lain yang MENGUNDANG akun ini.
-
-    Tanpa penjagaan ini, `?ds=` yang dijaga rapi jadi tidak ada artinya:
-    /setsrc menerima path apa adanya, dan projek yang belum pernah ditugaskan
-    membolehkan siapa saja menyuntingnya. Satu permintaan dengan path tebakan
-    sudah cukup untuk menulis anotasi ke projek orang lain dan mengunduh ZIP-nya.
-    """
-    from ..services import tugas as svc_tugas
-
-    try:
-        d = d.resolve()
-    except OSError:
-        return "folder tidak bisa dibaca"
-
-    akar_bersama = settings.datasets_root
-    if akar_bersama:
-        try:
-            d.relative_to(Path(akar_bersama).resolve())
-            return ""
-        except ValueError:
-            pass
-
-    unggahan = Path(settings.uploads_root).resolve()
-    try:
-        sisa = d.relative_to(unggahan).parts
-    except ValueError:
-        return ("folder itu di luar ruang kerjamu dan bukan dataset bersama; "
-                "salin dulu ke ruang kerjamu lewat halaman Unggah data")
-    if not sisa:
-        return "itu folder induk unggahan, bukan sebuah projek"
-    if sisa[0] == sess.user:
-        return ""
-
-    # Projek akun lain: boleh hanya kalau diundang. Yang tidak diundang tidak
-    # dibedakan dari projek yang tidak ada — membedakannya berarti memberi tahu
-    # orang luar projek apa saja yang dimiliki orang lain.
-    projek_lain = unggahan / sisa[0] / sisa[1] if len(sisa) > 1 else None
-    if projek_lain and svc_tugas.boleh_lihat(
-            svc_tugas.baca(projek_lain, sisa[0]), sess.user):
-        return ""
-    return "folder tidak ada di server"
+    return aturan(d, sess.user, settings.uploads_root, settings.datasets_root)
 
 
 @router.post("/setsrc")
@@ -136,7 +91,8 @@ async def rescan(sess: Session = Depends(current_session_api)):
 
 
 @router.post("/pickdir", dependencies=[Depends(require_local)])
-async def pick_dir(sess: Session = Depends(current_session_api)):
+async def pick_dir(sess: Session = Depends(current_session_api),
+                   settings: Settings = Depends(get_settings)):
     """Dialog folder milik sistem — hanya untuk akses dari mesin server."""
     start = str(sess.src or Path.home())
     path, err = await asyncio.to_thread(anylabeling.pick_dir, start)
@@ -145,6 +101,12 @@ async def pick_dir(sess: Session = Depends(current_session_api)):
     d = Path(path)
     if not d.is_dir():
         return {"ok": False, "error": "bukan folder"}
+    # Dialognya memang dibuka dari mesin server, tetapi yang memilih tetap
+    # sebuah akun, dan aturan folder mana yang boleh dibuka tidak berubah
+    # hanya karena pemilihnya memakai jendela alih-alih kotak isian.
+    tolak = await asyncio.to_thread(boleh_buka, d, sess, settings)
+    if tolak:
+        return {"ok": False, "error": tolak}
     n = len(await asyncio.to_thread(sess.load, d))
     return {"ok": True, "dir": str(d), "n": n}
 

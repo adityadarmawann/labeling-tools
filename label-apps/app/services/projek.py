@@ -200,6 +200,93 @@ def _usia(t: float) -> str:
     return datetime.fromtimestamp(t).strftime("%d %b %Y")
 
 
+def boleh_buka(d: Path, akun: str, uploads_root, datasets_root) -> str:
+    """
+    Pesan penolakan kalau akun ini tidak boleh membuka folder itu, atau "".
+
+    Tiga yang boleh, dan cuma tiga:
+
+    1. Folder dataset bersama (`datasets_root`). Isinya memang untuk dilihat
+       bersama, dan tidak bisa ditambahi dari sini.
+    2. Ruang kerja akun ini sendiri.
+    3. Projek akun lain yang MENGUNDANG akun ini.
+
+    Tanpa penjagaan ini, `?ds=` yang dijaga rapi jadi tidak ada artinya:
+    /setsrc menerima path apa adanya, dan projek yang belum pernah ditugaskan
+    membolehkan siapa saja menyuntingnya. Satu permintaan dengan path tebakan
+    sudah cukup untuk menulis anotasi ke projek orang lain dan mengunduh ZIP-nya.
+    """
+    from . import tugas as svc_tugas
+
+    try:
+        d = d.resolve()
+    except OSError:
+        return "folder tidak bisa dibaca"
+
+    # URUTANNYA PENTING, dan ini bukan gaya penulisan.
+    #
+    # Di produksi, ruang unggahan berada DI DALAM folder dataset bersama:
+    #   DATASETS_ROOT = /home/paul/computer-vision/datasets
+    #   UPLOADS_ROOT  = /home/paul/computer-vision/datasets/_unggahan
+    #
+    # Kalau folder bersama diperiksa lebih dulu, setiap projek setiap akun
+    # lolos lewat cabang itu dan seluruh penjagaan ini tidak menjaga apa pun.
+    # Ruang unggahan karena itu diperiksa PERTAMA; folder bersama hanya yang
+    # benar-benar di luarnya.
+    unggahan = Path(uploads_root).resolve()
+    di_unggahan = True
+    try:
+        sisa = d.relative_to(unggahan).parts
+    except ValueError:
+        di_unggahan, sisa = False, ()
+
+    if not di_unggahan:
+        akar_bersama = datasets_root
+        if akar_bersama:
+            try:
+                d.relative_to(Path(akar_bersama).resolve())
+                return ""
+            except ValueError:
+                pass
+        return ("folder itu di luar ruang kerjamu dan bukan dataset bersama; "
+                "salin dulu ke ruang kerjamu lewat halaman Unggah data")
+
+    if not sisa:
+        return "itu folder induk unggahan, bukan sebuah projek"
+    if sisa[0] == akun:
+        return ""
+
+    # Projek akun lain: boleh hanya kalau diundang. Yang tidak diundang tidak
+    # dibedakan dari projek yang tidak ada — membedakannya berarti memberi tahu
+    # orang luar projek apa saja yang dimiliki orang lain.
+    projek_lain = unggahan / sisa[0] / sisa[1] if len(sisa) > 1 else None
+    if projek_lain and svc_tugas.boleh_lihat(
+            svc_tugas.baca_projek(projek_lain, unggahan), akun):
+        return ""
+    return "folder tidak ada di server"
+
+
+def pemilik_dari(uploads_root: Path, d: Path) -> str:
+    """
+    Akun pemilik sebuah folder projek, dari LETAKNYA.
+
+    Projek tinggal di `uploads_root/<akun>/<nama>`, jadi pemiliknya sudah
+    tertulis di pathnya sendiri. Sebelumnya pemilik diambil dari siapa yang
+    kebetulan membaca berkas tugasnya lebih dulu — dan pada folder yang belum
+    punya berkas itu, siapa pun yang menyentuhnya pertama menjadi pemiliknya.
+    Satu permintaan dari akun biasa cukup untuk mengangkat dirinya jadi pemilik
+    folder dataset BERSAMA, lalu mengunci adminnya sendiri di luar.
+
+    Folder di luar ruang unggahan (dataset bersama) sengaja TIDAK punya
+    pemilik: tidak ada yang boleh membagi tugas atau mengurus versi di sana.
+    """
+    try:
+        sisa = Path(d).resolve().relative_to(Path(uploads_root).resolve()).parts
+    except (ValueError, OSError):
+        return ""
+    return sisa[0] if sisa else ""
+
+
 def temukan(uploads_root: Path, akun: str, ds: str) -> Path | None:
     """
     Folder projek yang boleh dibuka `akun`, dari nama di URL.

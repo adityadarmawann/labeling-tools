@@ -53,6 +53,11 @@ async def halaman_unggah(request: Request, ds: str = "",
     # ada di sana: dataset bersplit tetap terbagi train/valid/test, dataset
     # YOLO tetap punya images/ dan labels/. Menyamakan keduanya berarti gambar
     # baru mendarat di akar dan merusak pembagian yang sudah jalan.
+    # Tamu boleh melihat dan melabeli, tidak menambah gambar. Dikatakan di
+    # halamannya, bukan dibiarkan jadi unggahan yang dijawab berhasil lalu
+    # mendarat entah di mana.
+    pemilik = projek.pemilik_dari(settings.uploads_root, d)
+    boleh_unggah = pemilik == sess.user
     ringkas = await asyncio.to_thread(projek.ringkas, d)
     berisi = ringkas["jumlah"] > 0
     # `ds` dibawa apa adanya, termasuk awalan pemilik untuk projek tamu.
@@ -69,6 +74,8 @@ async def halaman_unggah(request: Request, ds: str = "",
         "pr": pr,
         "aktif": "unggah",
         "berisi": berisi,
+        "boleh_unggah": boleh_unggah,
+        "pemilik": pemilik,
         "tata": tambah.tata_letak(d) if berisi else "",
         "max_upload_mb": settings.max_upload_mb,
         "max_zip_mb": settings.max_zip_mb,
@@ -97,7 +104,7 @@ async def halaman_versi(request: Request, ds: str = "",
 
     ringkas = await asyncio.to_thread(projek.ringkas, d)
     daftar = await asyncio.to_thread(svc_versi.daftar, d)
-    tdata = svc_tugas.baca(d, sess.user)
+    tdata = svc_tugas.baca_projek(d, settings.uploads_root)
     pr = {"nama": nama, "path": str(d), **ringkas, "versi": len(daftar),
           "ds": ds if "/" in ds else nama}
     return templates.TemplateResponse(request, "versi.html", {
@@ -211,11 +218,19 @@ async def unzip(ds: str = "", name: str = "",
 
 @router.get("/api/impor/survei")
 async def impor_survei(path: str = "",
-                       sess: Session = Depends(current_session_api)):
+                       sess: Session = Depends(current_session_api),
+                       settings: Settings = Depends(get_settings)):
     """Berapa banyak dan berapa besar yang akan disalin — sebelum menyalin."""
     d = Path((path or "").strip()).expanduser()
     if not d.is_dir():
         return {"ok": False, "error": "folder tidak ada di server"}
+    # Menghitung isi sebuah folder sudah membocorkan isinya. Aturannya sama
+    # dengan membuka: yang tidak boleh dibuka tidak boleh dihitung.
+    tolak = await asyncio.to_thread(
+        projek.boleh_buka, d, sess.user,
+        settings.uploads_root, settings.datasets_root)
+    if tolak:
+        return {"ok": False, "error": tolak}
     s = await asyncio.to_thread(impor.survei, d)
     return {"ok": True, "nama_usul": safe_slug(d.name), **s}
 
@@ -246,6 +261,15 @@ async def impor_dari_server(path: str = "", ds: str = "",
     folder sumber tidak pernah ditulis sama sekali.
     """
     sumber = Path((path or "").strip()).expanduser()
+    # Membaca isi folder di server tunduk pada aturan yang sama dengan
+    # membukanya. Tanpa ini, rute ini jadi jalan pintas mengelilingi seluruh
+    # penjagaan /setsrc: satu akun dev pernah menghitung isi akar dataset
+    # PRODUKSI dari sini, dan rute impor di sebelahnya bisa menyalinnya.
+    tolak = await asyncio.to_thread(
+        projek.boleh_buka, sumber, sess.user,
+        settings.uploads_root, settings.datasets_root)
+    if tolak:
+        return {"ok": False, "error": tolak}
     # Diserahkan apa adanya ke upload_dir, yang memegang satu-satunya aturan
     # nama projek. Membersihkannya di sini lebih dulu dengan aturan yang
     # berbeda membuat unggahan mendarat di folder yang bukan projeknya.

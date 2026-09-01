@@ -123,7 +123,14 @@ def lingkungan(tmp_path, monkeypatch):
     for k, v in {
         "USERS_FILE": users,
         "DATASETS_ROOT": roots,
-        "UPLOADS_ROOT": tmp_path / "unggahan",
+        # Ruang unggahan berada DI DALAM folder dataset bersama, persis
+        # seperti produksi:
+        #   DATASETS_ROOT = /home/paul/computer-vision/datasets
+        #   UPLOADS_ROOT  = /home/paul/computer-vision/datasets/_unggahan
+        # Dulu keduanya bersebelahan di sini, dan akibatnya penjagaan folder
+        # yang gugur total di produksi tetap lolos delapan uji: yang diuji
+        # bukan tata letak yang benar-benar dipakai.
+        "UPLOADS_ROOT": roots / "_unggahan",
         "THUMB_ROOT": tmp_path / "thumb",
         "MAX_UPLOAD_MB": "1",
     }.items():
@@ -137,7 +144,7 @@ def lingkungan(tmp_path, monkeypatch):
     # tambah.boleh_ditambahi menolak folder di luar ruang kerja, dan sejak
     # /setsrc menjaga kepemilikan, folder di luar keduanya tidak bisa dibuka
     # sama sekali.
-    ruang = tmp_path / "unggahan" / "paul"
+    ruang = roots / "_unggahan" / "paul"
     ruang.mkdir(parents=True, exist_ok=True)
     yield {"tmp": tmp_path, "users": users, "roots": roots, "ruang": ruang}
     get_settings.cache_clear()
