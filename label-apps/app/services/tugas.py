@@ -286,14 +286,24 @@ def sudah_dimasukkan(data: dict, kunci: str) -> bool:
     return kunci in data["dataset"]
 
 
-def gambar_sekarang(ds: Path) -> list[str]:
-    """Kunci seluruh gambar yang ADA di projek saat ini.
+def sudah_dikerjakan(ds: Path) -> list[str]:
+    """
+    Kunci gambar yang SUDAH punya berkas anotasi.
+
+    Inilah ukuran "sudah selesai" yang dipakai membekukan dasar dataset.
+    Bukan seluruh isi folder: gambar tanpa anotasi belum dikerjakan siapa pun,
+    dan memasukkannya ke dataset berarti mengekspor gambar kosong sebagai
+    bagian dari data latih.
+
+    Gambar yang sengaja ditandai latar ikut terhitung. Ia punya berkas
+    anotasi tanpa objek, dan itu keputusan yang sudah diambil — bukan
+    pekerjaan yang belum dimulai.
 
     Berkas pendamping dan folder bertitik dilewati dengan aturan yang sama
-    seperti di pemindai: .versi/ berisi .json, bukan gambar, tetapi folder
-    bertitik apa pun bisa berisi apa saja.
+    seperti di pemindai: .versi/ berisi .json, bukan gambar.
     """
     from ..config import IMG_EXT
+    from .projek import anotasi_untuk
 
     d = Path(ds)
     out = []
@@ -302,17 +312,22 @@ def gambar_sekarang(ds: Path) -> list[str]:
             continue
         if any(bagian.startswith(".") for bagian in p.relative_to(d).parts):
             continue
-        out.append(kunci_gambar(d, p))
+        if anotasi_untuk(p) is not None:
+            out.append(kunci_gambar(d, p))
     return out
 
 
 def dasar(ds: Path, pemilik: str = "") -> dict:
     """
-    Bekukan isi projek yang SEKARANG sebagai datasetnya, sekali saja.
+    Bekukan pekerjaan yang SUDAH selesai di projek ini sebagai datasetnya.
+
+    Yang dibekukan hanya gambar yang punya berkas anotasi. Memasukkan seluruh
+    isi folder akan mengulangi persis kesalahan yang sedang diperbaiki, cuma
+    sekali di awal alih-alih terus-menerus: gambar yang belum dilabeli siapa
+    pun berakhir di dataset tanpa ada yang memutuskannya.
 
     Dipanggil tepat sebelum gambar baru masuk, dari setiap jalur yang menambah
-    gambar. Gunanya satu: memisahkan "sudah ada sebelum alurnya berlaku" dari
-    "baru datang dan belum diapa-apakan".
+    gambar, dan sekali untuk tiap projek lama yang belum punya berkas ini.
 
     Tanpa ini, projek yang belum pernah dikurasi menghitung SELURUH isinya
     sebagai dataset, jadi gambar yang baru diunggah — belum dilabeli, belum
@@ -333,11 +348,44 @@ def dasar(ds: Path, pemilik: str = "") -> dict:
                                            "total": len(data["dataset"])})
         data["pemilik"] = data["pemilik"] or pemilik
         data["kurasi"] = True
-        data["dataset"] = sorted(set(data["dataset"]) | set(gambar_sekarang(ds)))
+        data["dataset"] = sorted(set(data["dataset"]) | set(sudah_dikerjakan(ds)))
         _tulis(ds, data)
-    log.info("dasar dataset %s: %s gambar yang sudah ada dibekukan masuk",
+    log.info("dasar dataset %s: %s gambar yang sudah dikerjakan dibekukan masuk",
              Path(ds).name, len(data["dataset"]))
     return {"dibekukan": len(data["dataset"]), "total": len(data["dataset"])}
+
+
+def bekukan_lama(uploads_root: Path) -> list[dict]:
+    """
+    Bekukan dasar setiap projek lama yang belum punya berkas tugas.
+
+    Dijalankan sekali saat aplikasi menyala. Tanpa ini, projek yang tidak
+    pernah diunggahi lagi tetap memakai aturan warisan selamanya: SELURUH
+    isinya terhitung dataset, termasuk gambar yang belum dilabeli sama sekali,
+    dan halaman Dataset dua projek bersebelahan berperilaku berbeda tanpa ada
+    yang bisa menjelaskan kenapa.
+
+    Hanya membuat berkas yang belum ada. Berkas yang sudah ada tidak pernah
+    disentuh: isinya adalah keputusan yang sudah diambil orang.
+    """
+    akar = Path(uploads_root)
+    if not akar.is_dir():
+        return []
+    hasil = []
+    for ruang in sorted(p for p in akar.iterdir() if p.is_dir()):
+        if ruang.name.startswith((".", "_")):
+            continue
+        for d in sorted(q for q in ruang.iterdir() if q.is_dir()):
+            if d.name.startswith((".", "_")) or _p(d).is_file():
+                continue
+            try:
+                r = dasar(d, ruang.name)
+            except OSError as e:
+                log.warning("dasar %s gagal: %s", d, e)
+                continue
+            hasil.append({"projek": f"{ruang.name}/{d.name}",
+                          "dataset": r["total"]})
+    return hasil
 
 
 def masukkan(ds: Path, kunci_daftar: list[str], pemilik: str = "") -> dict:

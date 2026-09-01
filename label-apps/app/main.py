@@ -49,6 +49,16 @@ async def lifespan(app: FastAPI):
     if diangkat:
         print(f"  ADMIN     : '{diangkat}' diangkat jadi admin karena belum ada\n"
               f"              satu pun. Ubah lewat halaman /akun.", flush=True)
+
+    # Projek yang lahir sebelum alur "Tambahkan ke dataset" ada tidak pernah
+    # melewati tombol itu sekali pun. Pekerjaan yang sudah selesai di dalamnya
+    # dibekukan masuk dataset di sini, sekali, supaya ekspornya tidak berubah
+    # sedikit pun — sementara gambar yang belum dilabeli menunggu di Anotasi
+    # seperti gambar baru mana pun. Hanya membuat berkas yang belum ada.
+    from .services.tugas import bekukan_lama
+    for r in bekukan_lama(st.uploads_root):
+        print(f"  DASAR     : {r['projek']} — {r['dataset']} gambar yang sudah "
+              f"dikerjakan dibekukan masuk dataset", flush=True)
     yield
     # Cache thumbnail bersifat sementara: dibuang saat proses berhenti supaya
     # /tmp tidak menumpuk sisa dari sesi-sesi lama.

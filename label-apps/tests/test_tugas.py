@@ -1466,3 +1466,76 @@ def test_pekerjaan_yang_dibagi_bisa_dibuka_di_kanvas(klien, lingkungan):
     h = klien.get(f"/tugas/{tid}?ds=kerjakan").text
     assert h.count('class="jb-buka"') == 3, "ubin job tanpa tautan ke kanvas"
     assert klien.get(f"/label?path={g[0]}").status_code == 200
+
+
+def test_yang_dibekukan_cuma_yang_sudah_dikerjakan(klien, lingkungan):
+    """Membekukan seluruh isi folder mengulangi kesalahan yang diperbaiki.
+
+    Projek lama berisi dua hal yang berbeda: pekerjaan yang sudah selesai, dan
+    gambar yang belum disentuh siapa pun. Membekukan keduanya sekaligus
+    memasukkan gambar kosong ke dataset — sekali di awal, bukan terus-menerus,
+    tetapi sama salahnya.
+    """
+    from app.services import tugas as svc
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    d = _projek(_ruang(klien), "campur", n=3, label=False)
+    g = sorted(d.glob("*.jpg"))
+    # Satu dilabeli sungguhan, satu ditandai latar, satu belum disentuh.
+    g[0].with_suffix(".json").write_text(json.dumps({
+        "version": "0.4.36", "flags": {}, "imagePath": g[0].name,
+        "imageHeight": 40, "imageWidth": 60, "imageData": None,
+        "shapes": [{"label": "botol", "shape_type": "polygon",
+                    "points": [[2, 2], [30, 2], [30, 30]]}]}))
+    klien.post(f"/setsrc?path={d}")
+    klien.post(f"/markbg?path={g[1]}")
+
+    svc.dasar(d, "paul")
+    data = svc.baca(d, "paul")
+    assert sorted(data["dataset"]) == sorted([g[0].name, g[1].name])
+    assert g[2].name not in data["dataset"], "gambar kosong ikut masuk dataset"
+
+
+def test_projek_lama_dibekukan_saat_aplikasi_menyala(lingkungan, tmp_path):
+    """Projek yang tidak pernah diunggahi lagi tidak boleh tertinggal.
+
+    Tanpa ini, dua projek bersebelahan berperilaku berbeda tanpa ada yang bisa
+    menjelaskan kenapa: yang pernah diunggahi lagi menyaring, yang tidak
+    menampilkan seluruh isinya termasuk yang belum dilabeli sama sekali.
+    """
+    import cv2
+    import numpy as np
+
+    from app.services import tugas as svc
+
+    unggahan = tmp_path / "_unggahan"
+    for pemilik, nama, berlabel in (("darma", "lama-berlabel", True),
+                                    ("darma", "lama-kosong", False),
+                                    ("rizky", "punya-orang-lain", True)):
+        d = unggahan / pemilik / nama
+        d.mkdir(parents=True)
+        for i in range(2):
+            q = d / f"{nama}-{i}.jpg"
+            cv2.imwrite(str(q), np.full((40, 60, 3), 90 + i * 30, np.uint8))
+            if berlabel:
+                q.with_suffix(".json").write_text(json.dumps({
+                    "version": "0.4.36", "flags": {}, "imagePath": q.name,
+                    "imageHeight": 40, "imageWidth": 60, "imageData": None,
+                    "shapes": [{"label": "botol", "shape_type": "polygon",
+                                "points": [[2, 2], [30, 2], [30, 30]]}]}))
+    # Berkas yang sudah ada adalah keputusan orang; tidak boleh disentuh.
+    sudah = unggahan / "darma" / "sudah-diurus"
+    sudah.mkdir()
+    svc.masukkan(sudah, ["pilihanku.jpg"], "darma")
+
+    hasil = svc.bekukan_lama(unggahan)
+    assert {r["projek"] for r in hasil} == {
+        "darma/lama-berlabel", "darma/lama-kosong", "rizky/punya-orang-lain"}
+    assert svc.baca(unggahan / "darma" / "lama-berlabel")["dataset"] == [
+        "lama-berlabel-0.jpg", "lama-berlabel-1.jpg"]
+    assert svc.baca(unggahan / "darma" / "lama-kosong")["dataset"] == []
+    assert svc.baca(sudah)["dataset"] == ["pilihanku.jpg"], "berkas orang diubah"
+
+    # Dijalankan dua kali tidak menambah apa-apa.
+    assert svc.bekukan_lama(unggahan) == []
