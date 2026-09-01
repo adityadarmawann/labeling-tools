@@ -104,9 +104,7 @@ async def halaman_papan(request: Request, ds: str = "", urut: str = "terbaru",
         await asyncio.to_thread(sess.load, d)
 
     data = svc.baca_projek(d, settings.uploads_root)
-    ringkas = await asyncio.to_thread(sp.ringkas, d)
-    pr = {"nama": d.name, "path": str(d), **ringkas, "versi": 0,
-          "ds": ds if "/" in ds else d.name}
+    pr = await asyncio.to_thread(sp.konteks, d, settings.uploads_root, sess.user)
 
     with sess.lock:
         items = list(sess.items)
@@ -165,9 +163,7 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
     if job is None:
         return RedirectResponse(f"/anotasi?ds={ds}", status_code=303)
 
-    ringkas = await asyncio.to_thread(sp.ringkas, d)
-    pr = {"nama": d.name, "path": str(d), **ringkas, "versi": 0,
-          "ds": ds if "/" in ds else d.name}
+    pr = await asyncio.to_thread(sp.konteks, d, settings.uploads_root, sess.user)
 
     with sess.lock:
         items = list(sess.items)
@@ -218,9 +214,7 @@ async def halaman_bagi(request: Request, ds: str = "", batch: str = "",
         await asyncio.to_thread(sess.load, d)
 
     data = svc.baca_projek(d, settings.uploads_root)
-    ringkas = await asyncio.to_thread(sp.ringkas, d)
-    pr = {"nama": d.name, "path": str(d), **ringkas, "versi": 0,
-          "ds": ds if "/" in ds else d.name}
+    pr = await asyncio.to_thread(sp.konteks, d, settings.uploads_root, sess.user)
 
     ditugaskan = {k for t in data["tugas"].values()
                   for k in (t.get("gambar") or [])}

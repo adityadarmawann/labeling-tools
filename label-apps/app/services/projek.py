@@ -162,6 +162,13 @@ def _survei(d: Path) -> dict:
             break
         if not p.is_file():
             continue
+        # Berkas pendamping — .tag.json, .tugas.json, .versi/vN.json — berakhiran
+        # .json seperti anotasi dan tinggal di dalam folder projek yang sama.
+        # Tanpa aturan ini, membuat satu versi menaikkan hitungan "sudah
+        # dilabeli" projek itu satu, dan menandai satu gambar menaikkannya lagi:
+        # angka di kartu projek dan di sidebar naik tanpa ada yang dilabeli.
+        if any(bagian.startswith(".") for bagian in p.relative_to(d).parts):
+            continue
         sfx = p.suffix.lower()
         if sfx in IMG_EXT:
             n_img += 1
@@ -389,6 +396,31 @@ def ringkas(d: Path) -> dict:
     return {"jumlah": s["gambar"], "anotasi": s["anotasi"],
             "sampul": str(s["sampul"]) if s["sampul"] else "",
             "lebih": s["lebih"]}
+
+
+def konteks(d: Path, uploads_root: Path, aku: str) -> dict:
+    """
+    Isi sidebar projek, dihitung di satu tempat saja.
+
+    Dulu tiap halaman merakit dict ini sendiri, dan yang terjadi persis seperti
+    yang selalu terjadi pada angka yang disalin: `versi` tertulis 0 di empat
+    halaman karena hanya halaman Versi yang repot menghitungnya, dan `belum`
+    tidak pernah diisi sama sekali sehingga lencana di menu Anotasi tidak
+    pernah muncul di halaman mana pun.
+
+    Awalan pemilik pada `ds` dihitung dari letak foldernya, bukan disalin dari
+    URL yang sedang dibuka. Bedanya kelihatan di grid: tautan saringannya hanya
+    menulis ulang `?f=...` dan membuang `ds`, jadi sidebar yang menyalin dari
+    URL akan kehilangan awalannya begitu satu chip diklik, lalu diam-diam
+    menunjuk ke projek sendiri yang kebetulan bernama sama.
+    """
+    from . import versi as svc_versi
+    pemilik = pemilik_dari(uploads_root, d)
+    s = ringkas(d)
+    return {"nama": d.name, "path": str(d), **s, "pemilik": pemilik,
+            "ds": d.name if pemilik == aku else f"{pemilik}/{d.name}",
+            "belum": max(s["jumlah"] - s["anotasi"], 0),
+            "versi": len(svc_versi.daftar(d))}
 
 
 def daftar(root: Path | None) -> list[dict]:

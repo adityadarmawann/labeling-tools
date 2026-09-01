@@ -27,7 +27,7 @@
        {% if aktif == 'unggah' %}data-on aria-current="page"{% endif %}>
       <span class="sisi-ikon" aria-hidden="true">&uarr;</span>Unggah data</a>
 
-    <a class="sisi-item" href="/?ds={{ pr.ds | urlquote }}&f=unlab"
+    <a class="sisi-item" href="/anotasi?ds={{ pr.ds | urlquote }}"
        {% if aktif == 'anotasi' %}data-on aria-current="page"{% endif %}>
       <span class="sisi-ikon" aria-hidden="true">&#9998;</span>Anotasi
       {%- if pr.belum %}<b class="sisi-angka">{{ pr.belum }}</b>{% endif %}</a>

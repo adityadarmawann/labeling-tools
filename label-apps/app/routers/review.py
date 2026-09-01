@@ -10,8 +10,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from ..config import Settings, get_settings
 from ..deps import current_session, current_session_api, is_local, require_local
 from ..security import safe_slug
-from ..services import (annotations, anylabeling, render, scanner, tambah,
-                        tugas)
+from ..services import (annotations, anylabeling, projek as svc_projek,
+                        render, scanner, tambah, tugas)
 from ..services.annotations import Menolak
 from ..session import Session
 from ..templating import templates
@@ -177,7 +177,6 @@ async def index(request: Request, f: str = "all",
                 sess: Session = Depends(current_session),
                 settings: Settings = Depends(get_settings)):
     if ds:
-        from ..services import projek as svc_projek
         # `ds` datang dari URL, jadi ia diselesaikan lewat projek.temukan yang
         # memegang aturannya: projek sendiri, atau projek orang lain yang
         # mengundang akun ini. Selain itu None, dan tidak ada yang terbuka.
@@ -264,8 +263,19 @@ async def index(request: Request, f: str = "all",
         tampil = [it for it in tampil if pola in it["img"].name.lower()]
     tampil = _urutkan(tampil, urut)
 
+    # Sidebar projek. Hanya untuk dataset yang ada di ruang kerja seseorang:
+    # dataset yang dibuka langsung dari path server tidak punya halaman Unggah,
+    # Anotasi, maupun Versi, dan menampilkan menunya berarti menawarkan empat
+    # tautan yang semuanya berujung ke daftar projek.
+    pr = None
+    if svc_projek.pemilik_dari(settings.uploads_root, sess.src):
+        pr = await asyncio.to_thread(svc_projek.konteks, sess.src,
+                                     settings.uploads_root, sess.user)
+
     return templates.TemplateResponse(request, "index.html", {
         "sess": sess,
+        "pr": pr,
+        "aktif": "dataset",
         "local": is_local(request),
         "items": tampil,
         "urut": urut,

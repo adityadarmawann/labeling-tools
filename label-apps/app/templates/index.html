@@ -1,6 +1,12 @@
 {% extends "base.html" %}
 {% block title %}Periksa anotasi{% endblock %}
 
+{# Sidebar hanya muncul untuk projek di ruang kerja; dataset yang dibuka dari
+   path server tidak punya bagian-bagian itu. Kelas bodinya ikut bersyarat:
+   tanpa sidebar, tata letak berprojek menghapus padding main dan grid-nya
+   menempel ke tepi layar. #}
+{% block bodyclass %}{% if pr %}berprojek{% endif %}{% endblock %}
+
 {# Setiap tautan saringan membawa urutan dan pencarian yang sedang aktif.
    Tanpa itu, mengklik satu chip diam-diam mengembalikan urutan ke bawaan —
    dan orang menyangka daftarnya yang berubah, bukan urutannya. #}
@@ -38,6 +44,20 @@
     <span class="path mono">{{ sess.src }}</span>
     {% include "_header.html" %}
   </div>
+</header>
+
+
+<main>
+{%- if pr %}
+{% include "_sisi.html" %}
+<div class="sisi-isi">
+{%- endif %}
+{# Bilah kemajuan dan seluruh saringan berada di KOLOM KANAN, bukan di kepala
+   halaman yang membentang penuh. Di kepala, keduanya mendorong sidebar turun
+   225 piksel sehingga menu projeknya baru mulai di pertengahan layar — dan
+   saringan itu memang milik daftar gambar di bawahnya, bukan milik halaman.
+   Kepala jadi sependek lima halaman projek lainnya, dan sidebarnya sejajar. #}
+<div class="alat">
 
   {# Kemajuan dataset dalam satu bilah, satu warna per keadaan.
      Sebelumnya ini deretan tick, satu per gambar. Deretan itu memang
@@ -323,9 +343,8 @@
       </span>
     </span>
   </div>
-</header>
+</div>
 
-<main>
 <div class="grid">
   {%- for it in items %}
   {%- set p = it | imgpath %}
@@ -383,5 +402,6 @@
   </div>
   {%- endfor %}
 </div>
+{%- if pr %}</div>{% endif %}
 </main>
 {% endblock %}

@@ -231,7 +231,7 @@ def test_sidebar_projek_menautkan_keempat_bagiannya(klien, lingkungan):
     _projek(ruang, "punyaku", n=3)
 
     h = klien.get("/unggah?ds=punyaku").text
-    for bagian in ("/unggah?ds=punyaku", "/?ds=punyaku&f=unlab",
+    for bagian in ("/unggah?ds=punyaku", "/anotasi?ds=punyaku",
                    "/?ds=punyaku", "/versi?ds=punyaku"):
         assert bagian in h, bagian
     assert 'class="sisi-item" href="/unggah?ds=punyaku" data-on' in h.replace("\n", " ") \
@@ -462,3 +462,122 @@ def test_sampul_menolak_berkas_di_luar_ruang_kerja(klien, lingkungan):
     cv2.imwrite(str(luar), np.zeros((10, 10, 3), np.uint8))
     r = klien.get(f"/api/projek/sampul?path={luar}")
     assert r.status_code == 404
+
+
+def test_grid_projek_memakai_sidebar_yang_sama(klien, lingkungan):
+    """Grid adalah halaman "Dataset" — bagian projek, bukan halaman terpisah.
+
+    Selama ini sidebar-nya ada di lima halaman dan justru tidak ada di halaman
+    yang paling sering dibuka: mengklik sebuah projek mendarat di grid, dan
+    dari situ tidak ada satu pun jalan ke Unggah, Anotasi, atau Versi selain
+    tombol kembali peramban.
+    """
+    import pathlib
+
+    from tests.test_data import masuk, PW_PAUL
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    _projek(ruang, "punyaku", n=3)
+
+    h = klien.get("/?ds=punyaku").text
+    assert 'id="sisi"' in h, "grid projek tanpa sidebar"
+    assert 'class="berprojek"' in h
+    for bagian in ("/unggah?ds=punyaku", "/anotasi?ds=punyaku",
+                   "/versi?ds=punyaku"):
+        assert bagian in h, bagian
+    # Bagian yang sedang dibuka ditandai, dan yang ditandai adalah Dataset.
+    menu = h[h.find('<nav class="sisi-menu"'):h.find("</nav>")]
+    ditandai = [b.strip() for b in menu.split("<a ")[1:] if "data-on" in b]
+    assert len(ditandai) == 1 and "Dataset" in ditandai[0], menu
+
+
+def test_dataset_dari_path_server_tidak_memakai_sidebar(klien, lingkungan):
+    """Dataset bersama tidak punya Unggah, Anotasi, maupun Versi.
+
+    Menampilkan menunya berarti menawarkan empat tautan yang semuanya berujung
+    kembali ke daftar projek. Kelas bodinya ikut hilang: tanpa sidebar, tata
+    letak berprojek menghapus padding main dan gridnya menempel ke tepi layar.
+    """
+    from tests.test_data import masuk, PW_PAUL
+
+    masuk(klien, "paul", PW_PAUL)
+    src = lingkungan["roots"] / "ds-alpha"
+    klien.post(f"/setsrc?path={src}")
+
+    h = klien.get("/").text
+    assert 'id="sisi"' not in h
+    assert 'class="berprojek"' not in h
+    assert 'class="grid"' in h, "gridnya sendiri harus tetap tampil"
+
+
+def test_angka_sidebar_dihitung_bukan_disalin(klien, lingkungan):
+    """Satu projek, satu sumber angka, di halaman mana pun ia dibuka.
+
+    Dulu tiap halaman merakit dictnya sendiri: `versi` tertulis 0 di empat
+    halaman karena hanya halaman Versi yang menghitungnya, dan `belum` tidak
+    pernah diisi sama sekali sehingga lencana di menu Anotasi tidak pernah
+    muncul.
+    """
+    import pathlib
+
+    from app.services import projek, versi
+    from tests.test_data import masuk, PW_PAUL
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = _projek(ruang, "berangka", n=5, label=False)
+    # Dua dari lima dilabeli; tiga sisanya yang harus muncul di menu Anotasi.
+    for p in sorted(d.glob("*.jpg"))[:2]:
+        p.with_suffix(".json").write_text(json.dumps({
+            "version": "0.4.36", "flags": {}, "imagePath": p.name,
+            "imageHeight": 40, "imageWidth": 60, "imageData": None,
+            "shapes": [{"label": "botol", "shape_type": "polygon",
+                        "points": [[2, 2], [30, 2], [30, 30]]}]}))
+    versi.buat(d, "paul", "8:1:1", [q.name for q in sorted(d.glob("*.jpg"))],
+               {}, {})
+
+    pr = projek.konteks(d, lingkungan["roots"] / "_unggahan", "paul")
+    assert (pr["jumlah"], pr["anotasi"], pr["belum"], pr["versi"]) == (5, 2, 3, 1)
+
+    # Dan angka yang sama muncul di setiap halaman yang memasang sidebar.
+    for url in ("/?ds=berangka", "/unggah?ds=berangka", "/anotasi?ds=berangka",
+                "/versi?ds=berangka"):
+        menu = klien.get(url).text
+        menu = menu[menu.find('<nav class="sisi-menu"'):menu.find("</nav>")]
+        assert ">Anotasi<b class=\"sisi-angka\">3<" in menu, (url, menu)
+        assert ">Versi<b class=\"sisi-angka\">1<" in menu, (url, menu)
+
+
+def test_sidebar_projek_tamu_tidak_kehilangan_awalan_pemiliknya(klien, aplikasi,
+                                                                 lingkungan):
+    """Awalan pemilik dihitung dari letak folder, bukan disalin dari URL.
+
+    Bedanya kelihatan justru di grid: tautan saringannya menulis ulang `?f=...`
+    dan membuang `ds`, jadi sidebar yang menyalin dari URL kehilangan
+    awalannya begitu satu chip diklik — lalu menunjuk diam-diam ke projek
+    sendiri yang kebetulan bernama sama.
+    """
+    import pathlib
+
+    from conftest import klien_baru
+    from tests.test_data import masuk, PW_PAUL, PW_ANGGI
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = _projek(ruang, "sama", n=2)
+    klien.post(f"/setsrc?path={d}")
+    klien.post("/api/tugas/undang?akun=anggi")
+
+    tamu = klien_baru(aplikasi, "anggi", PW_ANGGI)
+    # Tamu punya projek sendiri yang namanya sama persis.
+    ruang_tamu = pathlib.Path(tamu.get("/api/projek/daftar").json()["ruang"])
+    _projek(ruang_tamu, "sama", n=1)
+
+    h = tamu.get("/?ds=paul/sama").text
+    menu = h[h.find('<nav class="sisi-menu"'):h.find("</nav>")]
+    assert "ds=paul%2Fsama" in menu or "ds=paul/sama" in menu, menu
+    # Dan grid yang dibuka tanpa ?ds pun tetap tahu projek siapa yang terbuka.
+    menu = tamu.get("/?f=unlab").text
+    menu = menu[menu.find('<nav class="sisi-menu"'):menu.find("</nav>")]
+    assert "ds=paul%2Fsama" in menu or "ds=paul/sama" in menu, menu

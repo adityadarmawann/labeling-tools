@@ -45,7 +45,6 @@ async def halaman_unggah(request: Request, ds: str = "",
         # Dikembalikan ke daftar projek, bukan menampilkan halaman yang
         # tombolnya semua menolak.
         return RedirectResponse("/pilih", status_code=303)
-    nama = d.name
     # Dua jalur, dan yang menentukan bukan pilihan pengguna melainkan keadaan
     # projeknya. Projek kosong menerima apa saja lewat /upload, termasuk .zip
     # dan data.yaml, lalu dipindai dari nol. Projek yang sudah berisi harus
@@ -58,13 +57,8 @@ async def halaman_unggah(request: Request, ds: str = "",
     # mendarat entah di mana.
     pemilik = projek.pemilik_dari(settings.uploads_root, d)
     boleh_unggah = pemilik == sess.user
-    ringkas = await asyncio.to_thread(projek.ringkas, d)
-    berisi = ringkas["jumlah"] > 0
-    # `ds` dibawa apa adanya, termasuk awalan pemilik untuk projek tamu.
-    # Tanpa itu tautan sidebar membuang awalannya dan pindah diam-diam ke
-    # projek sendiri yang kebetulan bernama sama.
-    pr = {"nama": nama, "path": str(d), **ringkas, "versi": 0,
-          "ds": ds if "/" in ds else nama}
+    pr = await asyncio.to_thread(projek.konteks, d, settings.uploads_root, sess.user)
+    berisi = pr["jumlah"] > 0
     return templates.TemplateResponse(request, "unggah.html", {
         "sess": sess,
         "local": is_local(request),
@@ -98,15 +92,12 @@ async def halaman_versi(request: Request, ds: str = "",
     d = projek.temukan(settings.uploads_root, sess.user, ds)
     if d is None:
         return RedirectResponse("/pilih", status_code=303)
-    nama = d.name
     from ..services import versi as svc_versi
     from ..services import tugas as svc_tugas
 
-    ringkas = await asyncio.to_thread(projek.ringkas, d)
+    pr = await asyncio.to_thread(projek.konteks, d, settings.uploads_root, sess.user)
     daftar = await asyncio.to_thread(svc_versi.daftar, d)
     tdata = svc_tugas.baca_projek(d, settings.uploads_root)
-    pr = {"nama": nama, "path": str(d), **ringkas, "versi": len(daftar),
-          "ds": ds if "/" in ds else nama}
     return templates.TemplateResponse(request, "versi.html", {
         "sess": sess, "projek": pr, "pr": pr, "aktif": "versi",
         "daftar": daftar,
