@@ -1355,32 +1355,40 @@ def test_gambar_baru_menunggu_di_anotasi_bukan_langsung_di_dataset(klien,
                      ).json()["n_dataset"] == 1
 
 
-def test_isi_lama_dibekukan_sebelum_gambar_baru_mendarat(klien, lingkungan):
-    """Projek yang sudah ada tidak boleh kehilangan datasetnya.
+def test_sistem_tidak_memasukkan_apa_pun_atas_nama_pemiliknya(klien, lingkungan):
+    """Projek lama pun tidak dikecualikan, dan tidak perlu dikecualikan.
 
-    Aturan "hanya yang dimasukkan yang masuk dataset" tidak bisa diberlakukan
-    surut: projek berisi ribuan gambar yang lahir sebelum alur ini ada tidak
-    pernah melewati tombol Tambahkan ke dataset satu kali pun. Menerapkannya
-    apa adanya membuat ekspornya nol pada hari fiturnya dipasang.
+    Sempat sebaliknya: isi projek lama yang sudah dianotasi dibekukan masuk
+    dataset supaya ekspornya tidak berubah. Alasannya salah — "sudah
+    dianotasi" bukan "sudah dinyatakan masuk", dan yang memutuskan sebuah
+    gambar layak ikut adalah orang, bukan sistem yang menebak atas namanya.
 
-    Karena itu isi lamanya dibekukan masuk tepat sebelum gambar baru mendarat,
-    dan yang baru itulah yang menunggu.
+    Yang membuatnya tetap aman adalah tombol borongan: seluruh isi projek lama
+    bisa dimasukkan dengan satu klik, dengan angkanya disebutkan lebih dulu,
+    oleh pemiliknya sendiri.
     """
-    import pathlib
-
     from tests.test_projek import _projek
 
     masuk(klien, "paul", PW_PAUL)
     d = _projek(_ruang(klien), "warisan", n=4)
     klien.post(f"/setsrc?path={d}")
-    assert klien.get("/").text.count('class="card"') == 4, "projek lama utuh"
 
     asli = (lingkungan["roots"] / "ds-beta" / "ds-beta-00.jpg").read_bytes()
     klien.put("/upload?ds=warisan&name=baru.jpg", content=asli)
     klien.post("/rescan")
 
     h = klien.get("/").text
-    assert h.count('class="card"') == 4, "yang lama harus tetap di dataset"
+    assert h.count('class="card"') == 0, "sistem memasukkan gambar sendiri"
+    assert "Belum ada gambar yang masuk dataset" in h
+
+    # Empat yang lama sudah dianotasi dan belum ditugaskan, jadi ditawarkan
+    # borongan; yang baru diunggah tidak, karena belum dilabeli.
+    a = klien.get("/anotasi?ds=warisan").text
+    assert "Masukkan semua 4 yang sudah dianotasi" in a
+    r = klien.post("/api/tugas/dataset-siap", json={}).json()
+    assert r["ok"] and r["ditambah"] == 4
+    h = klien.get("/").text
+    assert h.count('class="card"') == 4
     assert "1</b> gambar lain di projek ini belum masuk dataset" in h
 
 
@@ -1391,7 +1399,8 @@ def test_semua_jalur_penambah_gambar_tunduk_pada_aturan_yang_sama(klien,
     Gambar bisa masuk projek lewat enam pintu: unggah berkas, bongkar arsip,
     impor dari server, tambah ke dataset terbuka, tambah-impor, dan gabung
     projek. Yang dijaga di sini bukan salah satunya, melainkan bahwa tidak ada
-    satu pun yang menyelinapkan gambar langsung ke dataset.
+    satu pun yang menyelinapkan gambar langsung ke dataset — termasuk gambar
+    yang sudah dianotasi, dan termasuk isi lama projeknya sendiri.
     """
     import io
     import pathlib
@@ -1412,7 +1421,7 @@ def test_semua_jalur_penambah_gambar_tunduk_pada_aturan_yang_sama(klien,
     # 1. unggah berkas ke projek yang sudah punya isi
     d = _projek(ruang, "pintu-unggah", n=2)
     klien.put("/upload?ds=pintu-unggah&name=x.jpg", content=asli)
-    assert n_dataset("pintu-unggah") == (2, 3)
+    assert n_dataset("pintu-unggah") == (0, 3)
 
     # 2. bongkar arsip
     d = _projek(ruang, "pintu-zip", n=2)
@@ -1421,30 +1430,30 @@ def test_semua_jalur_penambah_gambar_tunduk_pada_aturan_yang_sama(klien,
         z.writestr("dari-zip.jpg", asli)
     klien.put("/upload?ds=pintu-zip&name=isi.zip", content=buf.getvalue())
     klien.post("/unzip?ds=pintu-zip&name=isi.zip")
-    assert n_dataset("pintu-zip") == (2, 3)
+    assert n_dataset("pintu-zip") == (0, 3)
 
     # 3. impor folder dari server ke projek yang sudah ada
     d = _projek(ruang, "pintu-impor", n=2)
     sumber = _projek(ruang, "sumber-impor", n=1)
     klien.post(f"/impor?path={sumber}&ds=pintu-impor")
-    assert n_dataset("pintu-impor") == (2, 3)
+    assert n_dataset("pintu-impor") == (0, 3)
 
     # 4. tambah ke dataset yang sedang terbuka
     d = _projek(ruang, "pintu-tambah", n=2)
     klien.post(f"/setsrc?path={d}")
     klien.put("/tambah?name=y.jpg", content=asli)
-    assert n_dataset("pintu-tambah") == (2, 3)
+    assert n_dataset("pintu-tambah") == (0, 3)
 
     # 5. tambah-impor
     d = _projek(ruang, "pintu-tambah-impor", n=2)
     klien.post(f"/setsrc?path={d}")
     klien.post(f"/tambah/impor?path={sumber}")
-    assert n_dataset("pintu-tambah-impor") == (2, 3)
+    assert n_dataset("pintu-tambah-impor") == (0, 3)
 
     # 6. gabung projek
     d = _projek(ruang, "pintu-gabung", n=2)
     klien.post("/api/projek/gabung?sumber=sumber-impor&tujuan=pintu-gabung")
-    assert n_dataset("pintu-gabung") == (2, 3)
+    assert n_dataset("pintu-gabung") == (0, 3)
 
 
 def test_pekerjaan_yang_dibagi_bisa_dibuka_di_kanvas(klien, lingkungan):
@@ -1468,41 +1477,15 @@ def test_pekerjaan_yang_dibagi_bisa_dibuka_di_kanvas(klien, lingkungan):
     assert klien.get(f"/label?path={g[0]}").status_code == 200
 
 
-def test_yang_dibekukan_cuma_yang_sudah_dikerjakan(klien, lingkungan):
-    """Membekukan seluruh isi folder mengulangi kesalahan yang diperbaiki.
-
-    Projek lama berisi dua hal yang berbeda: pekerjaan yang sudah selesai, dan
-    gambar yang belum disentuh siapa pun. Membekukan keduanya sekaligus
-    memasukkan gambar kosong ke dataset — sekali di awal, bukan terus-menerus,
-    tetapi sama salahnya.
-    """
-    from app.services import tugas as svc
-    from tests.test_projek import _projek
-
-    masuk(klien, "paul", PW_PAUL)
-    d = _projek(_ruang(klien), "campur", n=3, label=False)
-    g = sorted(d.glob("*.jpg"))
-    # Satu dilabeli sungguhan, satu ditandai latar, satu belum disentuh.
-    g[0].with_suffix(".json").write_text(json.dumps({
-        "version": "0.4.36", "flags": {}, "imagePath": g[0].name,
-        "imageHeight": 40, "imageWidth": 60, "imageData": None,
-        "shapes": [{"label": "botol", "shape_type": "polygon",
-                    "points": [[2, 2], [30, 2], [30, 30]]}]}))
-    klien.post(f"/setsrc?path={d}")
-    klien.post(f"/markbg?path={g[1]}")
-
-    svc.dasar(d, "paul")
-    data = svc.baca(d, "paul")
-    assert sorted(data["dataset"]) == sorted([g[0].name, g[1].name])
-    assert g[2].name not in data["dataset"], "gambar kosong ikut masuk dataset"
-
-
-def test_projek_lama_dibekukan_saat_aplikasi_menyala(lingkungan, tmp_path):
+def test_projek_lama_ikut_aturan_saat_aplikasi_menyala(lingkungan, tmp_path):
     """Projek yang tidak pernah diunggahi lagi tidak boleh tertinggal.
 
     Tanpa ini, dua projek bersebelahan berperilaku berbeda tanpa ada yang bisa
     menjelaskan kenapa: yang pernah diunggahi lagi menyaring, yang tidak
     menampilkan seluruh isinya termasuk yang belum dilabeli sama sekali.
+
+    Yang dinyalakan cuma penandanya. Tidak satu gambar pun dimasukkan ke
+    dataset atas nama pemiliknya.
     """
     import cv2
     import numpy as np
@@ -1529,16 +1512,17 @@ def test_projek_lama_dibekukan_saat_aplikasi_menyala(lingkungan, tmp_path):
     sudah.mkdir()
     svc.masukkan(sudah, ["pilihanku.jpg"], "darma")
 
-    hasil = svc.bekukan_lama(unggahan)
+    hasil = svc.kurasi_projek_lama(unggahan)
     assert {r["projek"] for r in hasil} == {
         "darma/lama-berlabel", "darma/lama-kosong", "rizky/punya-orang-lain"}
-    assert svc.baca(unggahan / "darma" / "lama-berlabel")["dataset"] == [
-        "lama-berlabel-0.jpg", "lama-berlabel-1.jpg"]
-    assert svc.baca(unggahan / "darma" / "lama-kosong")["dataset"] == []
+    for nama in ("lama-berlabel", "lama-kosong"):
+        data = svc.baca(unggahan / "darma" / nama)
+        assert data["kurasi"] is True, nama
+        assert data["dataset"] == [], f"{nama}: sistem mengisi dataset sendiri"
     assert svc.baca(sudah)["dataset"] == ["pilihanku.jpg"], "berkas orang diubah"
 
     # Dijalankan dua kali tidak menambah apa-apa.
-    assert svc.bekukan_lama(unggahan) == []
+    assert svc.kurasi_projek_lama(unggahan) == []
 
 
 def test_yang_sudah_dianotasi_tanpa_job_bisa_dimasukkan_borongan(klien,

@@ -105,30 +105,28 @@ async def halaman_versi(request: Request, ds: str = "",
     })
 
 
-async def _bekukan_dasar(d: Path, settings: Settings) -> None:
+async def _mulai_kurasi(d: Path, settings: Settings) -> None:
     """
-    Bekukan isi projek yang sudah ada sebagai datasetnya, sebelum gambar baru
-    mendarat.
+    Nyatakan projek tujuan tunduk pada aturan dataset, sebelum gambar mendarat.
 
-    Dipanggil dari SETIAP jalur yang menambah gambar, dan harus dipanggil
-    sebelum berkasnya ditulis. Sesudahnya sudah terlambat: gambar yang baru
-    datang ikut terbekukan, dan justru gambar itu yang seharusnya menunggu di
-    kolom "Belum ditugaskan" sampai seseorang memasukkannya ke dataset.
+    Dipanggil dari SETIAP jalur yang menambah gambar. Projek yang belum pernah
+    dikurasi menghitung seluruh isinya sebagai dataset, jadi tanpa ini gambar
+    yang baru diunggah — belum dilabeli, belum ditugaskan, belum dimasukkan
+    siapa pun — langsung muncul di halaman Dataset dan langsung ikut
+    terekspor.
 
-    Idempoten dan murah pada panggilan kedua dan seterusnya — satu unggahan
-    folder mengirim ratusan permintaan terpisah, dan hanya yang pertama yang
-    benar-benar menelusuri isi projeknya.
+    Idempoten dan murah pada panggilan kedua dan seterusnya; satu unggahan
+    folder mengirim ratusan permintaan terpisah.
 
-    Foldernya dibuat kalau belum ada. Berkas dasar harus ditulis SEBELUM
-    gambar pertama mendarat, dan pada projek yang benar-benar baru berarti
-    sebelum apa pun ada di sana. Yang dibuat cuma folder yang berkas
-    berikutnya akan membuat juga sedetik kemudian; nama projeknya sendiri
-    sudah disaring upload_dir.
+    Foldernya dibuat kalau belum ada: penandanya harus tertulis SEBELUM gambar
+    pertama mendarat, dan pada projek yang benar-benar baru berarti sebelum
+    apa pun ada di sana. Yang dibuat cuma folder yang berkas berikutnya akan
+    membuat juga sedetik kemudian; nama projeknya sudah disaring upload_dir.
     """
     from ..services import tugas as svc_tugas
 
     d.mkdir(parents=True, exist_ok=True)
-    await asyncio.to_thread(svc_tugas.dasar, d,
+    await asyncio.to_thread(svc_tugas.mulai_kurasi, d,
                             projek.pemilik_dari(settings.uploads_root, d))
 
 
@@ -157,7 +155,7 @@ async def upload(request: Request, ds: str = "", name: str = "",
         return {"ok": False, "error": f"lebih dari {sebutan}"}
 
     d = sess.upload_dir(ds)
-    await _bekukan_dasar(d, settings)
+    await _mulai_kurasi(d, settings)
     dest = d / fn
     # Penjagaan berlapis: walau safe_relpath sudah membuang `..`, tujuan akhirnya
     # tetap diperiksa masih berada di dalam folder milik akun ini.
@@ -208,7 +206,7 @@ async def unzip(ds: str = "", name: str = "",
         return {"ok": False, "error": "yang diminta bukan berkas arsip"}
 
     d = sess.upload_dir(ds)
-    await _bekukan_dasar(d, settings)
+    await _mulai_kurasi(d, settings)
     zp = d / fn
     if not zp.is_file():
         return {"ok": False, "error": "arsipnya tidak ada di folder unggahan"}
@@ -294,7 +292,7 @@ async def impor_dari_server(path: str = "", ds: str = "",
     # nama projek. Membersihkannya di sini lebih dulu dengan aturan yang
     # berbeda membuat unggahan mendarat di folder yang bukan projeknya.
     tujuan = sess.upload_dir(ds or sumber.name)
-    await _bekukan_dasar(tujuan, settings)
+    await _mulai_kurasi(tujuan, settings)
     nama = tujuan.name
     try:
         hasil = await asyncio.to_thread(impor.impor_folder, sumber, tujuan,
@@ -339,7 +337,7 @@ async def tambah_berkas(request: Request, name: str = "",
     galat = _siap_ditambahi(sess, settings)
     if galat:
         return {"ok": False, "error": galat}
-    await _bekukan_dasar(sess.src, settings)
+    await _mulai_kurasi(sess.src, settings)
 
     fn = safe_relpath(name)
     if not fn:
@@ -401,7 +399,7 @@ async def tambah_dari_server(path: str = "",
     if galat:
         return {"ok": False, "error": galat}
 
-    await _bekukan_dasar(sess.src, settings)
+    await _mulai_kurasi(sess.src, settings)
     sumber = Path((path or "").strip()).expanduser()
     tujuan = sess.src
     if impor._didalam(tujuan, sumber) or impor._didalam(sumber, tujuan):

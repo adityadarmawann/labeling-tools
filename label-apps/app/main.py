@@ -51,14 +51,18 @@ async def lifespan(app: FastAPI):
               f"              satu pun. Ubah lewat halaman /akun.", flush=True)
 
     # Projek yang lahir sebelum alur "Tambahkan ke dataset" ada tidak pernah
-    # melewati tombol itu sekali pun. Pekerjaan yang sudah selesai di dalamnya
-    # dibekukan masuk dataset di sini, sekali, supaya ekspornya tidak berubah
-    # sedikit pun — sementara gambar yang belum dilabeli menunggu di Anotasi
-    # seperti gambar baru mana pun. Hanya membuat berkas yang belum ada.
-    from .services.tugas import bekukan_lama
-    for r in bekukan_lama(st.uploads_root):
-        print(f"  DASAR     : {r['projek']} — {r['dataset']} gambar yang sudah "
-              f"dikerjakan dibekukan masuk dataset", flush=True)
+    # melewati tombol itu sekali pun, dan tanpa ini ia memakai aturan warisan
+    # selamanya: seluruh isinya terhitung dataset, termasuk gambar yang belum
+    # dilabeli. Yang dinyalakan cuma penandanya — tidak satu gambar pun
+    # dimasukkan atas nama pemiliknya. Isinya dimasukkan pemiliknya sendiri,
+    # sekali klik, lewat tombol borongan di kolom "Belum ditugaskan".
+    from .services.tugas import kurasi_projek_lama
+    lama = kurasi_projek_lama(st.uploads_root)
+    if lama:
+        print(f"  KURASI    : {len(lama)} projek lama mulai memakai aturan "
+              f"dataset ({', '.join(r['projek'] for r in lama[:4])}"
+              f"{', ...' if len(lama) > 4 else ''}). Isinya menunggu di Anotasi "
+              f"sampai pemiliknya memasukkannya.", flush=True)
     yield
     # Cache thumbnail bersifat sementara: dibuang saat proses berhenti supaya
     # /tmp tidak menumpuk sisa dari sesi-sesi lama.

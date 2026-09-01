@@ -253,10 +253,13 @@ def saring_dataset(items: list, ds: Path, uploads_root: Path) -> tuple[list, dic
     ekspor semuanya bekerja pada hasil saringan ini.
 
     Projek yang kurasinya belum pernah dimulai mengembalikan seluruhnya apa
-    adanya. Tanpa itu, ekspor projek yang sudah ada akan mendadak kosong pada
-    hari fitur ini dipasang. Begitu ada gambar baru masuk, dasar() membekukan
-    isi lamanya lebih dulu, jadi keadaan itu tidak pernah dipakai untuk
-    memutihkan gambar yang belum dikerjakan.
+    adanya — itu satu-satunya kelakuan yang masuk akal untuk folder dataset
+    bersama, yang dibuka langsung dari path server dan tidak punya alur
+    unggah, tugas, maupun dataset sama sekali.
+
+    Projek di ruang kerja tidak pernah tinggal di keadaan itu: kurasinya
+    dinyalakan saat aplikasi menyala atau saat gambar pertama masuk, mana yang
+    lebih dulu.
     """
     from .tag import kunci_gambar
 
@@ -286,78 +289,43 @@ def sudah_dimasukkan(data: dict, kunci: str) -> bool:
     return kunci in data["dataset"]
 
 
-def sudah_dikerjakan(ds: Path) -> list[str]:
+def mulai_kurasi(ds: Path, pemilik: str = "") -> dict:
     """
-    Kunci gambar yang SUDAH punya berkas anotasi.
+    Nyatakan projek ini tunduk pada aturan dataset, tanpa memasukkan apa pun.
 
-    Inilah ukuran "sudah selesai" yang dipakai membekukan dasar dataset.
-    Bukan seluruh isi folder: gambar tanpa anotasi belum dikerjakan siapa pun,
-    dan memasukkannya ke dataset berarti mengekspor gambar kosong sebagai
-    bagian dari data latih.
+    Dipanggil dari setiap jalur yang menambah gambar, dan sekali untuk tiap
+    projek lama saat aplikasi menyala. Yang dilakukannya cuma menyalakan
+    penanda; daftar datasetnya dibiarkan apa adanya — biasanya kosong.
 
-    Gambar yang sengaja ditandai latar ikut terhitung. Ia punya berkas
-    anotasi tanpa objek, dan itu keputusan yang sudah diambil — bukan
-    pekerjaan yang belum dimulai.
+    Sengaja TIDAK membekukan gambar yang sudah dianotasi ke dalam dataset.
+    Sempat begitu, dengan alasan menjaga ekspor projek lama tidak berubah, dan
+    alasan itu salah: "sudah dianotasi" bukan "sudah dinyatakan masuk". Yang
+    memutuskan sebuah gambar layak ikut ke dataset adalah orang, lewat
+    Tambahkan ke dataset, dan sistem yang memutuskannya sendiri atas nama
+    orang persis kebalikan dari yang diminta halaman ini.
 
-    Berkas pendamping dan folder bertitik dilewati dengan aturan yang sama
-    seperti di pemindai: .versi/ berisi .json, bukan gambar.
-    """
-    from ..config import IMG_EXT
-    from .projek import anotasi_untuk
-
-    d = Path(ds)
-    out = []
-    for p in sorted(d.rglob("*")):
-        if p.suffix.lower() not in IMG_EXT or not p.is_file():
-            continue
-        if any(bagian.startswith(".") for bagian in p.relative_to(d).parts):
-            continue
-        if anotasi_untuk(p) is not None:
-            out.append(kunci_gambar(d, p))
-    return out
-
-
-def dasar(ds: Path, pemilik: str = "") -> dict:
-    """
-    Bekukan pekerjaan yang SUDAH selesai di projek ini sebagai datasetnya.
-
-    Yang dibekukan hanya gambar yang punya berkas anotasi. Memasukkan seluruh
-    isi folder akan mengulangi persis kesalahan yang sedang diperbaiki, cuma
-    sekali di awal alih-alih terus-menerus: gambar yang belum dilabeli siapa
-    pun berakhir di dataset tanpa ada yang memutuskannya.
-
-    Dipanggil tepat sebelum gambar baru masuk, dari setiap jalur yang menambah
-    gambar, dan sekali untuk tiap projek lama yang belum punya berkas ini.
-
-    Tanpa ini, projek yang belum pernah dikurasi menghitung SELURUH isinya
-    sebagai dataset, jadi gambar yang baru diunggah — belum dilabeli, belum
-    ditugaskan, belum dimasukkan siapa pun — langsung muncul di halaman
-    Dataset dan langsung ikut terekspor. Itu persis kebalikan dari alurnya:
-    unggah dulu, kerjakan, baru masukkan.
-
-    Dan tanpa membekukan yang lama lebih dulu, satu-satunya cara memenuhi
-    aturan itu adalah mengosongkan dataset projek yang sudah ada — yang berarti
-    ekspor projek berisi ribuan gambar mendadak nol pada hari fiturnya dipasang.
+    Yang membuatnya aman bukan pembekuan itu, melainkan tombol borongan di
+    kolom "Belum ditugaskan": seluruh isi projek lama bisa dimasukkan dengan
+    satu klik, dengan angkanya disebutkan lebih dulu, oleh pemiliknya.
 
     Idempoten: projek yang kurasinya sudah berjalan tidak disentuh sama sekali.
     """
     with _kunci:
         data = baca(ds, pemilik)
         if data["kurasi"]:
-            return _tanpa_perubahan(data, {"dibekukan": 0,
+            return _tanpa_perubahan(data, {"dimulai": False,
                                            "total": len(data["dataset"])})
         data["pemilik"] = data["pemilik"] or pemilik
         data["kurasi"] = True
-        data["dataset"] = sorted(set(data["dataset"]) | set(sudah_dikerjakan(ds)))
         _tulis(ds, data)
-    log.info("dasar dataset %s: %s gambar yang sudah dikerjakan dibekukan masuk",
+    log.info("kurasi dimulai di %s (%s gambar sudah di dataset)",
              Path(ds).name, len(data["dataset"]))
-    return {"dibekukan": len(data["dataset"]), "total": len(data["dataset"])}
+    return {"dimulai": True, "total": len(data["dataset"])}
 
 
-def bekukan_lama(uploads_root: Path) -> list[dict]:
+def kurasi_projek_lama(uploads_root: Path) -> list[dict]:
     """
-    Bekukan dasar setiap projek lama yang belum punya berkas tugas.
+    Nyalakan kurasi pada setiap projek lama yang belum punya berkas tugas.
 
     Dijalankan sekali saat aplikasi menyala. Tanpa ini, projek yang tidak
     pernah diunggahi lagi tetap memakai aturan warisan selamanya: SELURUH
@@ -379,12 +347,11 @@ def bekukan_lama(uploads_root: Path) -> list[dict]:
             if d.name.startswith((".", "_")) or _p(d).is_file():
                 continue
             try:
-                r = dasar(d, ruang.name)
+                mulai_kurasi(d, ruang.name)
             except OSError as e:
-                log.warning("dasar %s gagal: %s", d, e)
+                log.warning("kurasi %s gagal: %s", d, e)
                 continue
-            hasil.append({"projek": f"{ruang.name}/{d.name}",
-                          "dataset": r["total"]})
+            hasil.append({"projek": f"{ruang.name}/{d.name}"})
     return hasil
 
 
