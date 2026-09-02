@@ -24,11 +24,16 @@ FAILED_LOGIN_DELAY = 0.6
 
 
 @router.get("/login", response_class=HTMLResponse)
-async def login_form(request: Request):
+async def login_form(request: Request, next: str = ""):
     if optional_session(request):
-        return RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
+        # Sudah masuk: langsung ke tujuan semula, bukan ke beranda. Orang yang
+        # menekan tautan undangan sambil sudah punya sesi tidak perlu lewat
+        # halaman masuk sama sekali.
+        tujuan = next if next.startswith("/") and not next.startswith("//") else "/"
+        return RedirectResponse(tujuan, status_code=status.HTTP_303_SEE_OTHER)
     return templates.TemplateResponse(request, "login.html", {
-        "akun": "", "boleh_daftar": get_settings().daftar_sendiri,
+        "akun": "", "next": next,
+        "boleh_daftar": get_settings().daftar_sendiri,
         "daftar_langsung": get_settings().daftar_langsung})
 
 
@@ -36,6 +41,7 @@ async def login_form(request: Request):
 async def login(request: Request,
                 user: str = Form(""),
                 pw: str = Form(""),
+                next: str = Form(""),
                 settings: Settings = Depends(get_settings)):
     users = load_users(settings.users_file)
     akun = authenticate(users, user, pw)
@@ -47,7 +53,8 @@ async def login(request: Request,
         menunggu = menunggu_setujuan(users, user_slug(user))
         return templates.TemplateResponse(
             request, "login.html",
-            {"akun": user, "boleh_daftar": settings.daftar_sendiri,
+            {"akun": user, "next": next,
+             "boleh_daftar": settings.daftar_sendiri,
              "daftar_langsung": settings.daftar_langsung,
              "error": ("Akunmu sudah terdaftar tapi belum disetujui admin."
                        if menunggu else "Akun atau password salah.")},
@@ -60,7 +67,12 @@ async def login(request: Request,
         except Exception:
             pass          # folder awal bermasalah bukan alasan gagal login
 
-    resp = RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
+    # Kembali ke halaman yang tadi diminta, kalau ada. Hanya jalur di dalam
+    # aplikasi ini — '//' dan skema apa pun dibuang, supaya kolom tersembunyi
+    # ini tidak bisa dipakai mengarahkan orang ke situs lain lewat alamat yang
+    # mereka percaya.
+    tujuan = next if next.startswith("/") and not next.startswith("//") else "/"
+    resp = RedirectResponse(tujuan, status_code=status.HTTP_303_SEE_OTHER)
     resp.set_cookie(COOKIE_NAME, sid, httponly=True, samesite="lax", path="/")
     return resp
 

@@ -935,7 +935,7 @@ const Progres = (() => {
         sHasil.innerHTML = j.batal
           ? '<span class="split-warn">Dihentikan. Splitting cepat berbasis '
             + 'nama berkas tetap dipakai.</span>'
-          : `<span class="split-warn">Gagal: ${j.error || ''}</span>`;
+          : `<span class="split-warn">Gagal: ${esc(j.error || '')}</span>`;
         return;
       }
       sIsi.style.width = '100%';

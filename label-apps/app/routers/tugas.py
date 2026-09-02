@@ -107,6 +107,8 @@ async def halaman_papan(request: Request, ds: str = "", urut: str = "terbaru",
         return RedirectResponse("/pilih", status_code=303)
     if str(sess.src or "") != str(d):
         await asyncio.to_thread(sess.load, d)
+    else:
+        await asyncio.to_thread(sess.segarkan)
 
     data = svc.baca_projek(d, settings.uploads_root)
     pr = await asyncio.to_thread(sp.konteks, d, settings.uploads_root, sess.user)
@@ -165,6 +167,12 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
         return RedirectResponse("/pilih", status_code=303)
     if str(sess.src or "") != str(d):
         await asyncio.to_thread(sess.load, d)
+    else:
+        # Isi projek dipindai sekali lalu dipakai dari ingatan. Sejak
+        # pekerjaannya dibagi, anotasi yang dibuat pelabel tidak pernah
+        # terlihat oleh pemilik projek — papan kemajuannya membeku di angka
+        # saat ia membukanya, dan memuat ulang halaman tidak menolong.
+        await asyncio.to_thread(sess.segarkan)
 
     data = svc.baca_projek(d, settings.uploads_root)
     job = data["tugas"].get(tid)
@@ -238,6 +246,8 @@ async def halaman_bagi(request: Request, ds: str = "", batch: str = "",
         return RedirectResponse("/pilih", status_code=303)
     if str(sess.src or "") != str(d):
         await asyncio.to_thread(sess.load, d)
+    else:
+        await asyncio.to_thread(sess.segarkan)
 
     data = svc.baca_projek(d, settings.uploads_root)
     pr = await asyncio.to_thread(sp.konteks, d, settings.uploads_root, sess.user)
@@ -287,10 +297,18 @@ async def calon(sess: Session = Depends(current_session_api),
         return {"ok": False, "error": "hanya pemilik projek yang bisa membagi tugas"}
     from ..security import load_users
     users = load_users(settings.users_file)
-    out = [{"akun": a, "nama": (r.get("nama") or a),
-            "email": r.get("email") or "",
-            "anggota": a in data["anggota"] or a == data["pemilik"]}
-           for a, r in sorted(users.items())]
+    # Alamat surel hanya untuk orang yang MEMANG sudah di projek ini. Daftar
+    # akun sendiri perlu ditampilkan — itu yang dipakai memilih pelabel — tapi
+    # alamat surelnya tidak: setiap pengguna terdaftar adalah pemilik
+    # projeknya sendiri, jadi "hanya pemilik projek" tidak menyaring siapa pun,
+    # dan rute ini sempat menyerahkan seluruh alamat surel tim ke akun mana pun
+    # yang membuat satu projek kosong.
+    out = []
+    for a, r in sorted(users.items()):
+        anggota = a in data["anggota"] or a == data["pemilik"]
+        out.append({"akun": a, "nama": (r.get("nama") or a),
+                    "email": (r.get("email") or "") if anggota else "",
+                    "anggota": anggota})
     return {"ok": True, "akun": out, "pemilik": data["pemilik"],
             "anggota": sorted(data["anggota"]),
             # Undangan yang belum dipakai ikut, supaya panelnya bisa
@@ -310,7 +328,13 @@ async def undang(akun: str = "", sess: Session = Depends(current_session_api),
     tolak = _akun_sah(akun, settings)
     if tolak:
         return {"ok": False, "error": tolak}
-    r = await asyncio.to_thread(svc.undang, sess.src, sess.user, akun)
+    if akun == data["pemilik"]:
+        # Dulu dijawab ok:true dengan daftar anggota KOSONG — bukan sekadar
+        # "tidak berubah", tapi keadaan yang salah — lalu layarnya menoast
+        # "X jadi anggota" padahal tidak terjadi apa-apa.
+        return {"ok": False, "error": "kamu pemilik projek ini, tidak perlu "
+                                      "diundang"}
+    r = await asyncio.to_thread(svc.undang, sess.src, data["pemilik"], akun)
     return {"ok": True, **r}
 
 
@@ -322,7 +346,19 @@ async def keluarkan_anggota(akun: str = "",
         return {"ok": False, "error": galat}
     if not svc.boleh_kelola(data, sess.user):
         return {"ok": False, "error": "hanya pemilik projek yang bisa mengeluarkan"}
-    r = await asyncio.to_thread(svc.keluarkan_anggota, sess.src, sess.user, akun)
+    # Dulu rute ini menjawab ok:true untuk apa pun — nama hantu, nama kosong,
+    # akun yang memang bukan anggota — sehingga salah ketik tidak pernah
+    # kelihatan. Dan akun pemilik sendiri diterima, lalu membubarkan job
+    # miliknya sendiri sambil melaporkan daftar anggota yang tidak berubah.
+    if not akun:
+        return {"ok": False, "error": "belum memilih siapa yang dikeluarkan"}
+    if akun == data["pemilik"]:
+        return {"ok": False, "error": "kamu pemilik projek ini; pemilik tidak "
+                                      "bisa dikeluarkan dari projeknya sendiri"}
+    if akun not in data["anggota"]:
+        return {"ok": False, "error": f"'{akun[:40]}' bukan anggota projek ini"}
+    r = await asyncio.to_thread(svc.keluarkan_anggota, sess.src,
+                                data["pemilik"], akun)
     return {"ok": True, **r}
 
 
@@ -467,6 +503,25 @@ async def bubarkan(id: str = "", sess: Session = Depends(current_session_api)):
     return {"ok": True, **r}
 
 
+def _punya_alur_dataset(data: dict) -> str:
+    """
+    Pesan penolakan kalau folder ini bukan projek, atau "".
+
+    Folder dataset BERSAMA tidak punya pemilik: ia dibuka lewat path server,
+    dipakai beberapa orang, dan tidak punya alur unggah-tugas-dataset sama
+    sekali. Tanpa penjagaan ini, boleh_labeli menjawab ya untuk siapa pun di
+    sana — tidak ada tugas dan tidak ada anggota — dan satu klik "Tambahkan ke
+    dataset" menulis .tugas.json ke folder itu, menyalakan kurasi, lalu
+    MENGECILKAN ekspor folder itu untuk semua orang. Terbukti: ekspor turun
+    dari 3 gambar jadi 1, dan satu-satunya cara memulihkannya adalah menghapus
+    berkasnya dari disk.
+    """
+    if not data["pemilik"]:
+        return ("folder dataset bersama tidak punya alur dataset — salin dulu "
+                "ke ruang kerjamu lewat halaman Unggah")
+    return ""
+
+
 @router.post("/api/latar")
 async def tandai_latar(request: Request,
                        sess: Session = Depends(current_session_api),
@@ -516,6 +571,11 @@ async def tandai_latar(request: Request,
                 tolak += 1
                 continue
             berhasil += 1
+    if berhasil:
+        # Sesi LAIN memegang salinan isi projek ini. Tanpa penanda, papan
+        # kemajuan mereka membeku di angka sebelum perubahan ini.
+        from ..session import tandai_berubah
+        tandai_berubah(sess.src)
     if not berhasil:
         return {"ok": False,
                 "error": "tidak satu pun gambar itu bisa kamu ubah"}
@@ -538,6 +598,9 @@ async def dataset_siap(request: Request,
     luar bisa memuat gambar yang sedang dikerjakan orang lain.
     """
     data, galat = _siap(sess)
+    if galat:
+        return {"ok": False, "error": galat}
+    galat = _punya_alur_dataset(data)
     if galat:
         return {"ok": False, "error": galat}
     if not svc.boleh_kelola(data, sess.user):
@@ -580,6 +643,9 @@ async def ke_dataset(request: Request,
     pekerjaan orang lain selesai bukan keputusan yang pantas diambil diam-diam.
     """
     data, galat = _siap(sess)
+    if galat:
+        return {"ok": False, "error": galat}
+    galat = _punya_alur_dataset(data)
     if galat:
         return {"ok": False, "error": galat}
     body = await bodi_json(request)

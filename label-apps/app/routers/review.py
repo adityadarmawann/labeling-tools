@@ -196,6 +196,8 @@ async def index(request: Request, f: str = "all",
             return RedirectResponse("/pilih", status_code=303)
         if str(sess.src or "") != str(d):
             await asyncio.to_thread(sess.load, d)
+        else:
+            await asyncio.to_thread(sess.segarkan)
 
     # Belum memilih dataset -> tampilkan pemilih, bukan grid kosong.
     if sess.src is None:
@@ -437,6 +439,10 @@ def _set_bg(sess: Session, path: str, on: bool):
         return {"ok": False, "error": str(e)}
     except OSError as e:
         return {"ok": False, "error": str(e)[:90]}
+    # Sesi lain memegang salinan isi projek ini; tanpa penanda, papan kemajuan
+    # mereka membeku di angka sebelum perubahan ini.
+    from ..session import tandai_berubah
+    tandai_berubah(sess.src)
     return {"ok": True, "msg": msg}
 
 

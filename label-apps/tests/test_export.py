@@ -748,3 +748,69 @@ def test_latar_terekspor_sebagai_label_kosong(klien, lingkungan):
     assert len(label) == 4, "tiap gambar punya berkas label, termasuk yang latar"
     kosong = [n for n, isi in label.items() if isi.strip() == b""]
     assert len(kosong) == 2, "label latar harus KOSONG, bukan hilang atau diisi"
+
+
+def test_data_yaml_tahan_nama_kelas_apa_pun(klien, lingkungan):
+    """ZIP yang terunduh mulus tetapi gagal dilatih adalah kegagalan terburuk.
+
+    Nama kelas dulu dibungkus kutip tunggal yang ditempel sendiri, jadi satu
+    apostrof — 'bo'tol' — merusak seluruh data.yaml. Gambar dan labelnya benar,
+    ZIP-nya utuh, dan latihan gagal di baris pertama tanpa satu pun tanda dari
+    aplikasi ini.
+    """
+    import yaml
+
+    from app.services.export import data_yaml
+
+    peta = {"bo'tol": 0, 'ka"leng': 1, "botol-\U0001f600": 2,
+            "kelas: dua": 3, "ka leng, besar": 4, "botol\\miring": 5}
+    isi = yaml.safe_load(data_yaml(peta, "uji"))
+    assert isi["nc"] == 6
+    assert isi["names"] == [k for k, _ in sorted(peta.items(), key=lambda kv: kv[1])]
+
+
+def test_ekspor_yolo_tidak_menimpa_gambar_senama_dari_subfolder(klien,
+                                                                lingkungan):
+    """Ringkasan bilang 3, yang terekstrak 2, dan satu kelas ikut hilang.
+
+    Dua gambar bernama sama dari subfolder berbeda bertemu di satu folder
+    setelah diratakan. COCO, VOC, dan CreateML sudah memakai _nama_unik; jalur
+    YOLO tidak, jadi entri ZIP-nya ganda — dan yang membukanya baru tahu saat
+    melatih.
+    """
+    import io
+    import json
+    import pathlib
+    import zipfile
+
+    import cv2
+    import numpy as np
+
+    from tests.test_data import masuk, PW_PAUL
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = ruang / "senama"
+    for sub, kelas in (("sub1", "botol"), ("sub2", "kaleng")):
+        (d / sub).mkdir(parents=True, exist_ok=True)
+        q = d / sub / "dup.jpg"
+        cv2.imwrite(str(q), np.full((40, 60, 3), 80, np.uint8))
+        q.with_suffix(".json").write_text(json.dumps({
+            "version": "0.4.36", "flags": {}, "imagePath": q.name,
+            "imageHeight": 40, "imageWidth": 60, "imageData": None,
+            "shapes": [{"label": kelas, "shape_type": "rectangle",
+                        "points": [[2, 2], [30, 30]]}]}))
+    klien.post(f"/setsrc?path={d}")
+
+    z = klien.get("/ekspor?format=yolo-seg&gambar=1&split=10:0:0")
+    assert z.status_code == 200
+    zf = zipfile.ZipFile(io.BytesIO(z.content))
+    nama = [n for n in zf.namelist() if not n.endswith("/")]
+    assert len(nama) == len(set(nama)), f"entri ZIP ganda: {nama}"
+    gambar = [n for n in nama if "/images/" in n]
+    label = [n for n in nama if "/labels/" in n]
+    assert len(gambar) == 2 and len(label) == 2, (gambar, label)
+    # Kedua kelas selamat: yang satu tidak menimpa yang lain.
+    baris = [b for n in label for b in zf.read(n).decode().splitlines() if b.strip()]
+    assert len(baris) == 2, baris
+    assert len({b.split()[0] for b in baris}) == 2, f"satu kelas hilang: {baris}"

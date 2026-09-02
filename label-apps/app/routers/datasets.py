@@ -129,9 +129,21 @@ async def versi_buat(split: str = "", catatan: str = "",
     # disembunyikan lewat boleh_kelola, dan rutenya menerima siapa saja:
     # anggota biasa bisa MENGHAPUS PERMANEN versi milik pemiliknya, dan versi
     # tidak masuk sampah.
-    tdata = await asyncio.to_thread(tugas.baca, sess.src, sess.user)
+    #
+    # Pemiliknya dibaca dari LETAK folder, bukan dari akun pemanggil. baca()
+    # memakai argumen keduanya sebagai pemilik cadangan, jadi di folder
+    # dataset BERSAMA — yang memang tidak punya berkas tugas — pemanggil
+    # siapa pun tercatat sebagai pemiliknya sendiri dan boleh_kelola selalu
+    # menjawab ya. Terbukti: dua akun biasa membuat versi di folder bersama,
+    # lalu yang satu menghapus permanen versi buatan yang lain.
+    tdata = await asyncio.to_thread(tugas.baca_projek, sess.src,
+                                    settings.uploads_root)
     if not tugas.boleh_kelola(tdata, sess.user):
-        return {"ok": False, "error": "hanya pemilik projek yang mengurus versi"}
+        return {"ok": False, "error": (
+            "hanya pemilik projek yang mengurus versi"
+            if tdata["pemilik"] else
+            "folder dataset bersama tidak punya pemilik, jadi versinya tidak "
+            "bisa diurus dari sini — salin dulu ke ruang kerjamu")}
     with sess.lock:
         items = list(sess.items)
         names = dict(sess.names)
@@ -161,7 +173,8 @@ async def versi_buat(split: str = "", catatan: str = "",
 
 @router.post("/api/versi/hapus")
 async def versi_hapus(nomor: int = 0,
-                      sess: Session = Depends(current_session_api)):
+                      sess: Session = Depends(current_session_api),
+                      settings: Settings = Depends(get_settings)):
     if sess.src is None:
         return {"ok": False, "error": "belum ada dataset terbuka"}
     # Versi adalah keputusan tentang isi projek, bukan tentang satu job.
@@ -169,9 +182,21 @@ async def versi_hapus(nomor: int = 0,
     # disembunyikan lewat boleh_kelola, dan rutenya menerima siapa saja:
     # anggota biasa bisa MENGHAPUS PERMANEN versi milik pemiliknya, dan versi
     # tidak masuk sampah.
-    tdata = await asyncio.to_thread(tugas.baca, sess.src, sess.user)
+    #
+    # Pemiliknya dibaca dari LETAK folder, bukan dari akun pemanggil. baca()
+    # memakai argumen keduanya sebagai pemilik cadangan, jadi di folder
+    # dataset BERSAMA — yang memang tidak punya berkas tugas — pemanggil
+    # siapa pun tercatat sebagai pemiliknya sendiri dan boleh_kelola selalu
+    # menjawab ya. Terbukti: dua akun biasa membuat versi di folder bersama,
+    # lalu yang satu menghapus permanen versi buatan yang lain.
+    tdata = await asyncio.to_thread(tugas.baca_projek, sess.src,
+                                    settings.uploads_root)
     if not tugas.boleh_kelola(tdata, sess.user):
-        return {"ok": False, "error": "hanya pemilik projek yang mengurus versi"}
+        return {"ok": False, "error": (
+            "hanya pemilik projek yang mengurus versi"
+            if tdata["pemilik"] else
+            "folder dataset bersama tidak punya pemilik, jadi versinya tidak "
+            "bisa diurus dari sini — salin dulu ke ruang kerjamu")}
     ok = await asyncio.to_thread(versi.hapus, sess.src, nomor)
     return {"ok": ok, "error": "" if ok else f"versi v{nomor} tidak ada"}
 

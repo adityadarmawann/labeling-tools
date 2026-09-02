@@ -133,7 +133,15 @@ def data_yaml(peta: dict[str, int], nama: str) -> str:
     tidak ada kunci `path:`. Ultralytics menerima bentuk ini apa adanya.
     """
     urut = [l for l, _ in sorted(peta.items(), key=lambda kv: kv[1])]
-    nama_kelas = ", ".join(f"'{l}'" for l in urut)
+    # Apostrof di dalam kutip tunggal YAML ditulis GANDA — 'bo''tol'. Dulu
+    # namanya ditempel apa adanya di antara dua kutip, sehingga satu nama kelas
+    # berapostrof merusak seluruh berkas ini: ZIP terunduh mulus, gambar dan
+    # labelnya benar, lalu latihan gagal di baris pertama tanpa satu pun tanda
+    # dari aplikasi ini.
+    #
+    # Tetap kutip tunggal, bukan gaya JSON, supaya bentuknya sama persis dengan
+    # data.yaml Roboflow yang dipakai sebagai acuan.
+    nama_kelas = ", ".join("'" + str(l).replace("'", "''") + "'" for l in urut)
     return ("train: ../train/images\n"
             "val: ../valid/images\n"
             "test: ../test/images\n"
@@ -289,14 +297,23 @@ def zip_yolo(items: list[dict], nama_dataset: str, segmentasi: bool,
             items, bagian, rencana, nama_dataset,
             "yolo-seg" if segmentasi else "yolo", rasio))
         for split, daftar in bagian.items():
+            # Dua gambar bernama sama dari subfolder berbeda bertemu di satu
+            # folder setelah diratakan. COCO, VOC, dan CreateML sudah memakai
+            # _nama_unik; jalur YOLO tidak, dan akibatnya entri ZIP-nya ganda:
+            # ringkasan menyebut 3 gambar, yang terekstrak 2, dan satu kelas
+            # ikut hilang tanpa satu pun pesan.
+            dipakai: dict[int, str] = {}
             for it in daftar:
                 p: Path = it["img"]
+                nama = _nama_unik(dipakai, p.name)
+                dipakai[id(it)] = nama
+                batang = nama.rpartition(".")[0] or nama
                 baris = baris_yolo(it, peta, segmentasi)
                 n_objek += len(baris)
-                z.writestr(f"{split}/labels/{p.stem}.txt",
+                z.writestr(f"{split}/labels/{batang}.txt",
                            "\n".join(baris) + ("\n" if baris else ""))
                 if sertakan_gambar:
-                    z.write(p, f"{split}/images/{p.name}")
+                    z.write(p, f"{split}/images/{nama}")
         # Ketiga folder selalu dibuat, walau salah satu split kosong: data.yaml
         # menunjuk ../test/images, dan folder yang tidak ada membuat perkakas
         # latih mengeluh tentang path yang hilang. Pada dataset kecil, split

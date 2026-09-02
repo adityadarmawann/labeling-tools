@@ -406,5 +406,11 @@ async def api_simpan(request: Request, sess: Session = Depends(current_session_a
         sess.drop_thumbs_for(it)
         annotations.write_label_file(sess)
 
+    # Sesi lain memegang salinan isi projek ini. Tanpa penanda, papan kemajuan
+    # mereka membeku di angka saat mereka membukanya — dan yang paling sering
+    # membeku justru papan pemilik projek, satu-satunya orang yang membukanya
+    # untuk melihat kemajuan orang lain.
+    from ..session import tandai_berubah
+    tandai_berubah(sess.src)
     return {"ok": True, "n": len(bentuk), "issues": it["issues"],
             "sev": scanner.severity(it), "peringatan": peringatan}

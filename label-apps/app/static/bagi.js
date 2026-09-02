@@ -50,7 +50,11 @@
     let j;
     try { j = await (await fetch('/api/tugas/calon')).json(); }
     catch (e) { wadah.innerHTML = '<span class="halus">Gagal memuat daftar akun</span>'; return; }
-    if (!j.ok) { wadah.innerHTML = `<span class="halus">${j.error}</span>`; return; }
+    // esc() di seluruh berkas ini bukan kerapian: nama dan email datang dari
+    // formulir pendaftaran mandiri, disimpan apa adanya, lalu ditampilkan ke
+    // SETIAP pemilik projek yang membuka panel ini. Tanpa penyaring, siapa pun
+    // yang bisa mendaftar bisa menitipkan skrip ke layar orang lain.
+    if (!j.ok) { wadah.innerHTML = `<span class="halus">${esc(j.error)}</span>`; return; }
 
     wadah.replaceChildren();
 
@@ -61,8 +65,8 @@
       el.className = 'bg-orang-baris bg-menunggu';
       el.innerHTML =
         '<span class="bg-avatar" aria-hidden="true">@</span>'
-        + `<span class="bg-orang-teks"><b>${u.email}</b>`
-        + '<span class="halus">diundang, belum diterima</span></span>';
+        + `<span class="bg-orang-teks"><b>${esc(u.email)}</b>`
+        + `<span class="halus">diundang ${esc(u.dibuat || '')}, belum diterima</span></span>`;
       const x = document.createElement('button');
       x.type = 'button';
       x.className = 'bg-cabut';
@@ -86,9 +90,9 @@
       el.className = 'bg-orang-baris';
       el.dataset.akun = a.akun;
       el.innerHTML =
-        `<span class="bg-avatar" aria-hidden="true">${a.nama.slice(0, 1).toUpperCase()}</span>`
-        + `<span class="bg-orang-teks"><b>${a.nama}</b>`
-        + `<span class="halus">${a.email || a.akun}`
+        `<span class="bg-avatar" aria-hidden="true">${esc(a.nama.slice(0, 1).toUpperCase())}</span>`
+        + `<span class="bg-orang-teks"><b>${esc(a.nama)}</b>`
+        + `<span class="halus">${esc(a.email || a.akun)}`
         + (a.akun === j.pemilik ? ' &middot; pemilik'
            : a.anggota ? ' &middot; anggota' : '') + '</span></span>'
         + '<span class="bg-orang-n"></span>';

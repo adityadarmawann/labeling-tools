@@ -6,6 +6,8 @@ penanda apakah permintaan datang dari mesin server sendiri.
 """
 from __future__ import annotations
 
+from urllib.parse import quote
+
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 
@@ -153,7 +155,23 @@ def optional_session(request: Request) -> Session | None:
     return store.get(request.cookies.get(COOKIE_NAME))
 
 
-def login_redirect() -> RedirectResponse:
+def login_redirect(tujuan: str = "") -> RedirectResponse:
+    """
+    Alihkan ke halaman masuk, membawa tujuan semula.
+
+    Tanpa `next`, tautan undangan lenyap di tengah alurnya sendiri: orang
+    menekan tautan dari surel, diminta masuk, lalu mendarat di beranda sebagai
+    bukan-anggota — dan tidak ada satu pun layar yang menyebut ada undangan
+    tertunda. Ia harus menyalin-tempel tautannya lagi, dan kalau surelnya
+    sudah ditutup ia tidak bisa.
+
+    Hanya jalur di dalam aplikasi ini yang dibawa: '//' dan skema apa pun
+    dibuang, supaya parameter ini tidak jadi jalan mengarahkan orang ke situs
+    lain memakai alamat yang mereka percaya.
+    """
+    if tujuan.startswith("/") and not tujuan.startswith("//"):
+        return RedirectResponse("/login?next=" + quote(tujuan, safe=""),
+                                status_code=status.HTTP_303_SEE_OTHER)
     return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
 
 

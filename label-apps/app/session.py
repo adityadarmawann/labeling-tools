@@ -21,6 +21,33 @@ from .security import safe_slug
 from .services import annotations, scanner
 
 
+# Penanda perubahan isi projek, dipakai BERSAMA oleh semua sesi.
+#
+# Tiap sesi memindai projek sekali lalu bekerja dari ingatan. Itu benar selama
+# satu orang mengerjakan satu projek, dan salah sejak pekerjaannya dibagi:
+# anotasi yang dibuat pelabel tidak pernah terlihat oleh pemilik projek —
+# papan kemajuannya membeku di angka saat ia membukanya, dan memuat ulang
+# halaman tidak menolong karena yang dimuat ulang cuma tampilannya.
+#
+# Yang disimpan cuma pencacah per folder. Pemindaian ulang mahal (11 ribu
+# gambar butuh detik), jadi ia hanya dijalankan kalau pencacahnya benar-benar
+# berubah — dan yang menaikkannya cuma penulisan sungguhan.
+_cap_ubah: dict[str, int] = {}
+_kunci_cap = threading.Lock()
+
+
+def tandai_berubah(src) -> None:
+    """Catat bahwa isi anotasi sebuah projek berubah."""
+    k = str(Path(src).resolve())
+    with _kunci_cap:
+        _cap_ubah[k] = _cap_ubah.get(k, 0) + 1
+
+
+def cap_sekarang(src) -> int:
+    with _kunci_cap:
+        return _cap_ubah.get(str(Path(src).resolve()), 0)
+
+
 class Session:
     """Keadaan milik satu akun yang sedang login."""
 
@@ -29,6 +56,8 @@ class Session:
         self.settings = settings
         self.src: Path | None = None
         self.items: list[dict] = []
+        # Nilai penanda perubahan saat isi ini dipindai. Lihat _cap_ubah.
+        self.cap = 0
         self.names: dict[int, str] = {}
         self.labelfile: Path | None = None
         self.thumbdir = settings.thumb_root / safe_slug(user)
@@ -51,6 +80,9 @@ class Session:
     def load(self, src: Path) -> list[dict]:
         """Pindai folder baru dan buang cache thumbnail folder sebelumnya."""
         self.src = Path(src).resolve()
+        # Dicatat SEBELUM memindai: perubahan yang datang di tengah pemindaian
+        # lebih baik memicu satu pemindaian berlebih daripada terlewat.
+        self.cap = cap_sekarang(self.src)
         self.items, self.names = scanner.scan(self.src)
         # Penempat memegang jumlah gambar per split saat ia dibuat. Setelah
         # pemindaian ulang angka itu sudah usang, jadi dibuang — kalau tidak,
@@ -63,6 +95,22 @@ class Session:
         self.reset_thumbs()
         annotations.write_label_file(self)
         return self.items
+
+    def segarkan(self) -> bool:
+        """
+        Pindai ulang kalau ada yang menulis anotasi sejak pemindaian terakhir.
+
+        Dipanggil halaman yang menyatakan KEMAJUAN — papan anotasi, rincian
+        job, dan grid. Halaman lain tidak perlu: yang berubah cuma anotasi,
+        dan yang membacanya cuma halaman-halaman itu.
+
+        Mengembalikan True kalau benar-benar memindai ulang.
+        """
+        if self.src is None or self.cap == cap_sekarang(self.src):
+            return False
+        with self.lock:
+            self.load(self.src)
+        return True
 
     def penempat_tambah(self):
         """

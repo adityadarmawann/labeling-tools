@@ -113,7 +113,10 @@ def create_app() -> FastAPI:
     @app.exception_handler(NeedsLogin)
     async def _needs_login(request: Request, exc: NeedsLogin):
         """Halaman HTML tanpa sesi dialihkan ke /login, tidak menampilkan 401."""
-        return login_redirect()
+        jalur = request.url.path
+        if request.url.query:
+            jalur += "?" + request.url.query
+        return login_redirect(jalur)
 
     @app.exception_handler(404)
     async def _not_found(request: Request, exc):

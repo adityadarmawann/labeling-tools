@@ -52,8 +52,12 @@
     const el = document.createElement('span');
     el.className = 'tg-pil tg-sunting';
     el.dataset.tag = v;
-    el.innerHTML = `${v}<button type="button" class="tg-buang" data-tag="${v}"
-                     aria-label="Hapus tag ${v}">&times;</button>`;
+    // Nama tag diketik pelabel, disimpan apa adanya di .tag.json, lalu
+    // ditampilkan ke setiap orang yang membuka gambar itu. bersihkan_tag
+    // hanya membuang koma dan titik koma — '<' lolos — jadi tanpa esc() satu
+    // tag cukup untuk menitipkan skrip ke layar seluruh tim.
+    el.innerHTML = `${esc(v)}<button type="button" class="tg-buang" data-tag="${esc(v)}"
+                     aria-label="Hapus tag ${esc(v)}">&times;</button>`;
     wadah.appendChild(el);
     pasangBuang(el);
   });
