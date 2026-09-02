@@ -725,6 +725,41 @@ def jalankan_kanvas(d):
         d.js("S.terpilih.length") == 0 and d.js("S.sel") == -1
         and d.js("S.hover") is None,
         "terpilih=%s sel=%s" % (d.js("JSON.stringify(S.terpilih)"), d.js("S.sel")))
+
+    # -------- pintasan menahan aksi bawaan peramban
+    #
+    # Sebagian pintasan membuka dialog dan memindahkan fokus ke kotak isian di
+    # dalamnya. Aksi bawaan keydown berjalan SESUDAH penangannya selesai, dan
+    # yang menerimanya adalah elemen yang fokusnya baru saja pindah — jadi
+    # menekan F mengisi kotak "Kelas untuk objek ini" dengan huruf "f", lalu
+    # daftar kelas di bawahnya tersaring ke nama berawalan "f" sehingga tampak
+    # kosong juga.
+    #
+    # Diperiksa lewat defaultPrevented, bukan lewat isi kotaknya: dialog
+    # kelasnya menuntut pratinjau SAM, dan aturannya berlaku untuk SEMUA
+    # pintasan — termasuk yang belum membuka dialog apa pun hari ini.
+    d.js("setMode('edit'); S.draft = null; S.sel = -1; S.terpilih = [];")
+    bocor = d.js("""(() => {
+        const keluar = [];
+        for (const k of ['q','e','r','p','v','g','u','f','c','a','d']) {
+            const ev = new KeyboardEvent('keydown', {key: k, bubbles: true,
+                                                     cancelable: true});
+            window.dispatchEvent(ev);
+            if (!ev.defaultPrevented) keluar.push(k);
+        }
+        return keluar.join(',');
+    })()""")
+    cek("pintasan huruf tidak bocor jadi ketikan", bocor == "", f"bocor: {bocor}")
+
+    # Sebaliknya, huruf yang BUKAN pintasan harus dibiarkan lewat: menahan
+    # semuanya membuat mengetik di halaman ini mustahil.
+    lewat = d.js("""(() => {
+        const ev = new KeyboardEvent('keydown', {key: 'z', bubbles: true,
+                                                 cancelable: true});
+        window.dispatchEvent(ev);
+        return ev.defaultPrevented;
+    })()""")
+    cek("huruf yang bukan pintasan tetap lewat", lewat is False)
 def jalankan_panel(d):
     """Paritas panel: keterlihatan, gulir ke terpilih, catatan dua tingkat."""
     print("  -- paritas panel --")

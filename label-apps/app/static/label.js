@@ -1900,6 +1900,7 @@ window.addEventListener('keydown', ev => {
   }
 
   const k = ev.key.toLowerCase();
+  let tertangani = true;
   if (k === 'q') setMode('p+');
   else if (k === 'e') setMode('p-');
   else if (k === 'r') setMode('kotak');          // rectangle manual, seperti AnyLabeling
@@ -1917,7 +1918,25 @@ window.addEventListener('keydown', ev => {
   }
   else if (ev.key === 'Escape') { S.draft = null; S.sel = -1; S.terpilih = []; S.selv = -1; S.sisi = null; tutupMenu(); bersihkanPrompt(); render(); }
   else if (ev.key === 'Delete') hapusTerpilih();
-  else if (ev.key === 'Backspace') { ev.preventDefault(); hapusTitikTerpilih(); }
+  else if (ev.key === 'Backspace') hapusTitikTerpilih();
+  else tertangani = false;
+
+  /*
+   * Pintasan yang DITANGANI selalu menahan aksi bawaan peramban.
+   *
+   * Bukan kerapian. Sebagian pintasan ini membuka dialog dan memindahkan fokus
+   * ke kotak isian di dalamnya — F membuka "Kelas untuk objek ini". Aksi
+   * bawaan keydown berjalan SESUDAH penangan ini selesai, dan yang menerimanya
+   * adalah elemen yang fokusnya baru saja pindah. Akibatnya menekan F mengisi
+   * kotak kelas dengan huruf "f": kotaknya tidak lagi kosong, daftar kelas di
+   * bawahnya tersaring ke nama yang berawalan "f" sehingga tampak kosong juga,
+   * dan orang mengetik nama kelasnya di belakang huruf yang tidak pernah ia
+   * maksud ketikkan.
+   *
+   * Ditahan untuk semuanya, bukan cuma F, supaya pintasan berikutnya yang
+   * membuka dialog tidak mengulang bug yang sama.
+   */
+  if (tertangani) ev.preventDefault();
 });
 
 window.addEventListener('keyup', ev => {
