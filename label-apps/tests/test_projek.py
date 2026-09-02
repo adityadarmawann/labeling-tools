@@ -592,3 +592,79 @@ def test_sidebar_projek_tamu_tidak_kehilangan_awalan_pemiliknya(klien, aplikasi,
     menu = tamu.get("/?f=unlab").text
     menu = menu[menu.find('<nav class="sisi-menu"'):menu.find("</nav>")]
     assert "ds=paul%2Fsama" in menu or "ds=paul/sama" in menu, menu
+
+
+def test_projek_yang_mengundangku_muncul_di_halaman_projek(klien, aplikasi,
+                                                            lingkungan):
+    """Yang diundang harus bisa MENEMUKAN projeknya, bukan cuma membukanya.
+
+    punya_tamu() sudah ada sejak fitur undangan dipasang, dan tidak pernah
+    dipanggil dari mana pun. Akibatnya orang yang diundang jadi pelabel
+    mendarat di halaman projek yang berbunyi "Belum ada projek": ia bisa
+    membuka papan anotasi lewat URL langsung, tetapi tidak ada satu pun jalan
+    menemukan URL itu sendiri. Undangannya berhasil dan tetap terasa gagal.
+    """
+    import pathlib
+
+    from conftest import klien_baru
+    from tests.test_data import masuk, PW_PAUL, PW_ANGGI
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = _projek(ruang, "projek-tim", n=3)
+    klien.post(f"/setsrc?path={d}")
+    klien.post("/api/tugas/undang?akun=anggi")
+
+    tamu = klien_baru(aplikasi, "anggi", PW_ANGGI)
+    j = tamu.get("/api/projek/daftar").json()
+    assert j["projek"] == [], "anggi memang belum punya projek sendiri"
+    assert [x["ds"] for x in j["tamu"]] == ["paul/projek-tim"]
+    kartu = j["tamu"][0]
+    assert (kartu["pemilik"], kartu["jumlah"], kartu["tugasku"]) == ("paul", 3, 0)
+
+    # Sesudah dibagi, kartunya menyebutkan jatahnya.
+    g = sorted(str(q) for q in d.glob("*.jpg"))
+    klien.post("/api/tugas/bagi", json={"pelabel": "anggi", "gambar": g[:2]})
+    kartu = tamu.get("/api/projek/daftar").json()["tamu"][0]
+    assert (kartu["tugasku"], kartu["gambarku"]) == (1, 2)
+
+    # Projek sendiri tidak pernah ikut sebagai "diundang": pemiliknya bukan
+    # tamu di projeknya sendiri, dan kartu ganda di dua tab membuat orang
+    # mengira ada dua projek.
+    assert klien.get("/api/projek/daftar").json()["tamu"] == []
+
+    # Dan projek yang tidak mengundangnya tidak muncul sama sekali.
+    _projek(ruang, "tidak-mengundang", n=1)
+    assert [x["ds"] for x in tamu.get("/api/projek/daftar").json()["tamu"]] \
+        == ["paul/projek-tim"]
+
+
+def test_sampul_projek_tamu_ikut_aturan_membuka_projeknya(klien, aplikasi,
+                                                           lingkungan):
+    """Penjagaan yang lebih sempit dari haknya tetap salah.
+
+    Sampul dulu dibatasi ke ruang kerja sendiri. Projek yang mengundang kita
+    ada di ruang kerja orang lain, jadi kartunya muncul di halaman projek
+    dengan gambar yang selalu gagal dimuat — dan yang membacanya menyimpulkan
+    projeknya rusak.
+    """
+    import pathlib
+
+    from conftest import klien_baru
+    from tests.test_data import masuk, PW_PAUL, PW_ANGGI
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = _projek(ruang, "bersampul", n=2)
+    rahasia = _projek(ruang, "tidak-diundang", n=1)
+    klien.post(f"/setsrc?path={d}")
+    klien.post("/api/tugas/undang?akun=anggi")
+
+    tamu = klien_baru(aplikasi, "anggi", PW_ANGGI)
+    sampul = tamu.get("/api/projek/daftar").json()["tamu"][0]["sampul"]
+    assert sampul, "kartunya tanpa sampul, tidak ada yang bisa diuji"
+    assert tamu.get(f"/api/projek/sampul?path={sampul}").status_code == 200
+
+    # Projek yang tidak mengundangnya tetap tertutup.
+    diam = next(rahasia.glob("*.jpg"))
+    assert tamu.get(f"/api/projek/sampul?path={diam}").status_code == 404

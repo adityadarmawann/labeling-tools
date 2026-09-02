@@ -111,6 +111,11 @@ body.berprojek header{padding-bottom:13px}
   background:var(--sunk)}
 .an-tanpa-tugas a{color:var(--aksi);text-decoration:none;margin-left:4px}
 .an-tanpa-tugas a:hover{text-decoration:underline}
+
+/* Penanda jatah di kartu projek yang mengundang kita. Yang punya jatah diberi
+   warna aksi; yang belum tetap terbaca, karena "belum ada jatahmu" adalah
+   keterangan yang justru paling dicari orang yang baru diundang. */
+.plabel-tugas{color:var(--aksi);border-color:var(--aksi)}
 .alat .kemajuan{margin-top:0}
 h1{font-size:15px;font-weight:600;letter-spacing:.02em}
 .path{font-size:12px;color:var(--ink-faint)}

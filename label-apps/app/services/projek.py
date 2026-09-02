@@ -125,23 +125,6 @@ def anotasi_untuk(gambar: Path) -> Path | None:
     return None
 
 
-def punya_gambar(d: Path) -> bool:
-    """Apakah projek ini sudah berisi gambar.
-
-    Berhenti pada temuan pertama, bukan menghitung semuanya: yang ditanyakan
-    cuma kosong atau tidak, dan projek terbesar di sini berisi dua puluh dua
-    ribu berkas. Menghitungnya berarti menelusuri seluruhnya untuk menjawab
-    pertanyaan ya-tidak.
-    """
-    try:
-        for f in Path(d).rglob("*"):
-            if f.is_file() and f.suffix.lower() in IMG_EXT:
-                return True
-    except OSError:
-        pass
-    return False
-
-
 def _survei(d: Path) -> dict:
     """Sekali telusur untuk semua angka yang dibutuhkan satu kartu.
 
@@ -353,10 +336,27 @@ def punya_tamu(uploads_root: Path, akun: str) -> list[dict]:
             if not (d / tugas.BERKAS).is_file():
                 continue
             data = tugas.baca(d, folder_akun.name)
-            if akun in data["anggota"]:
-                out.append({"pemilik": folder_akun.name, "nama": d.name,
-                            "path": str(d.resolve()),
-                            "ds": f"{folder_akun.name}/{d.name}"})
+            if akun not in data["anggota"]:
+                continue
+            # Angkanya dihitung dengan penelusuran yang sama dengan kartu
+            # projek sendiri, supaya kartu di kedua tab tidak menyebut hal
+            # yang berbeda tentang folder yang sama.
+            s = _survei(d)
+            n_tugas = sum(1 for x in data["tugas"].values()
+                          if x.get("pelabel") == akun)
+            n_jatah = sum(len(x.get("gambar") or [])
+                          for x in data["tugas"].values()
+                          if x.get("pelabel") == akun)
+            out.append({"pemilik": folder_akun.name, "nama": d.name,
+                        "path": str(d.resolve()),
+                        "ds": f"{folder_akun.name}/{d.name}",
+                        "jumlah": s["gambar"], "anotasi": s["anotasi"],
+                        "sampul": str(s["sampul"]) if s["sampul"] else "",
+                        "kosong": s["gambar"] == 0,
+                        "diubah": s["diubah"], "usia": _usia(s["diubah"]),
+                        # Yang paling ingin diketahui orang yang diundang:
+                        # ada tidaknya jatah untuknya di sini.
+                        "tugasku": n_tugas, "gambarku": n_jatah})
     return out
 
 

@@ -70,10 +70,17 @@ async def daftar(sess: Session = Depends(current_session_api),
     root = _ruang(sess, settings)
     kartu = await asyncio.to_thread(projek.daftar, root)
     sampah = await asyncio.to_thread(projek.isi_sampah, root)
+    # Projek orang lain yang mengundang akun ini. Tanpa ini, orang yang
+    # diundang jadi pelabel mendarat di halaman projek yang berbunyi "Belum
+    # ada projek" — dan satu-satunya jalan masuk adalah URL yang harus
+    # dikirimkan orang lain kepadanya.
+    tamu = await asyncio.to_thread(projek.punya_tamu, settings.uploads_root,
+                                   sess.user)
     kini = str(sess.src) if sess.src else ""
-    for k in kartu:
+    for k in kartu + tamu:
         k["dibuka"] = k["path"] == kini
-    return {"ok": True, "projek": kartu, "sampah": sampah, "ruang": str(root)}
+    return {"ok": True, "projek": kartu, "tamu": tamu, "sampah": sampah,
+            "ruang": str(root)}
 
 
 @router.get("/api/projek/sampul")
@@ -82,13 +89,20 @@ async def sampul(path: str = "", sess: Session = Depends(current_session),
     """
     Gambar sampul satu kartu.
 
-    Pathnya diperiksa berada di dalam ruang kerja akun ini, bukan dipercaya:
-    tanpa itu, rute ini jadi jalan untuk membaca berkas mana pun di server
-    yang bisa dijadikan JPEG.
+    Pathnya diperiksa boleh dibuka akun ini, bukan dipercaya: tanpa itu, rute
+    ini jadi jalan untuk membaca berkas mana pun di server yang bisa dijadikan
+    JPEG.
+
+    Aturannya sama dengan aturan membuka projeknya — bukan "di ruang kerja
+    sendiri". Projek yang mengundang akun ini ada di ruang kerja orang lain,
+    dan penjagaan yang lebih sempit dari haknya membuat kartunya muncul di
+    halaman projek dengan sampul yang selalu gagal dimuat.
     """
     p = Path(path or "")
-    if (not p.is_file() or p.suffix.lower() not in IMG_EXT
-            or not projek._didalam(p, _ruang(sess, settings))):
+    if not p.is_file() or p.suffix.lower() not in IMG_EXT:
+        return Response(status_code=404)
+    if projek.boleh_buka(p.parent, sess.user, settings.uploads_root,
+                         settings.datasets_root):
         return Response(status_code=404)
 
     def kotak_objek(h: int, w: int) -> tuple[int, int, int, int] | None:

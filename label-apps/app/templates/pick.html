@@ -44,6 +44,12 @@
       <label class="seg-opt" data-on>
         <input type="radio" name="sumberdata" value="milik" checked>
         Projekmu <b id="n-milik"></b></label>
+      {#- Tab ini hanya muncul kalau memang ada yang mengundang. Tab kosong
+          permanen di halaman pertama membuat orang mengira ada yang belum
+          dimuat. Angkanya diisi JavaScript bersama daftarnya. -#}
+      <label class="seg-opt" id="ptab-tamu" hidden>
+        <input type="radio" name="sumberdata" value="tamu">
+        Diundang <b id="n-tamu"></b></label>
       {% if datasets_root %}
       <label class="seg-opt">
         <input type="radio" name="sumberdata" value="bersama">
@@ -69,6 +75,7 @@
   <div class="jalur-status"><p class="upnote" id="projek-note"></p></div>
 
   <div class="pgrid" id="projek-grid" hidden></div>
+  <div class="pgrid" id="grid-tamu" hidden></div>
 
   {% if datasets_root %}
   <div class="pgrid" id="grid-bersama" hidden>

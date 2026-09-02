@@ -1046,7 +1046,49 @@ const Progres = (() => {
     semua = j.projek || [];
     grid.hidden = false;
     gambarSampah(j.sampah || []);
+    gambarTamu(j.tamu || []);
     render();
+  }
+
+  /* Projek orang lain yang mengundang akun ini.
+
+     Kartunya sengaja lebih sedikit tombolnya: ganti nama, gandakan, gabung,
+     dan buang adalah hak pemilik projek, dan menampilkannya lalu ditolak
+     server lebih buruk daripada tidak menampilkannya sama sekali.
+
+     Dibuka lewat ?ds=pemilik/nama, bukan lewat path folder. Path folder milik
+     orang lain memang ditolak /setsrc — itulah penjagaan yang benar, dan
+     jalan masuk yang sah untuk tamu adalah nama projeknya. */
+  function gambarTamu(daftar) {
+    const wadah = document.getElementById('grid-tamu');
+    const tab = document.getElementById('ptab-tamu');
+    if (!wadah || !tab) return;
+    if (!daftar.length) { tab.hidden = true; return; }
+    tab.hidden = false;
+    document.getElementById('n-tamu').textContent = daftar.length;
+    wadah.innerHTML = daftar.map(p => {
+      const pct = p.jumlah ? Math.min(100, Math.round(p.anotasi / p.jumlah * 100)) : 0;
+      const ds = encodeURIComponent(p.ds);
+      return `
+      <div class="pcard${p.dibuka ? ' dibuka' : ''}">
+        <a class="psampul${p.sampul ? '' : ' kosong'}" href="/?ds=${ds}"
+           tabindex="-1" aria-hidden="true">
+          ${p.sampul ? `<img loading="lazy" alt="" src="/api/projek/sampul?path=`
+                       + `${encodeURIComponent(p.sampul)}">` : '\u25a4'}
+        </a>
+        <div class="pisi">
+          <a class="pnama pnama-link" href="/?ds=${ds}">${esc(p.nama)}${
+            p.tugasku ? `<span class="plabel plabel-tugas">${n(p.gambarku)} jatahmu</span>`
+                      : '<span class="plabel">belum ada jatahmu</span>'}</a>
+          <div class="pmeta">milik ${esc(p.pemilik)} &middot; ${n(p.jumlah)} gambar
+            &middot; ${n(p.anotasi)} dilabeli &middot; <b>${pct}%</b></div>
+          <div class="pbar" title="${n(p.anotasi)} dari ${n(p.jumlah)} gambar sudah dilabeli">
+            <i style="width:${pct}%"></i></div>
+          <div class="pmeta halus">
+            <a href="/anotasi?ds=${ds}">Lihat tugas di Anotasi &rarr;</a></div>
+        </div>
+      </div>`;
+    }).join('');
   }
 
   function render() {
@@ -1310,7 +1352,9 @@ const Progres = (() => {
     const milik = v === 'milik';
     grid.hidden = !milik || !semua.length && false;
     const b = document.getElementById('grid-bersama');
-    if (b) b.hidden = milik;
+    if (b) b.hidden = v !== 'bersama';
+    const tm = document.getElementById('grid-tamu');
+    if (tm) tm.hidden = v !== 'tamu';
     // Cari dan urut hanya berlaku untuk projek sendiri; membiarkannya aktif
     // tapi tak berpengaruh lebih membingungkan daripada meredupkannya.
     cari.disabled = !milik;
@@ -1434,6 +1478,47 @@ const Progres = (() => {
     if (!j || !j.ok) { note.textContent = (j && j.error) || 'gagal memuat'; return; }
     semua = j.akun; nAdmin = j.n_admin;
     render();
+  }
+
+  /* Projek orang lain yang mengundang akun ini.
+
+     Kartunya sengaja lebih sedikit tombolnya: ganti nama, gandakan, gabung,
+     dan buang adalah hak pemilik projek, dan menampilkannya lalu ditolak
+     server lebih buruk daripada tidak menampilkannya sama sekali.
+
+     Dibuka lewat ?ds=pemilik/nama, bukan lewat path folder. Path folder milik
+     orang lain memang ditolak /setsrc — itulah penjagaan yang benar, dan
+     jalan masuk yang sah untuk tamu adalah nama projeknya. */
+  function gambarTamu(daftar) {
+    const wadah = document.getElementById('grid-tamu');
+    const tab = document.getElementById('ptab-tamu');
+    if (!wadah || !tab) return;
+    if (!daftar.length) { tab.hidden = true; return; }
+    tab.hidden = false;
+    document.getElementById('n-tamu').textContent = daftar.length;
+    wadah.innerHTML = daftar.map(p => {
+      const pct = p.jumlah ? Math.min(100, Math.round(p.anotasi / p.jumlah * 100)) : 0;
+      const jatah = p.tugasku
+        ? `<span class="plabel plabel-tugas">${p.gambarku} gambar jatahmu</span>`
+        : '<span class="plabel">belum ada jatahmu</span>';
+      return `
+      <div class="pcard${p.dibuka ? ' dibuka' : ''}">
+        <a class="psampul${p.sampul ? '' : ' kosong'}"
+           href="/?ds=${encodeURIComponent(p.ds)}" tabindex="-1">${
+          p.sampul ? `<img src="/api/projek/sampul?path=${encodeURIComponent(p.sampul)}" alt="">`
+                   : '▤'}</a>
+        <div class="pisi">
+          <a class="pnama" href="/?ds=${encodeURIComponent(p.ds)}">${esc(p.nama)}</a>
+          <span class="pmeta">milik ${esc(p.pemilik)} &middot; ${
+            p.jumlah.toLocaleString('id-ID')} gambar &middot; ${pct}% dilabeli</span>
+          <span class="pmeta">${jatah}</span>
+        </div>
+        <div class="paksi">
+          <a class="btn" href="/?ds=${encodeURIComponent(p.ds)}">Buka</a>
+          <a class="btn" href="/anotasi?ds=${encodeURIComponent(p.ds)}">Anotasi</a>
+        </div>
+      </div>`;
+    }).join('');
   }
 
   function render() {
