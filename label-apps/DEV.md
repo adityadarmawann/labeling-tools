@@ -252,6 +252,11 @@ sungguhan.
 
 ```bash
 .venv/bin/python tests/sapu_dev.py <sandi-darma-dev>
+
+# Tombol salin di konteks TIDAK aman — lewat alamat IP, HTTP biasa.
+# Wajib lewat IP, bukan 127.0.0.1: localhost adalah secure context, dan di
+# sana navigator.clipboard ada sehingga bugnya tidak pernah muncul.
+.venv/bin/python tests/e2e_salin.py <sandi-darma-dev>
 ```
 
 43 pemeriksaan: login, daftar projek, sampul, buka dataset, grid dan kelima

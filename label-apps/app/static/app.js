@@ -26,6 +26,59 @@ async function send(url, opts) {
 
 const post = (url) => send(url, { method: 'POST' });
 
+/*
+ * Salin teks ke papan klip, di halaman yang TIDAK dilayani lewat HTTPS.
+ *
+ * navigator.clipboard cuma ada di secure context — HTTPS atau localhost.
+ * Aplikasi ini dibuka satu tim lewat alamat IP di jaringan kantor dengan HTTP
+ * biasa, jadi di sanalah API itu justru tidak ada, dan satu-satunya tombol
+ * salin yang benar-benar penting — tautan undangan, satu-satunya jalan
+ * seseorang masuk ke projek — jadi tombol yang selalu gagal.
+ *
+ * Cadangannya execCommand('copy'), yang usang tetapi tidak menuntut secure
+ * context dan masih bekerja di semua peramban yang dipakai di sini. Kalau
+ * keduanya gagal, teksnya disorot supaya tinggal Ctrl+C: menyuruh orang
+ * "salin sendiri" tanpa menunjuk yang mana bukan jalan keluar.
+ */
+async function salinTeks(teks, el) {
+  const s = String(teks == null ? '' : teks);
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(s);
+      return true;
+    }
+  } catch (e) { /* jatuh ke cara lama */ }
+
+  const ta = document.createElement('textarea');
+  ta.value = s;
+  // Di luar layar, tetapi HARUS ikut tata letak: elemen display:none atau
+  // yang tak pernah difokus tidak bisa diseleksi, dan execCommand menyalin
+  // dari seleksi.
+  ta.setAttribute('readonly', '');
+  ta.style.cssText = 'position:fixed;top:0;left:-9999px;opacity:0';
+  document.body.appendChild(ta);
+  let ok = false;
+  try {
+    ta.select();
+    ta.setSelectionRange(0, s.length);
+    ok = document.execCommand('copy');
+  } catch (e) { ok = false; }
+  ta.remove();
+  if (ok) return true;
+
+  // Sorot yang aslinya, kalau ada, supaya jelas yang mana yang harus disalin.
+  if (el) {
+    try {
+      const r = document.createRange();
+      r.selectNodeContents(el);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(r);
+    } catch (e) { /* biarkan */ }
+  }
+  return false;
+}
+
 // Teks dari server sering memuat nama berkas milik pemakai, dan nama berkas
 // boleh berisi '<'. Dipakai setiap kali teks itu masuk lewat innerHTML.
 function esc(s) {
@@ -1161,8 +1214,8 @@ const Progres = (() => {
     }
     if (a === 'salin') {
       const p = semua.find(x => x.nama === nama).path;
-      try { await navigator.clipboard.writeText(p); toast('Path disalin'); }
-      catch (e) { prompt('Salin path ini:', p); }
+      if (await salinTeks(p)) toast('Path disalin');
+      else prompt('Salin path ini:', p);
       return;
     }
     if (a === 'ganti') {

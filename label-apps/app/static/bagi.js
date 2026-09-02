@@ -170,8 +170,13 @@
         + '<button class="chip" type="button" id="bg-salin">Salin</button></div>');
       $('bg-tautan-teks').textContent = j.tautan;
       $('bg-salin').onclick = async () => {
-        try { await navigator.clipboard.writeText(j.tautan); toast('Tautan disalin'); }
-        catch (e) { toast('Salin sendiri tautannya'); }
+        if (await salinTeks(j.tautan, $('bg-tautan-teks'))) {
+          toast('Tautan disalin');
+        } else {
+          // Teksnya sudah disorot salinTeks; yang tersisa cuma menyebut
+          // tombolnya. "Salin sendiri tautannya" tidak menunjuk apa pun.
+          toast('Tautannya sudah disorot — tekan Ctrl+C untuk menyalin');
+        }
       };
     } else {
       pr.selesai(`${j.akun || v} jadi anggota`);
