@@ -161,12 +161,20 @@
           {% endif %}
         </div>
         <span class="halus an-kartu-waktu">{{ k.pelabel }} &middot; dibagi {{ k.dibuat }}</span>
+        {%- if k.hilang %}
+        {#- Seluruh gambarnya sudah tidak ada. Tanpa kalimat ini kartunya
+            menetap di sini dengan 0 dari 0 dan tidak ada yang menjelaskan
+            kenapa. -#}
+        <p class="an-hilang">{{ k.n_asal }} gambarnya sudah tidak ada di projek
+          ini. Bubarkan tugas ini lewat menu &#8942;.</p>
+        {%- else %}
         {{ bilah(k.berlabel, k.jumlah) }}
         <div class="an-kartu-angka">
           <span><b>{{ k.berlabel }}</b> dikerjakan</span>
           <span><b>{{ k.jumlah - k.berlabel }}</b> belum</span>
           <b class="an-persen">{{ k.persen }}%</b>
         </div>
+        {%- endif %}
         {% if k.catatan %}
         <p class="an-catatan">{{ k.catatan }}</p>
         {% endif %}

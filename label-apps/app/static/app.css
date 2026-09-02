@@ -111,6 +111,14 @@ body.berprojek header{padding-bottom:13px}
   background:var(--sunk)}
 .an-tanpa-tugas a{color:var(--aksi);text-decoration:none;margin-left:4px}
 .an-tanpa-tugas a:hover{text-decoration:underline}
+/* Peringatan lembut di kartu versi: bukan kesalahan, tetapi angka yang
+   berbeda dari isi ZIP-nya harus disebut sebelum orang mengunduhnya. */
+.v-hilang{font-style:normal;color:var(--warn)}
+.an-hilang{margin:6px 0 0;font-size:11.5px;color:var(--warn);line-height:1.45}
+/* Chip yang menunjuk KELUAR halaman ini. Dibedakan dari chip saringan supaya
+   tidak terbaca sebagai saringan yang bisa dinyalakan di sini. */
+.chip-lain{border-style:dashed;color:var(--ink-dim)}
+.chip-lain:hover{border-style:solid;color:var(--aksi);border-color:var(--aksi)}
 
 /* Penanda jatah di kartu projek yang mengundang kita. Yang punya jatah diberi
    warna aksi; yang belum tetap terbaca, karena "belum ada jatahmu" adalah

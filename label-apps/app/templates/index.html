@@ -133,7 +133,20 @@
             "objek apa pun. Ikut terekspor sebagai berkas label kosong.") }}
     {#- Muncul hanya kalau projeknya sudah pernah dibagi. Chip bernilai nol
         yang selalu ada cuma menambah satu hal untuk dibaca tiap kali. -#}
-    {%- if ada_tugas %}{{ chip("Tugasku", "tugasku", n_tugasku) }}{% endif %}
+    {%- if ada_tugas %}{{ chip("Tugasku", "tugasku", n_tugasku,
+            ket="Jatahmu yang sudah masuk dataset. Halaman ini hanya memuat "
+                "isi dataset, jadi jatah yang masih dikerjakan tidak "
+                "terhitung di sini.") }}
+    {#- Selisihnya disebutkan. Pelabel yang membuka halaman ini untuk mencari
+        pekerjaannya selalu melihat angka yang lebih kecil daripada jatahnya,
+        dan pada projek yang baru dibagi melihat nol — tanpa satu pun
+        keterangan bahwa pekerjaannya ada di halaman sebelah. -#}
+    {% if pr and n_jatah_projek > n_tugasku %}
+    <a class="chip chip-lain" href="/anotasi?ds={{ pr.ds | urlquote }}"
+       title="Jatahmu yang belum masuk dataset dikerjakan di halaman Anotasi">
+      <i class="titik t-stop"></i>{{ n_jatah_projek - n_tugasku }} jatahmu
+      belum masuk dataset &rarr;</a>
+    {% endif %}{% endif %}
     <span class="spacer"></span>
     <span class="path mono">{{ n_obj }} objek</span>
     <button class="chip" onclick="rescan()">Pindai ulang</button>

@@ -511,10 +511,27 @@ def undangan_terbuka(data: dict) -> list[dict]:
 
 
 def batalkan_undangan(ds: Path, pemilik: str, token: str) -> dict:
+    """
+    Cabut satu tautan undangan yang belum dipakai.
+
+    Undangan yang SUDAH dipakai tidak bisa dibatalkan, dan itu bukan
+    keterbatasan: yang tersisa dari undangan seperti itu cuma catatan "lewat
+    surel mana orang ini masuk". Menghapusnya menjawab ok:true dan
+    dibatalkan:true — yang terbaca seperti akses dicabut — sementara orangnya
+    tetap anggota. Yang dimaksud pada kasus itu adalah mengeluarkan
+    anggotanya, dan itu yang disebutkan.
+    """
     with _kunci:
         data = baca(ds, pemilik)
-        if token not in data["undangan"]:
-            return _tanpa_perubahan(data, {"dibatalkan": False})
+        u = data["undangan"].get(token)
+        if u is None:
+            return _tanpa_perubahan(data, {"dibatalkan": False,
+                                           "error": "undangan itu tidak ada"})
+        if u.get("dipakai"):
+            return _tanpa_perubahan(data, {
+                "dibatalkan": False,
+                "error": f"undangan ini sudah dipakai {u['dipakai']}; "
+                         f"keluarkan anggotanya kalau mau mencabut aksesnya"})
         data["undangan"].pop(token, None)
         _tulis(ds, data)
     return {"dibatalkan": True}
@@ -670,6 +687,13 @@ def papan(data: dict, berlabel: set[str], semua: set[str],
                 judul = max(asal.items(), key=lambda x: x[1])[0]
         kartu.append({
             "id": tid, "pelabel": t.get("pelabel", ""),
+            # Job yang seluruh gambarnya sudah tidak ada di disk. Ia menetap di
+            # kolom "Dikerjakan" selamanya dengan 0 dari 0, dan tidak ada apa
+            # pun di kartunya yang menjelaskan kenapa. Disebutkan, bukan
+            # disembunyikan: yang menyembunyikannya membuat pemiliknya tidak
+            # punya jalan membubarkannya.
+            "hilang": bool(t.get("gambar")) and not g,
+            "n_asal": len(t.get("gambar") or []),
             "judul": judul or f"Dibagi {t.get('dibuat', '')[:10]}",
             "dibuat": t.get("dibuat", ""), "catatan": t.get("catatan", ""),
             "jumlah": len(g), "berlabel": n_label,

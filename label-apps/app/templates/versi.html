@@ -64,7 +64,14 @@
         {%- if j.test %}<i class="p-bg" style="flex-grow:{{ j.test }}"></i>{% endif -%}
       </div>
       <div class="vs-angka">
-        <span><b>{{ v.n }}</b> gambar</span>
+        {#- Jumlah saat dibekukan, dan — kalau berbeda — berapa yang masih
+            ada. Kartu yang menyebut 6 sementara ZIP-nya berisi 5 membuat
+            orang mengira ekspornya kehilangan sesuatu. -#}
+        <span><b>{{ v.n }}</b> gambar
+          {%- if v.n_ada is defined and v.n_ada != v.n %}
+          <em class="v-hilang" title="{{ v.n - v.n_ada }} gambarnya sudah tidak ada di projek ini, jadi ekspor versi ini berisi {{ v.n_ada }}">
+            &middot; {{ v.n_ada }} masih ada</em>
+          {%- endif %}</span>
         <span>train <b>{{ j.train or 0 }}</b></span>
         <span>valid <b>{{ j.valid or 0 }}</b></span>
         <span>test <b>{{ j.test or 0 }}</b></span>

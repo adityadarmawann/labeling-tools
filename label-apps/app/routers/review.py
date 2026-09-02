@@ -251,6 +251,15 @@ async def index(request: Request, f: str = "all",
     tdata = svc_tugas.baca_projek(sess.src, settings.uploads_root)
     pelabel_dari = {}
     tugasku_id = set()
+    # Jatah di SELURUH projek, bukan cuma yang sudah masuk dataset. Chip
+    # "Tugasku" menghitung dalam lingkup halaman ini — dan itu benar — tetapi
+    # seorang pelabel yang membukanya untuk mencari pekerjaannya selalu
+    # melihat angka yang lebih kecil daripada jatahnya, dan pada projek yang
+    # baru dibagi melihat nol. Selisihnya disebutkan, dengan jalan ke tempat
+    # pekerjaan itu benar-benar ada.
+    n_jatah_projek = sum(
+        1 for x in tdata["tugas"].values() if x.get("pelabel") == sess.user
+        for _ in (x.get("gambar") or []))
     if not tdata["warisan"]:
         for it in items:
             k = svc_tag.kunci_gambar(sess.src, it["img"])
@@ -340,7 +349,8 @@ async def index(request: Request, f: str = "all",
         "batch_pilih": batch_q,
         "pelabel_dari": pelabel_dari,
         "n_tugasku": len(tugasku_id),
-        "ada_tugas": bool(pelabel_dari),
+        "n_jatah_projek": n_jatah_projek,
+        "ada_tugas": bool(pelabel_dari) or bool(n_jatah_projek),
         "pemilik_projek": tdata["pemilik"],
         "kelas_hitung": dict(sorted(kelas_hitung.items())),
         # Dataset yang dibuka langsung dari path server tidak boleh ditambahi,

@@ -55,10 +55,25 @@ def daftar(ds: Path) -> list[dict]:
 
     Petanya bisa berisi puluhan ribu baris dan tidak dipakai sama sekali untuk
     menampilkan daftarnya.
+
+    `n_ada` menyebut berapa gambarnya yang masih benar-benar ada di disk.
+    Angka `n` adalah jumlah saat versi itu dibekukan dan memang tidak boleh
+    berubah — tetapi kartu yang menyebut 6 sementara ZIP-nya berisi 5 membuat
+    orang mengira ekspornya kehilangan sesuatu, dan alasan itu sudah ditulis
+    sendiri di rute dataset untuk kasus yang sama persis.
     """
+    from ..config import IMG_EXT
+
     d = _dir(ds)
     if not d.is_dir():
         return []
+    ada = set()
+    akar = Path(ds)
+    for q in akar.rglob("*"):
+        if q.suffix.lower() in IMG_EXT and q.is_file() and not any(
+                x.startswith(".") for x in q.relative_to(akar).parts):
+            ada.add(q.name)
+            ada.add(q.resolve().relative_to(akar.resolve()).as_posix())
     out = []
     for p in sorted(d.glob("v*.json")):
         try:
@@ -66,6 +81,7 @@ def daftar(ds: Path) -> list[dict]:
         except (OSError, ValueError):
             log.warning("berkas versi rusak, dilewati: %s", p)
             continue
+        v["n_ada"] = sum(1 for g in (v.get("gambar") or []) if g in ada)
         v.pop("peta", None)
         v.pop("gambar", None)
         out.append(v)

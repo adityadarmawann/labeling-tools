@@ -1940,3 +1940,115 @@ def test_kartu_dataset_tidak_mengaku_seratus_persen(klien, lingkungan):
     assert "0%" in h
     # Dan menunya tetap ada, jadi jobnya tidak terkunci di kolom mana pun.
     assert f'data-aksi="bubar" data-id="{tid}"' in h.replace("\n", " ")
+
+
+def test_kartu_versi_menyebut_berapa_gambarnya_yang_masih_ada(klien, lingkungan):
+    """Kartu menyebut 6, ZIP-nya berisi 5, dan tidak ada yang menjelaskan.
+
+    Angka saat dibekukan memang tidak boleh berubah — itu gunanya versi —
+    tetapi kartu yang menyebut angka berbeda dari isi ZIP-nya membuat orang
+    mengira ekspornya kehilangan sesuatu.
+    """
+    import pathlib
+
+    from app.services import versi
+    from tests.test_data import masuk, PW_PAUL
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    d = _projek(_ruang(klien), "versi-hilang", n=3)
+    klien.post(f"/setsrc?path={d}")
+    r = klien.post("/api/versi/buat?split=8:1:1").json()
+    assert r["ok"], r
+
+    g = sorted(d.glob("*.jpg"))
+    g[0].unlink()
+    g[0].with_suffix(".json").unlink()
+    klien.post("/rescan")
+
+    v = versi.daftar(d)[0]
+    assert (v["n"], v["n_ada"]) == (3, 2), v
+    h = " ".join(klien.get("/versi?ds=versi-hilang").text.split())
+    assert "2 masih ada" in h, h[h.find("gambar") - 60:h.find("gambar") + 200]
+
+
+def test_job_yang_gambarnya_hilang_menjelaskan_dirinya(klien, lingkungan):
+    """Kartu 0 dari 0 yang menetap selamanya tanpa satu pun keterangan.
+
+    Disebutkan, bukan disembunyikan: menyembunyikannya membuat pemilik projek
+    tidak punya jalan membubarkannya.
+    """
+    from tests.test_data import masuk, PW_PAUL
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    d = _projek(_ruang(klien), "job-hantu", n=2)
+    klien.post(f"/setsrc?path={d}")
+    g = sorted(d.glob("*.jpg"))
+    tid = klien.post("/api/tugas/bagi", json={
+        "pelabel": "anggi", "gambar": [str(g[0])]}).json()["id"]
+    g[0].unlink()
+    g[0].with_suffix(".json").unlink()
+    klien.post("/rescan")
+
+    h = " ".join(klien.get("/anotasi?ds=job-hantu").text.split())
+    assert "gambarnya sudah tidak ada di projek ini" in h
+    # Menunya tetap ada, jadi jobnya bisa dibubarkan dari papan.
+    assert f'data-aksi="bubar" data-id="{tid}"' in h
+    assert klien.post(f"/api/tugas/bubarkan?id={tid}").json()["ok"] is True
+
+
+def test_undangan_yang_sudah_dipakai_tidak_bisa_dibatalkan(klien, aplikasi,
+                                                            lingkungan):
+    """ok:true, dibatalkan:true — terbaca seperti akses dicabut, padahal tidak.
+
+    Yang tersisa dari undangan yang sudah dipakai cuma catatan lewat surel
+    mana orang itu masuk. Menghapusnya tidak mengeluarkan siapa pun, dan yang
+    dimaksud pada kasus itu memang mengeluarkan anggotanya.
+    """
+    from conftest import klien_baru
+    from tests.test_data import masuk, PW_ANGGI, PW_PAUL
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    d = _projek(_ruang(klien), "undangan-terpakai", n=2)
+    klien.post(f"/setsrc?path={d}")
+    tautan = klien.post("/api/tugas/undang-email?email=orang@contoh.id").json()
+    token = tautan["tautan"].rsplit("/", 1)[1]
+
+    tamu = klien_baru(aplikasi, "anggi", PW_ANGGI)
+    tamu.get(f"/undangan/{token}")
+    assert "anggi" in tugas.baca(d, "paul")["anggota"]
+
+    r = klien.post(f"/api/tugas/batalkan-undangan?token={token}").json()
+    assert r["ok"] is False and "sudah dipakai anggi" in r["error"], r
+    assert "anggi" in tugas.baca(d, "paul")["anggota"], "anggota ikut hilang"
+
+    # Token ngawur juga tidak lagi dijawab berhasil.
+    assert klien.post("/api/tugas/batalkan-undangan?token=xxx").json()["ok"] is False
+
+
+def test_chip_tugasku_menunjuk_pekerjaan_yang_belum_masuk_dataset(
+        klien, aplikasi, lingkungan):
+    """Pelabel yang mencari jatahnya di halaman Dataset selalu melihat nol.
+
+    Chip "Tugasku" menghitung dalam lingkup halaman ini, dan itu benar —
+    halaman ini memang cuma memuat isi dataset. Yang salah adalah diam soal
+    sisanya: pada projek yang baru dibagi, seluruh jatahnya ada di luar sana.
+    """
+    from conftest import klien_baru
+    from tests.test_data import masuk, PW_ANGGI, PW_PAUL
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    d = _projek(_ruang(klien), "jatah-luar", n=3)
+    klien.post(f"/setsrc?path={d}")
+    g = sorted(str(q) for q in d.glob("*.jpg"))
+    klien.post("/api/tugas/undang?akun=anggi")
+    klien.post("/api/tugas/bagi", json={"pelabel": "anggi", "gambar": g[:2]})
+    klien.post("/api/tugas/dataset", json={"gambar": [g[0]]})
+
+    tamu = klien_baru(aplikasi, "anggi", PW_ANGGI)
+    h = " ".join(tamu.get("/?ds=paul/jatah-luar").text.split())
+    assert "1 jatahmu belum masuk dataset" in h, h[h.find("Tugasku") - 80:][:300]
+    assert "/anotasi?ds=paul" in h

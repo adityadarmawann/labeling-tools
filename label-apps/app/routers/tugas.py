@@ -444,8 +444,12 @@ async def batalkan_undangan(token: str = "",
         return {"ok": False, "error": galat}
     if not svc.boleh_kelola(data, sess.user):
         return {"ok": False, "error": "hanya pemilik projek yang bisa membatalkan"}
-    r = await asyncio.to_thread(svc.batalkan_undangan, sess.src, sess.user, token)
-    return {"ok": True, **r}
+    r = await asyncio.to_thread(svc.batalkan_undangan, sess.src,
+                                data["pemilik"], token)
+    # ok mengikuti apa yang benar-benar terjadi. Dulu selalu True, dan layarnya
+    # menoast "Undangan dibatalkan" untuk token ngawur maupun untuk undangan
+    # yang sudah dipakai.
+    return {"ok": bool(r.get("dibatalkan")), **r}
 
 
 @router.get("/undangan/{token}", response_class=HTMLResponse)
