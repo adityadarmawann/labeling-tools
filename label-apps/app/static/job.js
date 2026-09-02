@@ -14,6 +14,18 @@
   const BOLEH = isi.dataset.boleh === '1';
   const ubin = [...document.querySelectorAll('.jb-ubin')];
   let saring = 'semua';
+  // Kelas yang dicentang. Kosong berarti tidak menyaring sama sekali —
+  // bukan "tidak ada yang cocok".
+  let kelasPilih = new Set();
+  let latarPilih = false;
+
+  // Daftar kelas tiap ubin dibaca sekali. JSON, bukan teks berpemisah: nama
+  // kelas boleh berisi apa saja, dan pemisah karakter apa pun cepat atau
+  // lambat muncul di dalam salah satu nama.
+  for (const u of ubin) {
+    try { u._kelas = new Set(JSON.parse(u.dataset.kelas || '[]')); }
+    catch (e) { u._kelas = new Set(); }
+  }
 
   const terlihat = () => ubin.filter(u => !u.hidden);
   const terpilih = () => ubin.filter(
@@ -43,12 +55,20 @@
     for (const u of ubin) {
       const label = u.dataset.label === '1';
       const bg = u.dataset.bg === '1';
-      // "Sudah dianotasi" TIDAK memuat latar. Keduanya punya berkas anotasi,
-      // tetapi artinya berlawanan, dan menggabungkannya membuat saringan
-      // "sudah dianotasi" menjanjikan objek lalu menampilkan gambar kosong.
-      u.hidden = saring === 'belum' ? label
-               : saring === 'sudah' ? (!label || bg)
-               : saring === 'latar' ? !bg : false;
+      // Latar TERMASUK "sudah dianotasi": menandai gambar tanpa objek adalah
+      // keputusan yang sudah diambil, bukan pekerjaan yang belum dikerjakan.
+      // Yang memisahkannya kelas, dan itu urusan saringan di sebelahnya.
+      let tampak = saring === 'belum' ? !label
+                 : saring === 'sudah' ? label : true;
+      // Saringan kelas bersifat "punya salah satu", sama seperti di grid:
+      // "botol atau latar" adalah satu pertanyaan, dan menuntut keduanya
+      // sekaligus hampir tidak pernah yang dimaksud.
+      if (tampak && (kelasPilih.size || latarPilih)) {
+        let cocok = latarPilih && bg;
+        if (!cocok) for (const k of kelasPilih) { if (u._kelas.has(k)) { cocok = true; break; } }
+        tampak = cocok;
+      }
+      u.hidden = !tampak;
       // Yang tersembunyi ikut dilepas centangnya: mengirim gambar yang tidak
       // terlihat lagi adalah kejutan, bukan kemudahan.
       const c = u.querySelector('.jb-pilih');
@@ -57,6 +77,47 @@
     $('jb-kosong').hidden = terlihat().length > 0;
     perbarui();
   }
+
+  // ---- saringan kelas
+  (() => {
+    const menu = $('jb-menu-kelas');
+    if (!menu) return;
+    const tombol = $('jb-kelas-tombol');
+    const centang = [...menu.querySelectorAll('input[type=checkbox]')];
+
+    function judul() {
+      const n = kelasPilih.size + (latarPilih ? 1 : 0);
+      // Tombolnya menyebut pilihannya sendiri. "Semua kelas" yang tidak
+      // berubah padahal saringannya aktif membuat daftar yang menyusut
+      // terbaca seperti gambar yang hilang.
+      tombol.textContent = (n === 0 ? 'Semua kelas'
+        : n === 1 ? (latarPilih ? 'Latar' : [...kelasPilih][0])
+        : `${n} kelas`) + ' \u25be';
+      tombol.toggleAttribute('data-on', n > 0);
+    }
+
+    function baca() {
+      kelasPilih = new Set();
+      latarPilih = false;
+      for (const c of centang) {
+        if (!c.checked) continue;
+        if (c.dataset.latar === '1') latarPilih = true;
+        else kelasPilih.add(c.dataset.kelas);
+      }
+      judul();
+      saringUlang();
+    }
+
+    tombol.onclick = (ev) => { ev.stopPropagation(); menu.toggleAttribute('data-buka'); };
+    menu.addEventListener('click', (ev) => ev.stopPropagation());
+    document.addEventListener('click', () => menu.removeAttribute('data-buka'));
+    centang.forEach(c => c.addEventListener('change', baca));
+    $('jb-kelas-bersih').onclick = () => {
+      centang.forEach(c => { c.checked = false; });
+      baca();
+    };
+    judul();
+  })();
 
   $('jb-tab').addEventListener('change', (e) => {
     saring = e.target.value;

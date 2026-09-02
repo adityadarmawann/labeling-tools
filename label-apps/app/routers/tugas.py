@@ -184,12 +184,14 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
         sev = scanner.severity(it)
         isi.append({
             "it": it, "kunci": k,
+            # Latar TERMASUK sudah dianotasi. Menandai gambar tanpa objek
+            # adalah keputusan yang sudah diambil, bukan pekerjaan yang belum
+            # dikerjakan, dan memisahkannya jadi kolom sendiri membuat angka
+            # "sudah dianotasi" mengecil setiap kali seseorang menyelesaikan
+            # satu contoh negatif.
             "berlabel": sev != "stop",
-            # Latar dibedakan dari "sudah dianotasi" biasa. Keduanya punya
-            # berkas anotasi, tetapi artinya berlawanan: yang satu berisi
-            # objek, yang satu sengaja dinyatakan tidak berisi apa-apa dan
-            # dipakai sebagai contoh negatif saat melatih.
             "latar": sev == "bg",
+            "kelas": sorted({str(s["label"]) for s in it["shapes"]}),
             "di_dataset": svc.sudah_dimasukkan(data, k),
         })
     isi.sort(key=lambda x: x["it"]["img"].name)
@@ -197,11 +199,19 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
     n_label = sum(1 for x in isi if x["berlabel"])
     n_latar = sum(1 for x in isi if x["latar"])
     n_ds = sum(1 for x in isi if x["di_dataset"])
+    # Kelas yang benar-benar dipakai DI JOB INI, bukan seluruh projek: saringan
+    # yang menawarkan kelas yang tidak ada isinya selalu memberi nol, dan yang
+    # membacanya menyangka jatahnya kosong.
+    kelas_hitung: dict[str, int] = {}
+    for x in isi:
+        for k2 in x["kelas"]:
+            kelas_hitung[k2] = kelas_hitung.get(k2, 0) + 1
     return templates.TemplateResponse(request, "job.html", {
         "sess": sess, "pr": pr, "aktif": "anotasi", "aku": sess.user,
         "tid": tid, "job": job, "isi": isi,
         "n": len(isi), "n_label": n_label, "n_latar": n_latar,
         "n_dataset": n_ds,
+        "kelas_hitung": dict(sorted(kelas_hitung.items())),
         "persen": round(n_label * 100 / len(isi)) if isi else 0,
         # Yang boleh memindahkan ke dataset hanya pelabelnya sendiri dan
         # pemilik projek. Sama persis dengan aturan menyunting labelnya.

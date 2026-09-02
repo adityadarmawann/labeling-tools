@@ -1650,6 +1650,10 @@ body.berprojek main{display:flex;gap:0;padding:0;align-items:stretch}
 .jb-cap{position:absolute;left:6px;bottom:6px;font-size:9.5px;
   padding:1px 6px;border-radius:4px;color:var(--on-ink)}
 .jb-cap-ok{background:var(--ok)}
+/* Baris saringan: tab keadaan di kiri, saringan kelas di kanannya. Keduanya
+   menyaring daftar yang sama dan harus terbaca sebagai satu baris kendali. */
+.jb-baris-saring{display:flex;gap:10px;align-items:center;flex-wrap:wrap;
+  margin-bottom:10px}
 .jb-cap-ds{background:var(--aksi)}
 .jb-cap-bg{background:var(--latar)}
 

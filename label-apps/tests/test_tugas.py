@@ -1663,11 +1663,15 @@ def test_pelabel_bisa_menandai_latar_borongan_dari_halaman_tugasnya(
         assert js["shapes"] == []
     assert not pathlib.Path(g[2]).with_suffix(".json").exists()
 
-    # Halamannya menyebutnya latar, bukan sekadar "sudah dianotasi".
+    # Halamannya menyebutnya latar, DAN menghitungnya sebagai sudah dianotasi.
     h = pelabel.get(f"/tugas/{tid}?ds=paul/latar-uji").text
     assert h.count('jb-cap-bg') == 2
     assert 'data-bg="1"' in h
-    assert ">Latar <b>2</b>" in h.replace("\n", " ") or "Latar" in h
+    rapat = " ".join(h.split())
+    assert "Sudah dianotasi <b>2</b>" in rapat, "latar tidak dihitung sudah dianotasi"
+    assert "Belum dianotasi <b>2</b>" in rapat
+    # Dan ia bisa disaring lewat daftar kelas, sebaris dengan kelas lainnya.
+    assert 'data-latar="1"' in h and "Latar (tanpa objek)" in h
 
     # Dan tanda itu bisa dilepas lagi.
     r = pelabel.post("/api/latar", json={"gambar": g[:1], "lepas": True}).json()
@@ -1732,3 +1736,42 @@ def test_latar_menolak_gambar_yang_masih_berisi_objek(klien, lingkungan):
     klien.post("/api/simpan", json={"path": g[0], "shapes": []})
     r = klien.post("/api/latar", json={"gambar": g}).json()
     assert r["ok"] and (r["n"], r["ditolak"]) == (1, 1), r
+
+
+def test_saringan_kelas_di_halaman_tugas(klien, lingkungan):
+    """Saringan kelas dipakai untuk memeriksa hasil, bukan mencari berkas.
+
+    Satu job berisi ratusan gambar dengan beberapa kelas. Pertanyaan yang
+    muncul saat memeriksanya selalu berbentuk "mana yang mlp", "mana yang
+    latar" — dan tanpa saringan itu satu-satunya jalan adalah menggulir
+    seluruhnya sambil membaca cap satu per satu.
+    """
+    from tests.test_data import masuk, PW_PAUL
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    d = _projek(_ruang(klien), "saring-kelas", n=4, label=False)
+    klien.post(f"/setsrc?path={d}")
+    g = sorted(str(q) for q in d.glob("*.jpg"))
+    for q, kelas in ((g[0], "botol"), (g[1], "mlp"), (g[2], "mlp")):
+        klien.post("/api/simpan", json={"path": q, "shapes": [
+            {"label": kelas, "shape_type": "rectangle",
+             "points": [[2, 2], [30, 30]]}]})
+    klien.post("/api/latar", json={"gambar": [g[3]]})
+    tid = klien.post("/api/tugas/bagi",
+                     json={"pelabel": "paul", "gambar": g}).json()["id"]
+
+    h = klien.get(f"/tugas/{tid}?ds=saring-kelas").text
+    rapat = " ".join(h.split())
+    # Daftar saringan menyebut kelas yang benar-benar dipakai DI JOB INI,
+    # dengan jumlahnya, plus latar.
+    assert "<span>botol</span><b>1</b>" in rapat
+    assert "<span>mlp</span><b>2</b>" in rapat
+    assert "<span>Latar (tanpa objek)</span><b>1</b>" in rapat
+    # Tiap ubin membawa kelasnya sebagai JSON, bukan teks berpemisah: nama
+    # kelas boleh berisi apa saja.
+    assert rapat.count("data-kelas='[") == 4
+    assert "data-kelas='[\"mlp\"]'" in rapat
+    assert "data-kelas='[]'" in rapat, "gambar latar tidak punya kelas"
+    # Keempatnya sudah dikerjakan, tiga berobjek dan satu latar.
+    assert "Sudah dianotasi <b>4</b>" in rapat

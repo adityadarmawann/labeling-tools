@@ -55,6 +55,7 @@
 
     {# ---------------------------------------------------------- kanan #}
     <section class="jb-utama">
+      <div class="jb-baris-saring">
       <div class="seg jb-tab" id="jb-tab" role="group" aria-label="Saring gambar">
         <label class="seg-opt" data-on>
           <input type="radio" name="jb-saring" value="semua" checked>
@@ -62,12 +63,46 @@
         <label class="seg-opt">
           <input type="radio" name="jb-saring" value="belum">
           Belum dianotasi <b>{{ n - n_label }}</b></label>
+        {#- Latar TERMASUK di sini. Menandai gambar tanpa objek adalah
+            keputusan yang sudah diambil, bukan pekerjaan yang belum
+            dikerjakan; memisahkannya jadi tab sendiri membuat angka ini
+            mengecil tiap kali seseorang menyelesaikan satu contoh negatif.
+            Yang membedakannya kelas, dan itu urusan saringan di sebelah. -#}
         <label class="seg-opt">
           <input type="radio" name="jb-saring" value="sudah">
           Sudah dianotasi <b>{{ n_label }}</b></label>
-        <label class="seg-opt">
-          <input type="radio" name="jb-saring" value="latar">
-          Latar <b>{{ n_latar }}</b></label>
+      </div>
+
+        {#- Saringan kelas, sebentuk dengan yang di halaman grid: satu tombol,
+            daftar bercentang, "punya salah satu" yang dicentang. Latar ikut di
+            daftar yang sama, bukan di kotak terpisah — "botol atau latar"
+            adalah satu pertanyaan. -#}
+        <span class="menu menu-kiri" id="jb-menu-kelas">
+          <button class="chip kelas-tombol" type="button" id="jb-kelas-tombol"
+                  aria-haspopup="true" aria-expanded="false">Semua kelas &#9662;</button>
+          <span class="menu-isi">
+            <span class="menu-judul">Tampilkan yang punya salah satu</span>
+            <div class="kelas-daftar kelas-tanpa">
+              <label class="kelas-baris">
+                <input type="checkbox" data-latar="1"><span class="cb"></span>
+                <i style="background:var(--latar)"></i>
+                <span>Latar (tanpa objek)</span><b>{{ n_latar }}</b></label>
+            </div>
+            <div class="kelas-daftar">
+              {%- for k, n in kelas_hitung.items() %}
+              <label class="kelas-baris">
+                <input type="checkbox" data-kelas="{{ k }}"><span class="cb"></span>
+                <i style="background:{{ k | warnakelas }}"></i>
+                <span>{{ k }}</span><b>{{ n }}</b></label>
+              {%- else %}
+              <span class="menu-catatan">Belum ada kelas terpakai di tugas ini.</span>
+              {%- endfor %}
+            </div>
+            <span class="kelas-aksi">
+              <button class="chip" type="button" id="jb-kelas-bersih">Bersihkan</button>
+            </span>
+          </span>
+        </span>
       </div>
 
       {% if boleh_ubah %}
@@ -103,7 +138,8 @@
         <figure class="jb-ubin" data-path="{{ x.it | pathmentah }}"
                 data-label="{{ 1 if x.berlabel else 0 }}"
                 data-ds="{{ 1 if x.di_dataset else 0 }}"
-                data-bg="{{ 1 if x.latar else 0 }}">
+                data-bg="{{ 1 if x.latar else 0 }}"
+                data-kelas='{{ x.kelas | tojson }}'>
           <label class="jb-gambar">
             {% if boleh_ubah %}
             <input type="checkbox" class="jb-pilih">
