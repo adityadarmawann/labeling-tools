@@ -399,8 +399,19 @@ async def tambah_dari_server(path: str = "",
     if galat:
         return {"ok": False, "error": galat}
 
-    await _mulai_kurasi(sess.src, settings)
     sumber = Path((path or "").strip()).expanduser()
+    # Membaca folder di server tunduk pada aturan yang sama dengan membukanya.
+    # Rute kembarannya /impor dan /api/impor/survei sudah memeriksanya; yang
+    # ini terlewat, dan itu membuatnya jadi satu-satunya jalan menyalin projek
+    # PRIBADI akun lain ke ruang kerja sendiri — lalu mengekspornya sebagai
+    # milik sendiri. /setsrc menolak folder yang sama, /impor menolak, yang ini
+    # menjawab "ok".
+    tolak = await asyncio.to_thread(
+        projek.boleh_buka, sumber, sess.user,
+        settings.uploads_root, settings.datasets_root)
+    if tolak:
+        return {"ok": False, "error": tolak}
+    await _mulai_kurasi(sess.src, settings)
     tujuan = sess.src
     if impor._didalam(tujuan, sumber) or impor._didalam(sumber, tujuan):
         return {"ok": False, "error": "folder itu berada di dalam datasetnya "

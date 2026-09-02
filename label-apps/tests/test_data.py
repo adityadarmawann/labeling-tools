@@ -1199,7 +1199,7 @@ def test_tambah_menjaga_rasio_split_yang_sudah_ada(klien, lingkungan):
     masuk(klien, "paul", PW_PAUL)
     proyek = _proyek_bersplit(lingkungan["ruang"] / "proyek")
     assert klien.post("/useupload?ds=proyek").json()["n"] == 100
-    baru = _gambar_baru(lingkungan["tmp"] / "baru", 20)
+    baru = _gambar_baru(lingkungan["roots"] / "baru", 20)
 
     r = klien.post(f"/tambah/impor?path={baru}").json()
     assert r["ok"] is True and r["ditambah"] == 40 and r["n"] == 120
@@ -1213,7 +1213,7 @@ def test_tambah_menaruh_label_di_split_yang_sama_dengan_gambarnya(klien,
     masuk(klien, "paul", PW_PAUL)
     proyek = _proyek_bersplit(lingkungan["ruang"] / "p2")
     klien.post("/useupload?ds=p2")
-    baru = _gambar_baru(lingkungan["tmp"] / "baru2", 20)
+    baru = _gambar_baru(lingkungan["roots"] / "baru2", 20)
     klien.post(f"/tambah/impor?path={baru}")
 
     for s in ("train", "valid", "test"):
@@ -1226,7 +1226,7 @@ def test_tambah_dua_kali_tidak_menggandakan(klien, lingkungan):
     masuk(klien, "paul", PW_PAUL)
     proyek = _proyek_bersplit(lingkungan["ruang"] / "p3")
     klien.post("/useupload?ds=p3")
-    baru = _gambar_baru(lingkungan["tmp"] / "baru3", 20)
+    baru = _gambar_baru(lingkungan["roots"] / "baru3", 20)
 
     klien.post(f"/tambah/impor?path={baru}")
     sesudah = _isi(proyek)
@@ -1246,9 +1246,9 @@ def test_tambah_berkas_senama_tapi_beda_isi_tetap_masuk_berpasangan(klien,
     masuk(klien, "paul", PW_PAUL)
     proyek = _proyek_bersplit(lingkungan["ruang"] / "p4")
     klien.post("/useupload?ds=p4")
-    klien.post(f"/tambah/impor?path={_gambar_baru(lingkungan['tmp'] / 'baru4', 5)}")
+    klien.post(f"/tambah/impor?path={_gambar_baru(lingkungan['roots'] / 'baru4', 5)}")
 
-    lain = lingkungan["tmp"] / "lain4"
+    lain = lingkungan["roots"] / "lain4"
     lain.mkdir()
     cv2.imwrite(str(lain / "n0.jpg"), np.full((60, 80, 3), 7, np.uint8))
     (lain / "n0.txt").write_text("0 0.1 0.1 0.1 0.1\n")

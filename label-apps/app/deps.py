@@ -10,8 +10,11 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 
 from .config import Settings, get_settings
+from .log import catat
 from .security import COOKIE_NAME
 from .session import Session, store
+
+log = catat("labelapp.deps")
 
 LOCAL_HOSTS = {"127.0.0.1", "::1", "localhost"}
 
@@ -78,6 +81,44 @@ def sesi_otomatis(request: Request) -> Session | None:
     return sess
 
 
+def _lupakan_kalau_dicabut(sess: Session) -> Session:
+    """
+    Tutup projek yang HAKNYA sudah dicabut sejak sesi ini memuatnya.
+
+    Hak diperiksa saat projek dibuka, dan sesudah itu tidak pernah lagi:
+    seluruh rute bekerja pada `sess.src`/`sess.items` yang sudah tersimpan di
+    memori. Sesi tidak punya masa berlaku, jadi mengeluarkan seseorang dari
+    projek tidak mengubah apa pun baginya sampai ia menekan keluar sendiri —
+    ia tetap bisa membaca, mengunduh ZIP-nya, dan (karena mengeluarkan anggota
+    juga membubarkan jobnya, sehingga projeknya kembali tanpa penugasan sama
+    sekali) bahkan menulis anotasi ke sana.
+
+    Diperiksa di sini, bukan di tiap rute: rute yang memakai `sess.src` ada
+    belasan, dan satu yang lupa memeriksa membuat seluruh pencabutan tidak
+    berlaku. Yang dilakukan cuma MELUPAKAN projeknya — rutenya lalu menjawab
+    "belum ada dataset terbuka" atau mengalihkan ke daftar projek, sama
+    seperti sesi yang memang belum membuka apa-apa.
+
+    Murah untuk projek sendiri: boleh_buka menjawabnya dari bentuk pathnya
+    saja, tanpa menyentuh disk.
+    """
+    if sess.src is None:
+        return sess
+    from .services.projek import boleh_buka
+
+    st = get_settings()
+    try:
+        tolak = boleh_buka(sess.src, sess.user, st.uploads_root, st.datasets_root)
+    except OSError:
+        return sess
+    if tolak:
+        log.info("projek %s dilupakan dari sesi %s: %s",
+                 sess.src, sess.user, tolak)
+        sess.src = None
+        sess.items = []
+    return sess
+
+
 def current_session(request: Request) -> Session:
     """Sesi akun untuk halaman HTML. Tanpa sesi -> NeedsLogin."""
     sess = store.get(request.cookies.get(COOKIE_NAME))
@@ -85,7 +126,7 @@ def current_session(request: Request) -> Session:
         sess = sesi_otomatis(request)
     if sess is None:
         raise NeedsLogin
-    return sess
+    return _lupakan_kalau_dicabut(sess)
 
 
 def current_session_api(request: Request) -> Session:
@@ -96,7 +137,7 @@ def current_session_api(request: Request) -> Session:
     if sess is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED,
                             "sesi habis — muat ulang halaman lalu masuk lagi")
-    return sess
+    return _lupakan_kalau_dicabut(sess)
 
 
 def require_local(request: Request) -> None:

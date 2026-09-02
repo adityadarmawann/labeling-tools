@@ -55,13 +55,29 @@ def mark_background(it: dict) -> Path:
     Setara 'Mark Null' di Roboflow: gambar ikut ke dataset sebagai contoh
     negatif, bukan dibuang. AnyLabeling sendiri menolak menyimpan berkas tanpa
     shape, jadi berkasnya ditulis dari sini.
+
+    Yang diperiksa BERKAS DI DISK, bukan `it["shapes"]` dari ingatan sesi.
+    Ingatan sesi hanya diperbarui untuk orang yang menyimpannya sendiri, jadi
+    sesi orang lain — dan sesi mana pun sesudah anotasi ditulis dari
+    AnyLabeling desktop — tetap mengira gambarnya kosong. Memeriksa ingatan
+    membuat penolakan ini gagal justru pada satu-satunya kasus yang penting:
+    dua orang di projek yang sama, dan yang satu menghapus pekerjaan yang lain
+    tanpa satu pun peringatan. unmark_background sudah membaca disk sejak
+    awal; yang merusak justru yang tidak.
     """
-    if it["shapes"]:
-        raise Menolak(f"gambar ini punya {len(it['shapes'])} objek — "
+    jp = it["img"].with_suffix(".json")
+    di_disk = []
+    if jp.is_file():
+        try:
+            di_disk = json.loads(jp.read_text(encoding="utf-8")).get("shapes") or []
+        except (OSError, ValueError):
+            raise Menolak("berkas anotasi rusak — periksa atau hapus manual dulu")
+    n = len(di_disk) or len(it["shapes"])
+    if n:
+        raise Menolak(f"gambar ini punya {n} objek — "
                       "hapus dulu anotasinya di AnyLabeling")
     if "berkas anotasi rusak" in it["issues"]:
         raise Menolak("berkas anotasi rusak — periksa atau hapus manual dulu")
-    jp = it["img"].with_suffix(".json")
     tulis_aman(jp, json.dumps({
         "version": LABELME_VERSION, "flags": {}, "shapes": [],
         "imagePath": it["img"].name, "imageData": None,
@@ -73,6 +89,8 @@ def mark_background(it: dict) -> Path:
 
 
 def unmark_background(it: dict) -> Path:
+    # Sama alasannya dengan mark_background: ingatan sesi bisa basi. Di sini
+    # pemeriksaan disknya memang sudah ada sejak awal, di bawah.
     if it["shapes"]:
         raise Menolak("gambar ini punya anotasi — tidak dihapus")
     jp = it["img"].with_suffix(".json")
