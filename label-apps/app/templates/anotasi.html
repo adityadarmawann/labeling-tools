@@ -47,6 +47,17 @@
   </section>
   {% endif %}
 
+  {# Anggota yang sudah menerima undangan tetapi belum kebagian satu gambar
+     pun. Tanpa baris ini ia tidak muncul di mana-mana: ringkasan orang di
+     atas dirakit dari kartu tugas, dan orang tanpa tugas tidak punya kartu. #}
+  {% if boleh_kelola and tanpa_tugas %}
+  <p class="an-tanpa-tugas">
+    <b>{{ tanpa_tugas | join(", ") }}</b>
+    sudah jadi anggota tapi belum kebagian tugas.
+    <a href="/bagi?ds={{ pr.ds | urlquote }}">Bagi sekarang &rarr;</a>
+  </p>
+  {% endif %}
+
   {# ---------------------------------------------------- urutan #}
   <form class="an-urut" method="get" action="/anotasi">
     <input type="hidden" name="ds" value="{{ pr.ds }}">
@@ -158,8 +169,25 @@
           Lihat isinya &rarr;</a>
       </article>
       {%- else %}
-      <div class="an-kosong"><b>Belum ada yang dikerjakan</b>
-        <span class="halus">Tugas yang sudah dibagi muncul di sini.</span></div>
+      {#- Kalimatnya berbeda untuk yang membaginya dan yang menunggu dibagi.
+          "Tugas yang sudah dibagi muncul di sini" benar untuk keduanya dan
+          berguna untuk tidak satu pun: yang diundang jadi pelabel membuka
+          papan ini justru untuk mencari jatahnya. -#}
+      <div class="an-kosong">
+        {%- if boleh_kelola %}
+        <b>Belum ada yang dikerjakan</b>
+        <span class="halus">Bagikan gambar dari kolom kiri, lalu tugasnya
+          muncul di sini.</span>
+        {%- elif aku in anggota_semua %}
+        <b>Belum ada yang ditugaskan padamu</b>
+        <span class="halus">Kamu sudah jadi anggota projek ini. Mengundang
+          belum berarti membagi &mdash; <b>{{ pemilik }}</b> yang menentukan
+          gambar mana jatahmu.</span>
+        {%- else %}
+        <b>Belum ada yang dikerjakan</b>
+        <span class="halus">Tugas yang sudah dibagi muncul di sini.</span>
+        {%- endif %}
+      </div>
       {%- endfor %}
     </div>
 

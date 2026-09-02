@@ -132,6 +132,9 @@ async def halaman_papan(request: Request, ds: str = "", urut: str = "terbaru",
         "boleh_kelola": svc.boleh_kelola(data, sess.user),
         "pemilik": data["pemilik"] or sess.user,
         "aku": sess.user,
+        # Dipakai kolom "Dikerjakan" yang kosong untuk membedakan anggota yang
+        # menunggu dibagi dari orang yang kebetulan lewat.
+        "anggota_semua": set(data["anggota"]),
         "urut_pilihan": svc.URUT_PAPAN,
         **papan,
     })

@@ -103,6 +103,14 @@ body.berprojek header{padding-bottom:13px}
 .an-siap:hover{background:var(--hover);color:var(--ink);border-color:var(--aksi)}
 .an-siap[disabled]{opacity:.55;cursor:default}
 .an-siap-semua{margin-bottom:10px}
+
+/* Anggota yang belum kebagian tugas. Sewarna keterangan, bukan peringatan:
+   ini keadaan yang wajar sebentar sesudah mengundang, bukan kesalahan. */
+.an-tanpa-tugas{font-size:12.5px;color:var(--ink-dim);margin:0 0 12px;
+  padding:8px 11px;border:1px solid var(--line);border-radius:8px;
+  background:var(--sunk)}
+.an-tanpa-tugas a{color:var(--aksi);text-decoration:none;margin-left:4px}
+.an-tanpa-tugas a:hover{text-decoration:underline}
 .alat .kemajuan{margin-top:0}
 h1{font-size:15px;font-weight:600;letter-spacing:.02em}
 .path{font-size:12px;color:var(--ink-faint)}

@@ -1580,3 +1580,44 @@ def test_borongan_hanya_untuk_pemilik_projek(klien, aplikasi, lingkungan):
     r = tamu.post("/api/tugas/dataset-siap", json={}).json()
     assert r["ok"] is False and "pemilik projek" in r["error"]
     assert tugas.baca(d, "paul")["dataset"] == []
+
+
+def test_anggota_tanpa_tugas_tidak_menghilang_dari_papan(klien, aplikasi,
+                                                          lingkungan):
+    """Mengundang bukan membagi, dan papannya harus mengatakan itu.
+
+    Ringkasan orang dirakit dari kartu tugas, dan orang tanpa tugas tidak
+    punya kartu — jadi anggota yang baru diterima tidak muncul di mana pun.
+    Pemilik projek mengundang seseorang, mengira itu sudah memberinya
+    pekerjaan; yang diundang membuka papan yang kosong tanpa satu pun
+    keterangan kenapa. Keduanya benar dan tidak ada yang salah, dan justru itu
+    yang membuatnya sulit dilihat.
+    """
+    from conftest import klien_baru
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    d = _projek(_ruang(klien), "undang-tanpa-bagi", n=3)
+    klien.post(f"/setsrc?path={d}")
+    klien.post("/api/tugas/undang?akun=anggi")
+
+    # Pemiliknya diberi tahu ada anggota yang belum kebagian, dengan jalannya.
+    h = klien.get("/anotasi?ds=undang-tanpa-bagi").text
+    assert "anggi" in h and "belum kebagian tugas" in h
+    assert "/bagi?ds=undang-tanpa-bagi" in h
+
+    # Yang diundang diberi tahu apa yang sedang ditunggunya, dan oleh siapa.
+    tamu = klien_baru(aplikasi, "anggi", PW_ANGGI)
+    h = tamu.get("/anotasi?ds=paul/undang-tanpa-bagi").text
+    assert "Belum ada yang ditugaskan padamu" in h
+    assert "paul" in h, "yang membagikannya harus disebut namanya"
+    assert "belum kebagian tugas" not in h, "urusan pemilik bocor ke anggota"
+
+    # Sesudah dibagi, keduanya berhenti mengatakannya.
+    g = sorted(str(q) for q in d.glob("*.jpg"))
+    klien.post("/api/tugas/bagi", json={"pelabel": "anggi", "gambar": g[:2]})
+    assert "belum kebagian tugas" not in klien.get(
+        "/anotasi?ds=undang-tanpa-bagi").text
+    h = tamu.get("/anotasi?ds=paul/undang-tanpa-bagi").text
+    assert "Belum ada yang ditugaskan padamu" not in h
+    assert "(kamu)" in h, "jatahnya sendiri tidak ditandai"

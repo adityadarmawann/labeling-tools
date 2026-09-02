@@ -710,6 +710,15 @@ def papan(data: dict, berlabel: set[str], semua: set[str],
     per_pelabel = sorted(orang.values(),
                          key=lambda o: (-o["jumlah"], o["pelabel"]))
 
+    # Anggota yang sudah diterima tetapi belum kebagian satu gambar pun.
+    # Mereka tidak muncul di mana-mana sebelumnya: ringkasan orang dirakit
+    # dari kartu tugas, dan orang tanpa tugas tidak punya kartu. Akibatnya
+    # pemilik projek mengundang seseorang, mengira itu sudah memberinya
+    # pekerjaan, dan yang diundang membuka papan yang kosong tanpa satu pun
+    # keterangan kenapa.
+    punya_tugas = {k["pelabel"] for k in kartu}
+    tanpa_tugas = sorted(a for a in data["anggota"] if a not in punya_tugas)
+
     return {
         "urut": urut if urut in URUT_PAPAN else "terbaru",
         "belum_ditugaskan": len(belum),
@@ -717,6 +726,7 @@ def papan(data: dict, berlabel: set[str], semua: set[str],
         "belum_siap": sum(siap_kelompok.values()),
         "kartu": kartu,
         "per_pelabel": per_pelabel,
+        "tanpa_tugas": tanpa_tugas,
         "n_dataset": sum(1 for k in semua if di_dataset(data, k)),
         "n_semua": len(semua),
         "n_berlabel": len(berlabel & semua),
