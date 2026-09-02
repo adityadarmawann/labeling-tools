@@ -605,14 +605,19 @@ def test_grid_menyaring_tugasku_dan_menandai_pemiliknya(klien, aplikasi,
     klien.post(f"/setsrc?path={d}")
     gambar = sorted(str(x) for x in d.glob("*.jpg"))
 
-    # Belum dibagi: chipnya tidak muncul sama sekali.
-    assert "Tugasku" not in klien.get("/").text
+    # Belum dibagi: chipnya tidak muncul sama sekali. Dicari sebagai CHIP,
+    # bukan sebagai kata: panduan halaman ini juga menyebut "Tugasku" saat
+    # menjelaskan artinya, dan itu memang harus selalu ada.
+    def chip_tugasku(html):
+        return 'f=tugasku"' in html
+
+    assert not chip_tugasku(klien.get("/").text)
 
     klien.post("/api/tugas/bagi", json={"pelabel": "anggi", "gambar": gambar[:2]})
     klien.post("/api/tugas/bagi", json={"pelabel": "paul", "gambar": gambar[2:]})
 
     h = klien.get("/").text
-    assert "Tugasku" in h and h.count("tugas-cap") == 4
+    assert chip_tugasku(h) and h.count("tugas-cap") == 4
     assert klien.get("/?f=tugasku").text.count('class="card"') == 2
 
     lain = klien_baru(aplikasi, "anggi", PW_ANGGI)

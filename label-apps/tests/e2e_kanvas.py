@@ -760,6 +760,53 @@ def jalankan_kanvas(d):
         return ev.defaultPrevented;
     })()""")
     cek("huruf yang bukan pintasan tetap lewat", lewat is False)
+
+    # -------- panduan halaman grid
+    #
+    # Chip di grid menyebut keadaan yang tidak dijelaskan namanya sendiri, dan
+    # "Perlu dicek" yang paling sering disalahpahami: orang menyangka ia
+    # menilai gambar yang sengaja ditandai latar. Sebelum ada panduan di sini,
+    # tidak ada satu pun tempat di layar yang bisa membantahnya.
+    # S.kotor menahan navigasi dengan dialog "yakin mau keluar?", dan dialog
+    # itu tidak pernah dijawab siapa pun di sini. Bentuk uji di atas memang
+    # tidak perlu disimpan.
+    d.js("S.kotor = false")
+    d.kirim("Page.navigate", url=f"http://127.0.0.1:{PORT}/")
+    time.sleep(1.2)
+    cek("grid punya tombol panduan",
+        d.js("!!document.getElementById('btn-panduan')"))
+    d.js("document.getElementById('btn-panduan').click()")
+    time.sleep(0.3)
+    cek("panduan grid terbuka", d.js("!document.getElementById('panduan').hidden"))
+    isi = d.js("document.getElementById('panduan-isi').innerText")
+    cek("menjelaskan Perlu dicek", "mask sangat kecil" in isi and
+        "mask memenuhi frame" in isi and "label kosong" in isi)
+    cek("menyatakan latar tidak termasuk",
+        "Gambar latar tidak pernah masuk sini" in isi)
+    d.js("document.getElementById('panduan-kotak-cari').value='latar';"
+         "document.getElementById('panduan-kotak-cari')"
+         ".dispatchEvent(new Event('input'))")
+    time.sleep(0.3)
+    n = d.js("[...document.querySelectorAll('#panduan-isi dt')]"
+             ".filter(x => !x.hidden).length")
+    cek("kotak cari menyaring panduan grid", 0 < n < 19, f"{n} dari 19")
+    d.js("document.getElementById('panduan-tutup').click()")
+    time.sleep(0.2)
+    cek("panduan grid tertutup", d.js("document.getElementById('panduan').hidden"))
+
+    # Kembali ke kanvas: pemeriksaan sesudah ini melanjutkan di halaman itu,
+    # dan meninggalkannya di grid membuat semuanya gagal dengan pesan yang
+    # tidak menyebut sebabnya sama sekali.
+    jalur = d.js("(document.querySelector('a[href^=\"/label?path=\"]')||{})"
+                 ".getAttribute ? document.querySelector"
+                 "('a[href^=\"/label?path=\"]').getAttribute('href') : ''")
+    d.kirim("Page.navigate", url=f"http://127.0.0.1:{PORT}{jalur}")
+    for _ in range(80):
+        time.sleep(0.2)
+        if d.js("typeof S !== 'undefined' && !!S.shapes"):
+            break
+    else:
+        raise RuntimeError("gagal kembali ke kanvas sesudah panduan grid")
 def jalankan_panel(d):
     """Paritas panel: keterlihatan, gulir ke terpilih, catatan dua tingkat."""
     print("  -- paritas panel --")

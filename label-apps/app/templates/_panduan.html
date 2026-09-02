@@ -1,0 +1,30 @@
+{# Cangkang panduan: dialog, kotak cari, dan keadaan kosongnya.
+
+   Dipisah dari isinya karena mesinnya sama di tiap halaman sementara isinya
+   tidak pernah sama. Halaman kanvas menjelaskan pintasan papan tombol,
+   halaman grid menjelaskan arti tiap chip dan saringan — dan sebelum
+   pemisahan ini halaman grid tidak punya panduan sama sekali, sehingga chip
+   bernama "Perlu dicek" tidak pernah menjelaskan apa yang dicek.
+
+   `panduan_isi` menyebut berkas isinya, `panduan_judul` judulnya, dan
+   `panduan_cari` teks bantu di kotak carinya. #}
+<div class="dlg" id="panduan" hidden>
+  <div class="dlg-kotak panduan-kotak" role="dialog" aria-modal="true"
+       aria-labelledby="panduan-judul">
+    <div class="panduan-atas">
+      <h3 id="panduan-judul">{{ panduan_judul | default("Panduan & pintasan") }}</h3>
+      <button type="button" class="chip" id="panduan-tutup" title="Tutup (Esc)">Tutup</button>
+    </div>
+
+    <div class="panduan-cari">
+      <input id="panduan-kotak-cari" type="text" autocomplete="off"
+             placeholder="{{ panduan_cari | default('cari pintasan\u2026 mis. hapus, zoom, grup') }}">
+    </div>
+
+    <div class="panduan-isi{{ ' panduan-kata' if panduan_kata | default(false) else '' }}"
+         id="panduan-isi">
+{% include panduan_isi %}
+    </div>
+    <p class="panduan-kosong" id="panduan-kosong" hidden>Tidak ada yang cocok.</p>
+  </div>
+</div>

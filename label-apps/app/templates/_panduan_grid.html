@@ -1,0 +1,103 @@
+{# Isi panduan halaman Dataset (grid). Cangkangnya di _panduan.html.
+
+   Ditulis karena chip di halaman ini menyebut keadaan yang tidak dijelaskan
+   namanya sendiri. "Perlu dicek" yang paling sering disalahpahami: ia
+   memeriksa BENTUK objek yang sudah digambar, dan orang menyangka ia menilai
+   keputusan menandai latar. #}
+<section>
+  <h4>Chip keadaan</h4>
+  <dl>
+    <dt>Semua</dt>
+    <dd>Seluruh gambar yang ada di dataset ini.</dd>
+
+    <dt>Perlu dicek</dt>
+    <dd>Gambar yang <em>sudah</em> punya objek, tetapi bentuknya mencurigakan
+      menurut pemeriksaan otomatis. Daftar temuannya ada di bagian berikutnya.
+      Gambar latar tidak pernah masuk sini — ia tidak punya objek sama sekali,
+      jadi tidak ada bentuk yang bisa dicurigai.</dd>
+
+    <dt>Sudah dilabeli</dt>
+    <dd>Semua yang sudah dikerjakan: yang berisi objek, yang perlu dicek, dan
+      yang ditandai latar. Chip ini sengaja tumpang tindih dengan dua chip
+      itu — yang saling lepas adalah potongan bilah kemajuan di atasnya.</dd>
+
+    <dt>Belum dilabeli</dt>
+    <dd>Belum disentuh sama sekali: tidak punya objek, dan belum ditandai
+      latar.</dd>
+
+    <dt>Latar</dt>
+    <dd>Sampel negatif: gambar yang sengaja dinyatakan tidak berisi objek apa
+      pun. Ikut terekspor sebagai berkas label kosong, dan porsinya di dataset
+      menentukan seberapa sering model salah menebak latar sebagai objek.</dd>
+
+    <dt>Tugasku</dt>
+    <dd>Gambar yang ditugaskan kepadamu. Muncul hanya kalau projeknya sudah
+      pernah dibagi.</dd>
+  </dl>
+</section>
+
+<section>
+  <h4>Apa yang ditandai "Perlu dicek"</h4>
+  <dl>
+    <dt>mask sangat kecil</dt>
+    <dd>Luas objek di bawah 0,2% frame — biasanya sisa salah klik.</dd>
+
+    <dt>mask memenuhi frame</dt>
+    <dd>Luas objek di atas 92% frame — biasanya poligon yang lari ke tepi.</dd>
+
+    <dt>hanya N titik</dt>
+    <dd>Poligon dengan kurang dari 4 titik. Kotak, lingkaran, titik, dan garis
+      tidak dinilai begini — di sana jumlah titik itu memang bentuknya.</dd>
+
+    <dt>titik di luar gambar</dt>
+    <dd>Ada titik yang jatuh di luar tepi gambar.</dd>
+
+    <dt>label kosong</dt>
+    <dd>Ada objek tanpa nama kelas.</dd>
+
+    <dt>berkas anotasi rusak</dt>
+    <dd>Berkas .json-nya tidak bisa dibaca. Periksa atau hapus manual dulu.</dd>
+  </dl>
+</section>
+
+<section>
+  <h4>Saringan kelas dan tag</h4>
+  <dl>
+    <dt>Semua kelas</dt>
+    <dd>Centang beberapa kelas sekaligus. Bawaannya "punya salah satu" yang
+      dicentang; "semuanya" menuntut seluruh kelas itu ada dalam satu gambar
+      yang sama.</dd>
+
+    <dt>Latar &amp; Belum dilabeli di daftar kelas</dt>
+    <dd>Keduanya ikut di dropdown yang sama, karena "botol atau latar" adalah
+      satu pertanyaan. Keduanya hilang di mode "semuanya": gambar berobjek
+      menurut definisinya bukan latar, jadi gabungannya selalu nol.</dd>
+
+    <dt>Tag</dt>
+    <dd>Keterangan yang kamu pasang sendiri pada sekelompok gambar, mis.
+      "lampu-redup" atau "ulang-foto". Nama unggahan juga jadi tag otomatis,
+      dan itu satu-satunya cara menemukan kembali satu batch unggahan.</dd>
+  </dl>
+</section>
+
+<section>
+  <h4>Alur dataset</h4>
+  <dl>
+    <dt>Halaman ini</dt>
+    <dd>Hanya memuat gambar yang sudah dinyatakan masuk dataset. Itu pula yang
+      di-splitting, diberi versi, dan diekspor.</dd>
+
+    <dt>Anotasi</dt>
+    <dd>Tempat gambar yang belum masuk dataset menunggu: dibagi ke pelabel,
+      dikerjakan, lalu dimasukkan lewat <em>Tambahkan ke dataset</em>.</dd>
+
+    <dt>Tandai latar</dt>
+    <dd>Ada per gambar di sini, dan borongan di halaman tugas. Menandai latar
+      menolak gambar yang masih berisi objek — hapus objeknya dulu di
+      kanvas.</dd>
+
+    <dt>Versi</dt>
+    <dd>Membekukan pembagian train/valid/test yang berlaku saat itu, supaya
+      ekspor yang sama bisa diulang persis walau datasetnya sudah bertambah.</dd>
+  </dl>
+</section>

@@ -38,11 +38,24 @@
    href="{{ tautan(val_f=val) }}">{% if warna %}<i class="titik t-{{ warna }}"></i>{% endif %}{{ nama }} <b>{{ jumlah }}</b></a>
 {%- endmacro %}
 
+{% set panduan_isi = "_panduan_grid.html" %}
+{% set panduan_judul = "Panduan halaman Dataset" %}
+{% set panduan_cari = "cari… mis. latar, perlu dicek, tag" %}
+{# Istilahnya kata, bukan tombol — kolomnya perlu bentuk yang lain. #}
+{% set panduan_kata = true %}
+
 {% block body %}
 <header>
   <div class="top">
     <h1>Periksa anotasi</h1>
-    <span class="path mono">{{ sess.src }}</span>
+    <span class="path path-src mono" title="{{ sess.src }}">{{ sess.src }}</span>
+    {#- Panduan halaman ini. Chip di bawah menyebut keadaan yang tidak
+        dijelaskan namanya sendiri — "Perlu dicek" yang paling sering
+        disalahpahami sebagai penilaian atas gambar yang sengaja ditandai
+        latar. -#}
+    <button class="chip" id="btn-panduan" type="button"
+            title="Arti tiap chip dan saringan di halaman ini — tekan ? kapan saja">
+      <span aria-hidden="true">&#9432;</span> Panduan</button>
     {% include "_header.html" %}
   </div>
 </header>
@@ -442,4 +455,5 @@
 </div>
 {%- if pr %}</div>{% endif %}
 </main>
+{% include "_panduan.html" %}
 {% endblock %}

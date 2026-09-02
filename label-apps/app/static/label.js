@@ -1429,69 +1429,10 @@ const KUNCI_LIPAT = 'labelapp_panel_lipat';
 })();
 
 // ---------------------------------------------------------------- panduan
-
-/*
- * Panduan pintasan.
- *
- * Isinya dulu ditulis sebagai dua baris teks selebar layar di bar atas. Semua
- * ada di sana, tetapi tidak ada yang benar-benar terbaca — dan justru karena
- * penuh, beberapa pintasan yang sudah lama bekerja tidak pernah ikut ditulis.
- * Tidak ada satu pun yang dibuang saat dipindah ke sini; yang berubah cuma
- * ruangnya.
- */
-(() => {
-  const kotak = el('panduan');
-  const tombol = el('btn-panduan');
-  if (!kotak || !tombol) return;
-  const cari = el('panduan-kotak-cari');
-  const isi = el('panduan-isi');
-  const kosong = el('panduan-kosong');
-
-  function saring() {
-    const q = cari.value.trim().toLowerCase();
-    let ada = 0;
-    isi.querySelectorAll('section').forEach(sec => {
-      let cocokDiBagian = 0;
-      const judul = sec.querySelector('h4').textContent.toLowerCase();
-      sec.querySelectorAll('dt').forEach(dt => {
-        const dd = dt.nextElementSibling;
-        const teks = (dt.textContent + ' ' + (dd ? dd.textContent : '')
-                      + ' ' + judul).toLowerCase();
-        const cocok = !q || teks.includes(q);
-        dt.hidden = !cocok;
-        if (dd) dd.hidden = !cocok;
-        if (cocok) cocokDiBagian++;
-      });
-      sec.hidden = cocokDiBagian === 0;
-      ada += cocokDiBagian;
-    });
-    kosong.hidden = ada > 0;
-  }
-
-  function buka() {
-    kotak.hidden = false;
-    cari.value = '';
-    saring();
-    cari.focus();
-  }
-  function tutup() { kotak.hidden = true; }
-
-  tombol.onclick = buka;
-  el('panduan-tutup').onclick = tutup;
-  cari.oninput = saring;
-  // Klik di luar kotaknya menutup — kebiasaan yang dipakai dialog mana pun.
-  kotak.addEventListener('mousedown', ev => { if (ev.target === kotak) tutup(); });
-
-  window.addEventListener('keydown', ev => {
-    if (!kotak.hidden) {
-      if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); tutup(); }
-      return;
-    }
-    // `?` dan F1 membuka panduan dari mana saja, kecuali saat sedang mengetik.
-    if (sedangMengetik(ev.target)) return;
-    if (ev.key === '?' || ev.key === 'F1') { ev.preventDefault(); buka(); }
-  }, true);
-})();
+//
+// Mesinnya pindah ke app.js: halaman grid punya panduannya sendiri sekarang,
+// dan menggandakan dialog beserta kotak carinya di dua berkas berarti
+// memperbaiki dua kali setiap kali salah satunya kurang.
 
 // ---------------------------------------------------------- deteksi dari teks
 

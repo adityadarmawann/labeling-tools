@@ -1655,3 +1655,70 @@ const Progres = (() => {
   cari.addEventListener('input', render);
   muat();
 })();
+
+// ---------------------------------------------------------------- panduan
+
+/*
+ * Panduan: dialog bersama, isinya per halaman.
+ *
+ * Mesinnya di sini karena sama di tiap halaman sementara isinya tidak pernah
+ * sama — kanvas menjelaskan pintasan, grid menjelaskan arti tiap chip dan
+ * saringan. Menyaring lewat pasangan <dt>/<dd> membuat isi halaman mana pun
+ * bisa dicari tanpa mesin ini tahu apa isinya.
+ */
+(() => {
+  const kotak = document.getElementById('panduan');
+  const tombol = document.getElementById('btn-panduan');
+  if (!kotak || !tombol) return;
+  const cari = document.getElementById('panduan-kotak-cari');
+  const isi = document.getElementById('panduan-isi');
+  const kosong = document.getElementById('panduan-kosong');
+
+  function saring() {
+    const q = cari.value.trim().toLowerCase();
+    let ada = 0;
+    isi.querySelectorAll('section').forEach(sec => {
+      let cocokDiBagian = 0;
+      const judul = sec.querySelector('h4').textContent.toLowerCase();
+      sec.querySelectorAll('dt').forEach(dt => {
+        const dd = dt.nextElementSibling;
+        const teks = (dt.textContent + ' ' + (dd ? dd.textContent : '')
+                      + ' ' + judul).toLowerCase();
+        const cocok = !q || teks.includes(q);
+        dt.hidden = !cocok;
+        if (dd) dd.hidden = !cocok;
+        if (cocok) cocokDiBagian++;
+      });
+      sec.hidden = cocokDiBagian === 0;
+      ada += cocokDiBagian;
+    });
+    kosong.hidden = ada > 0;
+  }
+
+  function buka() {
+    kotak.hidden = false;
+    cari.value = '';
+    saring();
+    cari.focus();
+  }
+  function tutup() { kotak.hidden = true; }
+
+  tombol.onclick = buka;
+  document.getElementById('panduan-tutup').onclick = tutup;
+  cari.oninput = saring;
+  // Klik di luar kotaknya menutup — kebiasaan yang dipakai dialog mana pun.
+  kotak.addEventListener('mousedown', ev => { if (ev.target === kotak) tutup(); });
+
+  const mengetik = (n) => n && (n.tagName === 'INPUT' || n.tagName === 'SELECT'
+                                || n.tagName === 'TEXTAREA' || n.isContentEditable);
+  window.addEventListener('keydown', ev => {
+    if (!kotak.hidden) {
+      if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); tutup(); }
+      return;
+    }
+    // `?` dan F1 membuka panduan dari mana saja, kecuali saat sedang mengetik.
+    if (mengetik(ev.target)) return;
+    if (ev.key === '?' || ev.key === 'F1') { ev.preventDefault(); buka(); }
+  }, true);
+})();
+
