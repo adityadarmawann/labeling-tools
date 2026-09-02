@@ -814,3 +814,33 @@ def test_ekspor_yolo_tidak_menimpa_gambar_senama_dari_subfolder(klien,
     baris = [b for n in label for b in zf.read(n).decode().splitlines() if b.strip()]
     assert len(baris) == 2, baris
     assert len({b.split()[0] for b in baris}) == 2, f"satu kelas hilang: {baris}"
+
+
+def test_ringkasan_memisahkan_latar_dari_yang_belum_dilabeli(klien, lingkungan):
+    """Dua sebab yang berlawanan dilebur jadi satu angka "tanpa objek".
+
+    Gambar yang SENGAJA ditandai latar dan gambar yang belum disentuh siapa
+    pun sama-sama terekspor sebagai berkas label kosong, dan sesudah ZIP-nya
+    jadi keduanya tidak bisa dibedakan lagi. Kelalaian memasukkan gambar yang
+    belum dikerjakan lalu diam-diam berubah jadi sampel negatif.
+    """
+    import pathlib
+
+    from tests.test_data import masuk, PW_PAUL
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = _projek(ruang, "negatif-vs-lalai", n=4, label=False)
+    klien.post(f"/setsrc?path={d}")
+    g = sorted(str(q) for q in d.glob("*.jpg"))
+    klien.post("/api/simpan", json={"path": g[0], "shapes": [
+        {"label": "botol", "shape_type": "rectangle",
+         "points": [[2, 2], [30, 30]]}]})
+    klien.post("/api/latar", json={"gambar": g[1:3]})     # dua latar disengaja
+    klien.post("/api/tugas/dataset", json={"gambar": g})  # g[3] belum disentuh
+
+    j = klien.get("/api/ekspor/ringkasan?format=yolo-seg&split=8:1:1").json()
+    assert j["tanpa_objek"] == 3, j
+    assert j["latar"] == 2, j
+    assert j["belum_dilabeli"] == 1, j

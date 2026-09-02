@@ -346,6 +346,15 @@ def ringkasan(items: list[dict], segmentasi: bool, rasio=RASIO_BAWAAN,
     bagian = bagi_split(items, rasio, rencana)
     n_objek = sum(len(baris_yolo(it, peta, segmentasi)) for it in items)
     n_kosong = sum(1 for it in items if not baris_yolo(it, peta, segmentasi))
+    # Dua sebab yang berbeda dilebur jadi satu angka: gambar yang SENGAJA
+    # ditandai latar, dan gambar yang belum disentuh siapa pun. Keduanya
+    # terekspor sebagai berkas label kosong dan tidak bisa dibedakan lagi
+    # sesudahnya — jadi kelalaian memasukkan gambar yang belum dikerjakan
+    # diam-diam berubah jadi sampel negatif. Dipisah di sini, sebelum
+    # ZIP-nya diunduh.
+    n_latar = sum(1 for it in items
+                  if not baris_yolo(it, peta, segmentasi)
+                  and "latar (tanpa objek)" in it.get("issues", []))
     dilewati = sum(1 for it in items for s in it["shapes"]
                    if s["type"] not in ("rectangle", "polygon"))
     # Dari mana pembagiannya datang perlu terlihat: rasio yang diketik orang
@@ -354,7 +363,9 @@ def ringkasan(items: list[dict], segmentasi: bool, rasio=RASIO_BAWAAN,
     bawaan = any(it.get("split") for it in items)
     return {"gambar": len(items), "objek": n_objek, "kelas": len(peta),
             "nama_kelas": [l for l, _ in sorted(peta.items(), key=lambda kv: kv[1])],
-            "tanpa_objek": n_kosong, "bentuk_dilewati": dilewati,
+            "tanpa_objek": n_kosong, "latar": n_latar,
+            "belum_dilabeli": n_kosong - n_latar,
+            "bentuk_dilewati": dilewati,
             "split": {k: len(v) for k, v in bagian.items()},
             "split_bawaan": bawaan,
             "rasio": [round(r * 100) for r in rasio],

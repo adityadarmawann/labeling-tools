@@ -752,7 +752,13 @@ const Progres = (() => {
             + 'dipertahankan dan angka rasio di atas tidak dipakai.'
           : '')
         + catatanDataset
-        + (j.tanpa_objek ? `<br>${j.tanpa_objek} tanpa objek (contoh negatif)` : '')
+        + (j.latar ? `<br>${j.latar} ditandai latar (contoh negatif)` : '')
+        // Disebut terpisah, dan dengan peringatan. Gambar yang belum disentuh
+        // siapa pun terekspor persis seperti latar yang disengaja, dan sesudah
+        // ZIP-nya jadi keduanya tidak bisa dibedakan lagi.
+        + (j.belum_dilabeli
+           ? `<br><span class="split-warn">${j.belum_dilabeli} belum dilabeli `
+             + 'sama sekali — ikut terekspor sebagai label kosong</span>' : '')
         + (j.bentuk_dilewati ? ` · ${j.bentuk_dilewati} bentuk dilewati` : '')
         // Tanpa rencana, splitting-nya cuma mengelompokkan lewat nama berkas
         // dan isi gambarnya tidak pernah dibuka. Itu HARUS terbaca sebelum
