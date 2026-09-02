@@ -1777,14 +1777,26 @@ def test_saringan_latar_terpisah_dari_belum_dilabeli(klien, lingkungan):
 
     assert klien.get("/?f=bg").text.count('class="card"') == 1
     assert klien.get("/?f=unlab").text.count('class="card"') == 1
-    assert klien.get("/?f=sudah").text.count('class="card"') == 2, \
-        "menandai latar tidak boleh mengubah hitungan yang sudah dilabeli"
+    # Latar IKUT "sudah dilabeli", dan itu yang dikatakan kalimat pertama
+    # keterangan di atas: ia sudah selesai diperiksa. Empat tempat lain —
+    # kartu projek, sidebar, papan anotasi, halaman tugas — sudah
+    # menghitungnya begitu sejak awal, dan grid yang sendirian
+    # mengecualikannya membuat satu projek menyebut dua angka berbeda untuk
+    # hal yang sama di dua halaman.
+    assert klien.get("/?f=sudah").text.count('class="card"') == 3, \
+        "latar tidak ikut dihitung sudah dilabeli"
+    # Yang tetap terpisah: latar BUKAN belum-dilabeli. Itu bedanya, dan itu
+    # yang membuat saringannya sendiri tetap perlu ada.
+    assert klien.get("/?f=unlab").text.count('class="card"') == 1
     assert klien.get("/?f=all").text.count('class="card"') == 4
 
-    # angka di chip harus sama dengan isi grid
+    # Angka di chip harus sama dengan isi grid saat chip itu diklik. "Sudah
+    # dilabeli" memuat yang latar, jadi ia tumpang tindih dengan chip Latar —
+    # sama seperti ia sudah tumpang tindih dengan "Perlu dicek". Yang saling
+    # lepas adalah potongan bilah kemajuan, bukan chipnya.
     html = klien.get("/?f=all").text
     assert _chip(html, "Latar") == 1
-    assert _chip(html, "Sudah dilabeli") == 2
+    assert _chip(html, "Sudah dilabeli") == 3
     assert _chip(html, "Belum dilabeli") == 1
 
 

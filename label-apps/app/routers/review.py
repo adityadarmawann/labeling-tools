@@ -109,7 +109,15 @@ def _filter(items: list[dict], flt: str, kelas, tanpa=(), mode="atau", *,
         # ditinjau ulang.
         items = [i for i in items if scanner.severity(i) == "bg"]
     elif flt == "sudah":
-        items = [i for i in items if i["shapes"]]
+        # Latar IKUT. Menandai gambar tanpa objek adalah keputusan yang sudah
+        # diambil, bukan pekerjaan yang belum dikerjakan — dan ia satu-satunya
+        # isi sampel negatif, yang di sini justru paling perlu dihitung.
+        #
+        # Empat tempat lain sudah menghitungnya begitu sejak awal: kartu
+        # projek, sidebar, papan anotasi, dan halaman tugas. Grid yang
+        # sendirian mengecualikannya membuat satu projek menyebut dua angka
+        # "sudah dikerjakan" yang berbeda di dua halaman.
+        items = [i for i in items if scanner.severity(i) != "stop"]
     elif flt == "unlab":
         # severity 'stop', bukan sekadar "tanpa objek": gambar yang sudah
         # ditandai latar memang tanpa objek tapi sudah selesai diperiksa, dan
@@ -313,13 +321,14 @@ async def index(request: Request, f: str = "all",
         "total": len(items),
         # Empat keadaan yang saling lepas dan jumlahnya pas `total`; itu yang
         # dipakai bilah kemajuan. n_sudah SENGAJA tumpang tindih dengan n_warn
-        # (chip "Sudah dilabeli" memang memuat yang perlu dicek), jadi ia tidak
-        # bisa dipakai sebagai potongan bilah.
+        # dan n_bg — chip "Sudah dilabeli" memang memuat yang perlu dicek dan
+        # yang ditandai latar — jadi ia tidak bisa dipakai sebagai potongan
+        # bilah.
         "n_ok": sum(1 for s in sev if s == "ok"),
         "n_warn": sum(1 for s in sev if s == "warn"),
         "n_stop": sum(1 for s in sev if s == "stop"),
         "n_bg": sum(1 for s in sev if s == "bg"),
-        "n_sudah": sum(1 for s in sev if s in ("ok", "warn")),
+        "n_sudah": sum(1 for s in sev if s in ("ok", "warn", "bg")),
         "n_obj": sum(len(i["shapes"]) for i in items),
         # Penugasan: siapa pemilik tiap gambar, dan berapa jatahku. Kosong di
         # projek yang belum pernah dibagi, dan chip-nya pun tidak muncul.

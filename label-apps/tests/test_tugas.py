@@ -1775,3 +1775,72 @@ def test_saringan_kelas_di_halaman_tugas(klien, lingkungan):
     assert "data-kelas='[]'" in rapat, "gambar latar tidak punya kelas"
     # Keempatnya sudah dikerjakan, tiga berobjek dan satu latar.
     assert "Sudah dianotasi <b>4</b>" in rapat
+
+
+def test_semua_halaman_menyebut_angka_dikerjakan_yang_sama(klien, lingkungan):
+    """Satu ARTI "sudah dikerjakan", di halaman mana pun.
+
+    Lima tempat menghitungnya: kartu projek, lencana sidebar, papan anotasi,
+    halaman tugas, dan chip di grid. Empat menghitung latar sebagai sudah
+    dikerjakan sejak awal; grid sendirian mengecualikannya, dan akibatnya satu
+    projek yang sama menyebut dua angka berbeda untuk hal yang sama tanpa ada
+    yang bisa menjelaskan mana yang benar.
+
+    Yang dijaga di sini ARTINYA, bukan angkanya. Sesudah kurasi dimulai,
+    angkanya memang berbeda antar halaman — grid menghitung isi dataset,
+    papan menghitung seluruh projek — dan bagian terakhir uji ini yang
+    memastikan perbedaan itu memang datang dari populasinya, bukan dari
+    definisi yang diam-diam bergeser.
+    """
+    import re
+
+    from app.services import projek as sp
+    from tests.test_data import masuk, PW_PAUL
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    d = _projek(_ruang(klien), "seangka", n=5, label=False)
+    klien.post(f"/setsrc?path={d}")
+    g = sorted(str(q) for q in d.glob("*.jpg"))
+    # Dua berisi objek, dua latar, satu belum disentuh: 4 dari 5 dikerjakan.
+    for q in g[:2]:
+        klien.post("/api/simpan", json={"path": q, "shapes": [
+            {"label": "botol", "shape_type": "rectangle",
+             "points": [[2, 2], [30, 30]]}]})
+    klien.post("/api/latar", json={"gambar": g[2:4]})
+    tid = klien.post("/api/tugas/bagi",
+                     json={"pelabel": "paul", "gambar": g}).json()["id"]
+
+    angka = {}
+    h = klien.get("/?ds=seangka").text
+    angka["chip grid"] = int(re.search(r"Sudah dilabeli <b>(\d+)</b>", h).group(1))
+    angka["isi grid"] = klien.get("/?ds=seangka&f=sudah").text.count('class="card"')
+
+    a = klien.get("/anotasi?ds=seangka").text
+    angka["papan"] = int(re.search(r"(\d+) dari \d+ gambar sudah\s+dikerjakan", a).group(1))
+
+    j = " ".join(klien.get(f"/tugas/{tid}?ds=seangka").text.split())
+    angka["halaman tugas"] = int(re.search(r"Sudah dianotasi <b>(\d+)</b>", j).group(1))
+
+    pr = sp.konteks(d, lingkungan["roots"] / "_unggahan", "paul")
+    angka["kartu + sidebar"] = pr["anotasi"]
+
+    assert len(set(angka.values())) == 1, angka
+    assert angka["chip grid"] == 4, angka
+
+    # Dan latar tetap BUKAN belum-dikerjakan: itu bedanya, dan itu yang
+    # membuat saringannya sendiri tetap perlu ada.
+    assert klien.get("/?ds=seangka&f=unlab").text.count('class="card"') == 1
+    assert klien.get("/?ds=seangka&f=bg").text.count('class="card"') == 2
+    # Lencana Anotasi mengukur sumbu yang LAIN: belum masuk dataset, bukan
+    # belum dikerjakan. Selama kurasinya belum dimulai seluruh isi projek
+    # terhitung dataset, jadi angkanya nol walau empat gambar baru saja
+    # dikerjakan — dan itu benar, bukan salah hitung.
+    assert pr["belum"] == 0
+    klien.post("/api/tugas/dataset", json={"gambar": [g[0]]})
+    pr = sp.konteks(d, lingkungan["roots"] / "_unggahan", "paul")
+    assert (pr["n_dataset"], pr["belum"]) == (1, 4)
+    # Sementara angka "sudah dikerjakan" tidak bergeser sedikit pun: memasukkan
+    # ke dataset bukan mengerjakan.
+    h = klien.get("/?ds=seangka").text
+    assert "Sudah dilabeli <b>1</b>" in h, "grid kini cuma memuat isi dataset"
