@@ -163,6 +163,16 @@ async def upload(request: Request, ds: str = "", name: str = "",
         dest.resolve().relative_to(d.resolve().parent.resolve() / d.name)
     except ValueError:
         return {"ok": False, "error": "tujuan di luar folder unggahan"}
+    # Menimpa gambar yang sudah ada berarti berkas anotasi lamanya tetap di
+    # tempatnya sambil kini menggambarkan foto yang berbeda — dan gambar itu
+    # tetap terhitung "sudah masuk dataset". Jalur penambahan lain (tambah,
+    # impor, gabung) tidak pernah menimpa; yang ini dulu satu-satunya yang
+    # melakukannya, tanpa satu pun peringatan.
+    if dest.exists() and dest.suffix.lower() not in ARSIP_EXT:
+        return {"ok": False, "name": fn, "bytes": 0, "arsip": False,
+                "sudah_ada": True,
+                "error": f"'{fn}' sudah ada di projek ini — ganti namanya "
+                         f"dulu, atau hapus yang lama"}
     dest.parent.mkdir(parents=True, exist_ok=True)
     # Tulis ke .part dulu, ganti nama setelah lengkap, supaya koneksi yang
     # terputus tidak meninggalkan berkas setengah jadi yang ikut terpindai.

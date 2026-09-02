@@ -15,13 +15,15 @@
   const PEMILIK = isi.dataset.pemilik || '';
   const ubin = [...document.querySelectorAll('.bg-ubin')];
   const MAKS = ubin.length;
+  // Seluruh yang belum ditugaskan, termasuk yang tidak digambar sebagai ubin.
+  const SEMUA = parseInt(isi.dataset.nBelum, 10) || MAKS;
   let pelabel = '';
 
   // ------------------------------------------------------------ jumlah
   const n = $('bg-n'), slider = $('bg-slider');
 
   function sorot() {
-    const k = Math.max(1, Math.min(MAKS, parseInt(n.value, 10) || 1));
+    const k = Math.max(1, Math.min(SEMUA, parseInt(n.value, 10) || 1));
     // Sorotnya HANYA berlaku kalau urutannya tidak diacak. Dengan acak
     // menyala, gambar yang tersorot bukan gambar yang benar-benar akan
     // ditugaskan, dan penanda yang menunjuk hal yang salah lebih buruk
@@ -35,7 +37,7 @@
   }
 
   function setel(v) {
-    const k = Math.max(1, Math.min(MAKS, parseInt(v, 10) || 1));
+    const k = Math.max(1, Math.min(SEMUA, parseInt(v, 10) || 1));
     n.value = k;
     slider.value = k;
     sorot();
@@ -191,17 +193,11 @@
 
   // ------------------------------------------------------------ kirim
   $('bg-mulai').onclick = async () => {
-    const k = Math.max(1, Math.min(MAKS, parseInt(n.value, 10) || 1));
-    let daftar = ubin.map(el => el.dataset.path);
-    if ($('bg-acak').checked) {
-      // Fisher-Yates. Mengacak lalu memotong, bukan memilih acak satu per
-      // satu, supaya tidak ada gambar yang terpilih dua kali.
-      for (let i = daftar.length - 1; i > 0; i--) {
-        const j2 = Math.floor(Math.random() * (i + 1));
-        [daftar[i], daftar[j2]] = [daftar[j2], daftar[i]];
-      }
-    }
-    daftar = daftar.slice(0, k);
+    // Jumlahnya dijepit ke SELURUH yang belum ditugaskan, bukan ke jumlah ubin
+    // yang tergambar. Halaman ini hanya menggambar 400 ubin; slidernya memakai
+    // angka penuh, dan dulu daftar path yang dikirimlah yang menentukan —
+    // sehingga meminta 410 membagi 400 dan meninggalkan 10 diam-diam.
+    const k = Math.max(1, Math.min(SEMUA, parseInt(n.value, 10) || 1));
 
     const tombol = $('bg-mulai');
     tombol.disabled = true;
@@ -215,7 +211,13 @@
         // Judul job diambil dari nama unggahannya kalau halaman ini
         // memang dibatasi ke satu unggahan. Dua job untuk orang yang
         // sama tanpa judul tampak kembar di papan.
-        body: JSON.stringify({ pelabel, gambar: daftar,
+        // Yang dikirim jumlahnya, bukan daftar pathnya: servernya yang
+        // memilih, dari seluruh yang belum ditugaskan dan bukan dari 400 ubin
+        // yang kebetulan tergambar. Pengacakannya ikut pindah ke sana dengan
+        // alasan yang sama.
+        body: JSON.stringify({ pelabel, n: k,
+                               batch: isi.dataset.batch || '',
+                               acak: $('bg-acak').checked,
                                judul: isi.dataset.batch || '',
                                catatan: ($('bg-catatan').value || '').trim() }),
       });
@@ -227,6 +229,6 @@
     setTimeout(() => location.reload(), 900);
   };
 
-  setel(MAKS);
+  setel(SEMUA);
   muatOrang();
 })();

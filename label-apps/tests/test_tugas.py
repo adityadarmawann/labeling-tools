@@ -1849,3 +1849,94 @@ def test_semua_halaman_menyebut_angka_dikerjakan_yang_sama(klien, lingkungan):
     # ke dataset bukan mengerjakan.
     h = klien.get("/?ds=seangka").text
     assert "Sudah dilabeli <b>1</b>" in h, "grid kini cuma memuat isi dataset"
+
+
+def test_bagi_menyerahkan_pemilihan_ke_server(klien, lingkungan):
+    """Halaman hanya menggambar 400 ubin; slidernya memakai angka penuh.
+
+    Dulu peramban yang mengirim daftar path, jadi meminta 410 membagi 400 dan
+    meninggalkan 10 diam-diam — sementara kalimat di kepala halaman justru
+    berjanji "10 di antaranya tidak digambar di sini, tetap ikut dibagi".
+    """
+    import pathlib
+
+    import cv2
+    import numpy as np
+
+    from tests.test_data import masuk, PW_PAUL
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = ruang / "banyak"
+    d.mkdir(parents=True)
+    im = np.full((20, 30, 3), 90, np.uint8)
+    for i in range(405):
+        cv2.imwrite(str(d / f"b{i:04d}.jpg"), im)
+    klien.post(f"/setsrc?path={d}")
+    klien.post("/api/tugas/undang?akun=anggi")
+
+    h = klien.get("/bagi?ds=banyak").text
+    assert h.count('class="bg-ubin"') == 405 or 'data-n-belum="405"' in h
+    r = klien.post("/api/tugas/bagi",
+                   json={"pelabel": "anggi", "n": 405, "acak": True}).json()
+    assert r["ok"] and r["n"] == 405, r
+    assert 'data-n-belum="0"' in klien.get("/bagi?ds=banyak").text
+
+
+def test_bagi_membuang_ganda_dan_menghitung_yang_tak_dikenal(klien, lingkungan):
+    """Antarmukanya tidak bisa menghasilkan ini; rutenya dulu menyimpannya.
+
+    Satu gambar dikirim tiga kali tersimpan tiga kali, dan papan lalu
+    mempercayainya selamanya: "3 gambar, 0 dikerjakan" untuk satu gambar. Dan
+    path yang tidak dikenal dibuang sebelum tugaskan() sempat melihatnya, jadi
+    balasannya menyebut angka yang tidak menjumlah.
+    """
+    from tests.test_data import masuk, PW_PAUL
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    d = _projek(_ruang(klien), "ganda", n=3)
+    klien.post(f"/setsrc?path={d}")
+    g = sorted(str(q) for q in d.glob("*.jpg"))
+    klien.post("/api/tugas/undang?akun=anggi")
+
+    r = klien.post("/api/tugas/bagi", json={
+        "pelabel": "anggi",
+        "gambar": [g[0], g[0], g[0], "/tidak/ada/a.jpg", "/tidak/ada/b.jpg"],
+    }).json()
+    assert r["ok"] and r["n"] == 1, r
+    assert r["dilewati"] == 2, f"path asing tidak dihitung: {r}"
+    data = tugas.baca(d, "paul")
+    isi = list(data["tugas"].values())[0]["gambar"]
+    assert len(isi) == len(set(isi)) == 1, isi
+
+    # Daftar kosong dijawab dengan sebabnya sendiri, bukan dituduh bukan milik
+    # projek ini.
+    r = klien.post("/api/tugas/bagi", json={"pelabel": "anggi", "gambar": []}).json()
+    assert r["ok"] is False and "belum memilih" in r["error"], r
+
+
+def test_kartu_dataset_tidak_mengaku_seratus_persen(klien, lingkungan):
+    """Kartu di kolom Dataset pernah menulis 100% apa pun isinya.
+
+    Memasukkan gambar yang belum dilabeli ke dataset memang bisa — kadang
+    memang itu yang dimaksud — tetapi kartunya lalu pindah ke kolom itu dan
+    menyatakan pekerjaan yang 0% dikerjakan sebagai selesai, bertentangan
+    dengan halaman rinciannya sendiri.
+    """
+    from tests.test_data import masuk, PW_PAUL
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    d = _projek(_ruang(klien), "belum-tapi-masuk", n=2, label=False)
+    klien.post(f"/setsrc?path={d}")
+    g = sorted(str(q) for q in d.glob("*.jpg"))
+    tid = klien.post("/api/tugas/bagi",
+                     json={"pelabel": "paul", "gambar": g}).json()["id"]
+    klien.post("/api/tugas/dataset", json={"gambar": g})
+
+    h = " ".join(klien.get("/anotasi?ds=belum-tapi-masuk").text.split())
+    assert "100%" not in h, "kartu mengaku selesai padahal nol dikerjakan"
+    assert "0%" in h
+    # Dan menunya tetap ada, jadi jobnya tidak terkunci di kolom mana pun.
+    assert f'data-aksi="bubar" data-id="{tid}"' in h.replace("\n", " ")

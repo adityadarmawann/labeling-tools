@@ -352,6 +352,15 @@ async def split_jalankan(split_q: str = Query("", alias="split"),
                          settings: Settings = Depends(get_settings)):
     if sess.src is None:
         return {"ok": False, "error": "belum ada dataset terbuka"}
+    # Splitting memeriksa isi tiap gambar; pada dataset sebesar sebelas ribu
+    # foto itu menit-menit CPU. Hasilnya cuma menempel di sesi pemanggilnya,
+    # jadi ini bukan soal merusak data orang lain — melainkan soal siapa yang
+    # boleh memicu pekerjaan seberat itu berkali-kali.
+    tdata = await asyncio.to_thread(tugas.baca_projek, sess.src,
+                                    settings.uploads_root)
+    if tdata["pemilik"] and not tugas.boleh_kelola(tdata, sess.user):
+        return {"ok": False, "error": "hanya pemilik projek yang bisa "
+                                      "menjalankan splitting"}
     with sess.lock:
         items = list(sess.items)
     items, hitung = await asyncio.to_thread(tugas.saring_dataset, items,

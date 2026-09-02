@@ -40,6 +40,7 @@ dan tanpa itu tiap orang mengarang gayanya sendiri.
 from __future__ import annotations
 
 import json
+import re
 import secrets
 import threading
 from datetime import datetime
@@ -445,11 +446,25 @@ def undang_email(ds: Path, pemilik: str, email: str) -> dict:
     membocorkan isinya sebelum ada yang menerima undangannya.
     """
     email = " ".join(str(email or "").split())[:120].strip()
-    if "@" not in email:
+    # Lebih dari sekadar "ada @": '@' sendirian dan '<script>alert(1)</script>@x.com'
+    # dulu diterima, lalu tersimpan sebagai undangan yang tidak mungkin sampai
+    # ke siapa pun. Diperiksa sekadar bentuknya — ada nama, ada domain
+    # bertitik, tanpa spasi dan tanda kurung sudut — bukan sampai RFC.
+    if not re.fullmatch(r"[^@\s<>\"'/\\]{1,64}@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+",
+                        email):
         raise ValueError("bukan alamat surel")
     token = secrets.token_urlsafe(18)
     with _kunci:
         data = baca(ds, pemilik)
+        # Satu alamat, satu tautan hidup. Dulu tiap panggilan membuat token
+        # baru tanpa menengok yang masih terbuka, dan panelnya cuma
+        # menampilkan alamatnya — tiga baris "h@example.com" tidak bisa
+        # dibedakan, jadi pemilik projek mencabut yang satu dan mengira
+        # aksesnya tertutup sementara kembarannya masih hidup.
+        for tok, u in data["undangan"].items():
+            if u.get("email") == email and not u.get("dipakai"):
+                return _tanpa_perubahan(data, {
+                    "token": tok, "email": email, "sudah_terbuka": True})
         data["pemilik"] = data["pemilik"] or pemilik
         data["undangan"][token] = {
             "email": email, "oleh": pemilik,
@@ -633,7 +648,12 @@ def papan(data: dict, berlabel: set[str], semua: set[str],
         ditugaskan.update(g)
         n_label = sum(1 for k in g if k in berlabel)
         n_dataset = sum(1 for k in g if sudah_dimasukkan(data, k))
-        keadaan = (SELESAI if g and n_dataset == len(g)
+        # SELESAI menuntut seluruhnya sudah DIKERJAKAN, bukan cuma sudah
+        # dimasukkan. Memasukkan gambar yang belum dilabeli ke dataset memang
+        # bisa — kadang memang itu yang dimaksud — tetapi kartunya lalu pindah
+        # ke kolom Dataset dan menyatakan 100% untuk pekerjaan yang 0%
+        # dikerjakan, bertentangan dengan halaman rinciannya sendiri.
+        keadaan = (SELESAI if g and n_dataset == len(g) and n_label == len(g)
                    else JALAN if n_label else BARU)
         # Judul: yang disimpan saat dibagi, atau unggahan yang paling banyak
         # menyumbang isinya, atau tanggalnya. Dua job untuk orang yang sama

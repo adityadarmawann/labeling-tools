@@ -452,3 +452,79 @@ def test_markbg_membaca_disk_bukan_ingatan_sesi(klien, aplikasi, lingkungan):
 
     # Gambar yang memang kosong tetap boleh ditandai latar.
     assert lain.post(f"/markbg?path={g[1]}").json()["ok"] is True
+
+
+def test_folder_bersama_tidak_punya_alur_dataset_maupun_versi(klien, aplikasi,
+                                                              lingkungan):
+    """Folder dataset bersama tidak punya pemilik, jadi tidak punya kurator.
+
+    Dua celah bertemu di sana. boleh_labeli menjawab ya untuk siapa pun —
+    tidak ada tugas dan tidak ada anggota — sehingga satu klik "Tambahkan ke
+    dataset" menulis .tugas.json ke folder itu, menyalakan kurasi, dan
+    MENGECILKAN ekspor folder itu untuk semua orang. Dan versi dibaca dengan
+    akun pemanggil sebagai pemilik cadangan, sehingga setiap orang boleh
+    membuat serta MENGHAPUS PERMANEN versi buatan orang lain.
+    """
+    from conftest import klien_baru
+    from tests.test_data import masuk, PW_ANGGI, PW_PAUL
+
+    bersama = lingkungan["roots"] / "ds-alpha"
+    masuk(klien, "paul", PW_PAUL)
+    klien.post(f"/setsrc?path={bersama}")
+    lain = klien_baru(aplikasi, "anggi", PW_ANGGI)
+    lain.post(f"/setsrc?path={bersama}")
+
+    g = sorted(str(q) for q in bersama.glob("*.jpg"))
+    sebelum = klien.get("/api/ekspor/ringkasan?format=yolo-seg&split=8:1:1").json()
+
+    r = lain.post("/api/tugas/dataset", json={"gambar": g[:1]}).json()
+    assert r["ok"] is False and "bersama" in r["error"], r
+    assert not (bersama / ".tugas.json").exists(), "berkas tugas lahir di folder bersama"
+    assert lain.post("/api/tugas/dataset-siap", json={}).json()["ok"] is False
+
+    sesudah = klien.get("/api/ekspor/ringkasan?format=yolo-seg&split=8:1:1").json()
+    assert sesudah["n_dataset"] == sebelum["n_dataset"]
+
+    # Versi: tidak bisa dibuat, jadi tidak ada yang bisa dihapus orang lain.
+    r = lain.post("/api/versi/buat?split=8:1:1").json()
+    assert r["ok"] is False and "bersama" in r["error"], r
+    assert klien.post("/api/versi/buat?split=8:1:1").json()["ok"] is False
+
+
+def test_unggah_tidak_menimpa_gambar_yang_sudah_ada(klien, lingkungan):
+    """Menimpa berarti anotasi lama kini menggambarkan foto yang berbeda.
+
+    Jalur penambahan lain — tambah, impor, gabung — tidak pernah menimpa.
+    /upload dulu satu-satunya yang melakukannya, tanpa peringatan, sementara
+    gambarnya tetap terhitung sudah masuk dataset.
+    """
+    import hashlib
+    import pathlib
+
+    from tests.test_data import masuk, PW_PAUL
+
+    masuk(klien, "paul", PW_PAUL)
+    import cv2
+    import numpy as np
+
+    # Dua gambar yang isinya BEDA. Berkas contoh di lingkungan uji kebetulan
+    # identik byte demi byte, jadi memakainya tidak membuktikan apa pun.
+    tmp = lingkungan["tmp"] / "timpa-uji"
+    tmp.mkdir(exist_ok=True)
+    cv2.imwrite(str(tmp / "a.jpg"), np.full((30, 40, 3), 40, np.uint8))
+    cv2.imwrite(str(tmp / "b.jpg"), np.full((30, 40, 3), 200, np.uint8))
+    a = (tmp / "a.jpg").read_bytes()
+    b = (tmp / "b.jpg").read_bytes()
+    assert a != b
+
+    klien.put("/upload?ds=timpa&name=satu.jpg", content=a)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    q = ruang / "timpa" / "satu.jpg"
+    md5 = hashlib.md5(q.read_bytes()).hexdigest()
+
+    r = klien.put("/upload?ds=timpa&name=satu.jpg", content=b).json()
+    assert r["ok"] is False and r.get("sudah_ada") is True, r
+    assert hashlib.md5(q.read_bytes()).hexdigest() == md5, "berkas tertimpa"
+
+    # Nama lain tetap diterima.
+    assert klien.put("/upload?ds=timpa&name=dua.jpg", content=b).json()["ok"] is True

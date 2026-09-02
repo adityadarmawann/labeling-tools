@@ -132,7 +132,9 @@ def _survei(d: Path) -> dict:
     menghitung gambar, menghitung anotasi, mencari sampul, dan mencari berkas
     terbaru masing-masing sendiri berarti empat kali kerja yang sama.
     """
-    n_img = n_ann = 0
+    n_img = 0
+    gambar_ada: set[str] = set()
+    ann_untuk: set[str] = set()
     sampul: Path | None = None
     sampul_berlabel = False
     terbaru = 0.0
@@ -155,6 +157,7 @@ def _survei(d: Path) -> dict:
         sfx = p.suffix.lower()
         if sfx in IMG_EXT:
             n_img += 1
+            gambar_ada.add(str(p.with_suffix("")))
             # Sampul diambil dari gambar yang PUNYA anotasi, bukan yang
             # pertama menurut abjad. Foto produk di atas meja yang belum
             # dilabeli tidak memberi tahu apa pun tentang isi projeknya —
@@ -164,7 +167,11 @@ def _survei(d: Path) -> dict:
                 if sampul is None or punya:
                     sampul, sampul_berlabel = p, punya
         elif sfx in ANN_EXT:
-            n_ann += 1
+            # Dicatat batangnya, bukan langsung dihitung. Berkas anotasi yang
+            # gambarnya sudah tidak ada tetap terhitung "sudah dilabeli", dan
+            # kartu projek lalu menyebut 7 sementara papan menyebut 6 — untuk
+            # projek yang sama, pada saat yang sama.
+            ann_untuk.add(str(p.with_suffix("")))
             try:
                 terbaru = max(terbaru, p.stat().st_mtime)
             except OSError:
@@ -174,8 +181,13 @@ def _survei(d: Path) -> dict:
             terbaru = d.stat().st_mtime
         except OSError:
             terbaru = 0.0
-    return {"gambar": n_img, "anotasi": n_ann, "sampul": sampul,
-            "diubah": terbaru, "lebih": lebih}
+    # Tata letak YOLO menaruh label di folder labels/ yang sejajar images/,
+    # jadi batangnya tidak pernah sama. Di situ jumlah anotasi dihitung apa
+    # adanya, seperti sebelumnya.
+    cocok = len(gambar_ada & ann_untuk)
+    n_ann = cocok if cocok else len(ann_untuk)
+    return {"gambar": n_img, "anotasi": min(n_ann, n_img) if cocok else n_ann,
+            "sampul": sampul, "diubah": terbaru, "lebih": lebih}
 
 
 def _usia(t: float) -> str:
@@ -423,7 +435,24 @@ def konteks(d: Path, uploads_root: Path, aku: str) -> dict:
     # bukan sekadar salah angka: ia menyangkal saringan halamannya sendiri,
     # dan yang membacanya menyimpulkan gambarnya hilang.
     data = svc_tugas.baca(d, pemilik)
-    n_dataset = len(data["dataset"]) if data["kurasi"] else s["jumlah"]
+    # Dihitung atas gambar yang BENAR-BENAR ada, bukan panjang daftarnya.
+    # Daftar dataset bisa menyebut berkas yang sudah tidak ada di disk, dan
+    # papan maupun grid sudah menyaringnya sejak awal — lencana yang memakai
+    # angka mentah lalu menyebut 8 sementara halamannya menampilkan 6, dan
+    # lencana Anotasi bahkan hilang sama sekali padahal masih ada yang
+    # menunggu. Sekali telusur, dengan aturan yang sama seperti _survei.
+    if data["kurasi"]:
+        from ..config import IMG_EXT
+        ada = set()
+        for q in Path(d).rglob("*"):
+            if q.suffix.lower() not in IMG_EXT or not q.is_file():
+                continue
+            if any(x.startswith(".") for x in q.relative_to(Path(d)).parts):
+                continue
+            ada.add(q.resolve().relative_to(Path(d).resolve()).as_posix())
+        n_dataset = sum(1 for k in data["dataset"] if k in ada)
+    else:
+        n_dataset = s["jumlah"]
     return {"nama": d.name, "path": str(d), **s, "pemilik": pemilik,
             "ds": d.name if pemilik == aku else f"{pemilik}/{d.name}",
             "n_dataset": n_dataset,

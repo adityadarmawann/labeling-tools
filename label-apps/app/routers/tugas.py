@@ -78,13 +78,53 @@ def _akun_sah(nama: str, settings: Settings) -> str:
     return ""
 
 
-def _kunci(sess: Session, paths: list[str]) -> list[str]:
-    """Path dari peramban -> kunci projek, hanya yang benar-benar ada."""
-    out = []
+def _kunci(sess: Session, paths: list[str]) -> tuple[list[str], int]:
+    """
+    Path dari peramban -> kunci projek, hanya yang benar-benar ada.
+
+    Mengembalikan juga berapa yang TIDAK dikenal. Dulu path asing dibuang
+    diam-diam, jadi "dilewati" pada balasan pembagian tidak pernah
+    menghitungnya: enam path masuk, satu terbagi, dua dilaporkan dilewati, dan
+    tiga sisanya tidak disebut di mana pun.
+
+    Ganda dibuang. Antarmukanya sendiri tidak bisa menghasilkan path ganda,
+    tetapi rutenya menyimpannya apa adanya dan papan lalu mempercayainya
+    selamanya: satu gambar dikirim tiga kali menjadi "3 gambar, 0 dikerjakan".
+    """
+    out, tidak_dikenal = [], 0
+    terlihat = set()
     for p in paths[:200_000]:
         it = sess.find(p)
-        if it:
-            out.append(svc_tag.kunci_gambar(sess.src, it["img"]))
+        if it is None:
+            tidak_dikenal += 1
+            continue
+        k = svc_tag.kunci_gambar(sess.src, it["img"])
+        if k not in terlihat:
+            terlihat.add(k)
+            out.append(k)
+    return out, tidak_dikenal
+
+
+def _belum_ditugaskan(sess: Session, d, data: dict, batch: str = "") -> list[str]:
+    """
+    Kunci gambar yang belum ditugaskan ke siapa pun, urut seperti di halaman.
+
+    Dipakai halaman /bagi DAN rute pembaginya, supaya keduanya tidak pernah
+    berbeda pendapat tentang apa yang sedang dibagikan.
+    """
+    ditugaskan = {k for x in data["tugas"].values() for k in (x.get("gambar") or [])}
+    tdata_tag = svc_tag.baca(d)
+    out = []
+    for it in sess.items:
+        k = svc_tag.kunci_gambar(d, it["img"])
+        if k in ditugaskan:
+            continue
+        # Dibatasi ke satu unggahan kalau diminta: membagi biasanya dilakukan
+        # per unggahan, dan menyodorkan seluruh sisa projek saat yang dimaksud
+        # satu folder membuat slidernya menunjuk kumpulan yang salah.
+        if batch and svc_tag.untuk(tdata_tag, k)["batch"] != batch:
+            continue
+        out.append(k)
     return out
 
 
@@ -252,20 +292,10 @@ async def halaman_bagi(request: Request, ds: str = "", batch: str = "",
     data = svc.baca_projek(d, settings.uploads_root)
     pr = await asyncio.to_thread(sp.konteks, d, settings.uploads_root, sess.user)
 
-    ditugaskan = {k for t in data["tugas"].values()
-                  for k in (t.get("gambar") or [])}
-    tdata_tag = svc_tag.baca(d)
-    belum = []
-    for it in sess.items:
-        k = svc_tag.kunci_gambar(d, it["img"])
-        if k in ditugaskan:
-            continue
-        # Dibatasi ke satu unggahan kalau diminta: membagi biasanya dilakukan
-        # per unggahan, dan menyodorkan seluruh sisa projek saat yang dimaksud
-        # satu folder membuat slidernya menunjuk kumpulan yang salah.
-        if batch and svc_tag.untuk(tdata_tag, k)["batch"] != batch:
-            continue
-        belum.append(it)
+    kunci_belum = _belum_ditugaskan(sess, d, data, batch)
+    punya = set(kunci_belum)
+    belum = [it for it in sess.items
+             if svc_tag.kunci_gambar(d, it["img"]) in punya]
 
     return templates.TemplateResponse(request, "bagi.html", {
         "sess": sess, "pr": pr, "aktif": "anotasi",
@@ -456,15 +486,52 @@ async def bagi(request: Request, sess: Session = Depends(current_session_api),
     tolak = _akun_sah(pelabel, settings)
     if tolak:
         return {"ok": False, "error": tolak}
-    minta = _paths(body.get("gambar"))
-    if minta is None:
-        return {"ok": False, "error": "daftar gambar harus berupa larik"}
-    kunci = _kunci(sess, minta)
-    if not kunci:
-        return {"ok": False, "error": "tidak satu pun gambar itu ada di projek ini"}
-    r = await asyncio.to_thread(svc.tugaskan, sess.src, sess.user, pelabel,
+    # Dua cara menyebut apa yang dibagikan.
+    #
+    # `n` menyerahkan pemilihannya ke server, dan itu yang dipakai halaman
+    # /bagi. Sebelumnya peramban yang mengirim daftar path — padahal halaman
+    # itu hanya menggambar 400 ubin, sementara slidernya memakai jumlah penuh.
+    # Meminta 410 menghasilkan 400 terbagi dan 10 tertinggal diam-diam, dengan
+    # kalimat di kepala halaman yang justru berjanji sebaliknya.
+    #
+    # `gambar` tetap diterima untuk pemilihan yang benar-benar disebut satu per
+    # satu, dan untuk pemanggil di luar halaman itu.
+    tidak_dikenal = 0
+    if body.get("gambar") is None and body.get("n") is not None:
+        try:
+            n = int(body.get("n"))
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "jumlah gambar harus angka"}
+        semua = _belum_ditugaskan(sess, sess.src, data,
+                                  str(body.get("batch") or ""))
+        if not semua:
+            return {"ok": False, "error": "tidak ada gambar yang belum ditugaskan"}
+        n = max(1, min(n, len(semua)))
+        if body.get("acak"):
+            # Diacak di server dengan alasan yang sama seperti di layar: nama
+            # berkas berurutan hampir selalu berarti waktu pemotretan
+            # berurutan, dan membagi berurutan memberi satu orang seluruh sesi
+            # pagi. Sebelumnya pengacakan hanya berjalan atas 400 ubin pertama,
+            # jadi sisanya tidak pernah punya peluang terpilih.
+            import random
+            semua = random.sample(semua, len(semua))
+        kunci = semua[:n]
+    else:
+        minta = _paths(body.get("gambar"))
+        if minta is None:
+            return {"ok": False, "error": "daftar gambar harus berupa larik"}
+        if not minta:
+            return {"ok": False, "error": "belum memilih gambar yang dibagikan"}
+        kunci, tidak_dikenal = _kunci(sess, minta)
+        if not kunci:
+            return {"ok": False, "error": "tidak satu pun gambar itu ada di projek ini"}
+    r = await asyncio.to_thread(svc.tugaskan, sess.src, data["pemilik"], pelabel,
                                 kunci, str(body.get("catatan") or ""),
                                 str(body.get("judul") or ""))
+    # Path yang tidak dikenal ikut dihitung dilewati: dulu ia dibuang sebelum
+    # tugaskan() sempat melihatnya, jadi enam path masuk dan balasannya
+    # menyebut satu terbagi, dua dilewati, tanpa menyinggung tiga sisanya.
+    r["dilewati"] = r.get("dilewati", 0) + tidak_dikenal
     return {"ok": True, **r}
 
 
@@ -652,15 +719,21 @@ async def ke_dataset(request: Request,
     minta = _paths(body.get("gambar"))
     if minta is None:
         return {"ok": False, "error": "daftar gambar harus berupa larik"}
-    kunci = _kunci(sess, minta)
+    kunci, _ = _kunci(sess, minta)
     if not kunci:
         return {"ok": False, "error": "tidak satu pun gambar itu ada di projek ini"}
 
-    tolak = [k for k in kunci if not svc.boleh_labeli(data, sess.user, k)]
-    if tolak:
-        return {"ok": False, "error": f"{len(tolak)} gambar bukan tugasmu; "
+    # Diperiksa PER GAMBAR, dan yang boleh tetap diproses. Menolak seluruh
+    # daftar membuat "pilih semua" di halaman seorang pelabel menghasilkan nol
+    # dan sebuah pesan yang menghitung gambar orang lain — /api/latar sudah
+    # bekerja per gambar, dan ini yang membuat keduanya berbeda tanpa alasan.
+    boleh = [k for k in kunci if svc.boleh_labeli(data, sess.user, k)]
+    ditolak = len(kunci) - len(boleh)
+    if not boleh:
+        return {"ok": False, "error": f"{ditolak} gambar bukan tugasmu; "
                                       f"hanya pelabelnya atau pemilik projek "
                                       f"yang bisa memasukkannya ke dataset"}
+    kunci = boleh
 
     # Pemiliknya diambil dari data yang sudah dibaca lewat letak folder, bukan
     # dari akun pemanggil. Rute inilah satu-satunya penulis berkas tugas yang
@@ -671,6 +744,7 @@ async def ke_dataset(request: Request,
         r = await asyncio.to_thread(svc.keluarkan, sess.src, kunci, pemilik)
     else:
         r = await asyncio.to_thread(svc.masukkan, sess.src, kunci, pemilik)
+    r["ditolak"] = ditolak
 
     # `total` dihitung ulang atas gambar yang BENAR-BENAR ada di dataset
     # sekarang. Angka mentah dari berkasnya ikut menghitung catatan milik

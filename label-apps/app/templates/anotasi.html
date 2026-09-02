@@ -76,7 +76,8 @@
     <div class="an-kolom">
       <div class="an-kolom-kepala">
         <b>Belum ditugaskan</b>
-        <span class="an-hitung">{{ belum_ditugaskan }}</span>
+        <span class="an-hitung" title="{{ belum_ditugaskan }} gambar">
+          {{ belum_ditugaskan }} gambar</span>
       </div>
       {% if boleh_kelola and belum_siap %}
       <button class="an-siap an-siap-semua" type="button" data-siap="">
@@ -124,8 +125,12 @@
 
     <div class="an-kolom">
       <div class="an-kolom-kepala">
+        {#- Ketiga kolom memakai satuan yang berbeda, dan tanpa keterangan
+            angka 2 di sini berdiri berdampingan dengan angka 6 di bawahnya
+            untuk hal yang berbeda. -#}
         <b>Dikerjakan</b>
-        <span class="an-hitung">{{ dikerjakan | length }}</span>
+        <span class="an-hitung" title="{{ dikerjakan | length }} tugas">
+          {{ dikerjakan | length }} tugas</span>
       </div>
       {%- for k in dikerjakan %}
       <article class="an-kartu{% if k.pelabel == aku %} an-aku{% endif %}"
@@ -194,22 +199,50 @@
     <div class="an-kolom">
       <div class="an-kolom-kepala">
         <b>Dataset</b>
-        <span class="an-hitung">{{ selesai | length }}</span>
+        <span class="an-hitung" title="{{ selesai | length }} tugas selesai">
+          {{ selesai | length }} tugas</span>
       </div>
       {#- Istilahnya disamakan dengan yang dipakai di seluruh aplikasi: yang
           masuk sini itulah yang di-splitting, diberi versi, dan diekspor. -#}
       <a class="an-lihat-semua" href="/?ds={{ pr.ds | urlquote }}">
         Lihat semua {{ n_dataset }} gambar di dataset &rarr;</a>
       {%- for k in selesai %}
-      <article class="an-kartu an-selesai" data-id="{{ k.id }}">
+      <article class="an-kartu an-selesai" data-id="{{ k.id }}"
+               data-pelabel="{{ k.pelabel }}">
         <div class="an-kartu-atas">
           <span class="an-kartu-judul" title="{{ k.judul }}">{{ k.judul }}</span>
+          {#- Menunya ada di sini juga. Tanpa itu sebuah job bisa terkunci di
+              kolom ini tanpa satu pun jalan dari papan untuk menugaskannya
+              ulang atau membubarkannya — rutenya menerima, tampilannya yang
+              tidak menawarkan. -#}
+          {% if boleh_kelola %}
+          <span class="menu an-menu" id="an-menu-{{ k.id }}">
+            <button class="an-titik" type="button" data-menu="{{ k.id }}"
+                    title="Kelola tugas ini" aria-label="Kelola">&#8942;</button>
+            <span class="menu-isi">
+              <a class="menu-aksi" href="/tugas/{{ k.id }}?ds={{ pr.ds | urlquote }}">
+                Lihat isinya</a>
+              <button class="menu-aksi" type="button" data-aksi="pelabel"
+                      data-id="{{ k.id }}">Tugaskan ulang&hellip;</button>
+              <button class="menu-aksi" type="button" data-aksi="catatan"
+                      data-id="{{ k.id }}">Ubah catatan&hellip;</button>
+              <button class="menu-aksi" type="button" data-aksi="judul"
+                      data-id="{{ k.id }}">Ganti judul&hellip;</button>
+              <span class="menu-pisah"></span>
+              <button class="menu-aksi menu-bahaya" type="button" data-aksi="bubar"
+                      data-id="{{ k.id }}">Bubarkan tugas</button>
+            </span>
+          </span>
+          {% endif %}
         </div>
         <span class="halus an-kartu-waktu">{{ k.pelabel }} &middot; dibagi {{ k.dibuat }}</span>
-        {{ bilah(k.jumlah, k.jumlah) }}
+        {#- Angkanya dihitung, bukan ditulis mati. Kartu di kolom ini pernah
+            menyatakan 100% untuk job yang tak satu pun gambarnya dilabeli,
+            dan bertentangan dengan halaman rinciannya sendiri. -#}
+        {{ bilah(k.berlabel, k.jumlah) }}
         <div class="an-kartu-angka">
-          <span><b>{{ k.jumlah }}</b> gambar masuk dataset</span>
-          <b class="an-persen">100%</b>
+          <span><b>{{ k.di_dataset }}</b> gambar masuk dataset</span>
+          <b class="an-persen">{{ k.persen }}%</b>
         </div>
         <a class="an-mulai" href="/tugas/{{ k.id }}?ds={{ pr.ds | urlquote }}">
           Lihat isinya &rarr;</a>

@@ -140,6 +140,13 @@ def impor_folder(sumber: Path, tujuan: Path, *, batal=None, kunci: str = "",
     bentrok: list[str] = []
     contoh: list[str] = []
     for p in sorted(sumber.rglob("*")):
+        # Berkas pendamping projek sumber — .tugas.json, .tag.json, .versi/ —
+        # bukan bagian datasetnya. safe_relpath membuang titik di depannya,
+        # jadi tanpa aturan ini .tugas.json mendarat sebagai "tugas.json":
+        # tidak merusak apa pun, tetapi mengotori projek tujuan dan membuat
+        # angka "ditambah" menghitung berkas yang bukan gambar maupun anotasi.
+        if any(bagian.startswith(".") for bagian in p.relative_to(sumber).parts):
+            continue
         if batal and batal():
             raise ImporTolak("dibatalkan")
         if not p.is_file():
