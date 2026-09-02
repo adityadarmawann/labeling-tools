@@ -29,6 +29,10 @@
                                      : 'Tambahkan ke dataset';
     $('jb-masukkan').disabled = !n;
     $('jb-keluarkan').disabled = !n;
+    // Tombol latar juga menyebut angkanya, dengan alasan yang sama.
+    $('jb-latar').textContent = n ? `Tandai ${n} latar` : 'Tandai latar';
+    $('jb-latar').disabled = !n;
+    $('jb-batal-latar').disabled = !n;
     const semua = $('jb-centang-semua');
     const t = terlihat().length;
     semua.checked = n > 0 && n === t;
@@ -38,8 +42,13 @@
   function saringUlang() {
     for (const u of ubin) {
       const label = u.dataset.label === '1';
+      const bg = u.dataset.bg === '1';
+      // "Sudah dianotasi" TIDAK memuat latar. Keduanya punya berkas anotasi,
+      // tetapi artinya berlawanan, dan menggabungkannya membuat saringan
+      // "sudah dianotasi" menjanjikan objek lalu menampilkan gambar kosong.
       u.hidden = saring === 'belum' ? label
-               : saring === 'sudah' ? !label : false;
+               : saring === 'sudah' ? (!label || bg)
+               : saring === 'latar' ? !bg : false;
       // Yang tersembunyi ikut dilepas centangnya: mengirim gambar yang tidak
       // terlihat lagi adalah kejutan, bukan kemudahan.
       const c = u.querySelector('.jb-pilih');
@@ -106,7 +115,56 @@
     setTimeout(() => location.reload(), 800);
   }
 
+  /*
+   * Tandai latar: nyatakan gambar terpilih tidak berisi objek apa pun.
+   *
+   * Contoh negatif, dan ia ikut terekspor sebagai berkas label kosong. Karena
+   * itu ia MENULIS anotasi, dan servernya memeriksa tiap gambar satu per satu
+   * dengan penjaga yang sama seperti menyimpan bentuk.
+   */
+  async function latar(lepas) {
+    const dipilih = terpilih();
+    if (!dipilih.length) return;
+
+    // Gambar yang sudah berisi objek DITOLAK server, bukan dikosongkan
+    // (annotations.mark_background). Dikatakan apa adanya di sini: "akan
+    // membuang objeknya" akan membuat orang membatalkan tindakan yang
+    // sebenarnya aman, dan diam soal itu membuat mereka mengira gagal.
+    const berisi = lepas ? []
+      : dipilih.filter(u => u.dataset.label === '1' && u.dataset.bg !== '1');
+    if (berisi.length && !confirm(
+        `${berisi.length} dari ${dipilih.length} gambar yang dipilih sudah `
+        + 'berisi objek, dan itu akan dilewati — objeknya tidak dihapus.\n\n'
+        + `Tandai ${dipilih.length - berisi.length} sisanya sebagai latar?`)) return;
+
+    const tombol = lepas ? $('jb-batal-latar') : $('jb-latar');
+    tombol.disabled = true;
+    const pr = Progres.mulai(
+      lepas ? `Melepas tanda latar dari ${dipilih.length} gambar`
+            : `Menandai ${dipilih.length} gambar sebagai latar`,
+      { di: $('jb-jalur') });
+    pr.taktentu('menyimpan');
+    let j;
+    try {
+      j = await send('/api/latar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gambar: dipilih.map(u => u.dataset.path),
+                               lepas: !!lepas }),
+      });
+    } catch (e) { pr.gagal('Gagal menghubungi server'); tombol.disabled = false; return; }
+    if (!j.ok) { pr.gagal(j.error); tombol.disabled = false; return; }
+
+    // Yang ditolak disebutkan, tidak ditelan. Satu daftar bisa memuat gambar
+    // milik pelabel lain, dan diam soal itu membuat orang mengira semuanya
+    // berhasil.
+    pr.selesai(`${j.n} gambar ${lepas ? 'lepas dari' : 'ditandai'} latar`
+               + (j.ditolak ? ` \u00b7 ${j.ditolak} ditolak (bukan tugasmu)` : ''));
+    setTimeout(() => location.reload(), 800);
+  }
+
   $('jb-masukkan').onclick = () => pindahkan(false);
   $('jb-keluarkan').onclick = () => pindahkan(true);
+  $('jb-latar').onclick = () => latar(false);
+  $('jb-batal-latar').onclick = () => latar(true);
   saringUlang();
 })();

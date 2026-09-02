@@ -706,3 +706,45 @@ def test_createml_koordinat_adalah_titik_tengah(tmp_path):
         if n2 in z.namelist():
             for g in json.loads(z.read(n2)):
                 assert f"{split}/{g['image']}" in z.namelist()
+
+
+def test_latar_terekspor_sebagai_label_kosong(klien, lingkungan):
+    """Contoh negatif harus SAMPAI ke hasil ekspor, bukan berhenti di layar.
+
+    Gambar latar adalah gambar yang sengaja dinyatakan tidak berisi objek, dan
+    gunanya cuma satu: dilatih sebagai contoh negatif. Kalau ia diekspor tanpa
+    berkas label, atau berkas labelnya ikut dibuang karena kosong, seluruh
+    pekerjaan menandainya tidak menghasilkan apa pun — dan tidak ada satu pun
+    tanda di aplikasi ini yang akan memberitahukannya.
+    """
+    import io
+    import pathlib
+    import zipfile
+
+    from tests.test_data import masuk, PW_PAUL
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = _projek(ruang, "negatif", n=4, label=False)
+    klien.post(f"/setsrc?path={d}")
+    g = sorted(str(q) for q in d.glob("*.jpg"))
+
+    for q in g[:2]:
+        klien.post("/api/simpan", json={"path": q, "shapes": [
+            {"label": "botol", "shape_type": "rectangle",
+             "points": [[2, 2], [30, 30]]}]})
+    assert klien.post("/api/latar", json={"gambar": g[2:]}).json()["n"] == 2
+    klien.post("/api/tugas/dataset", json={"gambar": g})
+
+    z = klien.get("/ekspor?format=yolo-seg&gambar=1&split=8:1:1")
+    assert z.status_code == 200
+    zf = zipfile.ZipFile(io.BytesIO(z.content))
+    nama = [n for n in zf.namelist() if not n.endswith("/")]
+    label = {n: zf.read(n) for n in nama if n.endswith(".txt") and "/labels/" in n}
+    gambar = [n for n in nama if "/images/" in n]
+
+    assert len(gambar) == 4, "gambar latar ikut diekspor, bukan dilewati"
+    assert len(label) == 4, "tiap gambar punya berkas label, termasuk yang latar"
+    kosong = [n for n, isi in label.items() if isi.strip() == b""]
+    assert len(kosong) == 2, "label latar harus KOSONG, bukan hilang atau diisi"

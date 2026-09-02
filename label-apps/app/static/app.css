@@ -1610,7 +1610,13 @@ body.berprojek main{display:flex;gap:0;padding:0;align-items:stretch}
 .jb-titik{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
 .jb-titik.t-ok{background:var(--ok)}
 .jb-titik.t-stop{background:var(--stop)}
-.jb-titik.t-ds{background:var(--latar)}
+/* Dataset memakai warna aksi, BUKAN --latar. Di seluruh aplikasi --latar
+   berarti "gambar tanpa objek": bilah kemajuan, chip grid, dan garis tepi
+   kartu semuanya memakainya begitu. Sejak ubin job juga menampilkan cap
+   latar, dataset yang ikut memakainya membuat dua hal berlawanan tampak
+   sama persis pada gambar yang sama. */
+.jb-titik.t-ds{background:var(--aksi)}
+.jb-titik.t-bg{background:var(--latar)}
 .jb-orang{display:flex;gap:9px;align-items:center}
 
 .jb-utama{flex:1 1 0;min-width:0}
@@ -1644,7 +1650,8 @@ body.berprojek main{display:flex;gap:0;padding:0;align-items:stretch}
 .jb-cap{position:absolute;left:6px;bottom:6px;font-size:9.5px;
   padding:1px 6px;border-radius:4px;color:var(--on-ink)}
 .jb-cap-ok{background:var(--ok)}
-.jb-cap-ds{background:var(--latar)}
+.jb-cap-ds{background:var(--aksi)}
+.jb-cap-bg{background:var(--latar)}
 
 @media (max-width:1000px){
   .jb-tata{flex-direction:column}

@@ -24,6 +24,11 @@ from ..services import tugas as svc
 from ..session import Session
 from ..templating import templates
 
+# Batas satu permintaan borongan, sama dengan di rute tag. Bukan penjagaan
+# keamanan — penjaganya per gambar — melainkan supaya satu permintaan tidak
+# menahan proses selama menit.
+MAKS_SEKALI = 50_000
+
 router = APIRouter(tags=["tugas"])
 
 # Ubin yang digambar sekaligus di halaman bagi. Di atas ini daftarnya
@@ -176,19 +181,27 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
         k = svc_tag.kunci_gambar(d, it["img"])
         if k not in punya:
             continue
+        sev = scanner.severity(it)
         isi.append({
             "it": it, "kunci": k,
-            "berlabel": scanner.severity(it) != "stop",
+            "berlabel": sev != "stop",
+            # Latar dibedakan dari "sudah dianotasi" biasa. Keduanya punya
+            # berkas anotasi, tetapi artinya berlawanan: yang satu berisi
+            # objek, yang satu sengaja dinyatakan tidak berisi apa-apa dan
+            # dipakai sebagai contoh negatif saat melatih.
+            "latar": sev == "bg",
             "di_dataset": svc.sudah_dimasukkan(data, k),
         })
     isi.sort(key=lambda x: x["it"]["img"].name)
 
     n_label = sum(1 for x in isi if x["berlabel"])
+    n_latar = sum(1 for x in isi if x["latar"])
     n_ds = sum(1 for x in isi if x["di_dataset"])
     return templates.TemplateResponse(request, "job.html", {
         "sess": sess, "pr": pr, "aktif": "anotasi", "aku": sess.user,
         "tid": tid, "job": job, "isi": isi,
-        "n": len(isi), "n_label": n_label, "n_dataset": n_ds,
+        "n": len(isi), "n_label": n_label, "n_latar": n_latar,
+        "n_dataset": n_ds,
         "persen": round(n_label * 100 / len(isi)) if isi else 0,
         # Yang boleh memindahkan ke dataset hanya pelabelnya sendiri dan
         # pemilik projek. Sama persis dengan aturan menyunting labelnya.
@@ -442,6 +455,61 @@ async def bubarkan(id: str = "", sess: Session = Depends(current_session_api)):
         return {"ok": False, "error": "hanya pemilik projek yang bisa membubarkan"}
     r = await asyncio.to_thread(svc.bubarkan, sess.src, sess.user, id)
     return {"ok": True, **r}
+
+
+@router.post("/api/latar")
+async def tandai_latar(request: Request,
+                       sess: Session = Depends(current_session_api),
+                       settings: Settings = Depends(get_settings)):
+    """
+    Tandai sekumpulan gambar sebagai latar, atau lepaskan tandanya.
+
+    Latar adalah gambar yang sengaja dinyatakan tidak berisi objek apa pun:
+    contoh negatif, dan ia ikut terekspor sebagai berkas label kosong. Itu
+    keputusan yang diambil, bukan pekerjaan yang belum dikerjakan.
+
+    Ada versi satu-gambar di /markbg sejak lama, tetapi hanya bisa dijangkau
+    dari grid dan halaman Lihat — dan sejak halaman Dataset cuma memuat isi
+    dataset, dua-duanya tidak lagi memuat gambar yang justru paling sering
+    perlu ditandai latar: yang baru dibagikan dan belum dikerjakan.
+
+    Menandai latar MENULIS berkas anotasi, jadi tiap gambar tunduk pada
+    penjaga yang sama dengan menyimpan bentuk. Diperiksa satu per satu, bukan
+    sekali di depan: satu daftar bisa memuat gambar milik dua pelabel.
+    """
+    from ..services import annotations
+
+    if sess.src is None:
+        return {"ok": False, "error": "belum ada dataset terbuka"}
+    body = await bodi_json(request)
+    minta = _paths(body.get("gambar"))
+    if minta is None:
+        return {"ok": False, "error": "daftar gambar harus berupa larik"}
+    lepas = bool(body.get("lepas"))
+
+    berhasil, tolak = 0, 0
+    with sess.lock:
+        for jalur in minta[:MAKS_SEKALI]:
+            it = sess.find(jalur)
+            if it is None:
+                tolak += 1
+                continue
+            if svc.tolak_tulis(sess.src, sess.user, it["img"]):
+                tolak += 1
+                continue
+            try:
+                if lepas:
+                    annotations.unmark_background(it)
+                else:
+                    annotations.mark_background(it)
+            except (OSError, annotations.Menolak):
+                tolak += 1
+                continue
+            berhasil += 1
+    if not berhasil:
+        return {"ok": False,
+                "error": "tidak satu pun gambar itu bisa kamu ubah"}
+    return {"ok": True, "n": berhasil, "ditolak": tolak, "lepas": lepas}
 
 
 @router.post("/api/tugas/dataset-siap")

@@ -13,6 +13,7 @@ gugur akibatnya baru terlihat setelah pekerjaan orang lain tertimpa:
 from __future__ import annotations
 
 import json
+import pathlib
 
 from app.services import projek, tugas
 from app.services import tag as tag_mod
@@ -1621,3 +1622,113 @@ def test_anggota_tanpa_tugas_tidak_menghilang_dari_papan(klien, aplikasi,
     h = tamu.get("/anotasi?ds=paul/undang-tanpa-bagi").text
     assert "Belum ada yang ditugaskan padamu" not in h
     assert "(kamu)" in h, "jatahnya sendiri tidak ditandai"
+
+
+def _job_bertiga(klien, nama="latar-uji"):
+    """Projek 4 gambar tanpa label, semuanya dibagi ke satu pelabel."""
+    from tests.test_projek import _projek
+
+    d = _projek(_ruang(klien), nama, n=4, label=False)
+    klien.post(f"/setsrc?path={d}")
+    g = sorted(str(q) for q in d.glob("*.jpg"))
+    tid = klien.post("/api/tugas/bagi",
+                     json={"pelabel": "anggi", "gambar": g}).json()["id"]
+    return d, g, tid
+
+
+def test_pelabel_bisa_menandai_latar_borongan_dari_halaman_tugasnya(
+        klien, aplikasi, lingkungan):
+    """Contoh negatif harus bisa dibuat dari tempat pelabel bekerja.
+
+    Menandai latar sudah ada sejak lama, tetapi hanya dari grid dan halaman
+    Lihat. Sejak halaman Dataset cuma memuat isi dataset, dua-duanya tidak
+    lagi memuat gambar yang paling sering perlu ditandai latar: yang baru
+    dibagikan dan belum dikerjakan sama sekali.
+    """
+    from conftest import klien_baru
+    from tests.test_data import masuk, PW_PAUL, PW_ANGGI
+
+    masuk(klien, "paul", PW_PAUL)
+    d, g, tid = _job_bertiga(klien)
+
+    pelabel = klien_baru(aplikasi, "anggi", PW_ANGGI)
+    pelabel.get(f"/tugas/{tid}?ds=paul/latar-uji")
+    r = pelabel.post("/api/latar", json={"gambar": g[:2]}).json()
+    assert r["ok"] and r["n"] == 2 and r["ditolak"] == 0, r
+
+    # Latar = berkas anotasi tanpa objek. Itu yang diekspor sebagai contoh
+    # negatif, dan itu pula yang membedakannya dari belum dikerjakan.
+    for q in g[:2]:
+        js = json.loads(pathlib.Path(q).with_suffix(".json").read_text())
+        assert js["shapes"] == []
+    assert not pathlib.Path(g[2]).with_suffix(".json").exists()
+
+    # Halamannya menyebutnya latar, bukan sekadar "sudah dianotasi".
+    h = pelabel.get(f"/tugas/{tid}?ds=paul/latar-uji").text
+    assert h.count('jb-cap-bg') == 2
+    assert 'data-bg="1"' in h
+    assert ">Latar <b>2</b>" in h.replace("\n", " ") or "Latar" in h
+
+    # Dan tanda itu bisa dilepas lagi.
+    r = pelabel.post("/api/latar", json={"gambar": g[:1], "lepas": True}).json()
+    assert r["ok"] and r["n"] == 1
+    assert not pathlib.Path(g[0]).with_suffix(".json").exists()
+
+
+def test_latar_tunduk_pada_penjaga_yang_sama_dengan_menyimpan_bentuk(
+        klien, aplikasi, lingkungan):
+    """Menandai latar MENULIS anotasi, jadi aturannya tidak boleh lebih longgar.
+
+    Diperiksa per gambar, bukan sekali di depan: satu daftar bisa memuat
+    gambar milik dua pelabel, dan yang bukan jatahnya harus ditolak tanpa
+    menggagalkan sisanya.
+    """
+    from conftest import klien_baru
+    from tests.test_data import masuk, PW_PAUL, PW_ANGGI
+
+    masuk(klien, "paul", PW_PAUL)
+    from tests.test_projek import _projek
+    d = _projek(_ruang(klien), "latar-hak", n=4, label=False)
+    klien.post(f"/setsrc?path={d}")
+    g = sorted(str(q) for q in d.glob("*.jpg"))
+    klien.post("/api/tugas/bagi", json={"pelabel": "anggi", "gambar": g[:2]})
+    klien.post("/api/tugas/bagi", json={"pelabel": "paul", "gambar": g[2:]})
+
+    pelabel = klien_baru(aplikasi, "anggi", PW_ANGGI)
+    pelabel.get("/?ds=paul/latar-hak")
+    r = pelabel.post("/api/latar", json={"gambar": g}).json()
+    assert r["ok"] and (r["n"], r["ditolak"]) == (2, 2), r
+    assert pathlib.Path(g[0]).with_suffix(".json").exists()
+    assert not pathlib.Path(g[3]).with_suffix(".json").exists(), \
+        "gambar milik pelabel lain ikut ditandai"
+
+    # Yang sama sekali bukan anggota tidak bisa apa-apa.
+    r = pelabel.post("/api/latar", json={"gambar": ["/etc/passwd"]}).json()
+    assert r["ok"] is False
+
+
+def test_latar_menolak_gambar_yang_masih_berisi_objek(klien, lingkungan):
+    """Menandai latar tidak pernah menghapus pekerjaan orang.
+
+    Gambar yang masih punya objek ditolak, bukan dikosongkan diam-diam. Kalau
+    memang mau dijadikan contoh negatif, objeknya dihapus dulu di kanvas —
+    tindakan yang bisa diurungkan dan terlihat.
+    """
+    from tests.test_data import masuk, PW_PAUL
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    d = _projek(_ruang(klien), "latar-tolak", n=2)      # keduanya berlabel
+    klien.post(f"/setsrc?path={d}")
+    g = sorted(str(q) for q in d.glob("*.jpg"))
+
+    r = klien.post("/api/latar", json={"gambar": g}).json()
+    assert r["ok"] is False, r
+    for q in g:
+        js = json.loads(pathlib.Path(q).with_suffix(".json").read_text())
+        assert js["shapes"], "objeknya terhapus oleh tandai latar"
+
+    # Sesudah objeknya dihapus, gambar yang sama diterima.
+    klien.post("/api/simpan", json={"path": g[0], "shapes": []})
+    r = klien.post("/api/latar", json={"gambar": g}).json()
+    assert r["ok"] and (r["n"], r["ditolak"]) == (1, 1), r
