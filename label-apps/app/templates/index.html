@@ -32,8 +32,9 @@
 {# `warna` menautkan chip ke potongan bilah kemajuan di atasnya. Titiknya yang
    menjadikan chip itu sekaligus keterangan bilah, jadi angkanya tidak perlu
    ditulis dua kali. #}
-{% macro chip(nama, val, jumlah, warna="") -%}
+{% macro chip(nama, val, jumlah, warna="", ket="") -%}
 <a class="chip"{% if flt == val %} data-on{% endif %}
+   {% if ket %}title="{{ ket }}"{% endif %}
    href="{{ tautan(val_f=val) }}">{% if warna %}<i class="titik t-{{ warna }}"></i>{% endif %}{{ nama }} <b>{{ jumlah }}</b></a>
 {%- endmacro %}
 
@@ -94,12 +95,29 @@
 
   <div class="bar">
     {{ chip("Semua", "all", total) }}
-    {{ chip("Perlu dicek", "issue", n_warn, "warn") }}
-    {{ chip("Sudah dilabeli", "sudah", n_sudah, "ok") }}
-    {{ chip("Belum dilabeli", "unlab", n_stop, "stop") }}
+    {#- Namanya sendiri tidak memberi tahu apa yang dicek, dan yang paling
+        sering disangka orang justru yang TIDAK termasuk: gambar latar. Latar
+        tidak pernah masuk sini — ia tidak punya objek sama sekali, sedangkan
+        seluruh temuan di bawah ini tentang bentuk objek yang sudah digambar.
+        Tiap kartunya menyebut temuannya sendiri; keterangan ini yang
+        menjelaskan chipnya sebelum diklik. -#}
+    {{ chip("Perlu dicek", "issue", n_warn, "warn",
+            "Gambar yang SUDAH punya objek, tetapi bentuknya mencurigakan: "
+            "mask sangat kecil atau memenuhi seluruh frame, poligon di bawah "
+            "4 titik, titik di luar tepi gambar, atau kelas kosong. "
+            "Gambar latar tidak termasuk — menandai latar itu keputusan, "
+            "bukan kecurigaan.") }}
+    {{ chip("Sudah dilabeli", "sudah", n_sudah, "ok",
+            "Semua yang sudah dikerjakan, termasuk yang ditandai latar dan "
+            "yang perlu dicek.") }}
+    {{ chip("Belum dilabeli", "unlab", n_stop, "stop",
+            "Belum disentuh sama sekali: tidak punya objek dan belum "
+            "ditandai latar.") }}
     {# Sampel negatif: sengaja ditandai tanpa objek. Berbeda dari "belum
        dilabeli" — yang ini sudah selesai diperiksa. #}
-    {{ chip("Latar", "bg", n_bg, "bg") }}
+    {{ chip("Latar", "bg", n_bg, "bg",
+            "Sampel negatif: gambar yang sengaja dinyatakan tidak berisi "
+            "objek apa pun. Ikut terekspor sebagai berkas label kosong.") }}
     {#- Muncul hanya kalau projeknya sudah pernah dibagi. Chip bernilai nol
         yang selalu ada cuma menambah satu hal untuk dibaca tiap kali. -#}
     {%- if ada_tugas %}{{ chip("Tugasku", "tugasku", n_tugasku) }}{% endif %}

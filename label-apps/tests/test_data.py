@@ -2038,3 +2038,34 @@ def test_mode_dan_tidak_menawarkan_latar_dan_belum_dilabeli(klien, lingkungan):
     assert len(_grid_nama(klien, f="all", c=["botol"], x="unlab")) == 2
     assert "hidden" not in re.search(
         r'class="kelas-daftar kelas-tanpa"[^>]*>', klien.get("/?f=all").text).group(0)
+
+
+def test_latar_tidak_pernah_masuk_perlu_dicek(klien, lingkungan):
+    """Menandai latar itu keputusan, bukan kecurigaan.
+
+    "Perlu dicek" menandai bentuk objek yang mencurigakan: mask sangat kecil
+    atau memenuhi frame, poligon di bawah 4 titik, titik di luar tepi, kelas
+    kosong. Semuanya tentang objek yang SUDAH digambar.
+
+    Gambar latar tidak punya objek sama sekali, jadi tidak ada yang bisa
+    dicurigai padanya. Kalau ia sampai masuk sini, setiap contoh negatif yang
+    dibuat dengan sengaja akan tampak seperti pekerjaan yang salah.
+    """
+    masuk(klien, "paul", PW_PAUL)
+    src = lingkungan["roots"] / "ds-alpha"          # 4 gambar, 2 berlabel
+    klien.post(f"/setsrc?path={src}")
+    sebelum = _chip(klien.get("/?f=all").text, "Perlu dicek")
+
+    img = _gambar(lingkungan, "ds-alpha", 3)        # belum berlabel
+    assert klien.post(f"/markbg?path={img}").json()["ok"] is True
+
+    h = klien.get("/?f=all").text
+    assert _chip(h, "Perlu dicek") == sebelum, "latar ikut dihitung perlu dicek"
+    assert klien.get("/?f=issue").text.count('class="card"') == sebelum
+    # Dan chipnya menjelaskan dirinya sebelum diklik: nama "Perlu dicek"
+    # sendiri tidak memberi tahu apa yang dicek.
+    assert "Gambar latar tidak termasuk" in h
+
+    # Latar tetap punya saringannya sendiri, di chip dan di daftar kelas.
+    assert klien.get("/?f=bg").text.count('class="card"') == 1
+    assert klien.get("/?x=latar").text.count('class="card"') == 1
