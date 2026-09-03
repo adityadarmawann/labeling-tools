@@ -125,6 +125,24 @@ def anotasi_untuk(gambar: Path) -> Path | None:
     return None
 
 
+# Hasil penelusuran disimpan sebentar. Setiap halaman projek — papan, grid,
+# rincian job, halaman bagi, versi, unggah — memanggilnya lewat konteks(),
+# dan pada projek produksi terbesar sekali telusur memakan 542 ms untuk 11.319
+# gambar. Delapan orang yang sedang melabeli membayar itu di setiap muat
+# halaman, hanya untuk mengisi angka di sidebar.
+#
+# CATATAN UKURAN, bukan penanda yang harus dipercaya buta.
+#
+# _survei menelusuri seluruh folder, dan setiap halaman projek memanggilnya
+# lewat konteks(). Pada projek produksi terbesar — 11.319 gambar — sekali
+# telusur memakan 542 ms, dan itu dibayar di tiap muat halaman hanya untuk
+# mengisi angka di sidebar.
+#
+# Simpanan sempat dipasang untuk menutupnya, dikunci penanda perubahan dan cap
+# folder. Ia dicabut lagi: pada mesin ini menambah berkas ternyata tidak selalu
+# mengubah waktu folder induknya, jadi angka yang tampil bisa tertinggal tanpa
+# ada yang bisa menjelaskan kapan. Simpanan yang pembatalannya tidak dipahami
+# lebih berbahaya daripada halaman yang lambat.
 def _survei(d: Path) -> dict:
     """Sekali telusur untuk semua angka yang dibutuhkan satu kartu.
 

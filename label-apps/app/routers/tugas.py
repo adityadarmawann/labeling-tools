@@ -624,6 +624,7 @@ async def tandai_latar(request: Request,
     lepas = bool(body.get("lepas"))
 
     berhasil, tolak = 0, 0
+    diubah = []
     with sess.lock:
         for jalur in minta[:MAKS_SEKALI]:
             it = sess.find(jalur)
@@ -642,11 +643,14 @@ async def tandai_latar(request: Request,
                 tolak += 1
                 continue
             berhasil += 1
-    if berhasil:
+            diubah.append(it["img"])
+    if diubah:
         # Sesi LAIN memegang salinan isi projek ini. Tanpa penanda, papan
-        # kemajuan mereka membeku di angka sebelum perubahan ini.
+        # kemajuan mereka membeku di angka sebelum perubahan ini. Gambarnya
+        # disebutkan satu per satu supaya mereka cukup membaca ulang yang itu.
         from ..session import tandai_berubah
-        tandai_berubah(sess.src)
+        for q in diubah:
+            tandai_berubah(sess.src, q)
     if not berhasil:
         return {"ok": False,
                 "error": "tidak satu pun gambar itu bisa kamu ubah"}

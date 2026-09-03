@@ -455,7 +455,7 @@ def _set_bg(sess: Session, path: str, on: bool):
     # Sesi lain memegang salinan isi projek ini; tanpa penanda, papan kemajuan
     # mereka membeku di angka sebelum perubahan ini.
     from ..session import tandai_berubah
-    tandai_berubah(sess.src)
+    tandai_berubah(sess.src, it["img"])
     return {"ok": True, "msg": msg}
 
 

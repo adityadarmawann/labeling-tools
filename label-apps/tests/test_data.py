@@ -2161,3 +2161,36 @@ def test_impor_tidak_menyeret_berkas_pendamping_projek_sumber(klien, lingkungan)
     assert "tugas.json" not in isi, f"berkas pendamping ikut tersalin: {isi}"
     assert not (tujuan / "versi").exists(), isi
     assert r["disalin"] == 1, f"angka salinan menghitung berkas pendamping: {r}"
+
+
+def test_penyegaran_hanya_membaca_gambar_yang_berubah(klien, lingkungan):
+    """Memindai ulang seluruh folder tiap kali orang lain menyimpan tidak bisa dipakai.
+
+    Projek produksi terbesar berisi 11.319 gambar dan sekali pindai memakan
+    5,8 detik; dengan satu tim yang sedang melabeli, itu berarti setiap muat
+    halaman menunggu enam detik. Yang dibaca ulang harus HANYA gambar yang
+    benar-benar berubah.
+    """
+    import pathlib
+
+    from app import session as sesi_mod
+
+    masuk(klien, "paul", PW_PAUL)
+    src = lingkungan["roots"] / "ds-alpha"
+    klien.post(f"/setsrc?path={src}")
+
+    sess = list(sesi_mod.store._sesi.values())[0] if hasattr(sesi_mod.store, "_sesi") \
+        else None
+    img = pathlib.Path(_gambar(lingkungan, "ds-alpha", 3))
+
+    cap0 = sesi_mod.cap_sekarang(src)
+    sesi_mod.tandai_berubah(src, img)
+    berubah = sesi_mod.berubah_sejak(src, cap0)
+    assert berubah == {str(img.resolve())}, berubah
+
+    # Perubahan yang tidak bisa disebut per berkas memaksa pindai ulang penuh.
+    sesi_mod.tandai_berubah(src, None)
+    assert sesi_mod.berubah_sejak(src, cap0) is None
+
+    # Sesi yang tertinggal lebih jauh daripada riwayat juga.
+    assert sesi_mod.berubah_sejak(src, -10_000) is None

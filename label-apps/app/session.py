@@ -32,20 +32,63 @@ from .services import annotations, scanner
 # Yang disimpan cuma pencacah per folder. Pemindaian ulang mahal (11 ribu
 # gambar butuh detik), jadi ia hanya dijalankan kalau pencacahnya benar-benar
 # berubah — dan yang menaikkannya cuma penulisan sungguhan.
+# Yang dicatat bukan cuma "ada yang berubah", melainkan GAMBAR MANA. Memindai
+# ulang seluruh folder tiap kali orang lain menyimpan terdengar sederhana dan
+# tidak bisa dipakai: projek produksi terbesar berisi 11.319 gambar dan sekali
+# pindai memakan 5,8 detik. Dengan satu tim yang sedang melabeli, itu berarti
+# setiap muat halaman menunggu enam detik.
+#
+# Riwayatnya dibatasi. Kalau sebuah sesi tertinggal lebih jauh daripada yang
+# masih diingat, ia memindai ulang seluruhnya — jarang, dan lebih baik
+# daripada menebak apa yang terlewat.
+_MAKS_RIWAYAT = 4000
 _cap_ubah: dict[str, int] = {}
+_riwayat: dict[str, list] = {}
 _kunci_cap = threading.Lock()
 
 
-def tandai_berubah(src) -> None:
-    """Catat bahwa isi anotasi sebuah projek berubah."""
+def tandai_berubah(src, gambar=None) -> None:
+    """Catat bahwa anotasi sebuah gambar berubah.
+
+    `gambar` boleh None untuk perubahan yang tidak bisa disebut per berkas —
+    itu memaksa pemindaian ulang penuh bagi sesi yang tertinggal.
+    """
     k = str(Path(src).resolve())
     with _kunci_cap:
-        _cap_ubah[k] = _cap_ubah.get(k, 0) + 1
+        n = _cap_ubah.get(k, 0) + 1
+        _cap_ubah[k] = n
+        r = _riwayat.setdefault(k, [])
+        r.append((n, str(Path(gambar).resolve()) if gambar else None))
+        if len(r) > _MAKS_RIWAYAT:
+            del r[:len(r) - _MAKS_RIWAYAT]
 
 
 def cap_sekarang(src) -> int:
     with _kunci_cap:
         return _cap_ubah.get(str(Path(src).resolve()), 0)
+
+
+def berubah_sejak(src, cap: int):
+    """
+    Gambar yang berubah sesudah `cap`, atau None kalau riwayatnya tidak cukup.
+
+    None berarti "pindai ulang seluruhnya": entah ada perubahan yang tidak
+    bisa disebut per berkas, entah sesinya tertinggal lebih jauh daripada yang
+    masih diingat.
+    """
+    k = str(Path(src).resolve())
+    with _kunci_cap:
+        r = _riwayat.get(k) or []
+        if not r or r[0][0] > cap + 1:
+            return None
+        keluar = set()
+        for n, jalur in r:
+            if n <= cap:
+                continue
+            if jalur is None:
+                return None
+            keluar.add(jalur)
+        return keluar
 
 
 class Session:
@@ -98,19 +141,56 @@ class Session:
 
     def segarkan(self) -> bool:
         """
-        Pindai ulang kalau ada yang menulis anotasi sejak pemindaian terakhir.
+        Susulkan perubahan yang ditulis sesi lain sejak pemindaian terakhir.
 
-        Dipanggil halaman yang menyatakan KEMAJUAN — papan anotasi, rincian
-        job, dan grid. Halaman lain tidak perlu: yang berubah cuma anotasi,
-        dan yang membacanya cuma halaman-halaman itu.
+        Dipanggil setiap halaman yang menampilkan isi anotasi: papan, rincian
+        job, halaman bagi, grid, kanvas, dan halaman Lihat.
 
-        Mengembalikan True kalau benar-benar memindai ulang.
+        Yang dibaca ulang HANYA gambar yang benar-benar berubah. Memindai
+        seluruh folder tiap kali terdengar sederhana dan tidak bisa dipakai:
+        projek produksi terbesar berisi 11.319 gambar, sekali pindai 5,8
+        detik, dan dengan satu tim yang sedang melabeli itu berarti setiap
+        muat halaman menunggu enam detik.
+
+        Mengembalikan True kalau ada yang disusulkan.
         """
-        if self.src is None or self.cap == cap_sekarang(self.src):
+        if self.src is None:
             return False
+        cap = cap_sekarang(self.src)
+        if self.cap == cap:
+            return False
+        berubah = berubah_sejak(self.src, self.cap)
         with self.lock:
-            self.load(self.src)
+            if berubah is None:
+                self.load(self.src)
+                return True
+            peta = {str(it["img"].resolve()): it for it in self.items}
+            for jalur in berubah:
+                it = peta.get(jalur)
+                if it is None:
+                    # Berkas baru atau terhapus: itu perubahan daftar, bukan
+                    # isi, dan cuma pemindaian ulang yang tahu bentuknya.
+                    self.load(self.src)
+                    return True
+                self.muat_ulang_item(it)
+            self.cap = cap
         return True
+
+    def muat_ulang_item(self, it: dict) -> None:
+        """Baca ulang anotasi SATU gambar dari disk."""
+        try:
+            if it.get("yolo"):
+                sh = scanner.read_yolo(it["labels"], it["W"], it["H"], self.names)
+                scanner._gabung_cadangan(it["img"], sh)
+                it["shapes"] = sh
+                it["issues"] = scanner.inspect(sh, it["W"], it["H"], True)
+            else:
+                sh, W, H = scanner.read_json(it["img"].with_suffix(".json"))
+                it["shapes"] = sh
+                it["issues"] = scanner.inspect(sh, W or it["W"], H or it["H"], True)
+        except Exception:
+            it["issues"] = ["berkas anotasi rusak"]
+        self.drop_thumbs_for(it)
 
     def penempat_tambah(self):
         """
