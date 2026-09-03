@@ -154,6 +154,13 @@ def bentuk_untuk_kanvas(it: dict, mentah: dict) -> list[dict]:
 @router.get("/label", response_class=HTMLResponse)
 async def halaman(request: Request, path: str = "",
                   sess: Session = Depends(current_session)):
+    # Isi projek dipindai sekali lalu dipakai dari ingatan sesi. Di halaman ini
+    # itu bukan sekadar angka yang basi: orang membuka gambar, melihat anotasi
+    # versi lama, menyuntingnya, lalu menyimpan — dan pekerjaan orang lain yang
+    # ditulis di antaranya tertimpa oleh dasar yang sudah usang. Murah kalau
+    # tidak ada yang berubah: yang menaikkan penandanya cuma penulisan
+    # sungguhan.
+    await asyncio.to_thread(sess.segarkan)
     if not sess.items:
         return templates.TemplateResponse(request, "notfound.html", {"sess": sess},
                                           status_code=404)
@@ -422,6 +429,11 @@ async def api_simpan(request: Request, sess: Session = Depends(current_session_a
     if "teks_gambar" in body:
         isi["image_text"] = str(body.get("teks_gambar") or "")
     tmp = jp.with_suffix(".json.tmp")
+    # Di dataset YOLO, berkas .json di sebelah gambar BUKAN sumber kebenaran —
+    # labelnya dibaca dari labels/*.txt. Ia cadangan untuk yang tidak muat di
+    # sana: group_id, catatan objek, dan bentuk yang bukan kotak. scanner
+    # _gabung_cadangan yang memasangkannya kembali saat membaca, dan ia
+    # mengabaikan cadangan yang jumlah atau kelasnya tidak lagi cocok.
     try:
         tmp.write_text(json.dumps(isi, ensure_ascii=False, indent=2), encoding="utf-8")
         tmp.replace(jp)

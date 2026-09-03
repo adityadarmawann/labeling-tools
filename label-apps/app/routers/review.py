@@ -370,6 +370,9 @@ async def index(request: Request, f: str = "all",
 @router.get("/view", response_class=HTMLResponse)
 async def view(request: Request, path: str = "",
                sess: Session = Depends(current_session)):
+    # Sama alasannya dengan halaman kanvas: yang ditampilkan harus keadaan
+    # sekarang, bukan keadaan saat projek ini pertama dibuka sesi ini.
+    await asyncio.to_thread(sess.segarkan)
     it = sess.find(path)
     if not it:
         return templates.TemplateResponse(

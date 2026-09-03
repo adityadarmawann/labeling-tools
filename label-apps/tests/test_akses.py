@@ -528,3 +528,45 @@ def test_unggah_tidak_menimpa_gambar_yang_sudah_ada(klien, lingkungan):
 
     # Nama lain tetap diterima.
     assert klien.put("/upload?ds=timpa&name=dua.jpg", content=b).json()["ok"] is True
+
+
+def test_kanvas_menampilkan_keadaan_sekarang_bukan_saat_projek_dibuka(
+        klien, aplikasi, lingkungan):
+    """Dua orang pada gambar yang sama, dan yang satu menimpa pekerjaan yang lain.
+
+    Isi projek dipindai sekali lalu dipakai dari ingatan sesi. Di halaman
+    kanvas itu bukan sekadar angka yang basi: orang membuka gambar, melihat
+    anotasi versi lama, menyuntingnya, lalu menyimpan — dan yang ditulis orang
+    lain di antaranya hilang tanpa jejak.
+    """
+    import json
+    import pathlib
+
+    from conftest import klien_baru
+    from tests.test_data import masuk, PW_ANGGI, PW_PAUL
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = _projek(ruang, "dua-tab", n=2, label=False)
+    klien.post(f"/setsrc?path={d}")
+    g = sorted(str(q) for q in d.glob("*.jpg"))
+    klien.post("/api/tugas/undang?akun=anggi")
+    klien.post("/api/tugas/bagi", json={"pelabel": "anggi", "gambar": g})
+
+    # Sesi kedua memuat projek lebih dulu, lalu paul menulis.
+    lain = klien_baru(aplikasi, "anggi", PW_ANGGI)
+    lain.get("/?ds=paul/dua-tab")          # sesi kedua memuat isi projek
+    assert lain.get(f"/label?path={g[0]}").status_code == 200
+    klien.post("/api/simpan", json={"path": g[0], "shapes": [
+        {"label": "dari-paul", "shape_type": "rectangle",
+         "points": [[2, 2], [30, 30]]}]})
+
+    # Sesi kedua membuka lagi: harus melihat tulisan terbaru, bukan yang lama.
+    h = lain.get(f"/label?path={g[0]}").text
+    assert "dari-paul" in h, "kanvas menampilkan keadaan saat projek dibuka"
+
+    # Dan halaman Lihat juga.
+    assert "dari-paul" in lain.get(f"/view?path={g[0]}").text
+    isi = json.loads(pathlib.Path(g[0]).with_suffix(".json").read_text())
+    assert [s["label"] for s in isi["shapes"]] == ["dari-paul"]
