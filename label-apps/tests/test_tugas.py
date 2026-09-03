@@ -2052,3 +2052,174 @@ def test_chip_tugasku_menunjuk_pekerjaan_yang_belum_masuk_dataset(
     h = " ".join(tamu.get("/?ds=paul/jatah-luar").text.split())
     assert "1 jatahmu belum masuk dataset" in h, h[h.find("Tugasku") - 80:][:300]
     assert "/anotasi?ds=paul" in h
+
+
+# ============================================================
+# PENGUNCI PERBAIKAN AUDIT YANG SEMULA CUMA DIVERIFIKASI TANGAN
+# ============================================================
+
+def test_calon_tidak_membocorkan_alamat_surel_bukan_anggota(klien, lingkungan):
+    """"Hanya pemilik projek" tidak menyaring siapa pun.
+
+    Setiap orang adalah pemilik projeknya sendiri, jadi satu projek kosong
+    cukup untuk membaca seluruh daftar akun beserta alamat surelnya.
+    """
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    d = _projek(_ruang(klien), "calon-bocor", n=1)
+    klien.post(f"/setsrc?path={d}")
+
+    j = klien.get("/api/tugas/calon").json()
+    peta = {x["akun"]: x for x in j["akun"]}
+    assert peta["anggi"]["email"] == "", "email bukan anggota ikut terkirim"
+    assert peta["paul"]["anggota"] is True
+
+    klien.post("/api/tugas/undang?akun=anggi")
+    peta = {x["akun"]: x for x in klien.get("/api/tugas/calon").json()["akun"]}
+    assert peta["anggi"]["anggota"] is True
+
+
+def test_undangan_email_dipakai_ulang_bukan_dikembarkan(klien, lingkungan):
+    """Panelnya cuma menampilkan alamatnya.
+
+    Tiga baris "h@example.com" tidak bisa dibedakan, jadi pemilik mencabut yang
+    satu dan mengira aksesnya tertutup sementara kembarannya masih hidup.
+    """
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    d = _projek(_ruang(klien), "undangan-kembar", n=1)
+    klien.post(f"/setsrc?path={d}")
+
+    a = klien.post("/api/tugas/undang-email?email=kembar@contoh.id").json()
+    b = klien.post("/api/tugas/undang-email?email=kembar@contoh.id").json()
+    assert a["tautan"] == b["tautan"], (a, b)
+    assert len(tugas.undangan_terbuka(tugas.baca(d, "paul"))) == 1
+
+    # Alamat yang bentuknya tidak masuk akal ditolak.
+    for jahat in ("@", "bukanemail", "a b@x.com", "<script>@x.com", ""):
+        assert klien.post(f"/api/tugas/undang-email?email={jahat}").json()["ok"] is False, jahat
+    # '+' di query string berarti spasi, jadi ia harus di-encode — persis
+    # seperti yang dilakukan encodeURIComponent di peramban.
+    assert klien.post("/api/tugas/undang-email",
+                      params={"email": "b.c+t@sub.dom.co.id"}).json()["ok"] is True
+
+
+def test_undang_dan_keluarkan_menolak_yang_tidak_masuk_akal(klien, lingkungan):
+    """Rute ini dulu menjawab ok:true untuk apa pun.
+
+    Salah ketik tidak pernah kelihatan, dan akun pemilik sendiri diterima —
+    lalu membubarkan job miliknya sendiri sambil melaporkan daftar anggota yang
+    tidak berubah.
+    """
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    d = _projek(_ruang(klien), "undang-tolak", n=2)
+    klien.post(f"/setsrc?path={d}")
+    g = sorted(str(q) for q in d.glob("*.jpg"))
+    klien.post("/api/tugas/bagi", json={"pelabel": "paul", "gambar": g})
+    n_job = len(tugas.baca(d, "paul")["tugas"])
+
+    assert klien.post("/api/tugas/undang?akun=paul").json()["ok"] is False
+    for akun, potong in (("paul", "pemilik"), ("hantu", "bukan anggota"),
+                         ("", "belum memilih")):
+        r = klien.post(f"/api/tugas/keluarkan-anggota?akun={akun}").json()
+        assert r["ok"] is False and potong in r["error"], (akun, r)
+    assert len(tugas.baca(d, "paul")["tugas"]) == n_job, "job pemilik ikut bubar"
+
+
+def test_lencana_dan_kartu_tidak_menghitung_berkas_yang_hilang(klien, lingkungan):
+    """Papan dan grid sudah menyaring; lencana memakai angka mentah.
+
+    Akibatnya lencana Dataset menyebut 8 sementara halamannya menampilkan 6,
+    dan lencana Anotasi hilang sama sekali padahal masih ada yang menunggu.
+    """
+    import pathlib
+
+    from app.services import projek as sp
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    d = _projek(_ruang(klien), "hilang-hitung", n=4)
+    klien.post(f"/setsrc?path={d}")
+    g = sorted(d.glob("*.jpg"))
+    klien.post("/api/tugas/dataset", json={"gambar": [str(q) for q in g]})
+
+    unggahan = lingkungan["roots"] / "_unggahan"
+    assert sp.konteks(d, unggahan, "paul")["n_dataset"] == 4
+
+    # Dua gambar hilang dari disk; berkas anotasinya ditinggal yatim.
+    for q in g[:2]:
+        q.unlink()
+    klien.post("/rescan")
+    pr = sp.konteks(d, unggahan, "paul")
+    assert pr["jumlah"] == 2, pr
+    assert pr["n_dataset"] == 2, f"lencana Dataset menghitung berkas hilang: {pr}"
+    assert pr["anotasi"] == 2, f"anotasi yatim ikut dihitung: {pr}"
+
+
+def test_splitting_hanya_pemilik_projek(klien, aplikasi, lingkungan):
+    """Splitting memeriksa isi tiap gambar — menit-menit CPU pada dataset besar."""
+    from conftest import klien_baru
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    d = _projek(_ruang(klien), "split-hak", n=3)
+    klien.post(f"/setsrc?path={d}")
+    klien.post("/api/tugas/undang?akun=anggi")
+
+    tamu = klien_baru(aplikasi, "anggi", PW_ANGGI)
+    tamu.get("/?ds=paul/split-hak")
+    r = tamu.post("/api/split/jalankan?split=8:1:1").json()
+    assert r["ok"] is False and "pemilik projek" in r["error"], r
+    assert klien.post("/api/split/jalankan?split=8:1:1").json()["ok"] is True
+
+
+def test_dataset_menolak_per_gambar_bukan_seluruh_daftar(klien, aplikasi,
+                                                          lingkungan):
+    """"Pilih semua" di halaman pelabel dulu menghasilkan nol.
+
+    Satu gambar orang lain di dalam daftar membatalkan seluruhnya, dengan pesan
+    yang menghitung gambar yang bukan urusannya. /api/latar sudah bekerja per
+    gambar sejak awal.
+    """
+    from conftest import klien_baru
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    d = _projek(_ruang(klien), "dataset-campur", n=4)
+    klien.post(f"/setsrc?path={d}")
+    g = sorted(str(q) for q in d.glob("*.jpg"))
+    klien.post("/api/tugas/undang?akun=anggi")
+    klien.post("/api/tugas/bagi", json={"pelabel": "anggi", "gambar": g[:2]})
+    klien.post("/api/tugas/bagi", json={"pelabel": "paul", "gambar": g[2:]})
+
+    tamu = klien_baru(aplikasi, "anggi", PW_ANGGI)
+    tamu.get("/?ds=paul/dataset-campur")
+    r = tamu.post("/api/tugas/dataset", json={"gambar": g}).json()
+    assert r["ok"] is True and r["ditambah"] == 2 and r["ditolak"] == 2, r
+    data = tugas.baca(d, "paul")
+    assert sorted(data["dataset"]) == sorted(q.rsplit("/", 1)[1] for q in g[:2])
+
+
+def test_kolom_papan_menyebut_satuannya(klien, lingkungan):
+    """Tiga kolom memakai satuan yang berbeda.
+
+    "Belum ditugaskan" menghitung GAMBAR; "Dikerjakan" dan "Dataset"
+    menghitung TUGAS. Tanpa keterangan, angka 2 di kolom Dataset berdiri
+    berdampingan dengan "Lihat semua 6 gambar di dataset" untuk hal yang
+    berbeda.
+    """
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    d = _projek(_ruang(klien), "satuan", n=3)
+    klien.post(f"/setsrc?path={d}")
+    g = sorted(str(q) for q in d.glob("*.jpg"))
+    klien.post("/api/tugas/bagi", json={"pelabel": "paul", "gambar": g[:1]})
+
+    h = " ".join(klien.get("/anotasi?ds=satuan").text.split())
+    assert "2 gambar</span>" in h, "kolom Belum ditugaskan tanpa satuan"
+    assert "1 tugas</span>" in h, "kolom Dikerjakan tanpa satuan"

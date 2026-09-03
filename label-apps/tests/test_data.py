@@ -2132,3 +2132,32 @@ def test_berkas_anotasi_rusak_disisihkan_bukan_ditimpa(klien, lingkungan):
     for q in cadangan:
         q.unlink()
     jp.unlink(missing_ok=True)
+
+
+def test_impor_tidak_menyeret_berkas_pendamping_projek_sumber(klien, lingkungan):
+    """safe_relpath membuang titik di depan nama.
+
+    .tugas.json projek sumber lalu mendarat sebagai "tugas.json" di projek
+    tujuan: tidak merusak dataset, tetapi mengotori projeknya dan membuat angka
+    "ditambah" menghitung berkas yang bukan gambar maupun anotasi.
+    """
+    import pathlib
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    sumber = ruang / "sumber-pendamping"
+    sumber.mkdir(parents=True, exist_ok=True)
+    asli = (lingkungan["roots"] / "ds-beta" / "ds-beta-00.jpg").read_bytes()
+    (sumber / "a.jpg").write_bytes(asli)
+    (sumber / ".tugas.json").write_text('{"pemilik": "paul", "dataset": []}')
+    (sumber / ".versi").mkdir(exist_ok=True)
+    (sumber / ".versi" / "v1.json").write_text("{}")
+
+    r = klien.post(f"/impor?path={sumber}&ds=tujuan-pendamping").json()
+    assert r["ok"] is True, r
+    tujuan = ruang / "tujuan-pendamping"
+    isi = sorted(q.name for q in tujuan.rglob("*") if q.is_file())
+    assert "a.jpg" in isi
+    assert "tugas.json" not in isi, f"berkas pendamping ikut tersalin: {isi}"
+    assert not (tujuan / "versi").exists(), isi
+    assert r["disalin"] == 1, f"angka salinan menghitung berkas pendamping: {r}"
