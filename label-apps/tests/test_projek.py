@@ -668,3 +668,52 @@ def test_sampul_projek_tamu_ikut_aturan_membuka_projeknya(klien, aplikasi,
     # Projek yang tidak mengundangnya tetap tertutup.
     diam = next(rahasia.glob("*.jpg"))
     assert tamu.get(f"/api/projek/sampul?path={diam}").status_code == 404
+
+
+def test_survei_menghitung_persis_tanpa_menyerah_di_tengah(lingkungan, tmp_path):
+    """Batas penelusuran lama membuat projek besar berhenti dihitung.
+
+    Kartunya menyebut "≥10.187 gambar" untuk 11.319 yang sebenarnya, dan angka
+    itu ikut ke lencana sidebar. Dengan penelusuran os.scandir, seluruh
+    entrinya terbaca lebih cepat daripada jawaban lama yang bahkan tidak
+    lengkap.
+    """
+    import json
+
+    import cv2
+    import numpy as np
+
+    from app.services import projek as sp
+
+    d = tmp_path / "banyak"
+    (d / "train" / "images").mkdir(parents=True)
+    (d / "train" / "labels").mkdir(parents=True)
+    im = np.full((20, 30, 3), 80, np.uint8)
+    for i in range(60):
+        cv2.imwrite(str(d / "train" / "images" / f"g{i:03d}.jpg"), im)
+        if i < 40:
+            (d / "train" / "labels" / f"g{i:03d}.txt").write_text("0 .5 .5 .2 .2\n")
+    # Berkas pendamping dan folder bertitik tidak ikut dihitung.
+    (d / ".tugas.json").write_text('{"dataset": []}')
+    (d / ".versi").mkdir()
+    (d / ".versi" / "v1.json").write_text("{}")
+
+    s = sp._survei(d)
+    assert s["gambar"] == 60, s
+    assert s["anotasi"] == 40, s
+    assert s["lebih"] is False
+    # Sampulnya gambar berlabel, dan dipilih dari urutan nama supaya projek
+    # yang sama tidak menampilkan sampul berbeda di mesin berbeda.
+    assert s["sampul"].name == "g000.jpg", s["sampul"]
+
+    # Tata letak labelme: anotasi bersebelahan dengan gambarnya.
+    d2 = tmp_path / "labelme"
+    d2.mkdir()
+    for i in range(5):
+        q = d2 / f"a{i}.jpg"
+        cv2.imwrite(str(q), im)
+        if i >= 3:
+            q.with_suffix(".json").write_text(json.dumps({"shapes": []}))
+    s2 = sp._survei(d2)
+    assert (s2["gambar"], s2["anotasi"]) == (5, 2), s2
+    assert s2["sampul"].name == "a3.jpg", s2["sampul"]

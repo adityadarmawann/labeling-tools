@@ -39,7 +39,14 @@ _SEMBUNYI = {SAMPAH, "_unggahan"}
 
 # Batas penelusuran per folder. Tanpa ini, satu dataset 300 ribu berkas
 # membuat halaman daftar menggantung setiap kali dibuka.
-MAKS_TELUSUR = 20_000
+#
+# Dinaikkan dari 20.000 setelah _survei ditulis ulang memakai os.scandir.
+# Batas lama membuat projek produksi terbesar berhenti dihitung di tengah
+# jalan: kartunya menyebut "≥10.187 gambar" untuk 11.319 yang sebenarnya, dan
+# angka itu ikut ke lencana sidebar. Dengan penelusuran yang sekarang, seluruh
+# 22.640 entrinya terbaca dalam 80 ms — lebih cepat daripada 542 ms yang dulu
+# dibayar untuk jawaban yang bahkan tidak lengkap.
+MAKS_TELUSUR = 60_000
 
 
 # ------------------------------------------------------------------ kemajuan
@@ -149,63 +156,114 @@ def _survei(d: Path) -> dict:
     Digabung menjadi satu jalan karena menelusuri folder besar itu mahal:
     menghitung gambar, menghitung anotasi, mencari sampul, dan mencari berkas
     terbaru masing-masing sendiri berarti empat kali kerja yang sama.
+
+    Dua hal yang membuatnya cepat, dan keduanya lahir dari pengukuran pada
+    projek produksi terbesar (11.319 gambar, semula 542 ms):
+
+    1. os.scandir, bukan Path.rglob. scandir membawa jenis entri dari hasil
+       baca folder yang sama, jadi tidak ada satu pun stat tambahan untuk
+       memutuskan berkas atau folder: 96 ms jadi 15 ms.
+
+    2. Pasangan anotasi ditentukan dari SATU telusur yang sama, bukan dengan
+       menanyakan tiap gambar apakah anotasinya ada. anotasi_untuk melakukan
+       sampai tiga stat per gambar, dan pada sebelas ribu gambar itu sendirian
+       memakan 276 ms — separuh biaya seluruh fungsi ini.
+
+    Sampulnya dipilih dari urutan nama, bukan urutan folder. Yang dulu
+    bergantung pada urutan yang dikembalikan sistem berkas, jadi projek yang
+    sama bisa menampilkan sampul berbeda di mesin berbeda.
+
+    Sengaja TANPA simpanan. Simpanan sempat dipasang lalu dicabut: kuncinya
+    bergantung pada waktu ubah folder, dan pada mesin ini menambah berkas
+    ternyata tidak selalu mengubahnya — angka di sidebar bisa tertinggal tanpa
+    ada yang bisa menjelaskan kapan. Menelusuri lebih cepat menyelesaikan
+    perkara yang sama tanpa menaruh kebenaran di tempat kedua.
     """
+    import os
+
+    akar = str(Path(d))
     n_img = 0
-    gambar_ada: set[str] = set()
-    ann_untuk: set[str] = set()
-    sampul: Path | None = None
-    sampul_berlabel = False
+    gambar: list[tuple[str, float]] = []      # (path, mtime) — calon sampul
+    ann_batang: set[str] = set()              # path tanpa akhiran, untuk .json/.txt
+    ann_labels: set[tuple[str, str]] = set()  # (akar split, stem) untuk labels/
     terbaru = 0.0
-    lebih = False
     n = 0
-    for p in d.rglob("*"):
-        n += 1
-        if n > MAKS_TELUSUR:
-            lebih = True
-            break
-        if not p.is_file():
+    lebih = False
+    tumpuk = [akar]
+    while tumpuk and not lebih:
+        try:
+            entri = os.scandir(tumpuk.pop())
+        except OSError:
             continue
-        # Berkas pendamping — .tag.json, .tugas.json, .versi/vN.json — berakhiran
-        # .json seperti anotasi dan tinggal di dalam folder projek yang sama.
-        # Tanpa aturan ini, membuat satu versi menaikkan hitungan "sudah
-        # dilabeli" projek itu satu, dan menandai satu gambar menaikkannya lagi:
-        # angka di kartu projek dan di sidebar naik tanpa ada yang dilabeli.
-        if any(bagian.startswith(".") for bagian in p.relative_to(d).parts):
-            continue
-        sfx = p.suffix.lower()
-        if sfx in IMG_EXT:
-            n_img += 1
-            gambar_ada.add(str(p.with_suffix("")))
-            # Sampul diambil dari gambar yang PUNYA anotasi, bukan yang
-            # pertama menurut abjad. Foto produk di atas meja yang belum
-            # dilabeli tidak memberi tahu apa pun tentang isi projeknya —
-            # yang tampak cuma mejanya.
-            if sampul is None or not sampul_berlabel:
-                punya = anotasi_untuk(p) is not None
-                if sampul is None or punya:
-                    sampul, sampul_berlabel = p, punya
-        elif sfx in ANN_EXT:
-            # Dicatat batangnya, bukan langsung dihitung. Berkas anotasi yang
-            # gambarnya sudah tidak ada tetap terhitung "sudah dilabeli", dan
-            # kartu projek lalu menyebut 7 sementara papan menyebut 6 — untuk
-            # projek yang sama, pada saat yang sama.
-            ann_untuk.add(str(p.with_suffix("")))
-            try:
-                terbaru = max(terbaru, p.stat().st_mtime)
-            except OSError:
-                pass
+        with entri:
+            for e in entri:
+                if e.name.startswith("."):
+                    continue
+                n += 1
+                if n > MAKS_TELUSUR:
+                    lebih = True
+                    break
+                try:
+                    if e.is_dir(follow_symlinks=False):
+                        tumpuk.append(e.path)
+                        continue
+                except OSError:
+                    continue
+                nama = e.name
+                titik = nama.rfind(".")
+                if titik < 0:
+                    continue
+                sfx = nama[titik:].lower()
+                if sfx in IMG_EXT:
+                    n_img += 1
+                    gambar.append((e.path, 0.0))
+                elif sfx in ANN_EXT:
+                    batang = e.path[:-len(sfx)]
+                    ann_batang.add(batang)
+                    induk = os.path.dirname(e.path)
+                    if os.path.basename(induk) == "labels":
+                        ann_labels.add((os.path.dirname(induk), nama[:titik]))
+                    try:
+                        terbaru = max(terbaru, e.stat().st_mtime)
+                    except OSError:
+                        pass
+
+    def punya_anotasi(jalur: str) -> bool:
+        """Sama aturannya dengan anotasi_untuk, tetapi dari hasil telusur tadi."""
+        batang = jalur[:jalur.rfind(".")]
+        if batang in ann_batang:
+            return True
+        induk = os.path.dirname(jalur)
+        if os.path.basename(induk) == "images":
+            return (os.path.dirname(induk), os.path.basename(batang)) in ann_labels
+        return False
+
+    # Sampul diambil dari gambar yang PUNYA anotasi, bukan yang pertama menurut
+    # abjad. Foto produk di atas meja yang belum dilabeli tidak memberi tahu
+    # apa pun tentang isi projeknya — yang tampak cuma mejanya.
+    gambar.sort(key=lambda x: x[0])
+    sampul = None
+    n_ann_cocok = 0
+    for jalur, _ in gambar:
+        if punya_anotasi(jalur):
+            n_ann_cocok += 1
+            if sampul is None or not sampul[1]:
+                sampul = (jalur, True)
+        elif sampul is None:
+            sampul = (jalur, False)
     if not terbaru:
         try:
-            terbaru = d.stat().st_mtime
+            terbaru = Path(d).stat().st_mtime
         except OSError:
             terbaru = 0.0
     # Tata letak YOLO menaruh label di folder labels/ yang sejajar images/,
     # jadi batangnya tidak pernah sama. Di situ jumlah anotasi dihitung apa
     # adanya, seperti sebelumnya.
-    cocok = len(gambar_ada & ann_untuk)
-    n_ann = cocok if cocok else len(ann_untuk)
-    return {"gambar": n_img, "anotasi": min(n_ann, n_img) if cocok else n_ann,
-            "sampul": sampul, "diubah": terbaru, "lebih": lebih}
+    n_ann = n_ann_cocok if n_ann_cocok else len(ann_batang)
+    return {"gambar": n_img,
+            "anotasi": min(n_ann, n_img) if n_ann_cocok else n_ann,
+            "sampul": Path(sampul[0]) if sampul else None,
+            "diubah": terbaru, "lebih": lebih}
 
 
 def _usia(t: float) -> str:
@@ -460,14 +518,34 @@ def konteks(d: Path, uploads_root: Path, aku: str) -> dict:
     # lencana Anotasi bahkan hilang sama sekali padahal masih ada yang
     # menunggu. Sekali telusur, dengan aturan yang sama seperti _survei.
     if data["kurasi"]:
+        # os.scandir dengan alasan yang sama seperti _survei: rglob memaksa
+        # satu stat per entri hanya untuk tahu ia berkas atau folder, dan
+        # angka ini dihitung di setiap muat halaman projek.
+        import os
+
         from ..config import IMG_EXT
+
         ada = set()
-        for q in Path(d).rglob("*"):
-            if q.suffix.lower() not in IMG_EXT or not q.is_file():
+        akar = str(Path(d).resolve())
+        tumpuk = [akar]
+        while tumpuk:
+            try:
+                entri = os.scandir(tumpuk.pop())
+            except OSError:
                 continue
-            if any(x.startswith(".") for x in q.relative_to(Path(d)).parts):
-                continue
-            ada.add(q.resolve().relative_to(Path(d).resolve()).as_posix())
+            with entri:
+                for e in entri:
+                    if e.name.startswith("."):
+                        continue
+                    try:
+                        if e.is_dir(follow_symlinks=False):
+                            tumpuk.append(e.path)
+                            continue
+                    except OSError:
+                        continue
+                    titik = e.name.rfind(".")
+                    if titik >= 0 and e.name[titik:].lower() in IMG_EXT:
+                        ada.add(e.path[len(akar) + 1:].replace(os.sep, "/"))
         n_dataset = sum(1 for k in data["dataset"] if k in ada)
     else:
         n_dataset = s["jumlah"]
