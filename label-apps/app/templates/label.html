@@ -156,6 +156,17 @@
       <span class="lab-pesan" id="teks-info"></span>
     </div>
 
+    {%- if anotasi_rusak %}
+    {#- Berkas anotasinya tidak bisa dibaca. Tanpa kalimat ini kanvasnya
+        terbuka dengan nol objek dan status "siap", dan orang melabeli dari nol
+        lalu menyimpan — berkas lamanya hilang tanpa pernah dilihat siapa pun.
+        Sekarang berkas rusaknya juga disisihkan, bukan ditimpa. -#}
+    <p class="lab-rusak" role="alert">
+      Berkas anotasi gambar ini <b>tidak bisa dibaca</b>, jadi kanvas dimulai
+      kosong. Kalau kamu menyimpan, berkas lamanya disisihkan lebih dulu
+      sebagai <code>.json.rusak-…</code> — tidak ditimpa.
+    </p>
+    {%- endif %}
     <div class="lab-canvas" id="wrap">
       <canvas id="c"></canvas>
       <div class="lab-busy" id="busy">SAM bekerja…</div>

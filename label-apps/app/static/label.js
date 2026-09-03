@@ -43,6 +43,7 @@ const S = {
   seret: null,
   kursor: null,      // posisi kursor dalam koordinat gambar, untuk garis silang
   undo: [],
+  redo: [],
   flags: { ...(D.flags_gambar || {}) },
   // Catatan tingkat GAMBAR, berbeda dari catatan per objek
   // (other_data["image_text"], label_widget.py:1699).
@@ -680,11 +681,35 @@ function bentukDi(gx, gy) {
 function simpanUndo() {
   S.undo.push(JSON.stringify(S.shapes));
   if (S.undo.length > 40) S.undo.shift();
+  // Perubahan baru memutus cabang yang sudah diurungkan. Menyimpannya berarti
+  // Ctrl+Y sesudah menggambar sesuatu yang lain akan melompat ke keadaan yang
+  // tidak pernah ada.
+  S.redo.length = 0;
 }
 function urungkan() {
   if (!S.undo.length) { toast('Tidak ada yang bisa diurungkan'); return; }
+  S.redo.push(JSON.stringify(S.shapes));
+  if (S.redo.length > 40) S.redo.shift();
   S.shapes = JSON.parse(S.undo.pop());
   S.sel = -1;
+  S.terpilih = [];
+  tandaiKotor();
+  render();
+}
+/*
+ * Ulangi — kebalikan urungkan.
+ *
+ * Sebelumnya tidak ada sama sekali: 40 langkah mundur, nol langkah maju. Satu
+ * Ctrl+Z yang kelewat berarti menggambar ulang dari awal, dan itu justru
+ * paling sering terjadi saat menggambar poligon berpuluh titik.
+ */
+function ulangi() {
+  if (!S.redo.length) { toast('Tidak ada yang bisa diulangi'); return; }
+  S.undo.push(JSON.stringify(S.shapes));
+  if (S.undo.length > 40) S.undo.shift();
+  S.shapes = JSON.parse(S.redo.pop());
+  S.sel = -1;
+  S.terpilih = [];
   tandaiKotor();
   render();
 }
@@ -1590,10 +1615,16 @@ function tanyaKelas({ label = '', group_id = null, flags = {}, judul = 'Kelas un
     });
   }
 
+  // Daftar hanya disaring SESUDAH orang mengetik sendiri. Kotaknya terisi
+  // kelas terakhir (Pertahankan label terakhir), dan menyaring dengan isi
+  // pra-isi itu meruntuhkan daftarnya jadi satu baris — persis pada saat
+  // orang membukanya untuk memilih kelas yang LAIN.
+  let disaring = false;
+
   function gambarDaftar() {
     const box = el('dlg-daftar');
     const resmi = new Set(D.kelas_resmi || []);
-    const ketik = teks.value.trim().toLowerCase();
+    const ketik = disaring ? teks.value.trim().toLowerCase() : '';
     box.innerHTML = '';
     semuaKelas()
       .filter(k => !ketik || k.toLowerCase().startsWith(ketik))
@@ -1625,6 +1656,7 @@ function tanyaKelas({ label = '', group_id = null, flags = {}, judul = 'Kelas un
   // sisanya cuma tersorot dan hilang begitu diketik lagi.
   let hapusTerakhir = false;
   teks.oninput = () => {
+    disaring = true;
     const v = teks.value;
     if (!hapusTerakhir && v) {
       const cocok = semuaKelas().find(
@@ -1671,7 +1703,9 @@ function tanyaKelas({ label = '', group_id = null, flags = {}, judul = 'Kelas un
     // kotaknya yang menolak nama yang diawali spasi atau cuma satu huruf.
     if (!v) { galat.textContent = 'Nama kelas belum diisi.'; teks.focus(); return; }
     if (!namaKelasSah(v)) {
-      galat.textContent = 'Nama kelas minimal dua karakter dan tidak boleh diawali spasi.';
+      // Spasi di tepi sudah dipangkas di atas, jadi kalimatnya tidak boleh
+      // menjanjikan aturan yang tidak dijalankan.
+      galat.textContent = 'Nama kelas minimal dua karakter.';
       teks.focus(); return;
     }
     const pesanGuard = periksaKelas(v);
@@ -1691,6 +1725,9 @@ function tanyaKelas({ label = '', group_id = null, flags = {}, judul = 'Kelas un
   gambarDaftar();
   kotak.hidden = false;
   teks.focus();
+  // Isi pra-isinya disorot: mengetik langsung menggantinya, tanpa perlu
+  // menghapus dulu.
+  teks.select();
   teks.setSelectionRange(0, teks.value.length);
   return new Promise(res => { dlgSelesai = res; });
 }
@@ -1803,6 +1840,9 @@ window.addEventListener('keydown', ev => {
     const sk = ev.key.toLowerCase();
     if (sk === 'd') { ev.preventDefault(); pindah(D.next); }
     else if (sk === 'a') { ev.preventDefault(); pindah(D.prev); }
+    // Ctrl+Shift+Z: ulangi. Dipasang di sini, bukan di blok Ctrl polos,
+    // supaya Ctrl+Z tetap berarti urungkan tanpa perlu menengok shiftKey.
+    else if (sk === 'z') { ev.preventDefault(); ulangi(); }
     else if (sk === 'f') { ev.preventDefault(); muatKeLebar(); }
     else if (sk === 's') { ev.preventDefault(); simpan(); }
     return;
@@ -1820,6 +1860,7 @@ window.addEventListener('keydown', ev => {
       // terlihat karena perhatian ada di poligon yang sedang digambar.
       if (S.draft) cabutTitikTerakhir(); else urungkan();
     }
+    else if (ck === 'y') { ev.preventDefault(); ulangi(); }
     else if (ck === 's') { ev.preventDefault(); simpan(); }
     else if (ck === 'f') { ev.preventDefault(); muatKeLayar(); }
     else if (ck === 'e') { ev.preventDefault(); ubahKelasTerpilih(); }
@@ -2382,7 +2423,11 @@ async function simpan(diam = false) {
     // autosave: kalau sebuah bentuk atau kelas tidak ikut tersimpan ke berkas
     // latihan, itu justru hal yang tidak boleh lewat tanpa terlihat.
     if ((j.peringatan || []).length) toast(j.peringatan.join(' · '));
-    else if (!diam) toast('Tersimpan');
+    // Bentuk yang titiknya kurang dibuang server. Diam soal itu membuat orang
+    // mengira seluruh yang digambarnya tersimpan.
+    else if (j.kurang_titik) {
+      toast(`Tersimpan · ${j.kurang_titik} bentuk dibuang karena titiknya kurang`);
+    } else if (!diam) toast('Tersimpan');
   } catch (e) {
     toast('Gagal menghubungi server');
     status('Gagal simpan');
@@ -2545,7 +2590,7 @@ el('kelasbaru').addEventListener('keydown', ev => {
   if (!v) return;
 
   if (!namaKelasSah(v)) {
-    toast('Nama kelas minimal dua karakter dan tidak boleh diawali spasi.');
+    toast('Nama kelas minimal dua karakter.');
     return;
   }
   const pesanGuard = periksaKelas(v);

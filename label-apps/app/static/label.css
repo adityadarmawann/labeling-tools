@@ -400,3 +400,11 @@ body[data-baca-saja] .tool-simpan,
 body[data-baca-saja] .lab-auto,
 body[data-baca-saja] #btn-del,
 body[data-baca-saja] #btn-undo { opacity: .4; pointer-events: none; }
+
+/* Peringatan berkas anotasi rusak. Ditaruh di atas kanvas, bukan di bilah
+   status: bilah status berganti isi tiap tindakan, dan yang ini harus tetap
+   terbaca selama gambarnya terbuka. */
+.lab-rusak{margin:0 0 8px; padding:8px 12px; font-size:12.5px; line-height:1.5;
+  border:1px solid var(--warn); border-radius:7px; background:var(--warn-bg);
+  color:var(--ink)}
+.lab-rusak code{font-size:11.5px}

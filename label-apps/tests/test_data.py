@@ -2069,3 +2069,66 @@ def test_latar_tidak_pernah_masuk_perlu_dicek(klien, lingkungan):
     # Latar tetap punya saringannya sendiri, di chip dan di daftar kelas.
     assert klien.get("/?f=bg").text.count('class="card"') == 1
     assert klien.get("/?x=latar").text.count('class="card"') == 1
+
+
+def test_bentuk_bertitik_kurang_tidak_diam_diam_jadi_latar(klien, lingkungan):
+    """Berkas anotasi kosong adalah PENANDA LATAR, bukan "tidak ada objek".
+
+    Bentuk yang titiknya di bawah minimum dibuang. Kalau seluruhnya terbuang,
+    berkasnya ditulis kosong — dan gambarnya berubah jadi contoh negatif yang
+    ikut dilatih, dengan balasan ok:true dan tanpa satu pun peringatan.
+    """
+    import pathlib
+
+    masuk(klien, "paul", PW_PAUL)
+    src = lingkungan["roots"] / "ds-alpha"
+    klien.post(f"/setsrc?path={src}")
+    img = _gambar(lingkungan, "ds-alpha", 3)          # belum berlabel
+    jp = pathlib.Path(img).with_suffix(".json")
+    jp.unlink(missing_ok=True)
+    klien.post("/rescan")
+
+    r = klien.post("/api/simpan", json={"path": str(img), "shapes": [
+        {"label": "botol", "shape_type": "polygon", "points": [[5, 5], [40, 40]]}]}).json()
+    assert r["ok"] is False and "titiknya kurang" in r["error"], r
+    assert not jp.exists(), "berkas latar ditulis padahal tidak ada yang diminta"
+
+    # Sebagian terbuang: yang sah tetap tersimpan, dan yang dibuang disebutkan.
+    r = klien.post("/api/simpan", json={"path": str(img), "shapes": [
+        {"label": "botol", "shape_type": "polygon",
+         "points": [[5, 5], [40, 5], [40, 40]]},
+        {"label": "botol", "shape_type": "polygon", "points": [[1, 1], [2, 2]]}]}).json()
+    assert r["ok"] is True and r["n"] == 1 and r["kurang_titik"] == 1, r
+    jp.unlink(missing_ok=True)
+
+
+def test_berkas_anotasi_rusak_disisihkan_bukan_ditimpa(klien, lingkungan):
+    """Berkasnya sudah rusak; yang bisa dilakukan cuma tidak ikut menghapusnya.
+
+    Kanvas dulu terbuka dengan nol objek dan status "siap" — tidak ada satu pun
+    tanda bahwa berkasnya tidak bisa dibaca — lalu menyimpan menimpanya, dan
+    satu-satunya kesempatan memperbaikinya dengan tangan hilang.
+    """
+    import pathlib
+
+    masuk(klien, "paul", PW_PAUL)
+    src = lingkungan["roots"] / "ds-alpha"
+    klien.post(f"/setsrc?path={src}")
+    img = pathlib.Path(_gambar(lingkungan, "ds-alpha", 3))
+    jp = img.with_suffix(".json")
+    jp.write_text('{"shapes": [ini bukan json')
+    klien.post("/rescan")
+
+    h = klien.get(f"/label?path={img}").text
+    assert "tidak bisa dibaca" in h, "kanvas diam soal berkas yang rusak"
+
+    r = klien.post("/api/simpan", json={"path": str(img), "shapes": [
+        {"label": "botol", "shape_type": "rectangle",
+         "points": [[5, 5], [40, 40]]}]}).json()
+    assert r["ok"] is True and r["cadangan_rusak"], r
+    cadangan = list(img.parent.glob(img.stem + ".json.rusak-*"))
+    assert len(cadangan) == 1, cadangan
+    assert "ini bukan json" in cadangan[0].read_text()
+    for q in cadangan:
+        q.unlink()
+    jp.unlink(missing_ok=True)

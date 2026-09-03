@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import time
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request, Response
@@ -22,7 +23,10 @@ from ..deps import current_session, current_session_api, is_local, bodi_json
 from ..services import annotations, autolabel, scanner, tugas
 from ..services.autolabel import TidakAdaObjek
 from ..session import Session
+from ..log import catat
 from ..templating import templates
+
+log = catat("labelapp.anotasi")
 
 router = APIRouter(tags=["annotate"])
 
@@ -76,6 +80,36 @@ def baca_mentah(jp: Path) -> dict:
         return d if isinstance(d, dict) else {}
     except (OSError, json.JSONDecodeError):
         return {}
+
+
+def selamatkan_rusak(jp: Path) -> str:
+    """
+    Sisihkan berkas anotasi yang tidak bisa dibaca, sebelum ditimpa.
+
+    Penyimpanan menulis ulang SELURUH berkas. Kalau isinya tidak bisa dibaca,
+    seluruh field yang biasanya dipertahankan hilang — dan bersamanya hilang
+    pula satu-satunya kesempatan memperbaikinya dengan tangan. Berkasnya sudah
+    rusak, jadi tidak ada yang bisa diselamatkan otomatis; yang bisa dilakukan
+    cuma tidak ikut menghapusnya.
+
+    Mengembalikan nama berkas cadangannya, atau "" kalau tidak ada yang perlu
+    disisihkan.
+    """
+    if not jp.is_file():
+        return ""
+    try:
+        isi = json.loads(jp.read_text(encoding="utf-8"))
+        if isinstance(isi, dict):
+            return ""
+    except (OSError, json.JSONDecodeError):
+        pass
+    cadangan = jp.with_suffix(f".json.rusak-{int(time.time())}")
+    try:
+        jp.replace(cadangan)
+    except OSError:
+        return ""
+    log.warning("berkas anotasi rusak disisihkan: %s -> %s", jp, cadangan.name)
+    return cadangan.name
 
 
 def bentuk_untuk_kanvas(it: dict, mentah: dict) -> list[dict]:
@@ -149,7 +183,13 @@ async def halaman(request: Request, path: str = "",
     # yang jujur sejak dibuka tidak.
     tolak = tugas.tolak_tulis(sess.src, sess.user, it["img"]) if sess.src else ""
 
+    # Berkas anotasi yang tidak bisa dibaca HARUS disebut di layar. Tanpa itu
+    # kanvasnya terbuka dengan nol objek dan status "siap" — tidak ada satu pun
+    # tanda bahwa berkasnya rusak — lalu orang melabeli dari nol dan
+    # menyimpannya, dan berkas lamanya hilang tanpa pernah dilihat siapa pun.
+    rusak = "berkas anotasi rusak" in (it.get("issues") or [])
     return templates.TemplateResponse(request, "label.html", {
+        "anotasi_rusak": rusak,
         "boleh_ubah": not tolak,
         "alasan_tolak": tolak,
         "sess": sess,
@@ -296,6 +336,7 @@ async def api_simpan(request: Request, sess: Session = Depends(current_session_a
     bentuk_masuk = body.get("shapes")
     if not isinstance(bentuk_masuk, (list, tuple)):
         return {"ok": False, "error": "daftar bentuk tidak berbentuk larik"}
+    kurang_titik = 0
     for s in bentuk_masuk:
         if not isinstance(s, dict):
             return {"ok": False, "error": "ada bentuk yang bukan objek"}
@@ -317,6 +358,7 @@ async def api_simpan(request: Request, sess: Session = Depends(current_session_a
         # point 1, rectangle/circle/line/linestrip 2, polygon 3. Tanpa
         # pembedaan ini, titik dan garis akan terbuang diam-diam.
         if len(titik) < scanner.JENIS_BENTUK[jenis]:
+            kurang_titik += 1
             continue
         # Rectangle dan circle SELALU disimpan 2 titik. Kanvas boleh mengirim
         # bentuk yang sudah dimekarkan; yang menentukan isi berkas adalah
@@ -344,7 +386,19 @@ async def api_simpan(request: Request, sess: Session = Depends(current_session_a
             "flags": s.get("flags") or {},
         })
 
+    # Berkas anotasi kosong BUKAN "tidak ada objek yang tersimpan": ia penanda
+    # latar, dan gambarnya lalu ikut terekspor sebagai contoh negatif.
+    # Menulisnya karena SELURUH bentuk kebetulan terbuang berarti orang
+    # menggambar sesuatu, menekan simpan, dan gambarnya diam-diam berubah jadi
+    # sampel negatif — dengan balasan ok:true dan tanpa satu pun peringatan.
+    if kurang_titik and not bentuk:
+        return {"ok": False, "error": (
+            f"{kurang_titik} bentuk dibuang karena titiknya kurang — poligon "
+            f"minimal 3 titik, kotak dan garis 2. Gambar tidak diubah.")}
+
     jp: Path = it["img"].with_suffix(".json")
+    # Berkas yang tidak bisa dibaca disisihkan lebih dulu, bukan ditimpa.
+    cadangan_rusak = selamatkan_rusak(jp)
     lama = baca_mentah(jp)
     # Bentuk yang tidak pernah sampai ke kanvas dikembalikan apa adanya. Ia tidak
     # bisa digambar, tetapi tetap milik orang yang membuatnya — dan penyimpanan
@@ -412,5 +466,9 @@ async def api_simpan(request: Request, sess: Session = Depends(current_session_a
     # untuk melihat kemajuan orang lain.
     from ..session import tandai_berubah
     tandai_berubah(sess.src)
-    return {"ok": True, "n": len(bentuk), "issues": it["issues"],
+    # Sebagian terbuang tetap disebutkan. Diam soal itu membuat orang mengira
+    # seluruh yang digambarnya tersimpan.
+    return {"ok": True, "n": len(bentuk), "kurang_titik": kurang_titik,
+            "cadangan_rusak": cadangan_rusak,
+            "issues": it["issues"],
             "sev": scanner.severity(it), "peringatan": peringatan}
