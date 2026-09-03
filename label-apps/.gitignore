@@ -38,3 +38,4 @@ dev-data/
 # Log dan catatan runtime (dibuat deploy.sh)
 logs/
 run/
+laporan/*.xlsx
