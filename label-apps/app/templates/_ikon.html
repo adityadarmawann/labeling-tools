@@ -1,0 +1,83 @@
+{# Ikon garis, sebaris, mewarisi currentColor.
+
+   Menggantikan berkas PNG dari AnyLabeling. Bukan cuma soal rupa: PNG
+   berwarna tetap membawa warnanya sendiri ke tema gelap, tidak bisa
+   diberi keadaan aktif/mati tanpa berkas kedua, dan pada layar padat
+   ketajamannya bergantung pada perbandingan piksel yang kebetulan.
+
+   Semua digambar pada kanvas 24x24 dengan goresan 1,7 supaya tebalnya sama
+   di seluruh antarmuka. #}
+{% macro ikon(nama, ukuran=20) -%}
+<svg class="ik" width="{{ ukuran }}" height="{{ ukuran }}" viewBox="0 0 24 24"
+     fill="none" stroke="currentColor" stroke-width="1.7"
+     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+{%- if nama == 'titik-tambah' -%}
+<path d="M4 3.4 10.2 17.6l2.2-6.4 6.4-2.2z"/><path d="M18.5 15.5v5M16 18h5"/>
+{%- elif nama == 'titik-kurang' -%}
+<path d="M4 3.4 10.2 17.6l2.2-6.4 6.4-2.2z"/><path d="M16 18h5"/>
+{%- elif nama == 'kotak-ajaib' -%}
+<rect x="3.5" y="5.5" width="17" height="13" rx="1.6" stroke-dasharray="3.2 2.4"/>
+<path d="M12 8.2l1.2 2.6 2.6 1.2-2.6 1.2-1.2 2.6-1.2-2.6L8.2 12l2.6-1.2z"/>
+{%- elif nama == 'poligon' -%}
+<path d="M12 4 20 9v6l-8 5-8-5V9z"/>
+{%- elif nama == 'kotak' -%}
+<rect x="4" y="6" width="16" height="12" rx="1.5"/>
+{%- elif nama == 'lingkaran' -%}
+<circle cx="12" cy="12" r="7"/>
+{%- elif nama == 'garis' -%}
+<path d="M5 18 19 6"/><circle cx="5" cy="18" r="1.6"/><circle cx="19" cy="6" r="1.6"/>
+{%- elif nama == 'garis-patah' -%}
+<path d="m4 17 5-6 4 3 7-8"/><circle cx="4" cy="17" r="1.4"/><circle cx="20" cy="6" r="1.4"/>
+{%- elif nama == 'titik' -%}
+<circle cx="12" cy="12" r="2.8"/><path d="M12 4v3M12 17v3M4 12h3M17 12h3"/>
+{%- elif nama == 'sunting' -%}
+<path d="M6 18h3l9-9-3-3-9 9z"/><path d="m14 6 3 3"/>
+{%- elif nama == 'gandakan' -%}
+<rect x="9" y="9" width="11" height="11" rx="1.6"/><path d="M15 5H5.5A1.5 1.5 0 0 0 4 6.5V16"/>
+{%- elif nama == 'hapus' -%}
+<path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/>
+{%- elif nama == 'urungkan' -%}
+<path d="M8 9H5V6"/><path d="M5.5 9A7 7 0 1 1 5 14"/>
+{%- elif nama == 'ulangi' -%}
+<path d="M16 9h3V6"/><path d="M18.5 9A7 7 0 1 0 19 14"/>
+{%- elif nama == 'perbesar' -%}
+<circle cx="11" cy="11" r="6"/><path d="M15.5 15.5 20 20M11 8.5v5M8.5 11h5"/>
+{%- elif nama == 'perkecil' -%}
+<circle cx="11" cy="11" r="6"/><path d="M15.5 15.5 20 20M8.5 11h5"/>
+{%- elif nama == 'muat' -%}
+<path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5"/>
+{%- elif nama == 'simpan' -%}
+<path d="M5 5h11l3 3v11H5z"/><path d="M9 5v5h6V5M8 19v-5h8v5"/>
+{%- elif nama == 'bersih' -%}
+<circle cx="12" cy="12" r="7.5"/><path d="m9.5 9.5 5 5M14.5 9.5l-5 5"/>
+{%- elif nama == 'selesai' -%}
+<path d="m5 12.5 4.5 4.5L19 7"/>
+{%- elif nama == 'objek' -%}
+<rect x="4" y="5" width="7" height="7" rx="1.4"/><rect x="13" y="12" width="7" height="7" rx="1.4"/>
+{%- elif nama == 'kelas' -%}
+<path d="M4 7h16M4 12h16M4 17h9"/>
+{%- elif nama == 'catatan' -%}
+<path d="M5 5h14v10l-4 4H5z"/><path d="M19 15h-4v4"/>
+{%- elif nama == 'flag' -%}
+<path d="M6 20V4h11l-2 3.5L17 11H6"/>
+{%- elif nama == 'berkas' -%}
+<path d="M6 4h7l5 5v11H6z"/><path d="M13 4v5h5"/>
+{%- elif nama == 'setelan' -%}
+<circle cx="12" cy="12" r="2.6"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M18.4 5.6l-1.8 1.8M7.4 16.6l-1.8 1.8"/>
+{%- elif nama == 'ai' -%}
+<path d="M12 4.5 13.6 9l4.4 1.6-4.4 1.6L12 16.5 10.4 12 6 10.6 10.4 9z"/><path d="M18 16.5 18.7 18l1.5.7-1.5.7L18 21l-.7-1.6-1.5-.7 1.5-.7z"/>
+{%- elif nama == 'cerah' -%}
+<circle cx="12" cy="12" r="3.6"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4"/>
+{%- elif nama == 'papan-tombol' -%}
+<rect x="3" y="7" width="18" height="10" rx="2"/><path d="M7 11h.01M10.5 11h.01M14 11h.01M17 11h.01M8 14h8"/>
+{%- elif nama == 'kiri' -%}
+<path d="m14 6-6 6 6 6"/>
+{%- elif nama == 'kanan' -%}
+<path d="m10 6 6 6-6 6"/>
+{%- elif nama == 'kembali' -%}
+<path d="M20 12H5M11 6l-6 6 6 6"/>
+{%- elif nama == 'mata' -%}
+<path d="M2.5 12S6 6 12 6s9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z"/><circle cx="12" cy="12" r="2.6"/>
+{%- endif -%}
+</svg>
+{%- endmacro %}

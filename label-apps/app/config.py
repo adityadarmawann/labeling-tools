@@ -72,6 +72,11 @@ class Settings:
     # `flags:` di anylabeling_config.yaml (label_widget.py:202-203). Tanpa
     # daftar tetap, nama flag harus diketik ulang persis di tiap gambar.
     flags: list[str] = field(default_factory=list)
+    # Nama yang dipakai aplikasi ini menyebut dirinya: judul tab peramban dan
+    # kepala halaman. Dev dan prod berjalan bersamaan di mesin yang sama, dan
+    # dua tab yang judulnya sama persis adalah cara termudah mengetik di
+    # jendela yang salah — karena itu dev menyebut dirinya "HIGOLAB-DEV".
+    nama_app: str = "HIGOLAB"
     # Nama akun yang dimasuki otomatis TANPA password. Hanya berlaku untuk
     # permintaan dari mesin itu sendiri — lihat deps.sesi_otomatis.
     autologin: str = ""
@@ -137,6 +142,7 @@ def get_settings() -> Settings:
         lock_labels=_bool("LOCK_LABELS"),
         extra_labels=_read_labels(_path("LABELS_FILE")),
         flags=_read_labels(_path("FLAGS_FILE")),
+        nama_app=_get("NAMA") or "HIGOLAB",
         autologin=_get("DEV_AUTOLOGIN"),
         google_domain=_get("GOOGLE_DOMAIN"),
         daftar_sendiri=_bool("DAFTAR_SENDIRI", True),

@@ -207,12 +207,15 @@ def test_grid_menautkan_ke_halaman_unggah_bukan_menu_kedua(klien, lingkungan):
     assert 'href="/unggah?ds=punyaku"' in h
     assert 'id="drop-tambah"' not in h and 'id="menu-tambah"' not in h
 
-    # Dataset bersama tidak boleh ditambahi: tombolnya tetap ada, tetapi mati,
-    # beserta alasannya. Tombol yang hilang menyisakan teka-teki.
+    # Dataset bersama tidak punya sidebar, jadi tidak punya pintu unggah sama
+    # sekali. Alasannya tetap dikatakan di grid — tombol yang hilang tanpa
+    # keterangan menyisakan teka-teki, dan di sini tidak ada halaman lain yang
+    # bisa mengatakannya.
     bersama = lingkungan["roots"] / "ds-alpha"
     klien.post(f"/setsrc?path={bersama}")
     h = klien.get("/").text
-    assert "data-mati" in h and 'href="/unggah' not in h
+    assert 'href="/unggah' not in h
+    assert "Tidak bisa ditambahi" in h
 
 
 def test_sidebar_projek_menautkan_keempat_bagiannya(klien, lingkungan):

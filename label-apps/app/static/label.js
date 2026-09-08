@@ -152,7 +152,15 @@ let bingkaiMenunggu = false;
 function gambar() {
   if (bingkaiMenunggu) return;
   bingkaiMenunggu = true;
-  requestAnimationFrame(() => { bingkaiMenunggu = false; gambarSekarang(); });
+  requestAnimationFrame(() => { bingkaiMenunggu = false; gambarSekarang(); tampilZoom(); });
+}
+
+/* Perbesaran sekarang, di dok bawah. Dulu tidak pernah ditampilkan sama sekali:
+   setelah beberapa kali Ctrl+roda tidak ada yang bisa dibaca untuk tahu apakah
+   yang terlihat 100% atau 340%. */
+function tampilZoom() {
+  const n = el('lab-zoom');
+  if (n) n.textContent = Math.round(S.zoom * 100) + '%';
 }
 
 function gambarSekarang() {
@@ -716,6 +724,7 @@ function ulangi() {
 function tandaiKotor() {
   S.kotor = true;
   el('btn-simpan').setAttribute('data-kotor', '');
+  status('Belum tersimpan');
   jadwalkanAutosave();
 }
 
@@ -805,10 +814,10 @@ async function mintaSam(muatan) {
       }),
     });
     const j = await r.json();
-    if (r.status === 401) { toast('Sesi habis — masuk lagi'); location.href = '/login'; return null; }
+    if (r.status === 401) { toast('Sesi habis, masuk lagi'); location.href = '/login'; return null; }
     if (!j.ok) { pesan('SAM: ' + (j.error || j.detail || 'gagal')); return null; }
     pesan(`Selesai · ${j.points.length} titik · ${Math.round(performance.now() - t0)} ms`
-          + (j.dari_cache ? '' : ' (encoder jalan)') + ' — periksa hasilnya, lalu Finish Object (F)');
+          + (j.dari_cache ? '' : ' (encoder jalan)') + '. Periksa hasilnya, lalu Finish Object (F)');
     return j;
   } catch (e) {
     pesan('Gagal menghubungi server');
@@ -1501,7 +1510,7 @@ const KUNCI_LIPAT = 'labelapp_panel_lipat';
     const semula = tombol.textContent;
     tombol.textContent = 'Mendeteksi…';
     info.textContent = o && o.dataset.terunduh !== '1'
-      ? 'mengunduh model dulu — ini bisa beberapa menit' : 'memindai gambar…';
+      ? 'mengunduh model dulu, ini bisa beberapa menit' : 'memindai gambar…';
     try {
       const j = await send('/api/deteksi', {
         method: 'POST',
@@ -1525,7 +1534,7 @@ const KUNCI_LIPAT = 'labelapp_panel_lipat';
       S.terpilih = [S.sel];
       tandaiKotor();
       render();
-      info.textContent = `${j.n} objek ditemukan — Ctrl+Z membatalkan semuanya`;
+      info.textContent = `${j.n} objek ditemukan. Ctrl+Z membatalkan semuanya`;
       toast(`${j.n} objek ditambahkan dari "${teks}"`);
       if (o) o.dataset.terunduh = '1';
     } catch (e) {
@@ -1956,7 +1965,7 @@ function salinTerpilih() {
     toast('Gagal menyalin');
     return;
   }
-  pesan(`${salinan.length} objek disalin — Ctrl+V untuk menempel, juga di gambar lain`);
+  pesan(`${salinan.length} objek disalin. Ctrl+V untuk menempel, juga di gambar lain`);
 }
 
 function tempel() {
@@ -2021,7 +2030,7 @@ function lepasGrupTerpilih() {
 }
 
 function hapusTerpilih() {
-  if (!adaTerpilih()) { toast('Pilih objeknya dulu — klik objek, Ctrl+klik untuk beberapa'); return; }
+  if (!adaTerpilih()) { toast('Pilih objeknya dulu: klik objek, Ctrl+klik untuk beberapa'); return; }
   simpanUndo();
   const n = S.terpilih.length;
   // Dihapus dari indeks terbesar supaya indeks yang belum dihapus tidak bergeser.
@@ -2044,7 +2053,7 @@ function hapusTitikDi(i, v) {
   const s = S.shapes[i];
   if (!s || v < 0 || v >= s.points.length) return;
   if (s.shape_type === 'rectangle') { toast('Rectangle tidak bisa dikurangi titiknya'); return; }
-  if (s.points.length <= 3) { toast('Poligon minimal 3 titik — pakai Delete untuk membuang objeknya'); return; }
+  if (s.points.length <= 3) { toast('Poligon minimal 3 titik. Pakai Delete untuk membuang objeknya'); return; }
   simpanUndo();
   s.points.splice(v, 1);
   if (S.sel === i && S.selv === v) S.selv = -1;
@@ -2121,7 +2130,7 @@ function renderKelas() {
   // data.yaml — dan seluruhnya harus diketik ulang dengan tangan.
   const daftar = semuaKelas();
   if (!daftar.length) {
-    box.innerHTML = '<div class="obj-kosong">Belum ada kelas — tulis di bawah.</div>';
+    box.innerHTML = '<div class="obj-kosong">Belum ada kelas, tulis di bawah.</div>';
   }
   const resmi = new Set(D.kelas_resmi || []);
   daftar.forEach(k => {
@@ -2307,7 +2316,7 @@ function renderBerkas() {
   const info = el('berkasinfo');
   if (sisa > 0) {
     info.textContent = `${sisa.toLocaleString('id-ID')} berkas lagi tidak `
-      + `ditampilkan — pakai kotak cari di atas untuk mempersempit.`;
+      + `ditampilkan. Pakai kotak cari di atas untuk mempersempit.`;
   } else {
     info.textContent = `${cocok.length.toLocaleString('id-ID')} berkas`;
   }
@@ -2347,7 +2356,7 @@ function renderFlags() {
   el('nflag').textContent = nama.filter(k => S.flags[k]).length;
   box.innerHTML = '';
   if (!nama.length) {
-    box.innerHTML = '<div class="flag-kosong">Belum ada flag — tulis di bawah.</div>';
+    box.innerHTML = '<div class="flag-kosong">Belum ada flag, tulis di bawah.</div>';
     return;
   }
   nama.forEach(k => {
@@ -2369,8 +2378,17 @@ function renderFlags() {
 }
 
 function render() { gambar(); renderKelas(); renderObjek(); renderTeks(); renderFlags(); }
+/*
+ * Dua slot, dua isi — dulu satu isi di dua tempat.
+ *
+ * #status di dok bawah menjawab satu pertanyaan saja: sudah tersimpan atau
+ * belum. #pesan di bar atas, di sebelah tombol Simpan, membawa kalimat
+ * hasilnya. Sebelum tata letak ini keduanya berjauhan sehingga menulis teks
+ * yang sama ke dua-duanya masuk akal; sekarang keduanya terlihat sekaligus,
+ * dan kalimat yang sama tercetak dua kali di satu layar.
+ */
 function status(t) { el('status').textContent = t; }
-function pesan(t) { el('pesan').textContent = t; status(t); }
+function pesan(t) { el('pesan').textContent = t; }
 
 // ---------------------------------------------------------------- simpan
 
@@ -2416,6 +2434,7 @@ async function simpan(diam = false) {
     if (!j.ok) { toast('Gagal simpan: ' + (j.error || j.detail)); status('Gagal simpan'); return; }
     S.kotor = false;
     el('btn-simpan').removeAttribute('data-kotor');
+    status('Tersimpan');
     const f = D.berkas.find(x => x.path === D.path);
     if (f) { f.n = j.n; f.sev = j.sev; renderBerkas(); }
     pesan(`Tersimpan · ${j.n} objek · ${(j.issues || []).join(' · ') || 'tidak ada temuan'}`);
@@ -2439,7 +2458,7 @@ async function pindah(path) {
   // AnyLabeling bawaannya auto_save: True — pindah gambar menyimpan sendiri.
   if (S.kotor && S.v.autosave) {
     await simpan();
-    if (S.kotor) { toast('Belum tersimpan — pindah dibatalkan'); return; }
+    if (S.kotor) { toast('Belum tersimpan, pindah dibatalkan'); return; }
   } else if (S.kotor && !confirm('Ada perubahan belum disimpan. Tinggalkan?')) {
     return;
   }
@@ -2464,6 +2483,7 @@ el('ab-clear').onclick = bersihkanPrompt;
 el('ab-finish').onclick = finishObject;
 el('btn-del').onclick = hapusTerpilih;
 el('btn-undo').onclick = urungkan;
+el('btn-redo').onclick = ulangi;
 el('btn-simpan').onclick = simpan;
 el('btn-fit').onclick = muatKeLayar;
 el('btn-zin').onclick = () => zoomDi(1.25, c.width / 2, c.height / 2);
@@ -2556,7 +2576,7 @@ function periksaKelas(v) {
   const resmi = D.kelas_resmi || [];
   if (mirip) {
     kelasMenunggu = v;
-    return `"${v}" mirip dengan "${mirip}" — salah ketik? Tegaskan sekali lagi kalau memang kelas baru.`;
+    return `"${v}" mirip dengan "${mirip}". Salah ketik? Tegaskan sekali lagi kalau memang kelas baru.`;
   }
   if (resmi.length) {
     kelasMenunggu = v;
@@ -2614,7 +2634,10 @@ img.onload = () => {
   // muat-jendela seperti biasa.
   if (!pakaiZoomTitipan()) muatKeLayar();
   render();
-  pesan(`${D.nama} siap`);
+  // Nama berkasnya sudah terpampang di bar atas; mengulangnya di slot pesan
+  // hanya memakan tempat yang dipakai kalimat hasil menyimpan.
+  pesan('');
+  status('Siap');
 };
 img.onerror = () => { pesan('Gambar gagal dimuat'); toast('Gambar gagal dimuat'); };
 img.src = '/gambar?path=' + encodeURIComponent(D.path);
@@ -2696,7 +2719,7 @@ function pakaiKeepPrev() {
   S.shapes = sebelumnya.map(s => ({
     ...s, points: s.points.map(([x, y]) => [kurungX(x), kurungY(y)]) }));
   tandaiKotor();
-  pesan(`${S.shapes.length} objek disalin dari gambar sebelumnya — periksa dulu`);
+  pesan(`${S.shapes.length} objek disalin dari gambar sebelumnya, periksa dulu`);
   render();
 }
 
@@ -2748,6 +2771,11 @@ function pakaiZoomTitipan() {
 function terapkanPanel(id, tampil) {
   const n = el(id);
   if (n) n.hidden = !tampil;
+  // Tombol relnya ikut: tombol yang ditekan lalu tidak melakukan apa-apa lebih
+  // membingungkan daripada tombol yang memang tidak ada di situ.
+  const tb = document.querySelector(`.lab-rel .rel[data-pan="${id}"]`);
+  if (tb) tb.hidden = !tampil;
+  if (!tampil && n && n.hasAttribute('data-aktif')) pilihPanel(null);
 }
 
 function muatView() {
@@ -2801,6 +2829,47 @@ document.addEventListener('click', ev => {
   if (!menuView.contains(ev.target)) menuView.removeAttribute('data-buka');
 });
 
+// ------------------------------------------------------------------ rel panel
+
+/*
+ * Rel ikon di kiri memilih SATU panel yang tampil. Sebelumnya keenam panel
+ * bertumpuk sekaligus di satu kolom: yang paling sering dipakai — daftar objek
+ * — terdorong ke tengah oleh Setelan dan Flags yang jarang disentuh, dan
+ * kolomnya jadi lebih tinggi daripada layar.
+ *
+ * Menu View tetap berlaku di atas ini: panel yang dimatikan di sana hilang
+ * beserta tombol relnya, dan kalau yang dimatikan kebetulan sedang tampil,
+ * pilihannya pindah ke tombol pertama yang masih hidup.
+ */
+const KUNCI_PANEL = 'labelapp_panel_aktif';
+
+function pilihPanel(id) {
+  const tombol = [...document.querySelectorAll('.lab-rel .rel')];
+  // null berarti "pilih apa saja yang masih hidup" — dipakai saat panel yang
+  // sedang tampil dimatikan lewat menu View.
+  if (!id || !document.querySelector(`.lab-rel .rel[data-pan="${id}"]:not([hidden])`)) {
+    const t = tombol.find(b => !b.hidden);
+    if (!t) return;
+    id = t.dataset.pan;
+  }
+  tombol.forEach(b => {
+    const aktif = b.dataset.pan === id;
+    b.toggleAttribute('data-on', aktif);
+    const pan = el(b.dataset.pan);
+    if (pan) pan.toggleAttribute('data-aktif', aktif);
+  });
+  try { localStorage.setItem(KUNCI_PANEL, id); } catch (e) { /* mode privat */ }
+}
+
+document.querySelectorAll('.lab-rel .rel').forEach(b => {
+  b.onclick = () => pilihPanel(b.dataset.pan);
+});
+
 muatView();
+(() => {
+  let simpanan = null;
+  try { simpanan = localStorage.getItem(KUNCI_PANEL); } catch (e) { /* abai */ }
+  pilihPanel(simpanan);
+})();
 pakaiKeepPrev();
 render();

@@ -181,7 +181,7 @@
         } else {
           // Teksnya sudah disorot salinTeks; yang tersisa cuma menyebut
           // tombolnya. "Salin sendiri tautannya" tidak menunjuk apa pun.
-          toast('Tautannya sudah disorot — tekan Ctrl+C untuk menyalin');
+          toast('Tautannya sudah disorot, tekan Ctrl+C untuk menyalin');
         }
       };
     } else {

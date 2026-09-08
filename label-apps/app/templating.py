@@ -75,3 +75,18 @@ templates.env.filters["urlquote"] = quote
 templates.env.globals["statik"] = statik
 # Warna kelas di templat, rumusnya sama dengan kanvas dan thumbnail.
 templates.env.filters["warnakelas"] = warna_kelas
+
+
+def nama_app() -> str:
+    """
+    Nama aplikasi untuk judul tab dan kepala halaman.
+
+    Global, bukan medan konteks yang dititipkan tiap router: judulnya ada di
+    base.html yang dipakai SEMUA halaman, dan satu router yang lupa
+    mengirimkannya akan menghasilkan tab tanpa nama — tanpa ada yang gagal.
+    """
+    from .config import get_settings
+    return get_settings().nama_app
+
+
+templates.env.globals["nama_app"] = nama_app

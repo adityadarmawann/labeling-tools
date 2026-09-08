@@ -31,7 +31,8 @@ DEFAULT_PORT = 8042
 
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
-        description="Papan periksa anotasi untuk dataset AnyLabeling / labelme / YOLO-seg.",
+        description="HIGOLAB — papan periksa anotasi untuk dataset "
+                    "AnyLabeling / labelme / YOLO-seg.",
         formatter_class=argparse.RawDescriptionHelpFormatter)
 
     g = ap.add_argument_group("jaringan")

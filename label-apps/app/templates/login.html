@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% block title %}Masuk{% endblock %}
 {% block body %}
 <main>
   <form class="card-form" method="POST" action="/login">
@@ -7,7 +6,7 @@
         lenyap di tengah alurnya sendiri: orang menekan tautan dari surel,
         diminta masuk, lalu mendarat di beranda sebagai bukan-anggota. -#}
     {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
-    <h2>Periksa anotasi</h2>
+    <h2>{{ nama_app() }}</h2>
     <p class="sub">Masuk dengan akun tim.</p>
 
     <label class="form-lbl" for="u">Nama akun</label>

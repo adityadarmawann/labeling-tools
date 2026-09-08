@@ -131,7 +131,9 @@ def nomor_berikut(ds: Path) -> int:
 
 
 def buat(ds: Path, oleh: str, rasio: str, gambar: list[str],
-         peta: dict[str, str], ringkas: dict, catatan: str = "") -> dict:
+         peta: dict[str, str], ringkas: dict, catatan: str = "",
+         *, resep: dict | None = None, berencana: bool = False,
+         nomor: int | None = None, hasil: dict | None = None) -> dict:
     """
     Bekukan pembagian yang berlaku sekarang.
 
@@ -143,7 +145,7 @@ def buat(ds: Path, oleh: str, rasio: str, gambar: list[str],
     with _kunci:
         d = _dir(ds)
         d.mkdir(parents=True, exist_ok=True)
-        n = nomor_berikut(ds)
+        n = nomor_berikut(ds) if nomor is None else int(nomor)
         isi = {
             "nomor": n,
             "dibuat": datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -159,6 +161,19 @@ def buat(ds: Path, oleh: str, rasio: str, gambar: list[str],
             "beralas": ringkas.get("beralas", False),
             "gambar": sorted(gambar),
             "peta": peta,
+            # Resep preprocessing + augmentasi yang dipakai. Tanpa ini, dua
+            # versi dengan angka yang sama tidak bisa dibedakan isinya, dan
+            # "ulangi resep versi lalu" tidak mungkin.
+            "resep": resep or {},
+            # Apakah pembagiannya dari splitting anti-bocor atau dari hash nama
+            # berkas. Sebelumnya fakta ini dilaporkan sekali ke layar lalu
+            # hilang, sehingga versi cepat dan versi anti-bocor tidak bisa
+            # dibedakan lagi setelah dibuat.
+            "berencana": bool(berencana),
+            # Ringkasan gambar HASIL (sesudah preprocessing/augmentasi), kalau
+            # versinya memang membangkitkan berkas. Kosong berarti versi lama
+            # yang hanya membekukan pembagian.
+            "hasil": hasil or {},
         }
         p = _berkas(ds, n)
         tmp = p.with_suffix(".json.tmp")

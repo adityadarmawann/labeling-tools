@@ -2,15 +2,17 @@
 from __future__ import annotations
 
 import asyncio
+import shutil
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse, Response
 
 from ..config import Settings, get_settings
-from ..deps import current_session, current_session_api, is_local, require_local
+from ..deps import (bodi_json, current_session, current_session_api,
+                    is_local, require_local)
 from ..log import catat
-from ..services import (anylabeling, export, riwayat, scanner, split,
+from ..services import (anylabeling, buatversi, export, riwayat, scanner, split,
                         tugas, versi)
 from ..services import tag as svc_tag
 
@@ -162,13 +164,193 @@ async def versi_buat(split: str = "", catatan: str = "",
     r = await asyncio.to_thread(export.ringkasan, items, True,
                                 export.baca_rasio(rasio), names, rencana)
     hasil = await asyncio.to_thread(
-        versi.buat, sess.src, sess.user, rasio,
-        [it["img"].name for it in items], peta, r, catatan)
+        lambda: versi.buat(sess.src, sess.user, rasio,
+                           [it["img"].name for it in items], peta, r, catatan,
+                           berencana=bool(rencana)))
     return {"ok": True, **hasil, **hitung,
             # Rencana anti-bocor ikut dicatat ADA atau tidak: versi yang dibuat
             # tanpa memeriksa isi gambar tidak boleh terlihat sama dengan yang
             # sudah diperiksa.
             "berencana": bool(rencana)}
+
+
+# ===================================================== wizard "Buat versi"
+#
+# Berbeda dari splitting anti-bocor, pembuatan versi TIDAK menggantung
+# permintaan POST-nya. Pada projek 11.319 gambar pekerjaan ini berjam-jam, dan
+# tidak ada peramban maupun reverse proxy yang menunggu selama itu: sambungan
+# putus di tengah jalan, pekerjaannya tetap berjalan tanpa ada yang memantau,
+# dan pemakainya tidak pernah tahu hasilnya. Jadi POST hanya MEMULAI, lalu
+# klien memantau lewat /api/versi/kemajuan.
+
+_tugas_versi: dict[str, object] = {}
+
+
+async def _muat_bahan(sess, settings):
+    """items + names + peta split + rencana, dengan seluruh penjagaannya."""
+    if sess.src is None:
+        return None, {"ok": False, "error": "belum ada dataset terbuka"}
+    tdata = await asyncio.to_thread(tugas.baca_projek, sess.src,
+                                    settings.uploads_root)
+    if not tugas.boleh_kelola(tdata, sess.user):
+        return None, {"ok": False, "error": (
+            "hanya pemilik projek yang mengurus versi"
+            if tdata["pemilik"] else
+            "folder dataset bersama tidak punya pemilik, jadi versinya tidak "
+            "bisa diurus dari sini — salin dulu ke ruang kerjamu")}
+    with sess.lock:
+        items = list(sess.items)
+        names = dict(sess.names)
+    items, hitung = await asyncio.to_thread(tugas.saring_dataset, items,
+                                            sess.src, settings.uploads_root)
+    if not items:
+        return None, {"ok": False, "error": (
+            "belum ada gambar yang dimasukkan ke dataset. Versi dibuat dari isi "
+            "dataset, bukan dari seluruh gambar yang diunggah.")}
+    return (items, names, hitung), None
+
+
+@router.get("/api/versi/katalog")
+async def versi_katalog(sess: Session = Depends(current_session_api)):
+    """Daftar operasi untuk kedua popup. Dibaca sekali saat wizard dibuka."""
+    return {"ok": True, **buatversi.olah.katalog_json()}
+
+
+@router.post("/api/versi/estimasi")
+async def versi_estimasi(request: Request, split: str = "",
+                         sess: Session = Depends(current_session_api),
+                         settings: Settings = Depends(get_settings)):
+    """Berapa gambar dan berapa besar, SEBELUM apa pun ditulis."""
+    bahan, galat = await _muat_bahan(sess, settings)
+    if galat:
+        return galat
+    items, names, _ = bahan
+    resep = (await bodi_json(request)).get("resep") or {}
+    rasio = split or "8:1:1"
+    rencana = sess.rencana_split
+    bagian = await asyncio.to_thread(export.bagi_split, items,
+                                     export.baca_rasio(rasio), rencana)
+    peta = {it["img"].name: s for s, d in bagian.items() for it in d}
+    e = await asyncio.to_thread(buatversi.perkirakan, items, names, resep, peta)
+    kosong = shutil.disk_usage(sess.src).free
+    return {"ok": True, **e, "berencana": bool(rencana),
+            "rasio_pesan": export.periksa_rasio(rasio),
+            "nomor_berikut": await asyncio.to_thread(versi.nomor_berikut, sess.src),
+            "disk_kosong": kosong,
+            # Ruang disk diperiksa DI SINI, bukan saat berkas ke-40.000 gagal
+            # ditulis dan setengah versi tertinggal.
+            "cukup": kosong > e["byte"] * 1.3 + 2_000_000_000}
+
+
+@router.post("/api/versi/mulai")
+async def versi_mulai(request: Request, split: str = "", catatan: str = "",
+                      sess: Session = Depends(current_session_api),
+                      settings: Settings = Depends(get_settings)):
+    if buatversi.kemajuan(sess.user).get("jalan"):
+        return {"ok": False, "error": "masih ada pembuatan versi yang berjalan"}
+    bahan, galat = await _muat_bahan(sess, settings)
+    if galat:
+        return galat
+    items, names, hitung = bahan
+    resep = (await bodi_json(request)).get("resep") or {}
+    rasio = split or "8:1:1"
+    rencana = sess.rencana_split
+    bagian = await asyncio.to_thread(export.bagi_split, items,
+                                     export.baca_rasio(rasio), rencana)
+    peta = {it["img"].name: s for s, d in bagian.items() for it in d}
+    ringkas = await asyncio.to_thread(export.ringkasan, items, True,
+                                      export.baca_rasio(rasio), names, rencana)
+    nomor = await asyncio.to_thread(versi.nomor_berikut, sess.src)
+
+    ds, akun = sess.src, sess.user
+    sess.versi_batal = False
+    buatversi.bersihkan_maju(akun)
+    buatversi.catat_maju(akun, jalan=True, nomor=nomor, persen=0.0,
+                         fase_nama="Menyiapkan")
+
+    def kerja():
+        job = buatversi.Pekerjaan(ds, nomor, items, names, resep, peta,
+                                  kunci=akun, batal=lambda: sess.versi_batal)
+        try:
+            hasil = job.jalankan(catatan)
+        except buatversi.Dibatalkan:
+            buatversi.catat_maju(akun, jalan=False, batal=True)
+            return
+        except Exception as e:                     # noqa: BLE001
+            log.exception("pembuatan versi gagal")
+            buatversi.buang_hasil(ds, nomor)
+            buatversi.catat_maju(akun, jalan=False, galat=str(e)[:200])
+            return
+        versi.buat(ds, akun, rasio, [it["img"].name for it in items], peta,
+                   ringkas, catatan, resep=resep, berencana=bool(rencana),
+                   nomor=nomor, hasil=hasil)
+        buatversi.catat_maju(akun, jalan=False, selesai=True, nomor=nomor)
+
+    _tugas_versi[akun] = asyncio.create_task(asyncio.to_thread(kerja))
+    return {"ok": True, "nomor": nomor, **hitung, "berencana": bool(rencana)}
+
+
+@router.get("/api/versi/kemajuan")
+async def versi_kemajuan(sess: Session = Depends(current_session_api)):
+    return buatversi.kemajuan(sess.user)
+
+
+@router.post("/api/versi/batal")
+async def versi_batal(sess: Session = Depends(current_session_api)):
+    sess.versi_batal = True
+    return {"ok": True}
+
+
+@router.get("/api/versi/isi")
+async def versi_isi(nomor: int = 0,
+                    sess: Session = Depends(current_session_api)):
+    """Rincian satu versi untuk panel detail di sebelah kanan daftar."""
+    if sess.src is None:
+        return {"ok": False, "error": "belum ada dataset terbuka"}
+    v = await asyncio.to_thread(versi.baca, sess.src, nomor)
+    if v is None:
+        return {"ok": False, "error": f"versi v{nomor} tidak ada"}
+    isi = await asyncio.to_thread(buatversi.isi_versi, sess.src, nomor)
+    v.pop("peta", None)
+    v.pop("gambar", None)
+    return {"ok": True, "versi": v, "isi": isi}
+
+
+@router.get("/versi/gambar")
+async def versi_gambar(nomor: int = 0, nama: str = "", s: int = 200,
+                       sess: Session = Depends(current_session)):
+    """
+    Satu gambar hasil versi, diperkecil.
+
+    Tidak lewat /thumb: rute itu melayani `sess.items`, dan berkas hasil versi
+    memang SENGAJA tidak ada di sana — kalau ada, satu versi yang dibuat akan
+    terbaca sebagai puluhan ribu gambar baru di projeknya sendiri.
+    """
+    if sess.src is None:
+        return Response(status_code=404)
+    p = await asyncio.to_thread(buatversi.berkas_versi, sess.src, nomor, nama)
+    if p is None:
+        return Response(status_code=404)
+
+    def kecilkan():
+        import cv2
+        im = cv2.imread(str(p))
+        if im is None:
+            return None
+        sisi = min(max(s, 64), 640)
+        h, w = im.shape[:2]
+        f = sisi / max(h, w)
+        if f < 1:
+            im = cv2.resize(im, (max(1, int(w * f)), max(1, int(h * f))),
+                            interpolation=cv2.INTER_AREA)
+        ok, buf = cv2.imencode(".jpg", im, [int(cv2.IMWRITE_JPEG_QUALITY), 82])
+        return buf.tobytes() if ok else None
+
+    data = await asyncio.to_thread(kecilkan)
+    if data is None:
+        return Response(status_code=404)
+    return Response(data, media_type="image/jpeg",
+                    headers={"Cache-Control": "private, max-age=300"})
 
 
 @router.post("/api/versi/hapus")
@@ -197,6 +379,10 @@ async def versi_hapus(nomor: int = 0,
             if tdata["pemilik"] else
             "folder dataset bersama tidak punya pemilik, jadi versinya tidak "
             "bisa diurus dari sini — salin dulu ke ruang kerjamu")}
+    # Berkas hasilnya ikut dibuang. Tanpa ini, menghapus versi hanya
+    # menghilangkan kartunya dari layar sementara gigabyte gambar hasil
+    # tetap memakan disk, tanpa satu pun jalan untuk menemukannya lagi.
+    await asyncio.to_thread(buatversi.buang_hasil, sess.src, nomor)
     ok = await asyncio.to_thread(versi.hapus, sess.src, nomor)
     return {"ok": ok, "error": "" if ok else f"versi v{nomor} tidak ada"}
 
@@ -234,7 +420,12 @@ async def ekspor_ringkasan(format: str = "yolo-seg", split: str = "",
     r = await asyncio.to_thread(export.ringkasan, items, format == "yolo-seg",
                                 export.baca_rasio(split), names, rencana)
     return {"ok": True, "format": export.FORMAT[format],
-            "rencana": ringkas_rencana(rencana), **hitung, **r}
+            "rencana": ringkas_rencana(rencana), **hitung, **r,
+            # Rasio yang tidak bisa dibaca tetap jatuh ke bawaan, tetapi
+            # keluhannya ikut supaya panelnya bisa MENGATAKANNYA. Diam-diam
+            # memakai 80/10/10 sementara orang mengetik yang lain adalah cara
+            # sebuah kekeliruan bertahan berbulan-bulan.
+            "rasio_pesan": export.periksa_rasio(split)}
 
 
 @router.get("/ekspor")
@@ -273,9 +464,23 @@ async def ekspor(format: str = "yolo-seg", gambar: int = 1, split: str = "",
         if v is None:
             return Response(f"versi v{nomor} tidak ada", status_code=404,
                             media_type="text/plain; charset=utf-8")
-        punya = set(v.get("gambar") or [])
-        items = [it for it in items if it["img"].name in punya]
-        rencana_dipakai = {"peta": v.get("peta") or {}, "versi": nomor}
+        if await asyncio.to_thread(buatversi.ada_hasil, sess.src, nomor):
+            # Versi ini punya berkas hasilnya sendiri — gambar yang sudah
+            # dipreprocessing dan diaugmentasi. Itulah yang diunduh, bukan
+            # gambar sumbernya: kalau yang dikirim gambar sumber, seluruh
+            # resep yang dijalankan berjam-jam itu tidak pernah sampai ke
+            # siapa pun.
+            items, names_v, peta_v = await asyncio.to_thread(
+                buatversi.items_hasil, sess.src, nomor)
+            if names_v:
+                names = names_v
+            rencana_dipakai = {"peta": peta_v, "versi": nomor}
+        else:
+            # Versi lama: hanya pembagiannya yang dibekukan, gambarnya masih
+            # gambar sumber.
+            punya = set(v.get("gambar") or [])
+            items = [it for it in items if it["img"].name in punya]
+            rencana_dipakai = {"peta": v.get("peta") or {}, "versi": nomor}
         split = v.get("rasio") or split
         nama = f"{nama}-v{nomor}"
     else:

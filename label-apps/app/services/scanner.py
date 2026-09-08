@@ -21,6 +21,10 @@ from pathlib import Path
 import cv2
 import numpy as np
 import yaml
+
+from ..log import catat
+
+log = catat("labelapp.scanner")
 from PIL import Image
 
 from ..config import IMG_EXT
@@ -63,14 +67,26 @@ def dimensi(ip: Path) -> tuple[int, int] | None:
     return im.shape[:2]
 
 
+# Berkas nama kelas yang ADA tetapi tidak bisa dibaca. Dicatat di sini supaya
+# periksa_kelengkapan bisa membedakan "tidak punya data.yaml" dari "punya, tapi
+# rusak" — dua keadaan yang perlu tindakan berbeda dan dulu terlihat sama
+# persis: keduanya sama-sama menghasilkan kelas bernama 0, 1, 2.
+_rusak: dict[str, str] = {}
+
+
 def _nama_dari_yaml(p: Path) -> dict:
     """`names` di data.yaml -> {indeks: nama}. Terima bentuk daftar maupun peta."""
     try:
         d = yaml.safe_load(p.read_text(encoding="utf-8"))
-    except (OSError, yaml.YAMLError):
+    except (OSError, yaml.YAMLError) as e:
+        _rusak[str(p)] = str(e).splitlines()[0][:120]
+        log.warning("data.yaml tidak bisa dibaca (%s): %s", p, e)
         return {}
     if not isinstance(d, dict):
+        _rusak[str(p)] = "isinya bukan peta kunci-nilai"
+        log.warning("data.yaml bukan peta kunci-nilai: %s", p)
         return {}
+    _rusak.pop(str(p), None)
     n = d.get("names")
     if isinstance(n, list):
         return {i: str(v) for i, v in enumerate(n)}
@@ -193,19 +209,54 @@ def periksa_kelengkapan(src: Path) -> list[str]:
     if not src.is_dir():
         return ["folder tidak ada"]
 
-    punya_txt = any(True for _ in src.rglob("labels/*.txt"))
+    # Hasil versi disimpan di .versi/vN/train/labels/*.txt. Tanpa saringan
+    # tersembunyi(), satu versi yang pernah dibuat membuat projek labelme ini
+    # salah dikenali sebagai dataset YOLO.
+    punya_txt = any(True for p in src.rglob("labels/*.txt")
+                    if not tersembunyi(p, src))
     if punya_txt and not baca_nama_kelas(src):
-        pesan.append(
-            "dataset YOLO ini tidak punya data.yaml atau classes.txt, jadi "
-            "nama kelasnya akan tampil sebagai angka (0, 1, 2). Unggah juga "
-            "data.yaml-nya, atau buat classes.txt berisi satu nama kelas "
-            "per baris.")
+        # Dua sebab, dua tindakan. Sebelumnya keduanya menghasilkan kalimat yang
+        # sama — "tidak punya data.yaml" — padahal berkasnya jelas-jelas ada,
+        # dan orang yang membacanya mencari berkas yang sudah ia unggah.
+        rusak = [f"{Path(k).name}: {v}" for k, v in _rusak.items()
+                 if Path(k).is_file() and str(src) in k]
+        if rusak:
+            pesan.append(
+                "berkas nama kelas ADA tetapi tidak bisa dibaca (" +
+                "; ".join(rusak) + "), jadi kelasnya akan tampil sebagai angka "
+                "(0, 1, 2). Perbaiki berkasnya, jangan mengunggah ulang yang "
+                "sama.")
+        else:
+            pesan.append(
+                "dataset YOLO ini tidak punya data.yaml atau classes.txt, jadi "
+                "nama kelasnya akan tampil sebagai angka (0, 1, 2). Unggah juga "
+                "data.yaml-nya, atau buat classes.txt berisi satu nama kelas "
+                "per baris.")
 
     if any(True for _ in anotasi_json(src)) and punya_txt:
         pesan.append(
             "folder ini memuat anotasi labelme (.json) DAN YOLO (.txt) "
             "sekaligus — periksa mana yang sebenarnya kamu maksud.")
     return pesan
+
+
+def tersembunyi(p: Path, src: Path) -> bool:
+    """
+    True kalau `p` berada di dalam folder berawalan titik relatif terhadap
+    `src`, atau namanya sendiri berawalan titik.
+
+    Berkas maupun FOLDER berawalan titik adalah keterangan aplikasi ini, bukan
+    data: `.tag.json`, `.tugas.json`, dan `.versi/`. Sejak versi dataset
+    menyimpan gambar hasilnya di `.versi/vN/`, aturan ini berhenti jadi
+    kerapian dan jadi syarat kebenaran — tanpa ia, setiap versi yang dibuat
+    akan terbaca sebagai puluhan ribu gambar baru di projek yang sama, dan
+    versi berikutnya dibuat dari hasil versi sebelumnya.
+    """
+    try:
+        bagian = p.relative_to(src).parts
+    except ValueError:
+        return False
+    return any(b.startswith(".") for b in bagian)
 
 
 def anotasi_json(src: Path):
@@ -223,9 +274,7 @@ def anotasi_json(src: Path):
     dataset disimpan di .versi/, dan berkas di dalamnya bernama v1.json yang
     namanya sendiri tidak berawalan titik.
     """
-    return (p for p in src.rglob("*.json")
-            if not any(bagian.startswith(".")
-                       for bagian in p.relative_to(src).parts))
+    return (p for p in src.rglob("*.json") if not tersembunyi(p, src))
 
 
 def poly_area(p: np.ndarray) -> float:
@@ -580,7 +629,8 @@ def _scan_labelme(src: Path):
                       "issues": inspect(sh, W, H, True)})
 
     # gambar yang belum punya anotasi sama sekali
-    for ip in sorted(p for p in src.rglob("*") if p.suffix.lower() in IMG_EXT):
+    for ip in sorted(p for p in src.rglob("*")
+                     if p.suffix.lower() in IMG_EXT and not tersembunyi(p, src)):
         if ip.resolve() in seen:
             continue
         d = dimensi(ip)

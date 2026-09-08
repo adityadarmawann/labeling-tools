@@ -19,7 +19,12 @@ AKAR = Path(__file__).resolve().parent.parent
 
 # Setelan yang menunjuk tempat penyimpanan. Kalau salah satunya sama, dev dan
 # prod menulis ke berkas yang sama.
-TERPISAH = ("PORT", "USERS_FILE", "DATASETS_ROOT", "UPLOADS_ROOT")
+#
+# NAMA ikut di sini walau ia bukan tempat: keduanya dibuka berdampingan di
+# peramban yang sama, dan dua tab berjudul sama persis adalah cara termudah
+# mengetik di jendela yang salah — kekeliruan yang bentuknya sama dengan
+# menulis ke folder yang salah.
+TERPISAH = ("PORT", "USERS_FILE", "DATASETS_ROOT", "UPLOADS_ROOT", "NAMA")
 
 # Setelan yang mengubah PERILAKU, bukan tempat. Keduanya harus menyebutkan
 # setelan yang sama persis — kalau dev membiarkannya kosong, ia memakai nilai

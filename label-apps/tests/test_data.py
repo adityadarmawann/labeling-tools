@@ -150,8 +150,16 @@ def test_batal_tandai_latar_tidak_menghapus_anotasi_berisi(klien, lingkungan):
 # ---------------------------------------------------------------- saringan grid
 
 def _chip(html: str, nama: str) -> int:
-    m = re.search(rf"{nama}\s*<b>(\d+)</b>", html.replace("\n", " "))
-    assert m, f"chip '{nama}' tidak ditemukan"
+    """
+    Angka keadaan di halaman grid.
+
+    Dulu enam chip berjajar (`Perlu dicek <b>3</b>`); sekarang enam baris di
+    dalam dropdown "Keadaan" (`<span>Perlu dicek</span><b>3</b>`). Yang diuji
+    tetap sama — angkanya — jadi polanya yang dilonggarkan, bukan ujinya yang
+    dibuang.
+    """
+    m = re.search(rf"{nama}(?:</span>)?\s*<b>(\d+)</b>", html.replace("\n", " "))
+    assert m, f"angka keadaan '{nama}' tidak ditemukan"
     return int(m.group(1))
 
 
@@ -1710,7 +1718,10 @@ def test_saringan_kelas_asing_tetap_dipakai_bukan_diabaikan(klien, lingkungan):
     klien.post(f"/setsrc?path={lingkungan['roots'] / 'ds-alpha'}")
     html = klien.get("/?f=all&c=tidak-ada").text
     assert html.count('class="card"') == 0
-    assert "0 dari 4 gambar tampil" in html
+    # Bar paginasi tidak dirender saat nol hasil; yang mengatakan keadaannya
+    # adalah kotak kosong beserta daftar saringan yang sedang berlaku.
+    assert "Tidak ada yang cocok" in html
+    assert "tidak-ada" in html and "Bersihkan saringan" in html
 
 
 def test_dropdown_kelas_membawa_urutan_dan_pencarian(klien, lingkungan):
@@ -1942,7 +1953,7 @@ def test_mengurutkan_tidak_merusak_saringan_kelas_yang_aktif(klien, lingkungan,
     d = _ds_dua_kelas(lingkungan["roots"])
     klien.post(f"/setsrc?path={d}")
     html = klien.get("/?c=botol&c=kaleng&m=dan").text
-    form = html[html.index('class="bar bar-urut"'):]
+    form = html[html.index('class="saring-urut"'):]
     form = form[:form.index("</form>")]
     nilai = re.findall(r'name="c" value="([^"]*)"', form)
     assert nilai == ["botol", "kaleng"], nilai
@@ -1950,7 +1961,8 @@ def test_mengurutkan_tidak_merusak_saringan_kelas_yang_aktif(klien, lingkungan,
 
     # dan hasilnya benar-benar bertahan saat form itu dikirim
     lanjut = klien.get("/?c=botol&c=kaleng&m=dan&s=label-baru").text
-    assert "1 dari 4 gambar tampil" in lanjut, "hanya c-dua yang punya keduanya"
+    assert lanjut.count('class="card"') == 1, "hanya c-dua yang punya keduanya"
+    assert "1&ndash;1 dari <b>1</b>" in lanjut
 
 
 def test_tombol_kartu_membedakan_melabeli_dari_menyunting(klien, lingkungan,
@@ -2194,3 +2206,144 @@ def test_penyegaran_hanya_membaca_gambar_yang_berubah(klien, lingkungan):
 
     # Sesi yang tertinggal lebih jauh daripada riwayat juga.
     assert sesi_mod.berubah_sejak(src, -10_000) is None
+
+
+# ---------------------------------------------------------------- paginasi grid
+
+def _grid_besar(lingkungan, n=130):
+    from conftest import buat_dataset
+    return buat_dataset(lingkungan["roots"] / "banyak" / "ds", n, n // 2)
+
+
+def test_grid_memotong_jadi_halaman_bukan_merender_semuanya(klien, lingkungan):
+    """
+    Dulu seluruh hasil saringan dirender sekali jalan. Projek produksi terbesar
+    11.319 gambar berarti 11.319 kartu dalam satu HTML; loading="lazy" menahan
+    unduhan gambarnya, tetapi tidak menahan HTML-nya, dan bukan itu yang
+    membuat halamannya berat.
+    """
+    masuk(klien, "paul", PW_PAUL)
+    klien.post(f"/setsrc?path={_grid_besar(lingkungan)}")
+
+    h = klien.get("/").text
+    assert h.count('class="card"') == 50, "bawaan 50 per halaman"
+    assert "1&ndash;50 dari <b>130</b>" in h
+
+    h2 = klien.get("/?hal=2").text
+    assert h2.count('class="card"') == 50
+    assert "51&ndash;100 dari <b>130</b>" in h2
+
+    h3 = klien.get("/?hal=3").text
+    assert h3.count('class="card"') == 30, "halaman terakhir hanya sisanya"
+    assert "101&ndash;130 dari <b>130</b>" in h3
+
+
+def test_per_halaman_bisa_diubah_dan_nomor_di_luar_rentang_dijepit(klien, lingkungan):
+    """Halaman kosong dengan "tidak ada yang cocok" itu bohong: datanya ada,
+    nomornya yang salah."""
+    masuk(klien, "paul", PW_PAUL)
+    klien.post(f"/setsrc?path={_grid_besar(lingkungan)}")
+
+    assert klien.get("/?per=100").text.count('class="card"') == 100
+    assert klien.get("/?per=1000").text.count('class="card"') == 130
+    # nilai asing jatuh ke bawaan, bukan menggagalkan halaman
+    assert klien.get("/?per=7").text.count('class="card"') == 50
+
+    jauh = klien.get("/?hal=99").text
+    assert jauh.count('class="card"') == 30 and "101&ndash;130" in jauh
+    nol = klien.get("/?hal=0").text
+    assert nol.count('class="card"') == 50 and "1&ndash;50" in nol
+
+
+def test_mengubah_per_halaman_mempertahankan_gambar_yang_sedang_dilihat(
+        klien, lingkungan):
+    """Dari 100/halaman halaman 2 (gambar ke-101), pindah ke 50/halaman harus
+    mendarat di halaman yang memuat gambar ke-101 — bukan melempar ke halaman
+    1. Itulah gunanya `dari`."""
+    masuk(klien, "paul", PW_PAUL)
+    klien.post(f"/setsrc?path={_grid_besar(lingkungan)}")
+
+    h = klien.get("/?per=100&hal=2").text
+    assert "101&ndash;130" in h
+    # form "per halaman" mengirim nomor gambar pertama yang sedang terlihat
+    assert 'name="dari" value="101"' in h
+    lanjut = klien.get("/?per=50&dari=101").text
+    assert "101&ndash;130 dari <b>130</b>" in lanjut
+
+
+def test_tautan_halaman_membawa_saringan_dan_saringan_mereset_halaman(
+        klien, lingkungan):
+    """Mengubah saringan lalu mendarat di halaman 7 dari hasil yang cuma punya
+    dua halaman adalah cara tercepat membuat grid terlihat kosong."""
+    masuk(klien, "paul", PW_PAUL)
+    klien.post(f"/setsrc?path={_grid_besar(lingkungan)}")
+
+    # 130 gambar, 65 di antaranya berlabel -> saringan "sudah" jadi 2 halaman
+    h = klien.get("/?f=sudah&per=50&hal=2").text
+    assert h.count('class="card"') == 15
+    # tombol halaman mempertahankan saringan; halaman 1 ditulis tanpa `hal`
+    # supaya URL-nya tidak berisi nilai bawaan
+    assert 'href="?f=sudah&hal=2#grid"' in h
+    assert 'href="?f=sudah#grid"' in h
+    # tautan saringan lain membawa keadaan halaman TETAPI tidak membawa `hal`
+    assert 'href="?f=unlab"' in h
+    potong = h.split('href="?f=unlab"')[1][:40]
+    assert "hal=" not in potong, potong
+
+
+def test_lompat_halaman_muncul_hanya_kalau_halamannya_banyak(klien, lingkungan):
+    """Halaman 150 dari 227 tidak bisa dijangkau lewat deretan nomor — jendela
+    nomornya sengaja pendek. Kotak "Ke halaman" itu jalan satu-satunya, dan ia
+    hanya dirender kalau memang dibutuhkan."""
+    from conftest import buat_dataset
+
+    masuk(klien, "paul", PW_PAUL)
+    kecil = buat_dataset(lingkungan["roots"] / "sedikit-hal" / "ds", 130, 60)
+    klien.post(f"/setsrc?path={kecil}")
+    assert 'id="ke-hal"' not in klien.get("/").text, "3 halaman belum perlu"
+
+    besar = buat_dataset(lingkungan["roots"] / "banyak-hal" / "ds", 560, 100)
+    klien.post(f"/setsrc?path={besar}")
+    h = klien.get("/").text                        # 560 / 50 = 12 halaman
+    assert 'id="ke-hal"' in h
+    assert 'max="12"' in h
+    # jendela nomornya tetap pendek: 1, tetangga halaman ini, dan yang terakhir
+    assert h.count('class="hal-n"') <= 8, h.count('class="hal-n"')
+    assert 'class="hal-gap"' in h, "gap harus muncul kalau nomornya dilompati"
+
+    tengah = klien.get("/?hal=6").text
+    assert 'href="?f=all&hal=5#grid"' in tengah
+    assert 'href="?f=all&hal=7#grid"' in tengah
+    assert 'href="?f=all&hal=12#grid"' in tengah, "halaman terakhir selalu terjangkau"
+    # dan yang jauh dari halaman ini memang dilompati
+    assert 'href="?f=all&hal=3#grid"' not in tengah
+
+
+def test_data_yaml_rusak_dibedakan_dari_data_yaml_yang_tidak_ada(tmp_path):
+    """
+    Dua keadaan, dua tindakan — dan dulu keduanya menghasilkan kalimat yang
+    sama. Orang yang membacanya disuruh mengunggah berkas yang sudah jelas ada
+    di folder itu.
+    """
+    import cv2
+    import numpy as np
+    from app.services import scanner
+
+    d = tmp_path / "yolo"
+    (d / "labels").mkdir(parents=True)
+    (d / "images").mkdir(parents=True)
+    (d / "labels" / "a.txt").write_text("0 0.5 0.5 0.2 0.2\n")
+    cv2.imwrite(str(d / "images" / "a.jpg"), np.zeros((40, 40, 3), np.uint8))
+
+    tanpa = " ".join(scanner.periksa_kelengkapan(d))
+    assert "tidak punya data.yaml" in tanpa
+
+    (d / "data.yaml").write_text("names: [botol\n  rusak: ][")
+    rusak = " ".join(scanner.periksa_kelengkapan(d))
+    assert "ADA tetapi tidak bisa dibaca" in rusak
+    assert "data.yaml" in rusak
+    assert "tidak punya data.yaml" not in rusak
+
+    (d / "data.yaml").write_text("names: [botol, kaleng]\nnc: 2\n")
+    assert not scanner.periksa_kelengkapan(d)
+    assert scanner.baca_nama_kelas(d) == {0: "botol", 1: "kaleng"}

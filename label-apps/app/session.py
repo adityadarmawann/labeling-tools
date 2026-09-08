@@ -113,6 +113,11 @@ class Session:
         # kali tombol ekspor ditekan.
         self.rencana_split: dict | None = None
         self.split_batal = False
+        # Ditekan lewat /api/versi/batal, dibaca thread pembuat versi.
+        # Terpisah dari split_batal: keduanya bisa berjalan bersamaan,
+        # dan satu bendera untuk dua pekerjaan berarti menghentikan yang
+        # satu diam-diam menghentikan yang lain.
+        self.versi_batal = False
         self.projek_batal = False
         # Peran dibaca sekali saat sesi dibuat. Membacanya ulang di tiap
         # permintaan berarti membuka users.json puluhan kali per halaman.

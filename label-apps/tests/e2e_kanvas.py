@@ -88,6 +88,35 @@ def siapkan():
         "imagePath": ip.name, "imageData": None,
         "imageHeight": 60, "imageWidth": 80,
     }))
+
+    # Dataset kedua, khusus untuk sapuan halaman grid. Dibuat besar dan
+    # bercampur dengan sengaja: dataset `uji` cuma satu gambar, dan pada satu
+    # gambar hampir tiap saringan menghasilkan jawaban yang sama sehingga tidak
+    # ada saringan yang benar-benar teruji. Di sini:
+    #   0..69   berlabel (botol / kaleng bergantian)
+    #   70..79  berlabel tetapi CACAT (poligon 3 titik) -> "perlu dicek"
+    #   80..129 tanpa berkas anotasi sama sekali        -> "belum dilabeli"
+    gd = TMP / "datasets" / "grid"
+    gd.mkdir(parents=True, exist_ok=True)
+    (gd / "classes.txt").write_text("botol\nkaleng\nplastic-cup\n")
+    for i in range(130):
+        q = gd / f"g-{i:03d}.jpg"
+        cv2.imwrite(str(q), np.full((60, 80, 3), (30 + i * 7) % 240, np.uint8))
+        if i >= 80:
+            continue
+        # 8 titik supaya TIDAK ditandai "hanya N titik": ambangnya di
+        # scanner.inspect adalah 8, bukan 4 (poligon sesegi itu biasanya kotak
+        # kasar, bukan bentuk objek). Yang 3 titik memang sengaja dibuat cacat.
+        titik = ([[10, 10], [60, 10], [60, 45]] if i >= 70
+                 else [[10, 10], [35, 8], [60, 10], [64, 27], [60, 45],
+                       [35, 48], [10, 45], [6, 27]])
+        q.with_suffix(".json").write_text(json.dumps({
+            "version": "0.4.36", "flags": {},
+            "shapes": [{"label": "botol" if i % 2 == 0 else "kaleng",
+                        "shape_type": "polygon", "points": titik}],
+            "imagePath": q.name, "imageData": None,
+            "imageHeight": 60, "imageWidth": 80,
+        }))
     return ip
 
 
@@ -332,6 +361,8 @@ def jalankan(d, ip):
                      ("dialog", lambda: jalankan_dialog(d)),
                      ("kanvas", lambda: jalankan_kanvas(d)),
                      ("panel", lambda: jalankan_panel(d)),
+                     ("kontrol", lambda: jalankan_kontrol(d)),
+                     ("grid", lambda: jalankan_grid(d)),
                      ("potret", lambda: jalankan_potret(d))):
         if BLOK and nama not in BLOK:
             continue
@@ -672,7 +703,11 @@ def jalankan_kanvas(d):
         "n=%s" % d.js("S.shapes.length"))
 
     # -------- klik ganda tidak menyisakan titik kembar
-    d.js("S.draft = null; S.shapes.length = 0; setMode('poly'); render();")
+    # muatKeLayar() penting: uji roda di atas menggeser gambar, dan tanpa
+    # dipaskan ulang titik pertama bisa jatuh DI LUAR kanvas — kliknya hilang
+    # dan yang teruji tinggal tiga titik, bukan empat.
+    d.js("S.draft = null; S.shapes.length = 0; setMode('poly');"
+         " muatKeLayar(); render();")
     for gx, gy in ((10, 10), (60, 12), (58, 48)):
         d.klik(*d.layar(gx, gy))
     # Klik keempat memakai d.klik (jalur yang sama dengan tiga klik di atas),
@@ -1006,14 +1041,38 @@ def jalankan_panel(d):
     # -------- panel samping tidak boleh saling tumpang tindih
     tumpang = d.js("""(function(){
       const p = [...document.querySelectorAll('.lab-side .pan')]
-        .filter(x => !x.hidden).map(x => x.getBoundingClientRect());
+        .filter(x => x.offsetParent !== null).map(x => x.getBoundingClientRect());
       for (let i = 1; i < p.length; i++)
         if (p[i].top < p[i-1].bottom - 1) return `${i}: ${p[i].top} < ${p[i-1].bottom}`;
       return ''; })()""")
     cek("panel samping tidak tumpang tindih", terlihat_kosong(tumpang),
         tumpang or "tidak ada")
 
+    # -------- rel kiri: satu panel pada satu waktu
+    d.js("document.querySelector('.lab-rel .rel[data-pan=\\'pan-objects\\']').click()")
+    time.sleep(0.2)
+    cek("rel menampilkan panel yang dipilih saja",
+        bool(d.js("document.getElementById('pan-objects').offsetParent !== null"))
+        and d.js("document.getElementById('pan-labels').offsetParent === null"))
+    tampak = d.js("""[...document.querySelectorAll('.lab-side .pan')]
+        .filter(x => x.offsetParent !== null).length""")
+    cek("tepat satu panel tampak", tampak == 1, "tampak=%s" % tampak)
+
+    # Mematikan panel di menu View juga menghapus tombol relnya, dan kalau yang
+    # dimatikan sedang tampil, pilihannya pindah — bukan meninggalkan kolom kosong.
+    d.js("document.querySelector('#view-isi input[data-panel=\\'pan-objects\\']').click()")
+    time.sleep(0.2)
+    cek("mematikan panel menyembunyikan tombol relnya",
+        bool(d.js("document.querySelector('.lab-rel .rel[data-pan=\\'pan-objects\\']').hidden")))
+    tampak = d.js("""[...document.querySelectorAll('.lab-side .pan')]
+        .filter(x => x.offsetParent !== null).length""")
+    cek("panel lain menggantikan yang dimatikan", tampak == 1, "tampak=%s" % tampak)
+    d.js("document.querySelector('#view-isi input[data-panel=\\'pan-objects\\']').click()")
+    time.sleep(0.2)
+
     # -------- melipat bagian panel: menyembunyikan isi, TIDAK menghapusnya
+    d.js("document.querySelector('.lab-rel .rel[data-pan=\\'pan-labels\\']').click()")
+    time.sleep(0.2)
     judul = "document.querySelector('#pan-labels h3')"
     isi_awal = d.js("document.querySelectorAll('#kelas .kelas').length")
     d.js(judul + ".click()")
@@ -1103,14 +1162,19 @@ def jalankan_potret(d):
                  "  radius: getComputedStyle(l).borderTopLeftRadius,"
                  "  n: p.length, min: Math.min(...p),"
                  "  jumlah: Math.round(p.reduce((a, b) => a + b, 0)),"
-                 "  titik: document.querySelectorAll('.chip .titik').length,"
+                 "  titik: document.querySelectorAll('#keadaan-isi .titik.t-ok,"
+                 "    #keadaan-isi .titik.t-warn, #keadaan-isi .titik.t-bg,"
+                 "    #keadaan-isi .titik.t-stop').length,"
                  "  luber: r.right > innerWidth}; })()")
     cek("bilah kemajuan: satu bilah membulat, tidak melebihi layar",
         bilah and bilah["radius"] == "999px" and not bilah["luber"], f"{bilah}")
     cek("bilah kemajuan: tiap potongan punya lebar, jumlahnya penuh",
         bilah and bilah["n"] >= 1 and bilah["min"] >= 3
         and abs(bilah["jumlah"] - bilah["w"]) <= 2, f"{bilah}")
-    cek("empat chip keadaan membawa titik warnanya",
+    # Keempat keadaan berwarna pindah dari chip berjajar ke baris dropdown
+    # "Keadaan"; warnanyalah yang menghubungkannya ke potongan bilah di atas,
+    # jadi keempatnya harus tetap ada.
+    cek("empat keadaan berwarna membawa titiknya di dropdown Keadaan",
         bilah and bilah["titik"] == 4, f"{bilah}")
 
     # Grid: baris urutkan/cari dan dropdown kelas
@@ -1185,6 +1249,26 @@ def jalankan_potret(d):
     # Menu Ekspor beserta splitting anti-bocornya. Bilah progres dan angka
     # persennya cuma bisa dinilai dengan mata; yang bisa di-assert hanyalah
     # bahwa hasilnya benar-benar muncul dan menyebut angka.
+    #
+    # Tempat menunya sekarang bergantung pada jenis datasetnya, dan itu
+    # disengaja: projek punya halaman Versi, dataset yang dibuka lewat path
+    # server tidak — /versi mengalihkannya ke daftar projek. Kalau menunya
+    # dipindah tanpa pengecualian itu, dataset bersama sama sekali tidak bisa
+    # diekspor lagi.
+    cek("menu Ekspor ada di halaman Versi milik projek",
+        d.js("fetch('/versi?ds=projek-satu').then(r=>r.text())"
+             ".then(t=>t.includes('id=\"ekspor-tombol\"'))", tunggu=True))
+    cek("dan sudah tidak ada di grid projek",
+        not d.js("fetch('/?ds=projek-satu').then(r=>r.text())"
+                 ".then(t=>t.includes('id=\"ekspor-tombol\"'))", tunggu=True))
+    # Dataset uji ini dibuka lewat path server, jadi menunya justru tetap di
+    # grid — dan seluruh pemeriksaan splitting di bawah berjalan di situ.
+    d.js(f"fetch('/setsrc?path={TMP / 'datasets' / 'uji'}', {{method:'POST'}})"
+         ".then(r => r.json())", tunggu=True)
+    d.js("location.href = '/'")
+    time.sleep(1.4)
+    cek("dataset tanpa halaman Versi tetap punya menu Ekspor di grid",
+        bool(d.js("!!document.getElementById('ekspor-tombol')")))
     d.js("document.getElementById('ekspor-tombol').click()")
     time.sleep(1.0)
     simpan("ekspor-menu")
@@ -1470,6 +1554,7 @@ def jalankan_potret(d):
 
     # Halaman Lihat: gambar dan seluruh kotak keterangan harus terlihat
     # BERSAMAAN, tanpa halaman perlu digulir sama sekali.
+    #
     d.js("location.href = '/'")
     time.sleep(1.2)
     d.js("location.href = document.querySelector('a[href^=\"/view\"]').href")
@@ -1534,6 +1619,644 @@ def jalankan_potret(d):
     time.sleep(0.3)
     simpan("panduan-cari")
     d.js("document.getElementById('panduan-tutup').click()")
+
+
+def jalankan_kontrol(d):
+    """
+    Sapuan kontrol: SETIAP tombol, saringan, dan pintasan huruf di halaman
+    kanvas ditekan sungguhan, lalu akibatnya diperiksa.
+
+    Blok lain menguji perilaku (bentuk, dialog, paritas kanvas). Yang ini
+    menguji PEMASANGANNYA — tombol yang pindah tempat saat tata letak diubah
+    dan diam-diam kehilangan penanganannya tetap terlihat normal di layar, dan
+    tidak satu pun uji perilaku menangkapnya karena uji-uji itu memanggil
+    fungsinya langsung, bukan menekan tombolnya.
+    """
+    print("  -- sapuan kontrol --")
+
+    def bersih():
+        d.js("S.draft=null; S.prompt=[]; S.shapes.length=0; S.terpilih=[]; S.sel=-1;"
+             " S.redo.length=0; S.undo.length=0; S.kotor=false;"
+             " S.v.tanyaKelas=false; S.label='botol'; muatKeLayar(); render();")
+        time.sleep(0.15)
+
+    def satu_bentuk():
+        bersih()
+        d.js("S.shapes.push({label:'botol', shape_type:'polygon',"
+             " points:[[10,10],[40,10],[40,35]], text:'', group_id:null,"
+             " flags:{}, titipan:{}}); S.terpilih=[0]; S.sel=0; render();")
+        time.sleep(0.15)
+
+    def tekan(huruf, kode, ctrl=False, shift=False, alt=False):
+        mod = (2 if ctrl else 0) | (8 if shift else 0) | (1 if alt else 0)
+        for tipe in ("rawKeyDown", "keyUp"):
+            d.kirim("Input.dispatchKeyEvent", type=tipe, key=huruf,
+                    windowsVirtualKeyCode=kode, nativeVirtualKeyCode=kode,
+                    modifiers=mod)
+        time.sleep(0.18)
+
+    # ---------------------------------------------------------------- bar atas
+    cek("panah kembali menuju daftar gambar",
+        d.js("document.querySelector('.lab-balik').getAttribute('href')") == "/")
+    cek("nama projek menuju pemilih dataset",
+        d.js("document.querySelector('.lab-projek').getAttribute('href')") == "/pilih")
+    cek("Keluar menuju /logout",
+        d.js("""[...document.querySelectorAll('.lab-top a')]
+             .some(a => a.getAttribute('href') === '/logout')"""))
+    for arah in ("prev", "next"):
+        h = d.js(f"document.getElementById('{arah}').getAttribute('href')")
+        mati = d.js(f"document.getElementById('{arah}').hasAttribute('data-off')")
+        cek(f"tombol {arah} punya tujuan atau ditandai mati",
+            (h or "").startswith("/label?path=") or mati, h or "mati")
+
+    satu_bentuk()
+    d.js("document.getElementById('btn-dup').click()")
+    time.sleep(0.25)
+    cek("tombol Gandakan menambah objek", d.js("S.shapes.length") == 2,
+        "n=%s" % d.js("S.shapes.length"))
+
+    d.js("document.getElementById('btn-del').click()")
+    time.sleep(0.25)
+    n_sesudah_hapus = d.js("S.shapes.length")
+    cek("tombol Hapus membuang objek terpilih", n_sesudah_hapus == 1,
+        "n=%s" % n_sesudah_hapus)
+
+    d.js("document.getElementById('btn-undo').click()")
+    time.sleep(0.25)
+    cek("tombol Urungkan mengembalikannya", d.js("S.shapes.length") == 2,
+        "n=%s" % d.js("S.shapes.length"))
+
+    d.js("document.getElementById('btn-redo').click()")
+    time.sleep(0.25)
+    cek("tombol Ulangi menghapusnya lagi", d.js("S.shapes.length") == 1,
+        "n=%s" % d.js("S.shapes.length"))
+
+    d.js("document.getElementById('btn-simpan').click()")
+    time.sleep(0.8)
+    cek("tombol Simpan benar-benar menyimpan",
+        d.js("document.getElementById('status').textContent") == "Tersimpan"
+        and not d.js("S.kotor"),
+        d.js("document.getElementById('status').textContent"))
+
+    d.js("document.getElementById('btn-panduan').click()")
+    time.sleep(0.25)
+    cek("tombol Panduan membuka panduan (dari bar atas yang baru)",
+        bool(d.js("!document.getElementById('panduan').hidden")))
+    d.js("document.getElementById('panduan-tutup').click()")
+    time.sleep(0.2)
+
+    d.js("document.getElementById('view-tombol').click()")
+    time.sleep(0.2)
+    buka = d.js("document.getElementById('menu-view').hasAttribute('data-buka')")
+    d.js("document.getElementById('view-tombol').click()")
+    time.sleep(0.2)
+    cek("tombol View membuka lalu menutup menunya",
+        buka and not d.js("document.getElementById('menu-view').hasAttribute('data-buka')"))
+
+    # Sepuluh centang di menu View dipasang lewat satu peta; kalau petanya
+    # tidak sepadan dengan templatnya, centangnya tampil tetapi tidak mengubah
+    # apa pun. Diperiksa sekaligus di sini.
+    peta_view = {"v-kelas": "namaKelas", "v-teks": "teks", "v-grup": "grup",
+                 "v-isi": "isi", "v-silang": "silang",
+                 "v-tanyakelas": "tanyaKelas", "v-labelterakhir": "labelTerakhir",
+                 "v-zoomtetap": "zoomTetap", "v-keepprev": "keepPrev",
+                 "v-autosave": "autosave"}
+    salah = []
+    for cid, kunci in peta_view.items():
+        # Yang ditagih: setelan MENGIKUTI centangnya. Bukan "nilainya berubah" —
+        # blok uji sebelumnya menyetel S.v langsung lewat JS, jadi centang dan
+        # setelan bisa sudah tidak sepadan sebelum sapuan ini mulai, dan
+        # menagih perubahan di situ menguji urutan blok, bukan pemasangannya.
+        cb_awal = d.js(f"document.getElementById('{cid}').checked")
+        d.js(f"document.getElementById('{cid}').click()")
+        time.sleep(0.1)
+        cb_kini = d.js(f"document.getElementById('{cid}').checked")
+        if cb_kini == cb_awal:
+            salah.append(cid + " (centang tidak berubah)")
+        elif d.js(f"!!S.v.{kunci}") != cb_kini:
+            salah.append(f"{cid}: centang={cb_kini} tapi S.v.{kunci}="
+                         f"{d.js(f'!!S.v.{kunci}')}")
+        d.js(f"document.getElementById('{cid}').click()")   # kembalikan
+        time.sleep(0.06)
+        if d.js(f"!!S.v.{kunci}") != cb_awal:
+            salah.append(cid + " (tidak kembali)")
+    cek("sepuluh centang menu View menyetel perilakunya", not salah,
+        "; ".join(salah) or "10/10")
+
+    # ------------------------------------------------------------------ palet
+    modes = {"p+": "+Point", "p-": "−Point", "rect": "+Rect",
+             "poly": "Poligon manual", "kotak": "Rectangle manual",
+             "circle": "Circle", "line": "Line", "linestrip": "LineStrip",
+             "point": "Point", "edit": "Sunting"}
+    salah = []
+    for m, nama in modes.items():
+        d.js(f"document.querySelector('.lab-palet .tool[data-mode=\\'{m}\\']').click()")
+        time.sleep(0.12)
+        if d.js("S.mode") != m:
+            salah.append(f"{m}: S.mode={d.js('S.mode')}")
+        elif not d.js(f"document.querySelector('.lab-palet .tool[data-mode=\\'{m}\\']')"
+                      ".hasAttribute('data-on')"):
+            salah.append(f"{m}: tidak menyala")
+        elif nama not in (d.js("document.getElementById('modeinfo').textContent") or ""):
+            salah.append(f"{m}: modeinfo={d.js('document.getElementById(\'modeinfo\').textContent')}")
+    cek("sepuluh alat di palet memilih modenya dan menyala",
+        not salah, "; ".join(salah) or "10/10")
+
+    cek("tepat satu alat menyala pada satu waktu",
+        d.js("document.querySelectorAll('.lab-palet .tool[data-on]').length") == 1)
+
+    # -------------------------------------------------------------- pil Auto
+    for tombol, mode in (("ab-p+", "p+"), ("ab-p-", "p-"), ("ab-rect", "rect")):
+        d.js(f"document.getElementById('{tombol}').click()")
+        time.sleep(0.12)
+        cek(f"pil Auto: {tombol} memilih mode {mode}", d.js("S.mode") == mode,
+            "S.mode=%s" % d.js("S.mode"))
+        cek(f"alat palet yang sama ikut menyala untuk {mode}",
+            bool(d.js(f"document.querySelector('.lab-palet .tool[data-mode=\\'{mode}\\']')"
+                      ".hasAttribute('data-on')")))
+
+    d.js("S.prompt.push({x:10,y:10,label:1}); gambar();")
+    d.js("document.getElementById('ab-clear').click()")
+    time.sleep(0.25)
+    cek("pil Auto: Bersih mengosongkan prompt", d.js("S.prompt.length") == 0,
+        "n=%s" % d.js("S.prompt.length"))
+    cek("pil Auto: Jadikan objek terpasang",
+        bool(d.js("typeof document.getElementById('ab-finish').onclick === 'function'")))
+    cek("setelan model & bentuk keluaran ada di panel AI",
+        bool(d.js("document.getElementById('pan-ai').contains(document.getElementById('model'))"))
+        and bool(d.js("document.getElementById('pan-ai')"
+                      ".contains(document.getElementById('output'))")))
+    cek("pilihan model tidak kosong",
+        d.js("document.getElementById('model').options.length") > 0,
+        "n=%s" % d.js("document.getElementById('model').options.length"))
+
+    # ------------------------------------------------------------------- dok
+    d.js("muatKeLayar()")
+    time.sleep(0.2)
+    z0 = d.js("S.zoom")
+    d.js("document.getElementById('btn-zin').click()")
+    time.sleep(0.2)
+    z1 = d.js("S.zoom")
+    cek("dok: Perbesar menaikkan zoom", z1 > z0, "%.3f -> %.3f" % (z0, z1))
+    d.js("document.getElementById('btn-zout').click()")
+    time.sleep(0.2)
+    cek("dok: Perkecil menurunkannya lagi", d.js("S.zoom") < z1,
+        "%.3f -> %.3f" % (z1, d.js("S.zoom")))
+    d.js("document.getElementById('btn-fit').click()")
+    time.sleep(0.2)
+    cek("dok: Muat ke jendela memaskan ulang", not d.js("S.zoomManual"))
+    cek("penunjuk zoom mengikuti zoom sebenarnya",
+        d.js("document.getElementById('lab-zoom').textContent")
+        == str(round(d.js("S.zoom") * 100)) + "%",
+        d.js("document.getElementById('lab-zoom').textContent"))
+
+    x, y = d.layar(30, 25)
+    d.kirim("Input.dispatchMouseEvent", type="mouseMoved", x=x, y=y,
+            button="none", buttons=0)
+    time.sleep(0.25)
+    cek("dok: koordinat kursor terisi saat tetikus di atas kanvas",
+        d.js("document.getElementById('koord').textContent") != "-",
+        d.js("document.getElementById('koord').textContent"))
+
+    # ----------------------------------------------------------------- panel
+    d.js("document.querySelector('.lab-rel .rel[data-pan=\\'pan-labels\\']').click()")
+    time.sleep(0.25)
+    n_kelas = d.js("document.querySelectorAll('#kelas .kelas').length")
+    enter = """(() => { const i = document.getElementById('kelasbaru');
+        i.value = 'kelas-sapuan';
+        i.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', bubbles:true})); })()"""
+    # Dataset uji punya classes.txt, jadi kelas di luar daftar itu harus
+    # ditegaskan dua kali — Enter pertama sengaja hanya memperingatkan.
+    d.js(enter)
+    time.sleep(0.3)
+    setelah_sekali = d.js("document.querySelectorAll('#kelas .kelas').length")
+    d.js(enter)
+    time.sleep(0.35)
+    cek("panel Kelas: kelas di luar daftar resmi minta ditegaskan dulu",
+        setelah_sekali == n_kelas, "%s -> %s" % (n_kelas, setelah_sekali))
+    cek("panel Kelas: penegasan kedua menambahkannya",
+        d.js("document.querySelectorAll('#kelas .kelas').length") == n_kelas + 1,
+        "%s -> %s" % (n_kelas, d.js("document.querySelectorAll('#kelas .kelas').length")))
+
+    d.js("S.label = ''; render();")
+    time.sleep(0.15)
+    nama_pertama = d.js("document.querySelector('#kelas .kelas span').textContent")
+    d.js("document.querySelector('#kelas .kelas').click()")
+    time.sleep(0.2)
+    cek("panel Kelas: mengklik kelas memilihnya untuk objek berikutnya",
+        d.js("S.label") == nama_pertama, "S.label=%s" % d.js("S.label"))
+    d.js("document.querySelector('#kelas .kelas').click()")
+    time.sleep(0.2)
+    cek("panel Kelas: mengklik ulang melepas pilihannya",
+        not d.js("S.label"), "S.label=%s" % d.js("S.label"))
+
+    satu_bentuk()
+    d.js("document.querySelector('.lab-rel .rel[data-pan=\\'pan-objects\\']').click()")
+    time.sleep(0.25)
+    cek("panel Objek: daftarnya memuat objeknya",
+        d.js("document.querySelectorAll('#objek .obj').length") == 1)
+    d.js("document.querySelector('#objek .obj input[type=checkbox]').click()")
+    time.sleep(0.25)
+    cek("panel Objek: centang menyembunyikan objeknya",
+        bool(d.js("S.shapes[0].sembunyi")))
+    d.js("document.querySelector('#objek .obj input[type=checkbox]').click()")
+    time.sleep(0.2)
+    cek("dan mengembalikannya", not d.js("S.shapes[0].sembunyi"))
+
+    d.js("document.querySelector('.lab-rel .rel[data-pan=\\'pan-teks\\']').click()")
+    time.sleep(0.25)
+    d.js("""(() => { const t = document.getElementById('teks');
+        t.value = 'catatan sapuan'; t.dispatchEvent(new Event('input')); })()""")
+    time.sleep(0.25)
+    cek("panel Catatan: mengetik menulis ke objek terpilih",
+        d.js("S.shapes[0].text") == "catatan sapuan",
+        "text=%s" % d.js("S.shapes[0].text"))
+
+    d.js("document.querySelector('.lab-rel .rel[data-pan=\\'pan-flags\\']').click()")
+    time.sleep(0.25)
+    d.js("""(() => { const i = document.getElementById('flagbaru');
+        i.value = 'flag-sapuan';
+        i.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', bubbles:true})); })()""")
+    time.sleep(0.3)
+    cek("panel Flag: menambah flag baru", "flag-sapuan" in (d.js("Object.keys(S.flags)") or []),
+        str(d.js("Object.keys(S.flags)")))
+    d.js("""[...document.querySelectorAll('#flags .flag')]
+        .find(f => f.textContent.includes('flag-sapuan')).querySelector('button').click()""")
+    time.sleep(0.3)
+    cek("panel Flag: tombol × membuangnya lagi",
+        "flag-sapuan" not in (d.js("Object.keys(S.flags)") or []),
+        str(d.js("Object.keys(S.flags)")))
+
+    d.js("document.querySelector('.lab-rel .rel[data-pan=\\'pan-setelan\\']').click()")
+    time.sleep(0.25)
+    d.js("""(() => { const b = document.getElementById('cerah');
+        b.value = 90; b.dispatchEvent(new Event('input')); })()""")
+    time.sleep(0.25)
+    cek("panel Setelan: geser kecerahan mengubah nilainya",
+        abs((d.js("S.cerah") or 0) - 1.8) < 0.01
+        and d.js("document.getElementById('cerah-nilai').textContent") == "1.80",
+        "S.cerah=%s teks=%s" % (d.js("S.cerah"),
+                                d.js("document.getElementById('cerah-nilai').textContent")))
+    d.js("document.getElementById('btn-reset-cerah').click()")
+    time.sleep(0.25)
+    cek("panel Setelan: Kembalikan normal mengembalikannya ke 1,00",
+        abs((d.js("S.cerah") or 0) - 1) < 1e-9 and abs((d.js("S.kontras") or 0) - 1) < 1e-9,
+        "cerah=%s kontras=%s" % (d.js("S.cerah"), d.js("S.kontras")))
+
+    d.js("document.querySelector('.lab-rel .rel[data-pan=\\'pan-files\\']').click()")
+    time.sleep(0.25)
+    semua = d.js("document.querySelectorAll('#berkas .fitem').length")
+    d.js("""(() => { const c = document.getElementById('cari');
+        c.value = 'zzzz-tidak-ada'; c.dispatchEvent(new Event('input')); })()""")
+    time.sleep(0.3)
+    kosong = d.js("document.querySelectorAll('#berkas .fitem').length")
+    d.js("""(() => { const c = document.getElementById('cari');
+        c.value = ''; c.dispatchEvent(new Event('input')); })()""")
+    time.sleep(0.3)
+    cek("panel Berkas: kotak cari menyaring daftarnya",
+        semua > 0 and kosong == 0
+        and d.js("document.querySelectorAll('#berkas .fitem').length") == semua,
+        "%s -> %s -> %s" % (semua, kosong,
+                            d.js("document.querySelectorAll('#berkas .fitem').length")))
+
+    # ------------------------------------------------------------- pintasan
+    # Fokus dilepas dulu. Pintasan huruf memang SENGAJA tidak berlaku selagi
+    # kursor berada di kotak isian (label.js:1808-1814) — tanpa baris ini, uji
+    # ini menagih perilaku yang justru salah, dan lolos-tidaknya bergantung
+    # pada blok mana yang kebetulan berjalan sebelumnya.
+    d.js("document.activeElement && document.activeElement.blur()")
+    bersih()
+    huruf_mode = (("q", 81, "p+"), ("e", 69, "p-"), ("r", 82, "kotak"),
+                  ("p", 80, "poly"), ("v", 86, "edit"))
+    salah = []
+    for huruf, kode, mode in huruf_mode:
+        tekan(huruf, kode)
+        if d.js("S.mode") != mode:
+            salah.append(f"{huruf} -> {d.js('S.mode')}, bukan {mode}")
+    cek("pintasan huruf Q/E/R/P/V memilih alatnya", not salah,
+        "; ".join(salah) or "5/5")
+
+    satu_bentuk()
+    tekan("g", 71)
+    cek("G menggabungkan objek terpilih jadi grup",
+        bool(d.js("S.shapes[0].group_id !== null && S.shapes[0].group_id !== undefined")),
+        "group_id=%s" % d.js("S.shapes[0].group_id"))
+    tekan("u", 85)
+    cek("U melepasnya dari grup",
+        d.js("S.shapes[0].group_id === null || S.shapes[0].group_id === undefined"),
+        "group_id=%s" % d.js("S.shapes[0].group_id"))
+
+    satu_bentuk()
+    tekan("c", 67, ctrl=True)
+    tekan("v", 86, ctrl=True)
+    cek("Ctrl+C lalu Ctrl+V menempel salinannya", d.js("S.shapes.length") == 2,
+        "n=%s" % d.js("S.shapes.length"))
+    tekan("d", 68, ctrl=True)
+    cek("Ctrl+D menggandakan di tempat", d.js("S.shapes.length") == 3,
+        "n=%s" % d.js("S.shapes.length"))
+
+    d.js("S.terpilih=[S.shapes.length-1]; S.sel=S.shapes.length-1; render();")
+    tekan("Delete", 46)
+    cek("Del menghapus objek terpilih", d.js("S.shapes.length") == 2,
+        "n=%s" % d.js("S.shapes.length"))
+    tekan("z", 90, ctrl=True)
+    cek("Ctrl+Z mengembalikannya", d.js("S.shapes.length") == 3,
+        "n=%s" % d.js("S.shapes.length"))
+    tekan("y", 89, ctrl=True)
+    cek("Ctrl+Y menghapusnya lagi", d.js("S.shapes.length") == 2,
+        "n=%s" % d.js("S.shapes.length"))
+
+    d.js("muatKeLayar()")
+    time.sleep(0.15)
+    z_muat = d.js("S.zoom")
+    tekan("0", 48, ctrl=True)
+    cek("Ctrl+0 mengembalikan ukuran asli", abs(d.js("S.zoom") - 1) < 1e-6,
+        "zoom=%.3f" % d.js("S.zoom"))
+    tekan("f", 70, ctrl=True)
+    cek("Ctrl+F memuat ke jendela lagi", abs(d.js("S.zoom") - z_muat) < 1e-6,
+        "zoom=%.3f" % d.js("S.zoom"))
+    tekan("f", 70, ctrl=True, shift=True)
+    cek("Ctrl+Shift+F memuat ke lebar",
+        abs(d.js("S.zoom") - d.js("(c.width / D.W) * 0.96")) < 1e-6,
+        "zoom=%.3f" % d.js("S.zoom"))
+
+    d.js("S.kotor = true;")
+    tekan("s", 83, ctrl=True)
+    time.sleep(0.9)
+    cek("Ctrl+S menyimpan", not d.js("S.kotor"))
+
+    satu_bentuk()
+    tekan("e", 69, ctrl=True)
+    time.sleep(0.35)
+    dialog_buka = d.js("!document.getElementById('dlg').hidden")
+    if dialog_buka:
+        d.js("document.getElementById('dlg-batal').click()")
+        time.sleep(0.25)
+    cek("Ctrl+E membuka dialog ganti kelas", dialog_buka)
+
+    tekan("?", 191, shift=True)
+    time.sleep(0.3)
+    tanda = d.js("!document.getElementById('panduan').hidden")
+    if tanda:
+        d.js("document.getElementById('panduan-tutup').click()")
+        time.sleep(0.2)
+    cek("tanda tanya membuka panduan", tanda)
+
+    bersih()
+
+
+
+
+def jalankan_grid(d):
+    """
+    Sapuan kontrol halaman GRID: tiap saringan, tiap dropdown, paginasi, dan
+    tiap tombol di kartu ditekan sungguhan, lalu akibatnya diperiksa.
+
+    Pasangan dari jalankan_kontrol untuk halaman kanvas. pytest sudah menjaga
+    sisi servernya — rute, saringan, angka — tetapi tidak satu pun uji itu
+    membuktikan bahwa TOMBOLNYA benar-benar memanggil rute itu. Sesudah baris
+    saringannya dirombak (chip jadi dropdown, paginasi baru, ekspor pindah),
+    justru sambungan itulah yang paling mungkin putus tanpa terlihat.
+    """
+    print("  -- sapuan grid --")
+    GD = TMP / "datasets" / "grid"
+
+    def buka(url="/"):
+        d.js(f"location.href = {url!r}")
+        time.sleep(1.3)
+
+    def n_kartu():
+        return d.js("document.querySelectorAll('.card').length")
+
+    def teks(sel):
+        return d.js(f"(document.querySelector({sel!r}) || {{}}).textContent") or ""
+
+    # Dataset besar bercampur dibuka lewat rute yang sama dengan yang dipakai
+    # halaman pemilih, bukan dengan menyuntik keadaan.
+    ok = d.js(f"fetch('/setsrc?path={GD}', {{method:'POST'}}).then(r => r.json())",
+              tunggu=True)
+    cek("dataset uji grid terbuka", bool((ok or {}).get("ok")), str(ok)[:80])
+    buka("/")
+
+    # ---------------------------------------------------------------- kerangka
+    cek("bar atas tidak lagi memuat path folder",
+        not d.js("!!document.querySelector('.path-src')"))
+    cek("tombol Tambah gambar sudah tidak ada",
+        not d.js("document.body.innerHTML.includes('Tambah gambar')"))
+    hal_awal = n_kartu()
+    cek("grid memotong di 50 kartu, bukan merender 130",
+        hal_awal == 50, "n=%s" % hal_awal)
+    cek("penunjuk halaman menyebut rentang dan jumlahnya",
+        "1" in teks(".hal-info") and "130" in teks(".hal-info"),
+        teks(".hal-info").strip())
+
+    # -------------------------------------------------------------- saringan
+    d.js("document.getElementById('keadaan-tombol').click()")
+    time.sleep(0.35)
+    cek("dropdown Keadaan terbuka",
+        bool(d.js("document.getElementById('menu-keadaan').hasAttribute('data-buka')")))
+    baris = d.js("[...document.querySelectorAll('#keadaan-isi .kd-baris')]"
+                 ".map(a => a.textContent.replace(/\\s+/g,' ').trim())")
+    cek("berisi lima keadaan beserta angkanya", len(baris or []) == 5,
+        " | ".join(baris or []))
+    # Nama dan angkanya elemen bersebelahan tanpa spasi di antaranya, jadi
+    # textContent-nya menyatu ("Belum dilabeli50"). Yang ditagih angkanya.
+    cek("angka di dropdown sepadan dengan isi dataset",
+        any(b.replace(" ", "") == "Belumdilabeli50" for b in baris or [])
+        and any(b.replace(" ", "") == "Perludicek10" for b in baris or []),
+        " | ".join(baris or []))
+
+    d.js("[...document.querySelectorAll('#keadaan-isi .kd-baris')]"
+         ".find(a => a.textContent.includes('Perlu dicek')).click()")
+    time.sleep(1.3)
+    cek("memilih 'Perlu dicek' benar-benar menyaring", n_kartu() == 10,
+        "n=%s" % n_kartu())
+    cek("tombolnya sendiri menyebut keadaan yang berlaku",
+        "Perlu dicek" in teks("#keadaan-tombol"), teks("#keadaan-tombol").strip())
+    cek("tombolnya menyala", bool(d.js(
+        "document.getElementById('keadaan-tombol').hasAttribute('data-on')")))
+    cek("tombol Bersihkan saringan muncul beserta jumlahnya",
+        "1" in teks(".saring-bersih"), teks(".saring-bersih").strip())
+
+    d.js("document.querySelector('.saring-bersih').click()")
+    time.sleep(1.3)
+    cek("Bersihkan saringan mengembalikan seluruh isi", n_kartu() == 50,
+        "n=%s" % n_kartu())
+    cek("dan tombolnya ikut hilang", not d.js("!!document.querySelector('.saring-bersih')"))
+
+    # -------------------------------------------------------------- cari nama
+    d.js("""(() => { const c = document.getElementById('cari');
+        c.value = 'g-01'; c.form.submit(); })()""")
+    time.sleep(1.4)
+    cek("kotak cari menyaring seluruh dataset, bukan halaman ini",
+        n_kartu() == 10, "n=%s" % n_kartu())
+    cek("pencarian ikut terhitung di Bersihkan saringan",
+        "cari" in (d.js("document.querySelector('.saring-bersih').title") or ""),
+        d.js("document.querySelector('.saring-bersih').title"))
+    d.js("document.querySelector('.saring-bersih').click()")
+    time.sleep(1.3)
+
+    # -------------------------------------------------------------- urutkan
+    pertama = d.js("document.querySelector('.card .fn').textContent.trim()")
+    d.js("""(() => { const u = document.getElementById('urut');
+        u.value = 'nama-turun'; u.dispatchEvent(new Event('change')); })()""")
+    time.sleep(1.4)
+    cek("mengubah urutan benar-benar membalik daftarnya",
+        d.js("document.querySelector('.card .fn').textContent.trim()") != pertama,
+        "%s -> %s" % (pertama,
+                      d.js("document.querySelector('.card .fn').textContent.trim()")))
+    cek("urutan bertahan sebagai pilihan, bukan ikut dibersihkan",
+        d.js("document.getElementById('urut').value") == "nama-turun")
+
+    # -------------------------------------------------------- saringan kelas
+    d.js("document.getElementById('kelas-tombol').click()")
+    time.sleep(0.35)
+    d.js("""(() => { const k = [...document.querySelectorAll('#kelas-isi input[name=c]')]
+        .find(i => i.value === 'botol'); k.checked = true;
+        k.form.querySelector('button[type=submit]').click(); })()""")
+    time.sleep(1.5)
+    cek("saringan kelas 'botol' menyaring", 0 < n_kartu() <= 40,
+        "n=%s" % n_kartu())
+    cek("tombol kelas menyebut kelas yang dipilih",
+        "botol" in teks("#kelas-tombol"), teks("#kelas-tombol").strip())
+    cek("urutan tidak ikut hilang saat saringan kelas dipakai",
+        d.js("document.getElementById('urut').value") == "nama-turun")
+
+    d.js("document.getElementById('kelas-tombol').click()")
+    time.sleep(0.35)
+    d.js("""(() => { const m = [...document.querySelectorAll('#kelas-isi input[name=m]')]
+        .find(i => i.value === 'dan'); m.checked = true;
+        m.dispatchEvent(new Event('change', {bubbles:true})); })()""")
+    time.sleep(0.4)
+    cek("mode 'semuanya' menyembunyikan pilihan tanpa-kelas",
+        bool(d.js("document.querySelector('#kelas-isi .kelas-tanpa').hidden")))
+    d.js("document.querySelector('#kelas-isi a.chip').click()")   # Bersihkan
+    time.sleep(1.4)
+    cek("Bersihkan di dropdown kelas mengembalikan isinya", n_kartu() == 50,
+        "n=%s" % n_kartu())
+
+    # ---------------------------------------------------------- saringan tag
+    # Dropdown Tag hanya dirender kalau sudah ada yang ditandai; dua gambar
+    # ditandai lewat rutenya sendiri supaya menunya benar-benar muncul.
+    # Path lengkapnya diambil dari tautan kartunya sendiri; rutenya menerima
+    # path, bukan nama berkas.
+    hasil_tag = d.js("""fetch('/api/tag/pasang', {method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          paths: [...document.querySelectorAll('.card')].slice(0, 2)
+            .map(k => decodeURIComponent(k.querySelector('a[href^="/view?path="]')
+              .getAttribute('href').split('path=')[1])),
+          tambah: ['lampu-redup']})})
+        .then(r => r.json())""", tunggu=True)
+    cek("dua gambar berhasil ditandai lewat rutenya",
+        bool((hasil_tag or {}).get("ok")), str(hasil_tag)[:90])
+    buka("/")
+    cek("dropdown Tag muncul setelah ada tag",
+        bool(d.js("!!document.getElementById('menu-tag')")))
+    d.js("document.getElementById('tag-tombol').click()")
+    time.sleep(0.35)
+    cek("dropdown Tag terbuka dan memuat tagnya",
+        "lampu-redup" in teks("#tag-isi"), teks("#tag-isi").replace("\n", " ")[:80])
+    d.js("""(() => { const t = [...document.querySelectorAll('#tag-isi input[name=tg]')]
+        .find(i => i.value === 'lampu-redup'); t.checked = true;
+        t.form.querySelector('button[type=submit]').click(); })()""")
+    time.sleep(1.5)
+    cek("saringan tag menyaring ke gambar yang ditandai saja", n_kartu() == 2,
+        "n=%s" % n_kartu())
+    cek("tombol Tag menyebut tag yang dipakai",
+        "lampu-redup" in teks("#tag-tombol"), teks("#tag-tombol").strip())
+    d.js("document.querySelector('.saring-bersih').click()")
+    time.sleep(1.4)
+    cek("Bersihkan saringan juga membatalkan tag", n_kartu() == 50,
+        "n=%s" % n_kartu())
+
+    # ------------------------------------------------------------- paginasi
+    d.js("""(() => { const s = document.getElementById('per');
+        s.value = '100'; s.dispatchEvent(new Event('change')); })()""")
+    time.sleep(1.5)
+    cek("mengubah per-halaman jadi 100 menampilkan 100 kartu", n_kartu() == 100,
+        "n=%s" % n_kartu())
+    d.js("[...document.querySelectorAll('.hal-n')].find(a => a.textContent.trim() === '2').click()")
+    time.sleep(1.5)
+    cek("tombol halaman 2 menampilkan sisanya", n_kartu() == 30,
+        "n=%s" % n_kartu())
+    cek("penunjuknya ikut pindah", "101" in teks(".hal-info"),
+        teks(".hal-info").strip())
+    cek("tombol '>' mati di halaman terakhir", bool(d.js(
+        "[...document.querySelectorAll('.hal-n')].pop().hasAttribute('data-mati')")))
+    cek("nomor halaman yang sedang dibuka ditandai",
+        d.js("(document.querySelector('.hal-n[data-on]')||{}).textContent") == "2")
+
+    d.js("""(() => { const s = document.getElementById('per');
+        s.value = '50'; s.dispatchEvent(new Event('change')); })()""")
+    time.sleep(1.5)
+    cek("kembali ke 50 mendarat di halaman yang memuat gambar yang sama",
+        "101" in teks(".hal-info"), teks(".hal-info").strip())
+
+    # --------------------------------------------------------- keadaan kosong
+    buka("/?q=zzz-tidak-ada")
+    cek("pencarian tanpa hasil mengatakan tidak ada yang cocok",
+        n_kartu() == 0 and "Tidak ada yang cocok" in d.js("document.body.innerText"))
+    cek("dan menyebutkan saringan yang sedang berlaku",
+        bool(d.js("!!document.querySelector('.empty-saring')")),
+        teks(".empty-saring").strip()[:80])
+    cek("bar paginasi tidak dirender saat nol hasil",
+        not d.js("!!document.querySelector('.hal')"))
+    d.js("document.querySelector('.empty .saring-bersih').click()")
+    time.sleep(1.4)
+    cek("tombol bersihkan di kotak kosong mengembalikan isinya", n_kartu() == 50,
+        "n=%s" % n_kartu())
+
+    # ------------------------------------------------------------ kartu & aksi
+    cek("tiap kartu punya tautan Edit label dan Lihat",
+        bool(d.js("!!document.querySelector('.card a[href^=\"/label?path=\"]')"))
+        and bool(d.js("!!document.querySelector('.card a[href^=\"/view?path=\"]')")))
+    buka("/?f=unlab")
+    sebelum = n_kartu()
+    d.js("document.querySelector('.card button[onclick^=\"markbg\"]').click()")
+    time.sleep(1.6)
+    cek("tombol Latar menandai gambarnya sebagai latar",
+        d.js("document.querySelectorAll('.card').length") == sebelum - 1
+        or "Batal latar" in d.js("document.body.innerText"),
+        "%s -> %s" % (sebelum, n_kartu()))
+    buka("/?f=bg")
+    cek("gambar itu pindah ke keadaan Latar", n_kartu() >= 1, "n=%s" % n_kartu())
+    d.js("document.querySelector('.card button[onclick^=\"markbg\"]').click()")
+    time.sleep(1.6)
+    buka("/?f=bg")
+    cek("Batal latar mengembalikannya", n_kartu() == 0, "n=%s" % n_kartu())
+
+    # ------------------------------------------------------------- pindai ulang
+    buka("/")
+    d.js("document.querySelector('button[onclick=\"rescan()\"]').click()")
+    time.sleep(2.2)
+    cek("Pindai ulang tidak merusak halaman", n_kartu() == 50, "n=%s" % n_kartu())
+
+    # ---------------------------------------------------------------- panduan
+    d.js("document.getElementById('btn-panduan').click()")
+    time.sleep(0.4)
+    cek("tombol Panduan grid membuka panduannya",
+        bool(d.js("!document.getElementById('panduan').hidden")))
+    cek("panduannya menjelaskan saringan yang baru",
+        "Per halaman" in d.js("document.getElementById('panduan').innerText")
+        and "Bersihkan saringan" in d.js("document.getElementById('panduan').innerText"))
+    d.js("document.getElementById('panduan-tutup').click()")
+    time.sleep(0.3)
+
+    # Dataset semula dibuka lagi DAN halaman kanvasnya dikembalikan: blok
+    # sesudah ini mulai dengan menyentuh `S`, yang cuma ada di halaman label.
+    # Meninggalkan peramban di grid membuatnya gagal dengan pesan yang tidak
+    # menyebut penyebabnya sama sekali.
+    d.js(f"fetch('/setsrc?path={TMP / 'datasets' / 'uji'}', {{method:'POST'}})"
+         ".then(r => r.json())", tunggu=True)
+    buka(f"/label?path={TMP / 'datasets' / 'uji' / 'uji-00.jpg'}")
+    for _ in range(40):
+        if d.js("typeof S !== 'undefined' && !!S.shapes"):
+            break
+        time.sleep(0.2)
+    cek("halaman kanvas kembali terbuka untuk blok berikutnya",
+        bool(d.js("typeof S !== 'undefined' && !!S.shapes")))
+
 
 
 if __name__ == "__main__":

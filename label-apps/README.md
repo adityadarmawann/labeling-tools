@@ -1,7 +1,13 @@
-# Labeling Tools
+# HIGOLAB
 
 Papan periksa anotasi berbasis web untuk dataset **AnyLabeling / labelme / YOLO-seg**,
 dipakai bersama satu tim.
+
+Dev dan prod berjalan bersamaan di mesin yang sama, dan keduanya menyebut
+dirinya berbeda supaya tab peramban bisa dibedakan sekilas: **HIGOLAB** di
+prod (port 8042), **HIGOLAB-DEV** di dev (port 8043). Namanya dari
+`LABELAPP_NAMA` di `env/prod.env` dan `env/dev.env`; `tests/test_mode.py`
+gagal kalau keduanya sampai sama.
 
 Menjawab satu kebutuhan: melihat banyak anotasi sekaligus, menemukan yang salah,
 lalu memperbaikinya — tanpa setiap orang harus membuka folder dataset di

@@ -238,16 +238,21 @@ async function dariDrop(dt) {
  * kelas mustahil kalau menunya hilang begitu centang pertama disentuh.
  */
 (() => {
-  // Dropdown tag: bentuknya sama dengan dropdown kelas, jadi pembukaannya
-  // dipasang di sini juga daripada menyalin satu blok lagi.
-  const mt = document.getElementById('menu-tag');
-  if (mt) {
-    document.getElementById('tag-tombol').onclick = ev => {
+  // Dropdown keadaan dan tag: bentuknya sama dengan dropdown kelas, jadi
+  // pembukaannya dipasang di sini juga daripada menyalin satu blok lagi.
+  // Bedanya isi: keadaan berisi TAUTAN (pilihan tunggal, satu klik langsung
+  // berlaku), dua lainnya berisi form bercentang yang butuh Terapkan — jadi
+  // klik di dalam menu keadaan sengaja TIDAK dihentikan.
+  for (const [wadah, tombol, tautan] of [['menu-keadaan', 'keadaan-tombol', true],
+                                         ['menu-tag', 'tag-tombol', false]]) {
+    const mm = document.getElementById(wadah);
+    if (!mm) continue;
+    document.getElementById(tombol).onclick = ev => {
       ev.stopPropagation();
-      mt.toggleAttribute('data-buka');
+      mm.toggleAttribute('data-buka');
     };
-    mt.addEventListener('click', ev => ev.stopPropagation());
-    document.addEventListener('click', () => mt.removeAttribute('data-buka'));
+    if (!tautan) mm.addEventListener('click', ev => ev.stopPropagation());
+    document.addEventListener('click', () => mm.removeAttribute('data-buka'));
   }
 
   const m = document.getElementById('menu-kelas');
@@ -741,7 +746,13 @@ const Progres = (() => {
         ? `<br><b>${j.n_dataset} dari ${j.n_semua} gambar</b> ada di dataset; `
           + 'sisanya masih dikerjakan dan tidak ikut diunduh.'
         : '';
-      info.innerHTML =
+      // Rasio yang tidak bisa dibaca tetap dipakai sebagai 80/10/10 supaya
+      // panel ini tidak gagal, TETAPI ia dikatakan. Diam di sini persis yang
+      // membuat seluruh rasio bertitik dua diam-diam jadi 80/10/10 tanpa satu
+      // pun layar menyebutkannya.
+      const keluhanRasio = j.rasio_pesan
+        ? `<span class="split-warn">${j.rasio_pesan}</span><br>` : '';
+      info.innerHTML = keluhanRasio +
         (j.split_bawaan
           ? '<b>memakai split asli dataset</b><br>'
           : `<b>nyata: ${n(pc.train)}% : ${n(pc.valid)}% : ${n(pc.test)}%</b><br>`)
@@ -758,7 +769,7 @@ const Progres = (() => {
         // ZIP-nya jadi keduanya tidak bisa dibedakan lagi.
         + (j.belum_dilabeli
            ? `<br><span class="split-warn">${j.belum_dilabeli} belum dilabeli `
-             + 'sama sekali — ikut terekspor sebagai label kosong</span>' : '')
+             + 'sama sekali, ikut terekspor sebagai label kosong</span>' : '')
         + (j.bentuk_dilewati ? ` · ${j.bentuk_dilewati} bentuk dilewati` : '')
         // Tanpa rencana, splitting-nya cuma mengelompokkan lewat nama berkas
         // dan isi gambarnya tidak pernah dibuka. Itu HARUS terbaca sebelum

@@ -195,7 +195,7 @@
       : dipilih.filter(u => u.dataset.label === '1' && u.dataset.bg !== '1');
     if (berisi.length && !confirm(
         `${berisi.length} dari ${dipilih.length} gambar yang dipilih sudah `
-        + 'berisi objek, dan itu akan dilewati — objeknya tidak dihapus.\n\n'
+        + 'berisi objek, dan itu akan dilewati. Objeknya tidak dihapus.\n\n'
         + `Tandai ${dipilih.length - berisi.length} sisanya sebagai latar?`)) return;
 
     const tombol = lepas ? $('jb-batal-latar') : $('jb-latar');

@@ -4,6 +4,13 @@ Dokumen ini menjelaskan cara aplikasi ini dijalankan dua kali di satu mesin:
 satu untuk tim (`prod`), satu untuk mengoding (`dev`). Ditulis supaya kalau
 ada yang janggal, penyebabnya bisa dicari tanpa membaca kodenya lebih dulu.
 
+**Membedakan keduanya di layar.** Aplikasinya menyebut dirinya sesuai
+`LABELAPP_NAMA`: **HIGOLAB** di prod, **HIGOLAB-DEV** di dev. Nama itu
+tampil di judul tab peramban (di DEPAN nama halaman, karena tab yang sempit
+dipotong dari ujung kanan) dan di kepala halaman grid. `tests/test_mode.py`
+gagal kalau keduanya sampai sama — dua tab berjudul sama persis adalah cara
+termudah mengetik di jendela yang salah.
+
 Untuk algoritma splitting, lihat [SPLITTING.md](SPLITTING.md).
 
 ## Ringkasnya

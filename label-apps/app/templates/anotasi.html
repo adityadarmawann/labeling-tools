@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% block title %}Anotasi{% endblock %}
 {% block bodyclass %}berprojek{% endblock %}
 
 {% macro bilah(berlabel, jumlah) -%}
@@ -16,7 +15,7 @@
 {% block body %}
 <header>
   <div class="top">
-    <h1>Anotasi</h1>
+    <h1>{{ nama_app() }}</h1>
     {% include "_header.html" %}
   </div>
 </header>

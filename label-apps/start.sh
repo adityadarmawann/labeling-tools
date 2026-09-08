@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Nyalakan papan periksa anotasi.
+# Nyalakan HIGOLAB (papan periksa anotasi).
 #
 #   ./start.sh              mode dev (bawaan) — localhost, muat ulang otomatis
 #   ./start.sh dev

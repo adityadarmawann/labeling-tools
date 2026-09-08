@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{{ it.img.name }} — anotasi</title>
+<title>{{ nama_app() }}</title>
 <link rel="stylesheet" href="{{ statik('app.css') }}">
 <link rel="stylesheet" href="{{ statik('label.css') }}">
 <script>
@@ -19,33 +19,67 @@
 </script>
 </head>
 <body class="lab"{% if not boleh_ubah %} data-baca-saja{% endif %}>
+{% from "_ikon.html" import ikon %}
 
+{# ---------------------------------------------------------------- kepala
+   Satu baris, bukan dua bar penuh kontrol seperti sebelumnya. Yang tinggal di
+   sini cuma yang berlaku untuk SELURUH halaman: jalan kembali, nama berkas,
+   penunjuk urutan, dan tindakan tingkat halaman. Alat menggambar pindah ke
+   palet mengambang di tepi kanvas, tempat tangan sedang berada. #}
 <div class="lab-top">
-  <a class="chip" href="/">Grid</a>
-  <a class="chip" href="/pilih">Ganti dataset</a>
-  <select class="chip tema" id="tema" title="Tema tampilan" aria-label="Tema tampilan">
-    <option value="system">Tema: sistem</option>
-    <option value="light">Tema: terang</option>
-    <option value="dark">Tema: gelap</option>
-  </select>
+  <a class="lab-balik" href="/" title="Kembali ke grid">{{ ikon('kembali', 20) }}</a>
+  <span class="lab-judul">
+    <a href="/pilih" class="lab-projek">{{ sess.src.name if sess.src else 'dataset' }}</a>
+    <b class="lab-berkas" title="{{ it.img.name }}">{{ it.img.name }}</b>
+    <span class="mono lab-ukuran">{{ it.W }}×{{ it.H }}</span>
+  </span>
+
+  <span class="lab-urut">
+    <a class="lab-nav" id="prev" title="Gambar sebelumnya (A)"
+       href="{% if prev_path %}/label?path={{ prev_path | urlquote }}{% else %}#{% endif %}"
+       {% if not prev_path %}data-off{% endif %}>{{ ikon('kiri', 18) }}</a>
+    <span class="lab-urut-n mono">{{ posisi[0] }} / {{ posisi[1] }}</span>
+    <a class="lab-nav" id="next" title="Gambar berikutnya (D)"
+       href="{% if next_path %}/label?path={{ next_path | urlquote }}{% else %}#{% endif %}"
+       {% if not next_path %}data-off{% endif %}>{{ ikon('kanan', 18) }}</a>
+  </span>
+
   <span class="lab-mode" id="modeinfo">Mode: <b>+Point</b></span>
-  <button class="chip" id="btn-panduan"
-          title="Panduan &amp; pintasan papan tombol — tekan ? kapan saja">
-    <span aria-hidden="true">⌨</span> Panduan</button>
   <span class="spacer"></span>
-  {# Menu View meniru menu View AnyLabeling: panel bisa disembunyikan, dan
-     beberapa hal tampilan bisa dimatikan. #}
-  <div class="menu" id="menu-view">
-    <button class="chip" id="view-tombol">View ▾</button>
+  <span class="lab-pesan" id="pesan"></span>
+
+  {# Gandakan, hapus, urungkan, ulangi: tindakan atas objek yang SUDAH jadi,
+     bukan alat menggambar. Di bar atas mereka tidak lagi memanjangkan palet
+     sampai harus digulir di layar 768 piksel. #}
+  <button class="tbl tbl-ikon" id="btn-dup" title="Gandakan objek terpilih (Ctrl+D)">
+    {{ ikon('gandakan', 18) }}</button>
+  <button class="tbl tbl-ikon" id="btn-del" title="Hapus objek terpilih (Del)">
+    {{ ikon('hapus', 18) }}</button>
+  <button class="tbl tbl-ikon" id="btn-undo" title="Urungkan (Ctrl+Z)">
+    {{ ikon('urungkan', 18) }}</button>
+  <button class="tbl tbl-ikon" id="btn-redo" title="Ulangi (Ctrl+Y)">
+    {{ ikon('ulangi', 18) }}</button>
+  <span class="tool-sep tegak"></span>
+  <button class="tbl tbl-utama" id="btn-simpan" title="Simpan (Ctrl+S)">
+    {{ ikon('simpan', 17) }}<span>Simpan</span></button>
+  <button class="tbl" id="btn-panduan"
+          title="Panduan &amp; pintasan papan tombol. Tekan ? kapan saja">
+    {{ ikon('papan-tombol', 18) }}</button>
+    <div class="menu" id="menu-view">
+    <button class="tbl" id="view-tombol" title="Tampilan &amp; perilaku">{{ ikon('mata', 18) }}<span>View</span></button>
     <div class="menu-isi" id="view-isi">
+      {# Mematikan sebuah panel di sini menghapus tombolnya dari rel kiri juga.
+         Dulu centang "Bar Auto Labeling" tidak melakukan apa pun sama sekali:
+         ia mencari elemen ber-id lab-auto, dan bar itu tidak punya id. #}
       <div class="menu-judul">Panel</div>
+      <label><input type="checkbox" data-panel="pan-objects" checked> Objects</label>
+      <label><input type="checkbox" data-panel="pan-labels" checked> Labels</label>
+      <label><input type="checkbox" data-panel="pan-ai" checked> Deteksi dengan AI</label>
       <label><input type="checkbox" data-panel="pan-teks" checked> Text Editor</label>
       <label><input type="checkbox" data-panel="pan-flags" checked> Flags</label>
-      <label><input type="checkbox" data-panel="pan-labels" checked> Labels</label>
-      <label><input type="checkbox" data-panel="pan-objects" checked> Objects</label>
-      <label><input type="checkbox" data-panel="pan-setelan" checked> Setelan</label>
       <label><input type="checkbox" data-panel="pan-files" checked> Files</label>
-      <label><input type="checkbox" data-panel="lab-auto" checked> Bar Auto Labeling</label>
+      <label><input type="checkbox" data-panel="pan-setelan" checked> Setelan</label>
+      <label><input type="checkbox" data-panel="lab-auto" checked> Pil Auto Labeling</label>
       <div class="menu-pisah"></div>
       <div class="menu-judul">Tampilan</div>
       <!-- Dua AKSI, bukan satu centang — padanan Hide Polygons / Show Polygons
@@ -71,78 +105,80 @@
         title="Begitu tiap objek punya kelas, perubahan langsung tersimpan. Pratinjau SAM yang belum disahkan dengan F tidak ikut."> Simpan otomatis</label>
     </div>
   </div>
+  <select class="tbl tema" id="tema" title="Tema tampilan" aria-label="Tema tampilan">
+    <option value="system">Sistem</option>
+    <option value="light">Terang</option>
+    <option value="dark">Gelap</option>
+  </select>
   <span class="who">{{ sess.user }}</span>
-  <a class="chip" href="/logout">Keluar</a>
+  <a class="tbl" href="/logout" title="Keluar">Keluar</a>
 </div>
 
 <div class="lab-wrap">
 
-  <div class="lab-tools">
-    {# Ikon diekstrak dari resources.py AnyLabeling — lihat NOTICE.md #}
-    <button class="tool" data-mode="p+"    title="+Point (Q) — klik pada objek"><img src="/static/icons/point.png" alt=""></button>
-    <button class="tool" data-mode="p-"    title="−Point (E) — klik pada bagian yang BUKAN objek"><img src="/static/icons/minus.png" alt=""></button>
-    <button class="tool" data-mode="rect"  title="+Rect — tarik kotak di sekitar objek, SAM yang membuat poligonnya"><img src="/static/icons/brain.png" alt=""></button>
-    <span class="tool-sep"></span>
-    <button class="tool" data-mode="poly"  title="Poligon manual (P) — klik titik demi titik, Enter menutup. Tahan Alt supaya tidak menempel ke titik awal"><img src="/static/icons/polygon.png" alt=""></button>
-    <button class="tool" data-mode="kotak" title="Rectangle manual (R) — tarik kotak, langsung jadi objek"><img src="/static/icons/rectangle.png" alt=""></button>
-    <button class="tool" data-mode="circle" title="Circle — tarik dari titik pusat ke tepi"><img src="/static/icons/circle.png" alt=""></button>
-    <button class="tool" data-mode="line"  title="Line — dua klik"><img src="/static/icons/line.png" alt=""></button>
-    <button class="tool" data-mode="linestrip" title="LineStrip — klik terus, akhiri dengan Ctrl+klik atau Enter"><img src="/static/icons/line-strip.png" alt=""></button>
-    <button class="tool" data-mode="point" title="Point — satu klik satu objek"><img src="/static/icons/point.png" alt=""></button>
-    <button class="tool" data-mode="edit"  title="Sunting (V) — pilih bentuk, geser titiknya"><img src="/static/icons/edit.png" alt=""></button>
-    <span class="tool-sep"></span>
-    <button class="tool" id="btn-dup"  title="Duplikat objek (Ctrl+D)"><img src="/static/icons/copy.png" alt=""></button>
-    <button class="tool" id="btn-del"  title="Hapus objek terpilih (Del)"><img src="/static/icons/delete.png" alt=""></button>
-    <button class="tool" id="btn-undo" title="Urungkan (Ctrl+Z)"><img src="/static/icons/undo.png" alt=""></button>
-    <span class="tool-sep"></span>
-    <button class="tool" id="btn-zin"  title="Perbesar (Ctrl++)"><img src="/static/icons/zoom-in.png" alt=""></button>
-    <button class="tool" id="btn-zout" title="Perkecil (Ctrl+−)"><img src="/static/icons/zoom-out.png" alt=""></button>
-    <button class="tool" id="btn-fit"  title="Muat ke jendela (Ctrl+F)"><img src="/static/icons/fit-window.png" alt=""></button>
-    <span class="tool-sep"></span>
-    <button class="tool tool-simpan" id="btn-simpan" title="Simpan (Ctrl+S)"><img src="/static/icons/save.png" alt=""></button>
-  </div>
+  {# ---------------------------------------------------------------- rel kiri
+     Satu panel tampil pada satu waktu, dipilih dari rel ini. Sebelumnya enam
+     panel menumpuk sekaligus di kolom kanan, dan yang paling sering dipakai —
+     daftar objek — terdorong ke tengah oleh panel yang jarang disentuh. #}
+  <nav class="lab-rel" aria-label="Panel">
+    <button class="rel" data-pan="pan-objects" data-on title="Objek">
+      {{ ikon('objek') }}<span>Objek</span></button>
+    <button class="rel" data-pan="pan-labels" title="Kelas">
+      {{ ikon('kelas') }}<span>Kelas</span></button>
+    <button class="rel" data-pan="pan-ai" title="Deteksi dengan AI">
+      {{ ikon('ai') }}<span>AI</span></button>
+    <button class="rel" data-pan="pan-teks" title="Catatan">
+      {{ ikon('catatan') }}<span>Catatan</span></button>
+    <button class="rel" data-pan="pan-flags" title="Flag">
+      {{ ikon('flag') }}<span>Flag</span></button>
+    <button class="rel" data-pan="pan-files" title="Berkas">
+      {{ ikon('berkas') }}<span>Berkas</span></button>
+    <button class="rel" data-pan="pan-setelan" title="Setelan">
+      {{ ikon('setelan') }}<span>Setelan</span></button>
+  </nav>
 
-  {% if not boleh_ubah %}
-  {# Dikatakan sekali di atas kanvas, bukan dibiarkan ditemukan saat Simpan
-     ditekan. Kanvasnya sendiri tetap bisa dipakai memperbesar dan melihat
-     objeknya: itu justru gunanya membuka gambar orang lain. #}
-  <div class="lab-baca">
-    <b>Hanya bisa dilihat.</b> {{ alasan_tolak }}
-  </div>
-  {% endif %}
+  <aside class="lab-side">
+    <div class="pan pan-grow" id="pan-objects">
+      <h3>Objects <span class="ct" id="nobj">0</span></h3>
+      <div class="obj-list" id="objek"></div>
+    </div>
 
-  <div class="lab-tengah">
-    {# Baris ini menirukan bar Auto Labeling di AnyLabeling: pilih model,
-       bentuk keluaran, lalu prompt menumpuk sampai disahkan dengan Finish. #}
-    <div class="lab-auto">
-      <span class="lbl">Auto</span>
-      <select id="model">
+    <div class="pan" id="pan-labels">
+      <h3>Labels</h3>
+      <div class="kelas-list" id="kelas"></div>
+      <div class="kelas-baru">
+        <input id="kelasbaru" type="text" placeholder="kelas baru lalu Enter">
+      </div>
+    </div>
+
+    {# Padanan "Find Objects with AI" di Roboflow. Dulu ini bar selebar layar
+       di atas kanvas; isinya sama, tempatnya yang salah — ia dipakai sekali di
+       awal, bukan setiap kali menggambar. #}
+    <div class="pan" id="pan-ai">
+      <h3>AI</h3>
+      {# Dua alur yang sama-sama AI, dan setelannya berkumpul di sini: yang atas
+         dipandu klik (pil di kanan bawah kanvas), yang bawah dipandu teks. #}
+      <p class="halus2">Klik-prompt (SAM)</p>
+      <label class="halus" for="model">Model</label>
+      <select id="model" title="Model SAM">
         {% for m in sam.tersedia %}
         <option value="{{ m }}"{% if m == sam.default %} selected{% endif %}>{{ m }}</option>
         {% endfor %}
       </select>
-      <span class="lbl">Output</span>
-      <select id="output">
+      <label class="halus" for="output">Bentuk keluaran</label>
+      <select id="output" title="Bentuk keluaran">
         <option value="polygon" selected>Polygon</option>
         <option value="rectangle">Rectangle</option>
       </select>
-      <button class="ab" id="ab-p+">+Point (Q)</button>
-      <button class="ab" id="ab-p-">−Point (E)</button>
-      <button class="ab" id="ab-rect">+Rect (R)</button>
-      <button class="ab" id="ab-clear"><img src="/static/icons/cancel.png" alt="">Clear (C)</button>
-      <button class="ab ab-ok" id="ab-finish"><img src="/static/icons/done.png" alt="">Finish Object (F)</button>
-      <span class="spacer"></span>
-      <span class="lab-pesan" id="pesan"></span>
-    </div>
+      <p class="halus">Alatnya ada di palet kanan (Titik +, Titik −, Kotak);
+        sahkan hasilnya lewat pil di kanan bawah kanvas.</p>
 
-    {# Prompt teks: sebut nama kelasnya, seluruh gambar dipindai sekaligus.
-       Menjawab dua hal yang di AnyLabeling terpisah — prompt teks SAM 3
-       (segment_anything.py:318-352) dan tombol Run yang melabeli satu gambar
-       penuh (auto_labeling.py:83-84). #}
-    <div class="lab-auto" id="bar-teks">
-      <span class="lbl">Cari</span>
+      <p class="halus2">Deteksi dari teks</p>
+      <p class="halus">Sebut nama kelasnya, seluruh gambar dipindai sekaligus.
+        Satu <kbd>Ctrl</kbd>+<kbd>Z</kbd> membatalkan semuanya.</p>
       <input id="teks-kelas" type="text" autocomplete="off"
-             placeholder="nama kelas dipisah koma, mis. botol, kaleng, tetra">
+             placeholder="botol, kaleng, tetra">
+      <label class="halus" for="teks-model">Model</label>
       <select id="teks-model">
         {% for t in sam.teks %}
         <option value="{{ t.model }}" data-unduh="{{ t.unduh_mb }}"
@@ -150,30 +186,13 @@
                 data-bentuk="{{ t.bentuk }}">{{ t.nama }}</option>
         {% endfor %}
       </select>
-      <span class="lbl">Ambang</span>
+      <label class="halus" for="teks-ambang">Ambang keyakinan</label>
       <input id="teks-ambang" type="number" min="0.01" max="0.95" step="0.05" value="0.1">
-      <button class="ab" id="teks-jalan">Deteksi seluruh gambar</button>
-      <span class="lab-pesan" id="teks-info"></span>
+      <button class="tbl tbl-utama tbl-lebar" id="teks-jalan">
+        {{ ikon('ai', 18) }}<span>Deteksi seluruh gambar</span></button>
+      <p class="halus" id="teks-info"></p>
     </div>
 
-    {%- if anotasi_rusak %}
-    {#- Berkas anotasinya tidak bisa dibaca. Tanpa kalimat ini kanvasnya
-        terbuka dengan nol objek dan status "siap", dan orang melabeli dari nol
-        lalu menyimpan — berkas lamanya hilang tanpa pernah dilihat siapa pun.
-        Sekarang berkas rusaknya juga disisihkan, bukan ditimpa. -#}
-    <p class="lab-rusak" role="alert">
-      Berkas anotasi gambar ini <b>tidak bisa dibaca</b>, jadi kanvas dimulai
-      kosong. Kalau kamu menyimpan, berkas lamanya disisihkan lebih dulu
-      sebagai <code>.json.rusak-…</code> — tidak ditimpa.
-    </p>
-    {%- endif %}
-    <div class="lab-canvas" id="wrap">
-      <canvas id="c"></canvas>
-      <div class="lab-busy" id="busy">SAM bekerja…</div>
-    </div>
-  </div>
-
-  <div class="lab-side">
     <div class="pan" id="pan-teks">
       <h3>Text Editor · <span id="teksjudul">Object Text</span></h3>
       <textarea id="teks" rows="3"
@@ -187,59 +206,136 @@
       <input id="flagbaru" type="text" placeholder="flag baru lalu Enter">
     </div>
 
-    <div class="pan" id="pan-labels">
-      <h3>Labels</h3>
-      <div class="kelas-list" id="kelas"></div>
-      <div class="kelas-baru">
-        <input id="kelasbaru" type="text" placeholder="kelas baru lalu Enter">
-      </div>
-    </div>
-
-    <div class="pan pan-grow" id="pan-objects">
-      <h3>Objects <span class="ct" id="nobj">0</span></h3>
-      <div class="obj-list" id="objek"></div>
-    </div>
-
-    <div class="pan" id="pan-setelan">
-      <h3>Setelan</h3>
-      {% if not sam.mobilesam_siap %}
-      <p class="peringatan">Berkas MobileSAM tidak ada di
-        <span class="mono">{{ sam.dir_model }}</span> — pakai model lain.</p>
-      {% endif %}
-      <label class="halus" for="eps">Kerapatan titik poligon</label>
-      <input id="eps" type="range" min="5" max="200" value="10">
-
-      {# Rentang dan titik netral mengikuti BrightnessContrastDialog: slider
-         0..150 dengan nilai awal 50, faktor = nilai/50 sehingga 50 = normal. #}
-      <label class="halus" for="cerah">Kecerahan <span class="mono" id="cerah-nilai">1.00</span></label>
-      <input id="cerah" type="range" min="0" max="150" value="50">
-      <label class="halus" for="kontras">Kontras <span class="mono" id="kontras-nilai">1.00</span></label>
-      <input id="kontras" type="range" min="0" max="150" value="50">
-      <button class="chip" id="btn-reset-cerah">Kembalikan normal</button>
-    </div>
-
     <div class="pan pan-grow" id="pan-files">
       <h3>Files <span class="ct">{{ posisi[0] }}/{{ posisi[1] }}</span></h3>
       <input id="cari" type="text" placeholder="Search Filename">
       <div class="file-list" id="berkas"></div>
       <p class="halus" id="berkasinfo"></p>
     </div>
-  </div>
-</div>
 
-<div class="lab-bawah">
-  <span id="status">Siap</span>
-  <!-- Slot tersendiri untuk petunjuk "apa yang bisa dilakukan di bawah kursor",
-       padanan setStatusTip di canvas.py. Dipisah dari #status supaya gerakan
-       tetikus tidak menghapus pesan seperti "Tersimpan". -->
-  <span id="petunjuk" class="lab-petunjuk"></span>
-  <span class="spacer"></span>
-  <span class="mono" id="koord">—</span>
-  <span class="mono">{{ it.W }}×{{ it.H }}</span>
-  <a class="chip" id="prev" href="{% if prev_path %}/label?path={{ prev_path | urlquote }}{% else %}#{% endif %}"
-     {% if not prev_path %}data-off{% endif %}>← A</a>
-  <a class="chip" id="next" href="{% if next_path %}/label?path={{ next_path | urlquote }}{% else %}#{% endif %}"
-     {% if not next_path %}data-off{% endif %}>D →</a>
+    <div class="pan" id="pan-setelan">
+      <h3>Setelan</h3>
+      {% if not sam.mobilesam_siap %}
+      <p class="peringatan">Berkas MobileSAM tidak ada di
+        <span class="mono">{{ sam.dir_model }}</span>. Pakai model lain.</p>
+      {% endif %}
+      <label class="halus" for="eps">Kerapatan titik poligon</label>
+      <input id="eps" type="range" min="5" max="200" value="10">
+      {# Rentang dan titik netral mengikuti BrightnessContrastDialog: slider
+         0..150 dengan nilai awal 50, faktor = nilai/50 sehingga 50 = normal. #}
+      <label class="halus" for="cerah">Kecerahan <span class="mono" id="cerah-nilai">1.00</span></label>
+      <input id="cerah" type="range" min="0" max="150" value="50">
+      <label class="halus" for="kontras">Kontras <span class="mono" id="kontras-nilai">1.00</span></label>
+      <input id="kontras" type="range" min="0" max="150" value="50">
+      <button class="tbl tbl-lebar" id="btn-reset-cerah">Kembalikan normal</button>
+    </div>
+  </aside>
+
+  <div class="lab-tengah">
+    {% if not boleh_ubah %}
+    {# Dikatakan sekali di atas kanvas, bukan dibiarkan ditemukan saat Simpan
+       ditekan. Kanvasnya sendiri tetap bisa dipakai memperbesar dan melihat
+       objeknya: itu justru gunanya membuka gambar orang lain. #}
+    <div class="lab-baca">
+      <b>Hanya bisa dilihat.</b> {{ alasan_tolak }}
+    </div>
+    {% endif %}
+    {%- if anotasi_rusak %}
+    <p class="lab-rusak" role="alert">
+      Berkas anotasi gambar ini <b>tidak bisa dibaca</b>, jadi kanvas dimulai
+      kosong. Kalau kamu menyimpan, berkas lamanya disisihkan lebih dulu
+      sebagai <code>.json.rusak-…</code>, tidak ditimpa.
+    </p>
+    {%- endif %}
+
+    <div class="lab-canvas" id="wrap">
+      <canvas id="c"></canvas>
+      <div class="lab-busy" id="busy">SAM bekerja…</div>
+    </div>
+
+    {# ------------------------------------------------------------- palet alat
+       Mengambang di tepi kanan kanvas, sejajar tangan yang sedang menggambar.
+       Dulu ia rel gelap di tepi kiri layar, sejauh mungkin dari tempat kerja. #}
+    <div class="lab-palet" role="toolbar" aria-label="Alat">
+      {# Tiap alat memakai NAMA, bukan ikon telanjang. Ikon saja menuntut orang
+         menebak, dan tiga alat SAM adalah yang paling tidak bisa ditebak:
+         tidak ada kiasan yang sudah umum untuk "klik supaya AI memasukkan
+         bagian ini". Judul kelompok memisahkan yang dikerjakan AI dari yang
+         digambar sendiri, sehingga "Kotak" muncul dua kali tanpa rancu. #}
+      <div class="palet-judul">AI</div>
+      <button class="tool" data-mode="p+"
+              title="Titik + (Q): klik PADA objeknya, SAM melebarkan pilihannya ke situ">
+        {{ ikon('titik-tambah', 21) }}<span>Titik +</span></button>
+      <button class="tool" data-mode="p-"
+              title="Titik − (E): klik pada bagian yang BUKAN objek, SAM membuang bagian itu">
+        {{ ikon('titik-kurang', 21) }}<span>Titik −</span></button>
+      <button class="tool" data-mode="rect"
+              title="Kotak AI: tarik kotak di sekitar objek, SAM yang membuat poligonnya">
+        {{ ikon('kotak-ajaib', 21) }}<span>Kotak</span></button>
+
+      <div class="palet-judul">Manual</div>
+      <button class="tool" data-mode="poly"
+              title="Poligon (P): klik titik demi titik, Enter menutup. Tahan Alt supaya tidak menempel ke titik awal">
+        {{ ikon('poligon', 21) }}<span>Poligon</span></button>
+      <button class="tool" data-mode="kotak"
+              title="Kotak (R): tarik kotak, langsung jadi objek">
+        {{ ikon('kotak', 21) }}<span>Kotak</span></button>
+      <button class="tool" data-mode="circle"
+              title="Lingkaran: tarik dari titik pusat ke tepi">
+        {{ ikon('lingkaran', 21) }}<span>Bulat</span></button>
+      <button class="tool" data-mode="line" title="Garis: dua klik">
+        {{ ikon('garis', 21) }}<span>Garis</span></button>
+      <button class="tool" data-mode="linestrip"
+              title="Garis patah: klik terus, akhiri dengan Ctrl+klik atau Enter">
+        {{ ikon('garis-patah', 21) }}<span>Rantai</span></button>
+      <button class="tool" data-mode="point" title="Titik: satu klik satu objek">
+        {{ ikon('titik', 21) }}<span>Titik</span></button>
+
+      <span class="tool-sep"></span>
+      <button class="tool" data-mode="edit"
+              title="Sunting (V): pilih bentuk, geser titiknya">
+        {{ ikon('sunting', 21) }}<span>Sunting</span></button>
+    </div>
+
+    {# -------------------------------------------------------------- bar SAM
+       Tetap terlihat karena inilah alur utamanya: taruh prompt, lalu sahkan.
+       Yang dulu berjejer sebagai bar selebar layar kini pil mengambang di
+       bawah kanvas, dengan pilihan model disembunyikan sampai diminta. #}
+    <div class="lab-auto" id="lab-auto">
+      {# Pemilihan modelnya pindah ke panel AI: itu setelan yang disentuh sekali,
+         sementara pil ini dipakai tiap objek. Berjajar di satu pil keduanya
+         membuat pil ini selebar setengah layar dan bertabrakan dengan dok. #}
+      <span class="lbl">{{ ikon('ai', 17) }}</span>
+      {# Tiga tombol ini pintasan dari alat yang SAMA di palet kanan, yang di
+         sana sudah bernama. Di sini mereka tanpa tulisan supaya pil ini tetap
+         satu baris — dua baris membuatnya tumbuh ke atas dan menutupi palet. #}
+      <button class="ab" id="ab-p+" title="Titik + (Q): klik pada objeknya">
+        {{ ikon('titik-tambah', 17) }}</button>
+      <button class="ab" id="ab-p-" title="Titik − (E): klik pada yang bukan objek">
+        {{ ikon('titik-kurang', 17) }}</button>
+      <button class="ab" id="ab-rect" title="Kotak AI: tarik kotak di sekitar objek">
+        {{ ikon('kotak-ajaib', 17) }}</button>
+      <button class="ab" id="ab-clear" title="Bersihkan prompt (C)">
+        {{ ikon('bersih', 17) }}<span>Bersih</span></button>
+      <button class="ab ab-ok" id="ab-finish" title="Sahkan jadi objek (F)">
+        {{ ikon('selesai', 17) }}<span>Jadikan objek</span></button>
+    </div>
+
+    {# ------------------------------------------------------------- dok bawah
+       Zoom, koordinat, dan ukuran — keterangan yang dibaca sesekali, jadi ia
+       kecil dan menempel di sudut, bukan bar selebar layar. #}
+    <div class="lab-dok">
+      <button class="tool kecil" id="btn-zout" title="Perkecil (Ctrl+−)">{{ ikon('perkecil', 18) }}</button>
+      <span class="mono lab-zoom" id="lab-zoom">100%</span>
+      <button class="tool kecil" id="btn-zin" title="Perbesar (Ctrl++)">{{ ikon('perbesar', 18) }}</button>
+      <button class="tool kecil" id="btn-fit" title="Muat ke jendela (Ctrl+F)">{{ ikon('muat', 18) }}</button>
+      <span class="tool-sep tegak"></span>
+      <span class="mono" id="koord">-</span>
+      <span class="tool-sep tegak"></span>
+      <span id="status">Siap</span>
+      <span id="petunjuk" class="lab-petunjuk"></span>
+    </div>
+  </div>
 </div>
 
 <div class="ctx" id="ctx"></div>
@@ -265,7 +361,7 @@
      karena beberapa pintasan yang sudah lama bekerja tidak pernah tertulis
      (Ctrl+Shift+F, Ctrl+Shift+P, Ctrl+P, Backspace, roda tetikus). -->
 {% set panduan_isi = "_panduan_kanvas.html" %}
-{% set panduan_judul = "Panduan &amp; pintasan" %}
+{% set panduan_judul = "Panduan & pintasan" %}
 {% set panduan_cari = "cari pintasan… mis. hapus, zoom, grup" %}
 {% include "_panduan.html" %}
 
@@ -301,3 +397,4 @@
 
 </body>
 </html>
+

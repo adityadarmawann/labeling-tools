@@ -28,7 +28,10 @@ import zipfile
 from pathlib import Path
 from xml.dom import minidom
 
+from ..log import catat
 from . import scanner
+
+log = catat("labelapp.export")
 
 FORMAT = {
     "yolo-seg": "YOLO segmentation (poligon)",
@@ -154,22 +157,81 @@ def data_yaml(peta: dict[str, int], nama: str) -> str:
             "  format: YOLO segmentation\n")
 
 
+def periksa_rasio(teks: str | None) -> str:
+    """
+    Keluhan tentang `teks` sebagai rasio, atau "" kalau ia dipakai apa adanya.
+
+    Ada TERPISAH dari baca_rasio dengan sengaja. baca_rasio harus selalu
+    mengembalikan rasio yang bisa dipakai — halaman ekspor tidak boleh gagal
+    hanya karena satu parameter URL salah ketik. Tetapi "selalu berhasil" dan
+    "diam saat gagal" adalah dua hal berbeda, dan menyatukannya itulah yang
+    membuat satu bug hidup berbulan-bulan: seluruh rasio bertitik dua jatuh ke
+    80/10/10 tanpa satu pun layar menyebutkannya.
+
+    Fungsi ini yang memberi pemanggil bahan untuk MENGATAKANNYA. Rutenya
+    meneruskan ke UI, dan UI menampilkannya di sebelah angka yang terpengaruh.
+    """
+    if not teks:
+        return ""                       # kosong = memang minta bawaan
+    potong = str(teks).replace("/", ",").replace(":", ",").split(",")
+    try:
+        angka = [float(x) for x in potong]
+    except ValueError:
+        return (f'Rasio "{teks}" tidak bisa dibaca, jadi yang dipakai '
+                f'{_rasio_teks(RASIO_BAWAAN)}. Tulis tiga angka dipisah koma, '
+                f'garis miring, atau titik dua — mis. 70,20,10.')
+    if len(angka) != 3:
+        return (f'Rasio "{teks}" berisi {len(angka)} angka, bukan tiga, jadi '
+                f'yang dipakai {_rasio_teks(RASIO_BAWAAN)}.')
+    if any(a < 0 for a in angka):
+        return (f'Rasio "{teks}" memuat angka negatif, jadi yang dipakai '
+                f'{_rasio_teks(RASIO_BAWAAN)}.')
+    if sum(angka) <= 0:
+        return (f'Rasio "{teks}" berjumlah nol, jadi yang dipakai '
+                f'{_rasio_teks(RASIO_BAWAAN)}.')
+    return ""
+
+
+def _rasio_teks(r) -> str:
+    return "/".join(str(int(round(x * 100))) for x in r)
+
+
 def baca_rasio(teks: str | None) -> tuple[float, float, float]:
     """
     "80,10,10" -> (0.8, 0.1, 0.1). Menerima persen maupun pecahan, dan
     dinormalkan supaya jumlahnya selalu 1 — pemakai mengetik 80/10/10 atau
     70/20/10 tanpa harus pas.
+
+    Tiga pemisah diterima: koma, garis miring, dan TITIK DUA. Titik dua dulu
+    tidak dikenali sama sekali, padahal itu notasi yang paling wajar untuk
+    rasio dan justru itu yang diajarkan kotak isian halaman Versi yang lama
+    (bawaannya "8:1:1", tooltipnya "train:valid:test"). Akibatnya "7:2:1"
+    gagal diurai lalu jatuh ke bawaan 80/10/10 tanpa satu pun keterangan —
+    dan karena "8:1:1" kebetulan menghasilkan angka yang sama dengan
+    bawaannya, kekeliruan itu tidak pernah terlihat.
+
+    Nilai yang tidak bisa diurai tetap jatuh ke bawaan — halaman ekspor tidak
+    boleh gagal hanya karena satu parameter URL salah ketik — tetapi sekarang
+    dicatat ke log, supaya "kenapa hasilnya 80/10/10 padahal saya minta lain"
+    punya jejak.
     """
     if not teks:
         return RASIO_BAWAAN
     try:
-        angka = [float(x) for x in str(teks).replace("/", ",").split(",")]
+        angka = [float(x) for x in
+                 str(teks).replace("/", ",").replace(":", ",").split(",")]
     except ValueError:
+        log.warning("rasio split tidak bisa diurai (%r), memakai bawaan %s",
+                    teks, RASIO_BAWAAN)
         return RASIO_BAWAAN
     if len(angka) != 3 or any(a < 0 for a in angka):
+        log.warning("rasio split harus tiga angka tak negatif (%r), "
+                    "memakai bawaan %s", teks, RASIO_BAWAAN)
         return RASIO_BAWAAN
     total = sum(angka)
     if total <= 0:
+        log.warning("rasio split berjumlah nol (%r), memakai bawaan %s",
+                    teks, RASIO_BAWAAN)
         return RASIO_BAWAAN
     return (angka[0] / total, angka[1] / total, angka[2] / total)
 

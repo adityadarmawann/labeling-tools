@@ -1,0 +1,74 @@
+{# Menu Ekspor. Dipakai dua halaman, dan itu disengaja:
+
+   - Halaman Versi, untuk projek. Di sanalah tempatnya, karena yang diunduh
+     adalah pembagian train/valid/test dan halaman itu yang mengurus pembagian.
+   - Halaman grid, HANYA untuk dataset yang dibuka lewat path server. Dataset
+     seperti itu bukan projek di ruang kerja siapa pun, jadi ia tidak punya
+     halaman Versi sama sekali — /versi mengalihkannya ke daftar projek. Tanpa
+     pengecualian ini, memindahkan menu ini berarti dataset bersama sama sekali
+     tidak bisa diekspor lagi.
+
+   Isinya sama persis di kedua tempat; yang berbeda cuma di mana ia berdiri. #}
+  {#- Arah membukanya mengikuti tempat tombolnya berdiri: di bar atas halaman
+      Versi ia di sisi KIRI layar, di grid ia di ujung KANAN baris kemajuan.
+      Menu yang membuka ke arah yang salah keluar dari tepi layar. -#}
+  <span class="menu{% if ekspor_kiri %} menu-kiri{% endif %}" id="menu-ekspor">
+    <button class="chip" id="ekspor-tombol">Ekspor ▾</button>
+    <span class="menu-isi" id="ekspor-isi">
+      {# "Format" saja terbaca seperti daftar setelan yang harus dipilih
+         dulu, padahal mengkliknya LANGSUNG mengunduh. Judul dan tanda
+         panahnya yang menjelaskan itu, bukan penjelasan terpisah. #}
+      <span class="menu-judul">Unduh sebagai</span>
+      <span class="menu-catatan" id="unduh-pakai"></span>
+      <a class="unduh" href="/ekspor?format=yolo-seg">YOLO segmentation (poligon)</a>
+      <a class="unduh" href="/ekspor?format=yolo">YOLO detection (bounding box)</a>
+      <a class="unduh" href="/ekspor?format=coco">COCO (instances.json)</a>
+      <a class="unduh" href="/ekspor?format=voc">Pascal VOC (.xml per gambar)</a>
+      <a class="unduh" href="/ekspor?format=createml" title="Apple Create ML. Koordinatnya titik tengah kotak, sedangkan AnyLabeling menulis sudut kiri-atas. Yang AnyLabeling keliru.">CreateML (Apple)</a>
+      <span class="menu-pisah"></span>
+      <a class="unduh" href="/ekspor?format=yolo-seg&gambar=0">YOLO-seg, label saja</a>
+      <span class="menu-pisah"></span>
+      <span class="menu-judul">Train / Valid / Test</span>
+      <span class="split-atur">
+        <input id="s-train" type="number" min="0" max="100" value="80"> :
+        <input id="s-valid" type="number" min="0" max="100" value="10"> :
+        <input id="s-test"  type="number" min="0" max="100" value="10">
+      </span>
+      <span class="menu-catatan" id="ekspor-info">memuat ringkasan…</span>
+
+      {# Splitting penuh dijalankan SENDIRI, tidak diam-diam saat mengunduh.
+         Membaca isi tiap gambar makan 56 ms — sejuta gambar berarti berjam-
+         jam. Lebih penting lagi: angkanya harus bisa dibaca sebelum ZIP
+         puluhan gigabyte dibuat, bukan sesudah. #}
+      <span class="menu-pisah"></span>
+      <span class="menu-judul">Splitting anti-bocor</span>
+      <span class="menu-catatan">
+        {# Keterangannya dilipat: sekali dibaca sudah cukup, tapi tiap kali
+           menu ini dibuka ia ikut memenuhi layar. #}
+        <details class="catatan-lipat" id="split-jelas">
+          <summary>Apa ini?</summary>
+          <span class="lipat-isi">Mengelompokkan foto berdasarkan sesi
+            pemotretan, lalu mengecek isi setiap gambar untuk memastikan foto
+            yang sama tidak masuk ke data train dan validasi. Stempel waktu
+            yang muncul secara massal dari proses pengunduhan juga tidak
+            dianggap sebagai penanda sesi.</span>
+        </details></span>
+      <span class="split-aksi">
+        <button class="chip aksi" id="split-jalan">Jalankan splitting</button>
+        <button class="chip" id="split-batal" hidden>Hentikan</button>
+        <button class="chip" id="split-lupa" hidden
+                title="Kembali ke splitting cepat berbasis nama berkas">Lupakan</button>
+      </span>
+      <span class="prog-baris" id="prog-split" hidden>
+        <span class="prog" data-on><i id="fill-split"></i></span>
+        <span class="prog-teks">
+          <span id="split-fase">Menyiapkan…</span><b id="split-persen">0%</b></span>
+      </span>
+      <span class="menu-catatan" id="split-hasil"></span>
+      {# Rencana yang sudah jadi mengunci pembagiannya. Tanpa baris ini,
+         mengubah angka rasio sesudahnya terlihat seperti kotak yang rusak. #}
+      <span class="menu-catatan"><span class="split-warn" id="split-ulang" hidden>
+        Angka rasio berubah. Jalankan splitting sekali lagi supaya angka baru
+        itu dipakai; selama belum, pembagian yang lama yang terunduh.</span></span>
+    </span>
+  </span>

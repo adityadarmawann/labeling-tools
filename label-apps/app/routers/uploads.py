@@ -92,6 +92,15 @@ async def halaman_versi(request: Request, ds: str = "",
     d = projek.temukan(settings.uploads_root, sess.user, ds)
     if d is None:
         return RedirectResponse("/pilih", status_code=303)
+    # Projeknya dibuka di sesi ini, sama seperti yang dilakukan halaman grid.
+    # Menu Ekspor tinggal di halaman ini sekarang, dan seluruh rute ekspor —
+    # ringkasan, splitting, unduhan — bekerja pada `sess.src`. Tanpa baris ini,
+    # membuka /versi langsung dari sidebar (tanpa mampir ke grid dulu) membuat
+    # menunya menjawab "belum ada dataset terbuka" pada projek yang jelas-jelas
+    # sedang dilihat.
+    if str(sess.src or "") != str(d):
+        await asyncio.to_thread(sess.load, d)
+
     from ..services import versi as svc_versi
     from ..services import tugas as svc_tugas
 

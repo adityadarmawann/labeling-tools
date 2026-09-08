@@ -76,7 +76,7 @@ def create_app() -> FastAPI:
     # termasuk rute kelola akun, tanpa perlu login sama sekali. Aplikasinya
     # sendiri tidak memakai halaman itu; yang memakainya cuma kita saat
     # mengembangkan, dan kita memang punya akun.
-    app = FastAPI(title="Labeling Tools — papan periksa anotasi",
+    app = FastAPI(title="HIGOLAB — papan periksa anotasi",
                   description="Papan periksa anotasi untuk dataset "
                               "AnyLabeling / labelme / YOLO-seg, dipakai bersama satu tim.",
                   version="0.1.0",

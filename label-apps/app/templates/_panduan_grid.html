@@ -1,11 +1,11 @@
 {# Isi panduan halaman Dataset (grid). Cangkangnya di _panduan.html.
 
-   Ditulis karena chip di halaman ini menyebut keadaan yang tidak dijelaskan
-   namanya sendiri. "Perlu dicek" yang paling sering disalahpahami: ia
-   memeriksa BENTUK objek yang sudah digambar, dan orang menyangka ia menilai
-   keputusan menandai latar. #}
+   Ditulis karena saringan di halaman ini menyebut keadaan yang tidak
+   dijelaskan namanya sendiri. "Perlu dicek" yang paling sering
+   disalahpahami: ia memeriksa BENTUK objek yang sudah digambar, dan orang
+   menyangka ia menilai keputusan menandai latar. #}
 <section>
-  <h4>Chip keadaan</h4>
+  <h4>Saringan Keadaan</h4>
   <dl>
     <dt>Semua</dt>
     <dd>Seluruh gambar yang ada di dataset ini.</dd>
@@ -13,13 +13,14 @@
     <dt>Perlu dicek</dt>
     <dd>Gambar yang <em>sudah</em> punya objek, tetapi bentuknya mencurigakan
       menurut pemeriksaan otomatis. Daftar temuannya ada di bagian berikutnya.
-      Gambar latar tidak pernah masuk sini — ia tidak punya objek sama sekali,
+      Gambar latar tidak pernah masuk sini: ia tidak punya objek sama sekali,
       jadi tidak ada bentuk yang bisa dicurigai.</dd>
 
     <dt>Sudah dilabeli</dt>
     <dd>Semua yang sudah dikerjakan: yang berisi objek, yang perlu dicek, dan
-      yang ditandai latar. Chip ini sengaja tumpang tindih dengan dua chip
-      itu — yang saling lepas adalah potongan bilah kemajuan di atasnya.</dd>
+      yang ditandai latar. Pilihan ini sengaja tumpang tindih dengan dua
+      pilihan itu. Yang saling lepas adalah potongan bilah kemajuan di
+      atasnya.</dd>
 
     <dt>Belum dilabeli</dt>
     <dd>Belum disentuh sama sekali: tidak punya objek, dan belum ditandai
@@ -40,14 +41,17 @@
   <h4>Apa yang ditandai "Perlu dicek"</h4>
   <dl>
     <dt>mask sangat kecil</dt>
-    <dd>Luas objek di bawah 0,2% frame — biasanya sisa salah klik.</dd>
+    <dd>Luas objek di bawah 0,2% frame, biasanya sisa salah klik.</dd>
 
     <dt>mask memenuhi frame</dt>
-    <dd>Luas objek di atas 92% frame — biasanya poligon yang lari ke tepi.</dd>
+    <dd>Luas objek di atas 92% frame, biasanya poligon yang lari ke tepi.</dd>
 
     <dt>hanya N titik</dt>
-    <dd>Poligon dengan kurang dari 4 titik. Kotak, lingkaran, titik, dan garis
-      tidak dinilai begini — di sana jumlah titik itu memang bentuknya.</dd>
+    <dd>Poligon dengan kurang dari <b>8</b> titik. Poligon sesegi itu biasanya
+      kotak kasar yang digambar dengan alat poligon, bukan bentuk objeknya,
+      dan pada dataset segmentasi itu yang paling sering perlu diperbaiki.
+      Kotak, lingkaran, titik, dan garis tidak dinilai begini: di sana jumlah
+      titik itu memang bentuknya.</dd>
 
     <dt>titik di luar gambar</dt>
     <dd>Ada titik yang jatuh di luar tepi gambar.</dd>
@@ -81,6 +85,32 @@
 </section>
 
 <section>
+  <h4>Menampilkan &amp; menggulung</h4>
+  <dl>
+    <dt>Per halaman</dt>
+    <dd>Grid menampilkan 50 gambar per halaman. Ubah di bar bawah: 50, 100,
+      500, atau 1000. Penunjuk di sebelahnya (<em>1&ndash;50 dari 450</em>)
+      selalu menyebut berapa yang sedang tampil dari berapa seluruhnya.
+      Mengubah angkanya tidak melempar kamu ke halaman 1: kamu mendarat di
+      halaman yang memuat gambar yang sama.</dd>
+
+    <dt>Cari nama berkas</dt>
+    <dd>Mencari di <em>seluruh</em> dataset, bukan cuma halaman yang sedang
+      tampil. Ctrl+F peramban hanya mengenai halaman ini.</dd>
+
+    <dt>Bersihkan saringan</dt>
+    <dd>Membatalkan keadaan, kelas, tag, dan pencarian sekaligus. Urutan dan
+      jumlah per halaman tidak ikut dibatalkan, karena keduanya pengaturan tampilan,
+      bukan saringan.</dd>
+
+    <dt>Pindai ulang</dt>
+    <dd>Membaca ulang isi folder dari disk. Perlu kalau berkasnya diubah dari
+      luar aplikasi: AnyLabeling desktop, salin-tempel, atau rsync. Perubahan
+      dari dalam aplikasi sudah terbaca sendiri.</dd>
+  </dl>
+</section>
+
+<section>
   <h4>Alur dataset</h4>
   <dl>
     <dt>Halaman ini</dt>
@@ -93,11 +123,22 @@
 
     <dt>Tandai latar</dt>
     <dd>Ada per gambar di sini, dan borongan di halaman tugas. Menandai latar
-      menolak gambar yang masih berisi objek — hapus objeknya dulu di
+      menolak gambar yang masih berisi objek, jadi hapus objeknya dulu di
       kanvas.</dd>
 
     <dt>Versi</dt>
     <dd>Membekukan pembagian train/valid/test yang berlaku saat itu, supaya
       ekspor yang sama bisa diulang persis walau datasetnya sudah bertambah.</dd>
+
+    <dt>Ekspor</dt>
+    <dd>Ada di halaman <em>Versi</em>, bukan di sini. Yang diunduh adalah
+      pembagian train/valid/test, dan halaman itulah yang mengurus pembagian,
+      termasuk splitting anti-bocor. Ekspornya tidak mengikuti saringan yang
+      sedang aktif di halaman ini; ia selalu memakai seluruh isi dataset.</dd>
+
+    <dt>Menambah gambar</dt>
+    <dd>Lewat <em>Unggah data</em> di menu kiri. Halaman itu memperlihatkan apa
+      yang akan terkirim sebelum terkirim, dan ia tahu dataset ini sudah
+      bersplit atau belum.</dd>
   </dl>
 </section>

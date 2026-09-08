@@ -1,11 +1,16 @@
 {% extends "base.html" %}
-{% block title %}Versi{% endblock %}
 {% block bodyclass %}berprojek{% endblock %}
 
 {% block body %}
 <header>
   <div class="top">
-    <h1>Versi</h1>
+    <h1>{{ nama_app() }}</h1>
+    {#- Ekspor tinggal di sini, bukan di grid. Yang diunduh adalah pembagian
+        train/valid/test, dan halaman inilah yang mengurus pembagian itu —
+        di grid ia berdiri di antara saringan tampilan, seolah yang terunduh
+        mengikuti saringan yang sedang aktif. Padahal tidak: /ekspor selalu
+        memakai seluruh isi dataset. -#}
+    {% set ekspor_kiri = true %}{% include "_ekspor.html" %}
     {% include "_header.html" %}
   </div>
 </header>
@@ -15,25 +20,177 @@
 <div class="sisi-isi" id="vs-isi" data-ds="{{ pr.ds }}">
 
   {% if boleh_kelola %}
-  <section class="vs-buat">
-    <div class="vs-buat-teks">
-      <b>Bekukan pembagian yang berlaku sekarang</b>
-      <span class="halus">Yang dibekukan bukan rasionya melainkan petanya:
-        gambar mana masuk train, valid, atau test. Rasio yang sama pada dataset
-        yang sudah bertambah menghasilkan pembagian yang lain, dan versi yang
-        isinya berubah bukan versi.</span>
+  <div class="vs-kepala">
+    <button class="cta" type="button" id="vs-mulai">+ Buat versi baru</button>
+  </div>
+
+  {#- Wizard enam langkah. Seluruhnya di DOM sejak awal dan disembunyikan,
+      bukan dibangun dari JS: dengan begitu tiap langkah bisa dibuka ulang
+      tanpa kehilangan isian yang sudah dipilih, dan orang bisa mundur. -#}
+  <section class="wz" id="wz" hidden>
+    <div class="wz-atas">
+      <b>Buat versi baru</b>
+      <button class="chip" type="button" id="wz-tutup">Batal</button>
     </div>
-    <div class="vs-buat-alat">
-      <input type="text" id="vs-rasio" value="8:1:1" title="train:valid:test">
-      <input type="text" id="vs-catatan" placeholder="catatan, mis. sebelum tambah kahf">
-      <button class="cta" type="button" id="vs-buat">Buat versi</button>
+    <label class="wz-nama">Nama versi
+      <input type="text" id="wz-nama" readonly title="Dinomori otomatis mengikuti versi terakhir">
+    </label>
+
+    <ol class="wz-langkah">
+      <li class="wz-item" data-langkah="1" data-buka>
+        <div class="wz-judul"><span class="wz-no">1</span>
+          <b>Gambar sumber</b><span class="spacer"></span>
+          <span class="wz-ringkas" id="wz-r1"></span>
+          <button class="chip wz-ubah" type="button">Ubah</button></div>
+        <div class="wz-isi">
+          <p class="halus">Yang ikut hanya gambar yang sudah dimasukkan ke
+            dataset lewat <b>Tambahkan ke dataset</b> di halaman Anotasi.</p>
+          <div class="wz-angka" id="wz-sumber">memuat…</div>
+          <div class="wz-aksi"><button class="wz-tbl wz-tbl-pri" type="button" data-lanjut>Lanjut</button></div>
+        </div>
+      </li>
+
+      <li class="wz-item" data-langkah="2">
+        <div class="wz-judul"><span class="wz-no">2</span>
+          <b>Train / Valid / Test</b><span class="spacer"></span>
+          <span class="wz-ringkas" id="wz-r2"></span>
+          <button class="chip wz-ubah" type="button">Ubah</button></div>
+        <div class="wz-isi">
+          <div class="wz-rasio">
+            <label>Train <input type="number" id="wz-train" min="0" max="100" value="80"></label>
+            <label>Valid <input type="number" id="wz-valid" min="0" max="100" value="10"></label>
+            <label>Test <input type="number" id="wz-test" min="0" max="100" value="10"></label>
+          </div>
+          <div class="lajur an-lajur" id="wz-bilah"></div>
+          <div class="wz-angka" id="wz-split"></div>
+
+          {#- Dua cara membelah, dan bedanya nyata: yang cepat memakai hash
+              nama berkas, yang teliti membaca isi tiap gambar untuk memastikan
+              foto yang sama tidak jatuh di train sekaligus di valid. -#}
+          <div class="wz-belah">
+            <label class="wz-pilihan">
+              <input type="radio" name="wz-belah" value="cepat" checked>
+              <span><b>Acak cepat</b>, berdasarkan nama berkas. Seketika.</span></label>
+            <label class="wz-pilihan">
+              <input type="radio" name="wz-belah" value="bocor">
+              <span><b>Anti-bocor</b>, kelompokkan per sesi pemotretan lalu
+                periksa isi tiap gambar, supaya foto yang sama tidak masuk
+                train dan valid sekaligus. Perlu beberapa menit.</span></label>
+          </div>
+          <div class="jalur-status" id="wz-bocor-jalur"></div>
+          <p class="menu-catatan" id="wz-bocor-hasil"></p>
+          {#- Aksi sekunder langkah ini duduk di UJUNG KANAN baris tombol,
+              bukan tercecer di atasnya: satu baris tombol per langkah, dan
+              posisinya sama di setiap langkah. -#}
+          <div class="wz-aksi">
+            <button class="wz-tbl wz-tbl-sek" type="button" data-mundur>Kembali</button>
+            <button class="wz-tbl wz-tbl-pri" type="button" data-lanjut>Lanjut</button>
+            <span class="spacer"></span>
+            <button class="wz-tbl wz-tbl-sek" type="button" id="wz-jalan-bocor">Jalankan splitting anti-bocor</button>
+            <button class="wz-tbl wz-tbl-sek" type="button" id="wz-batal-bocor" hidden>Hentikan</button>
+          </div>
+        </div>
+      </li>
+
+      <li class="wz-item" data-langkah="3">
+        <div class="wz-judul"><span class="wz-no">3</span>
+          <b>Preprocessing</b><span class="spacer"></span>
+          <span class="wz-ringkas" id="wz-r3"></span>
+          <button class="chip wz-ubah" type="button">Ubah</button></div>
+        <div class="wz-isi">
+          <p class="halus">Dikenakan ke <b>setiap</b> gambar di train, valid, dan
+            test, dan hasilnya sama tiap kali dijalankan. Itu syaratnya: valid
+            dan test adalah alat ukur, dan alat ukur yang berubah-ubah membuat
+            angka dua versi tidak bisa dibandingkan.</p>
+          <div class="op-daftar" id="wz-pra"></div>
+          <button class="op-atur" type="button" data-tambah="pra">Atur langkah</button>
+          <div class="wz-aksi">
+            <button class="wz-tbl wz-tbl-sek" type="button" data-mundur>Kembali</button>
+            <button class="wz-tbl wz-tbl-pri" type="button" data-lanjut>Lanjut</button></div>
+        </div>
+      </li>
+
+      <li class="wz-item" data-langkah="4">
+        <div class="wz-judul"><span class="wz-no">4</span>
+          <b>Augmentasi</b><span class="spacer"></span>
+          <span class="wz-ringkas" id="wz-r4"></span>
+          <button class="chip wz-ubah" type="button">Ubah</button></div>
+        <div class="wz-isi">
+          <p class="halus">Hanya pada data <b>train</b>, dan hanya menambah.
+            Gambar aslinya tidak pernah diganti. Valid dan test tidak pernah
+            diaugmentasi; kalau diaugmentasi, ia mengukur dirinya sendiri.</p>
+          <label class="wz-salin">Salinan per gambar
+            <input type="number" id="wz-salin" min="0" max="10" value="1"></label>
+          <div class="op-daftar" id="wz-aug"></div>
+          <button class="op-atur" type="button" data-tambah="aug">Atur langkah</button>
+
+          <div class="wz-fase">
+            <span class="menu-judul">Fase lanjutan</span>
+            <label class="sk"><input class="sk-in" type="checkbox" role="switch" id="wz-f-crop" checked><span class="sk-track"><span class="sk-knob"></span></span><span class="sk-teks"><b>Crop &amp; zoom</b><em>Potong keras dan zoom-keluar pada sebagian train, ditempel ke pelat ruang detektor.</em></span></label>
+            <label class="sk"><input class="sk-in" type="checkbox" role="switch" id="wz-f-skala" checked><span class="sk-track"><span class="sk-knob"></span></span><span class="sk-teks"><b>Seimbangkan ukuran objek</b><em>Sapu skala lalu tambal kekurangan per bin, supaya tiap kelas punya sebaran ukuran yang sepadan.</em></span></label>
+            <label class="sk"><input class="sk-in" type="checkbox" role="switch" id="wz-f-kelas" checked><span class="sk-track"><span class="sk-knob"></span></span><span class="sk-teks"><b>Seimbangkan jumlah kelas</b><em>Perbanyak kelas minoritas sampai persentil 75.</em></span></label>
+            <label class="sk"><input class="sk-in" type="checkbox" role="switch" id="wz-f-neg" checked><span class="sk-track"><span class="sk-knob"></span></span><span class="sk-teks"><b>Pulihkan porsi sampel negatif</b><em>Fase lain hanya memperbanyak gambar berobjek, jadi porsi negatif menyusut. Ini mengembalikannya ke porsi dataset asli.</em></span></label>
+          </div>
+          <div class="wz-aksi">
+            <button class="wz-tbl wz-tbl-sek" type="button" data-mundur>Kembali</button>
+            <button class="wz-tbl wz-tbl-pri" type="button" data-lanjut>Lanjut</button></div>
+        </div>
+      </li>
+
+      <li class="wz-item" data-langkah="5">
+        <div class="wz-judul"><span class="wz-no">5</span>
+          <b>Buat</b><span class="spacer"></span></div>
+        <div class="wz-isi">
+          <div class="wz-tinjau" id="wz-tinjau"></div>
+          <div class="wz-perkira" id="wz-perkira">menghitung perkiraan…</div>
+          <label class="wz-nama">Catatan versi
+            <input type="text" id="wz-catatan" placeholder="mis. sebelum tambah kahf"></label>
+          <div class="wz-aksi">
+            <button class="wz-tbl wz-tbl-sek" type="button" data-mundur>Kembali</button>
+            <button class="wz-tbl wz-tbl-pri" type="button" id="wz-buat">Buat versi</button></div>
+        </div>
+      </li>
+    </ol>
+
+    <div class="wz-kerja" id="wz-kerja" hidden>
+      <b id="wz-kerja-judul">Membuat versi…</b>
+      <p class="halus">Gambar untuk versi ini sedang dibuat. Boleh ditinggal;
+        halaman ini akan menyusul sendiri saat selesai.</p>
+      <span class="prog" data-on><i id="wz-fill"></i></span>
+      <div class="prog-teks"><span id="wz-fase">Menyiapkan…</span><b id="wz-persen">0%</b></div>
+      <button class="chip" type="button" id="wz-batal">Hentikan</button>
     </div>
-    <div class="jalur-status" id="vs-jalur"></div>
   </section>
+
+  {#- Popup pilihan operasi. Isinya diisi dari /api/versi/katalog, dipisah jadi
+      kelompok "bawaan" dan "opsional" — dibaca dari bawaan_aktif, BUKAN dari
+      kelompok katalognya: Auto-Orient berkelompok "tambahan" tetapi menyala
+      sejak awal, dan lencana lama yang membaca kelompok membuatnya tampil
+      polos di antara baris berlencana. -#}
+  <div class="dlg" id="op-dlg" hidden>
+    <div class="dlg-tirai" data-tutup></div>
+    <div class="dlg-kotak" role="dialog" aria-modal="true" aria-labelledby="op-judul">
+      {#- Tiga bagian: judul tetap, isi menggulung, kaki tetap. Kotak dialog
+          biasa menggulung SELURUH isinya, jadi pada 21 baris judul dan tombol
+          tutupnya ikut hilang ke atas. -#}
+      <div class="op-dlg-atas">
+        <h3 id="op-judul">Augmentasi</h3>
+        <p class="halus" id="op-ket"></p>
+        <input class="op-cari" id="op-cari" type="search" hidden
+               placeholder="cari operasi…" autocomplete="off">
+      </div>
+      <div class="op-gulung" id="op-isi"></div>
+      <div class="op-dlg-bawah">
+        <button class="wz-tbl wz-tbl-sek" type="button" id="op-bawaan">Kembalikan ke bawaan</button>
+        <span class="spacer"></span>
+        <button class="wz-tbl wz-tbl-pri" type="button" data-tutup>Selesai</button>
+      </div>
+    </div>
+  </div>
   {% endif %}
 
   {% if not daftar %}
-  <div class="pkosong" style="max-width:660px">
+  <div class="pkosong">
     <b>Belum ada versi</b>
     Versi adalah pembagian train/valid/test yang dibekukan: sekali dibuat,
     isinya tetap dan bisa diunduh ulang kapan saja, walau gambar barunya sudah
@@ -44,52 +201,54 @@
     {% endif %}
   </div>
   {% else %}
-  <div class="vs-daftar">
-    {%- for v in daftar %}
-    <article class="vs-kartu" data-nomor="{{ v.nomor }}">
-      <div class="vs-atas">
-        <b class="vs-nomor">v{{ v.nomor }}</b>
-        <span class="vs-waktu halus">{{ v.dibuat }} &middot; oleh {{ v.oleh }}</span>
-        <span class="spacer"></span>
-        {% if boleh_kelola %}
-        <button class="an-buang" type="button" data-nomor="{{ v.nomor }}"
-                title="Hapus versi ini" aria-label="Hapus">&times;</button>
-        {% endif %}
-      </div>
+  {#- Dua kolom: daftar versi di kiri, satu versi terbuka di kanan. Sebelumnya
+      kartu bertumpuk selebar halaman, dan membandingkan dua versi berarti
+      menggulung bolak-balik. Di kolom, seluruh versi terbaca sekaligus dan
+      yang sedang dibuka tetap terlihat di sebelahnya. -#}
+  <div class="vs-tata">
+    <div class="vs-kolom">
+      <div class="vs-kolom-judul">Versi</div>
+      {%- for v in daftar %}
+      <button class="vs-ring" type="button" data-nomor="{{ v.nomor }}"
+              {% if loop.first %}data-on{% endif %}>
+        <span class="vs-ring-atas">
+          <b class="vs-nomor">v{{ v.nomor }}</b>
+          <span class="vs-waktu">{{ v.dibuat }}</span>
+        </span>
+        <span class="vs-ring-cap">
+          <span class="vs-pil">{{ (v.hasil or {}).get('n') or v.n }} gambar</span>
+          {%- set rs = ((v.resep or {}).get('pra') or {}).get('resize') or {} %}
+          {%- if v.hasil and v.hasil.n %}
+          <span class="vs-pil">{{ rs.get('lebar', 640) }}×{{ rs.get('tinggi', 640) }}</span>
+          {%- endif %}
+          {%- if v.berencana %}<span class="vs-pil vs-pil-ok">anti-bocor</span>{% endif %}
+        </span>
+        <span class="vs-ring-oleh">oleh {{ v.oleh }}</span>
+        {#- Peringatan ini HANYA untuk versi yang tidak punya berkas hasil.
+            Versi lama membekukan daftar nama saja, jadi menghapus gambar
+            sumbernya benar-benar mengecilkan isi ZIP-nya — kartunya menyebut
+            6, ZIP-nya berisi 5, dan tidak ada yang menjelaskan.
 
-      {% set j = v.jumlah or {} %}
-      <div class="lajur an-lajur" title="train / valid / test">
-        {%- if j.train %}<i class="p-ok" style="flex-grow:{{ j.train }}"></i>{% endif -%}
-        {%- if j.valid %}<i class="p-warn" style="flex-grow:{{ j.valid }}"></i>{% endif -%}
-        {%- if j.test %}<i class="p-bg" style="flex-grow:{{ j.test }}"></i>{% endif -%}
-      </div>
-      <div class="vs-angka">
-        {#- Jumlah saat dibekukan, dan — kalau berbeda — berapa yang masih
-            ada. Kartu yang menyebut 6 sementara ZIP-nya berisi 5 membuat
-            orang mengira ekspornya kehilangan sesuatu. -#}
-        <span><b>{{ v.n }}</b> gambar
-          {%- if v.n_ada is defined and v.n_ada != v.n %}
-          <em class="v-hilang" title="{{ v.n - v.n_ada }} gambarnya sudah tidak ada di projek ini, jadi ekspor versi ini berisi {{ v.n_ada }}">
-            &middot; {{ v.n_ada }} masih ada</em>
-          {%- endif %}</span>
-        <span>train <b>{{ j.train or 0 }}</b></span>
-        <span>valid <b>{{ j.valid or 0 }}</b></span>
-        <span>test <b>{{ j.test or 0 }}</b></span>
-        <span>{{ v.kelas }} kelas</span>
-        <span class="halus">rasio {{ v.rasio }}</span>
-      </div>
-      {% if v.catatan %}<p class="an-catatan">{{ v.catatan }}</p>{% endif %}
+            Versi yang punya berkas hasil tidak begitu: ia diekspor dari
+            berkasnya sendiri, jadi gambar sumber yang dihapus tidak mengubah
+            apa pun. Memperingatkan di sana berarti mencemaskan orang tentang
+            hal yang tidak terjadi. -#}
+        {%- if not (v.hasil and v.hasil.n) and v.n_ada is defined and v.n_ada != v.n %}
+        <span class="vs-ring-hilang"
+              title="{{ v.n - v.n_ada }} gambar sumbernya sudah tidak ada di projek ini, jadi ekspor versi ini berisi {{ v.n_ada }}, bukan {{ v.n }}">
+          {{ v.n_ada }} masih ada dari {{ v.n }}</span>
+        {%- endif %}
+      </button>
+      {%- endfor %}
+    </div>
 
-      <div class="vs-unduh">
-        <span class="halus">Unduh:</span>
-        <a class="chip" href="/ekspor?nomor={{ v.nomor }}&format=yolo-seg">YOLO-seg</a>
-        <a class="chip" href="/ekspor?nomor={{ v.nomor }}&format=yolo">YOLO</a>
-        <a class="chip" href="/ekspor?nomor={{ v.nomor }}&format=coco">COCO</a>
-        <a class="chip" href="/ekspor?nomor={{ v.nomor }}&format=voc">VOC</a>
-        <a class="chip" href="/ekspor?nomor={{ v.nomor }}&format=yolo-seg&gambar=0">label saja</a>
-      </div>
-    </article>
-    {%- endfor %}
+    <div class="vs-detail" id="vs-detail">
+      {#- Diisi versi.js dari /api/versi/isi. Dirender di klien, bukan di
+          server, supaya berpindah versi tidak memuat ulang seluruh halaman —
+          dan supaya deretan thumbnail tidak ikut diminta untuk versi yang
+          tidak sedang dilihat. -#}
+      <div class="vs-detail-muat">memuat…</div>
+    </div>
   </div>
   {% endif %}
 </div>

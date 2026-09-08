@@ -1,20 +1,32 @@
 {# Isi panduan halaman kanvas. Cangkangnya di _panduan.html. #}
     <section>
+      <h4>Tata letak halaman</h4>
+      <dl>
+        <dt>rel kiri</dt><dd>Memilih SATU panel yang tampil: Objek, Kelas, AI, Catatan, Flag, Berkas, Setelan. Panel yang tidak dipakai tidak ikut memakan tempat</dd>
+        <dt>palet kanan</dt><dd>Alat menggambar, mengambang di tepi kanan kanvas. Kelompok <b>AI</b> di atas dikerjakan SAM; kelompok <b>Gambar sendiri</b> di bawahnya digambar tangan</dd>
+        <dt>pil kanan bawah</dt><dd>Auto Labeling (SAM): pilih model, taruh prompt, sahkan dengan Finish</dd>
+        <dt>dok kiri bawah</dt><dd>Perbesaran, koordinat kursor, ukuran gambar, dan keadaan simpan</dd>
+        <dt>bar atas kanan</dt><dd>Gandakan, hapus, urungkan, ulangi (tindakan atas objek yang sudah jadi), lalu Simpan</dd>
+        <dt>Menu View</dt><dd>Mematikan panel yang tidak pernah dipakai. Tombol relnya ikut hilang. Di sana juga setelan tampilan dan perilaku</dd>
+      </dl>
+    </section>
+
+    <section>
       <h4>Alat menggambar</h4>
       <dl>
         <dt><kbd>P</kbd></dt><dd>Poligon</dd>
         <dt><kbd>R</kbd></dt><dd>Kotak (rectangle)</dd>
-        <dt><kbd>V</kbd></dt><dd>Mode Sunting — memilih dan merapikan objek</dd>
-        <dt>—</dt><dd>Lingkaran, garis, garis patah, dan titik lewat bilah alat di kiri</dd>
+        <dt><kbd>V</kbd></dt><dd>Mode Sunting: memilih dan merapikan objek</dd>
+        <dt>tanpa pintasan</dt><dd>Bulat, Garis, Rantai (garis patah), dan Titik lewat palet alat di tepi kanan kanvas</dd>
       </dl>
     </section>
 
     <section>
       <h4>Pelabelan otomatis (SAM)</h4>
       <dl>
-        <dt><kbd>Q</kbd></dt><dd>+Point — tandai bagian yang termasuk objek</dd>
-        <dt><kbd>E</kbd></dt><dd>−Point — tandai bagian yang <em>bukan</em> objek</dd>
-        <dt><kbd>R</kbd></dt><dd>+Rect — tarik kotak di sekitar objek</dd>
+        <dt><kbd>Q</kbd></dt><dd><b>Titik +</b>: klik PADA objeknya; SAM melebarkan pilihannya ke situ</dd>
+        <dt><kbd>E</kbd></dt><dd><b>Titik −</b>: klik pada bagian yang <em>bukan</em> objek; SAM membuang bagian itu</dd>
+        <dt>alat Kotak (AI)</dt><dd>Tarik kotak di sekitar objek, SAM yang membuat poligonnya. Tidak punya pintasan papan tombol. <kbd>R</kbd> memilih kotak manual</dd>
         <dt><kbd>C</kbd></dt><dd>Bersihkan prompt</dd>
         <dt><kbd>F</kbd></dt><dd>Sahkan pratinjau jadi objek</dd>
         <dt>klik kanan</dt><dd>Cabut prompt terakhir</dd>
@@ -68,7 +80,7 @@
         <dt><kbd>G</kbd></dt><dd>Gabungkan objek terpilih jadi satu grup</dd>
         <dt><kbd>U</kbd></dt><dd>Lepas dari grup</dd>
         <dt><kbd>Ctrl</kbd>+<kbd>C</kbd></dt><dd>Salin objek</dd>
-        <dt><kbd>Ctrl</kbd>+<kbd>V</kbd></dt><dd>Tempel — bisa di gambar lain</dd>
+        <dt><kbd>Ctrl</kbd>+<kbd>V</kbd></dt><dd>Tempel, bisa di gambar lain</dd>
         <dt><kbd>Ctrl</kbd>+<kbd>D</kbd></dt><dd>Duplikat di tempat</dd>
         <dt>seret klik kanan</dt><dd>Salin atau pindahkan ke posisi baru</dd>
       </dl>
@@ -104,7 +116,7 @@
       <dl>
         <dt>Panel Labels</dt><dd>Memilih kelas untuk objek <em>berikutnya</em>. Klik ulang melepas pilihan. Untuk mengubah objek yang sudah ada, pakai <kbd>Ctrl</kbd>+<kbd>E</kbd></dd>
         <dt>Dialog kelas</dt><dd>Muncul tiap objek baru selesai. Membatalkannya membuang bentuknya</dd>
-        <dt>Cari (prompt teks)</dt><dd>Sebut nama kelasnya, seluruh gambar dipindai sekaligus. Satu <kbd>Ctrl</kbd>+<kbd>Z</kbd> membatalkan semuanya</dd>
+        <dt>Panel AI</dt><dd>Sebut nama kelasnya, seluruh gambar dipindai sekaligus. Satu <kbd>Ctrl</kbd>+<kbd>Z</kbd> membatalkan semuanya</dd>
         <dt>Menu View</dt><dd>Sembunyikan panel, tampilkan/sembunyikan semua objek, dan setelan perilaku</dd>
       </dl>
     </section>

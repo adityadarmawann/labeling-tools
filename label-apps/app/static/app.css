@@ -157,14 +157,17 @@ h1{font-size:15px;font-weight:600;letter-spacing:.02em}
 .lajur .p-stop{background:var(--stop)}
 .kemajuan .angka{font-size:12px;color:var(--ink-dim);white-space:nowrap}
 
-/* Titik warna di chip. Ini yang menjadikan barisan chip sekaligus keterangan
-   bilah di atasnya, sehingga angkanya tidak perlu ditulis dua kali. */
-.chip .titik{display:inline-block;width:7px;height:7px;border-radius:50%;
-  margin-right:6px;vertical-align:middle;position:relative;top:-1px}
-.chip .titik.t-ok{background:var(--ok)}
-.chip .titik.t-warn{background:var(--warn)}
-.chip .titik.t-bg{background:var(--latar)}
-.chip .titik.t-stop{background:var(--stop)}
+/* Titik warna keadaan. Inilah yang menghubungkan sebuah baris saringan ke
+   potongan bilah kemajuan di atasnya, sehingga angkanya tidak perlu ditulis
+   dua kali. Selektornya tidak lagi diikat ke .chip: keadaan kini juga muncul
+   sebagai baris di dalam dropdown, dan di sana titiknya sama-sama diperlukan. */
+.titik{display:inline-block;width:7px;height:7px;border-radius:50%;
+  flex:0 0 auto;vertical-align:middle;position:relative;top:-1px}
+.chip .titik{margin-right:6px}
+.titik.t-ok{background:var(--ok)}
+.titik.t-warn{background:var(--warn)}
+.titik.t-bg{background:var(--latar)}
+.titik.t-stop{background:var(--stop)}
 /* Chip terpilih berlatar tinta; titiknya perlu tepian supaya tidak melebur. */
 .chip[data-on] .titik{box-shadow:0 0 0 1.5px var(--on-ink)}
 
@@ -513,15 +516,122 @@ input:focus{outline:0;border-color:var(--ok)}
   background:transparent;appearance:none}
 .chip.tema:focus-visible{outline:2px solid var(--ok);outline-offset:1px}
 
-/* Baris urutkan & cari di grid. */
-.bar-urut{gap:8px}
-.urut-lbl{font-size:12px;color:var(--ink-faint)}
-#urut{padding:5px 9px;font-size:12.5px;color:var(--ink-dim);cursor:pointer;
-  background:transparent;appearance:none;max-width:230px}
+/* --------------------------------------------------------- baris saringan
+   Satu baris untuk semua yang menyempitkan daftar: cari nama, keadaan, kelas,
+   tag, lalu urutan. Sebelumnya isinya tersebar di tiga baris — deretan chip
+   keadaan, baris urut/cari, dan baris dropdown — sehingga tidak ada yang
+   terbaca sebagai satu kelompok, dan tiga baris kontrol mendorong kartu
+   pertama 80 piksel lebih jauh ke bawah. */
+.bar-saring{gap:8px;padding:10px 0 12px}
+.saring-cari{display:flex;align-items:center;gap:8px;flex:0 1 auto}
 .cari-nama{border:1px solid var(--line2);background:var(--raised);color:var(--ink);
-  border-radius:999px;padding:5px 12px;font-size:12.5px;min-width:190px;
-  font-family:inherit}
+  border-radius:999px;padding:5px 12px;font-size:12.5px;
+  flex:0 1 280px;min-width:160px;font-family:inherit}
 .cari-nama:focus{outline:2px solid var(--ok);outline-offset:-1px}
+
+/* Pemisah kelompok: garis 1px, bukan jarak besar — jaraknya sudah dipakai
+   .bar untuk memisah kontrol satu sama lain. */
+.saring-pisah{flex:0 0 auto;width:1px;height:18px;background:var(--line)}
+
+/* Pil urut: label statis + select tanpa tepi, satu bentuk dengan .chip.
+   Ia sengaja TIDAK pernah menyala: mengurutkan bukan menyaring. */
+.saring-urut{display:inline-flex;align-items:center;gap:6px;height:31px;
+  padding:0 9px 0 11px;border:1px solid var(--line2);border-radius:999px;
+  transition:.12s}
+.saring-urut:hover{border-color:var(--ink-faint)}
+.saring-urut:focus-within{border-color:var(--ok)}
+.saring-urut .halus{margin:0;font-size:11.5px}
+.saring-urut select{border:0;background:transparent;color:var(--ink-dim);
+  font-family:inherit;font-size:12.5px;appearance:none;cursor:pointer;
+  max-width:200px;padding:0 13px 0 0}
+.saring-urut select:focus{outline:0}
+.saring-urut::after{content:"\25be";margin-left:-11px;font-size:11px;
+  color:var(--ink-faint);pointer-events:none}
+
+/* Satu tindakan untuk membatalkan semuanya sekaligus. Tanpa ini, saringan yang
+   berlaku hanya terbaca dari tombol yang tertutup, dan mengosongkannya berarti
+   membuka tiga dropdown satu per satu. --aksi, bukan --stop: membatalkan
+   saringan bukan tindakan berbahaya. */
+.saring-bersih{margin-left:auto;color:var(--aksi);border-color:var(--aksi)}
+.saring-bersih:hover{background:var(--ok-lembut);color:var(--aksi);
+  border-color:var(--aksi)}
+
+/* ------------------------------------------------------- dropdown Keadaan
+   Isinya TAUTAN, bukan centang: keadaan saling eksklusif, jadi satu klik sudah
+   satu keputusan dan tombol "Terapkan" di situ cuma klik mubazir. */
+#keadaan-isi{min-width:258px;padding:6px 0}
+.menu-isi a.kd-baris{display:flex;align-items:center;gap:9px;margin:0 6px;
+  padding:7px 8px;border-radius:7px;font-size:12.5px;color:var(--ink-dim);
+  white-space:normal}
+.menu-isi a.kd-baris:hover{background:var(--hover);color:var(--ink)}
+.kd-baris span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}
+.kd-baris b{flex:0 0 auto;font-size:11px;font-weight:600;min-width:24px;
+  text-align:center;padding:1px 6px;border-radius:99px;color:var(--ink-faint);
+  background:var(--sunk);font-variant-numeric:tabular-nums}
+.menu-isi a.kd-baris[data-on]{background:var(--pilih);color:var(--ink);
+  font-weight:600}
+.kd-baris[data-on] b{color:var(--ink);background:var(--panel)}
+/* Titik kosong untuk baris tanpa warna keadaan (Semua, Tugasku): tempatnya
+   tetap dipakai supaya nama-namanya rata satu garis. */
+.titik.t-kosong{background:transparent;box-shadow:inset 0 0 0 1px var(--line2)}
+
+/* ------------------------------------------------------------- paginasi
+   Lengket di bawah: pada 1000 per halaman, bar ini berada puluhan layar dari
+   puncak, dan satu-satunya jalan ke halaman berikutnya adalah menggulir
+   sampai habis. */
+.hal{position:sticky;bottom:0;z-index:15;
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  margin:18px -8px 0;padding:11px 8px;
+  background:var(--ground);border-top:1px solid var(--line)}
+.hal-pp{display:flex;align-items:center;gap:7px;font-size:12px;
+  color:var(--ink-faint)}
+.hal-pp select{border:1px solid var(--line2);background:var(--raised);
+  color:var(--ink-dim);border-radius:999px;padding:4px 9px;
+  font-family:inherit;font-size:12.5px;cursor:pointer}
+.hal-pp select:focus{outline:2px solid var(--ok);outline-offset:1px}
+.hal-info{font-size:12px;color:var(--ink-dim);font-variant-numeric:tabular-nums}
+.hal-info em{font-style:normal;color:var(--ink-faint)}
+.hal-nav{display:flex;align-items:center;gap:4px;margin-left:auto}
+/* Radius 7px, bukan 999px: nomor halaman bukan saringan, dan bentuk yang
+   berbeda mencegahnya terbaca sebagai chip yang bisa dinyalakan. */
+.hal-n{min-width:30px;height:28px;padding:0 7px;display:inline-grid;
+  place-items:center;border:1px solid var(--line2);border-radius:7px;
+  font-size:12.5px;color:var(--ink-dim);text-decoration:none;
+  font-variant-numeric:tabular-nums;transition:.12s}
+.hal-n:hover{border-color:var(--ink-faint);color:var(--ink)}
+.hal-n[data-on]{background:var(--ink);color:var(--on-ink);border-color:var(--ink);
+  font-weight:600;pointer-events:none}
+/* Panah di ujung DIREDUPKAN, bukan dihilangkan: barisnya harus tetap sepanjang
+   itu supaya tombol "1" tidak bergeser tiap kali pindah halaman. */
+.hal-n[data-mati]{opacity:.38;pointer-events:none}
+.hal-gap{padding:0 1px;color:var(--ink-faint);font-size:12.5px;user-select:none}
+.hal-loncat{display:flex;align-items:center;gap:6px;font-size:12px;
+  color:var(--ink-faint)}
+.hal-loncat input{width:62px;height:28px;text-align:center;
+  border:1px solid var(--line2);background:var(--raised);color:var(--ink);
+  border-radius:7px;padding:0 6px;font-family:inherit;font-size:12.5px;
+  font-variant-numeric:tabular-nums}
+.hal-loncat input:focus{outline:0;border-color:var(--ok)}
+/* Tautan halaman membawa #grid. Tanpa scroll-margin, baris kartu pertama
+   mendarat di bawah header yang lengket. */
+.grid{scroll-margin-top:72px}
+
+/* Daftar saringan di kotak "tidak ada yang cocok" — di sanalah orang paling
+   butuh tahu kenapa layarnya kosong. */
+.empty-saring{margin-top:10px;font-size:12px;color:var(--ink-dim)}
+.empty-saring b{color:var(--ink);font-weight:600}
+.empty .saring-bersih{margin:0;display:inline-block}
+
+@media (max-width:820px){
+  .saring-cari{flex:1 1 100%}
+  .cari-nama{flex:1 1 auto}
+  .saring-pisah{display:none}
+  .saring-bersih{margin-left:0}
+  .hal-info{order:2;flex:1 1 100%}
+  .hal-nav{margin-left:0;order:3}
+  .hal-loncat{display:none}
+}
 
 
 /* ------------------------------------------------ saringan kelas (dropdown)
@@ -769,7 +879,11 @@ input:focus{outline:0;border-color:var(--ok)}
 .pcard.bersama{background:var(--raised)}
 .pcard.bersama:hover{background:var(--hover)}
 
-.pkosong{grid-column:1/-1;padding:34px 16px;text-align:center;
+/* Dipakai dua tempat: grid kartu projek (butuh grid-column) dan halaman
+   Versi (butuh dipusatkan). Batas ukurnya milik kotaknya, bukan atribut
+   style di templat — di kolom isi selebar 1680px, 660px tanpa margin auto
+   nemplok ke kiri dan terbaca seperti tata letak yang rusak. */
+.pkosong{grid-column:1/-1;max-width:660px;margin-inline:auto;padding:34px 16px;text-align:center;
   border:1.5px dashed var(--line);border-radius:10px;
   color:var(--ink-dim);font-size:13px}
 .pkosong b{display:block;color:var(--ink);font-size:14px;margin-bottom:5px}
@@ -1808,3 +1922,304 @@ body.berprojek main{display:flex;gap:0;padding:0;align-items:stretch}
 .panduan-isi dd em{font-style:normal; color:var(--ink); font-weight:600}
 .panduan-isi dt[hidden],.panduan-isi dd[hidden]{display:none}
 
+
+/* ==================================================== wizard "Buat versi"
+   Enam langkah bertumpuk, satu terbuka pada satu waktu. Bentuknya mengikuti
+   Roboflow: nomor di kiri, ringkasan pilihan di kanan judul saat langkahnya
+   tertutup, sehingga seluruh resep terbaca sekali pandang tanpa membuka
+   apa pun. */
+.vs-kepala{display:flex;justify-content:flex-end;margin-bottom:14px}
+/* Wizard adalah HALAMAN, bukan panel: dipusatkan dan dibatasi lebarnya.
+   Formulir selebar 1680px tidak terbaca sebagai formulir. */
+.wz{max-width:900px;margin:0 auto 18px;
+  border:1px solid var(--line);border-radius:12px;background:var(--panel);
+  padding:16px 18px 18px}
+.wz-atas{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.wz-atas b{font-size:15px}
+.wz-atas .chip{margin-left:auto}
+.wz-nama{display:block;font-size:12px;color:var(--ink-faint);margin-bottom:14px}
+.wz-nama input{display:block;margin-top:5px;width:100%;max-width:320px;
+  border:1px solid var(--line2);background:var(--raised);color:var(--ink);
+  border-radius:8px;padding:7px 10px;font-family:inherit;font-size:13px}
+.wz-nama input[readonly]{color:var(--ink-dim);background:var(--sunk)}
+
+.wz-langkah{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+.wz-item{border-bottom:1px solid var(--line)}
+.wz-judul{display:flex;align-items:center;gap:11px;padding:14px 2px;font-size:13.5px}
+.wz-no{flex:0 0 auto;width:24px;height:24px;border-radius:7px;display:grid;
+  place-items:center;font-size:12px;font-weight:600;
+  background:var(--sunk);color:var(--ink-faint)}
+.wz-item[data-buka] .wz-no{background:var(--ink);color:var(--on-ink)}
+.wz-item[data-lewat] .wz-no{background:var(--ok-lembut);color:var(--aksi)}
+.wz-ringkas{font-size:12px;color:var(--ink-dim)}
+.wz-ubah{display:none}
+.wz-item[data-lewat] .wz-ubah{display:inline-block}
+.wz-isi{display:none;padding:0 2px 18px 35px}
+.wz-item[data-buka] .wz-isi{display:block}
+.wz-isi .halus{margin-top:0;margin-bottom:12px;line-height:1.5}
+/* align-items:center WAJIB. Tanpanya flex meregangkan tombol setinggi
+   baris, dan .chip yang radiusnya 999px berubah jadi lingkaran besar. */
+.wz-aksi{display:flex;align-items:center;gap:10px;margin-top:18px}
+
+.wz-angka{display:flex;flex-wrap:wrap;gap:8px 20px;font-size:12.5px;
+  color:var(--ink-dim);margin-bottom:6px}
+.wz-angka b{color:var(--ink);font-variant-numeric:tabular-nums}
+.wz-rasio{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:10px}
+.wz-rasio label{font-size:12px;color:var(--ink-faint)}
+.wz-rasio input{width:72px;margin-left:6px;border:1px solid var(--line2);
+  background:var(--raised);color:var(--ink);border-radius:7px;padding:5px 8px;
+  font-family:inherit;font-size:12.5px;text-align:center}
+.wz-belah{display:flex;flex-direction:column;gap:8px;margin:14px 0 10px}
+.wz-pilihan{display:flex;gap:9px;align-items:flex-start;font-size:12.5px;
+  color:var(--ink-dim);line-height:1.5;cursor:pointer}
+.wz-pilihan b{color:var(--ink)}
+.wz-belah-alat{display:flex;gap:8px}
+.wz-salin{display:inline-block;font-size:12px;color:var(--ink-faint);margin-bottom:12px}
+.wz-salin input{width:70px;margin-left:8px;border:1px solid var(--line2);
+  background:var(--raised);color:var(--ink);border-radius:7px;padding:5px 8px;
+  font-family:inherit;font-size:12.5px;text-align:center}
+.wz-fase{margin-top:16px;padding-top:14px;border-top:1px solid var(--line);
+  display:flex;flex-direction:column;gap:9px}
+
+/* daftar langkah yang aktif */
+.op-daftar{border:1px solid var(--line);border-radius:9px;overflow:hidden}
+/* Petak, bukan daftar menurun. Enam belas langkah sebagai baris bertumpuk
+   memanjang 600px ke bawah dan mendorong seluruh sisa wizard keluar layar;
+   sebagai petak dua-tiga kolom ia muat dalam satu pandangan. Lebar minimum
+   240px: cukup untuk nama terpanjang ("Hue / saturasi / nilai") tanpa
+   terpotong, dan di layar sempit ia jatuh sendiri jadi satu kolom. */
+/* Garis pemisahnya dari TEPI tiap sel, bukan dari celah grid berlatar garis.
+   Dengan celah, sel yang tidak terisi di baris terakhir menampilkan warna
+   latar itu sebagai blok abu-abu — petak 16 isi dalam 3 kolom menyisakan dua
+   sel kosong, dan keduanya terlihat seperti kotak rusak. Margin negatifnya
+   menarik garis kolom terakhir dan baris terakhir ke bawah tepi wadah, supaya
+   tidak jadi garis ganda. */
+.op-daftar-isi{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));
+  margin:0 -1px -1px 0}
+.op-baris{display:flex;align-items:center;gap:10px;padding:9px 12px;
+  background:var(--panel);font-size:12.5px;min-width:0;
+  border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
+.op-nama{flex:1 1 auto;min-width:0;font-weight:600;color:var(--ink);
+  display:flex;align-items:center;gap:7px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Parameter, rata kanan. Operasi tanpa parameter meninggalkannya KOSONG —
+   dulu ia jatuh ke kalimat deskripsi, dan 16 baris augmentasi berubah jadi
+   16 kalimat penuh. Deskripsi adalah bahan untuk MEMILIH; tempatnya di
+   popup, bukan di daftar hal yang sudah dipilih. */
+.op-ket{flex:0 1 auto;text-align:right;color:var(--ink-faint);font-size:11.5px;
+  font-variant-numeric:tabular-nums;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.op-kosong{padding:12px;color:var(--ink-faint);font-size:12.5px;margin:0}
+
+
+/* tinjauan & perkiraan */
+/* Dipakai wizard DAN panel detail versi. Sebelumnya panel detail memakai
+   nama kelas .vs-tinjau yang tidak pernah punya aturan apa pun, dan
+   barisnya menempel jadi "Preprocessing—". */
+.wz-tinjau,.vs-tinjau{border:1px solid var(--line);border-radius:9px;
+  overflow:hidden;margin-bottom:14px}
+.wz-tinjau div,.vs-tinjau div{display:flex;gap:14px;padding:9px 12px;font-size:12.5px;
+  border-bottom:1px solid var(--line)}
+.wz-tinjau div:last-child,.vs-tinjau div:last-child{border-bottom:0}
+.wz-tinjau span,.vs-tinjau span{flex:0 0 170px;color:var(--ink-faint)}
+.wz-tinjau b,.vs-tinjau b{color:var(--ink);font-weight:600}
+.wz-perkira{font-size:12.5px;color:var(--ink-dim);line-height:1.6;
+  background:var(--sunk);border-radius:9px;padding:11px 13px;margin-bottom:14px}
+.wz-perkira b{color:var(--ink)}
+.wz-perkira .halus{display:block;margin-top:6px}
+
+/* panel kerja */
+.wz-kerja{padding:18px 2px 4px}
+.wz-kerja b{display:block;font-size:14px;margin-bottom:6px}
+.wz-kerja .prog{margin:12px 0 8px}
+.wz-kerja .chip{margin-top:10px}
+
+/* Cap resep di kartu versi: yang membedakan dua versi bukan angkanya
+   melainkan resepnya, jadi resepnya yang harus terbaca sekilas. */
+.vs-cap{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 4px}
+.vs-pil{font-size:11px;color:var(--ink-dim);background:var(--sunk);
+  border-radius:999px;padding:3px 9px}
+.vs-pil-ok{color:var(--aksi);background:var(--ok-lembut)}
+
+/* ================================================ daftar versi & detail
+   Dua kolom: seluruh versi terbaca sekaligus di kiri, satu terbuka di kanan.
+   Sebelumnya kartu bertumpuk selebar halaman, dan membandingkan dua versi
+   berarti menggulung bolak-balik. */
+.vs-tata{display:flex;gap:18px;align-items:flex-start}
+.vs-kolom{flex:0 0 250px;border:1px solid var(--line);border-radius:11px;
+  background:var(--panel);overflow:hidden;position:sticky;top:66px}
+.vs-kolom-judul{font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;
+  color:var(--ink-faint);font-weight:600;padding:11px 13px 8px}
+.vs-ring{display:flex;flex-direction:column;gap:5px;width:100%;text-align:left;
+  border:0;border-top:1px solid var(--line);background:transparent;
+  padding:11px 13px;cursor:pointer;font-family:inherit}
+.vs-ring:hover{background:var(--hover)}
+.vs-ring[data-on]{background:var(--ok-lembut);box-shadow:inset 3px 0 0 var(--aksi)}
+.vs-ring-atas{display:flex;align-items:center;gap:9px}
+.vs-nomor{font-size:11px;font-weight:700;background:var(--ink);color:var(--on-ink);
+  border-radius:5px;padding:2px 6px;flex:0 0 auto}
+.vs-waktu{font-size:12px;color:var(--ink-dim);overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.vs-ring-cap{display:flex;flex-wrap:wrap;gap:4px}
+.vs-ring-oleh{font-size:11px;color:var(--ink-faint)}
+
+.vs-detail{flex:1 1 auto;min-width:0;border:1px solid var(--line);
+  border-radius:11px;background:var(--panel);padding:16px 18px 20px}
+.vs-detail-muat{color:var(--ink-faint);font-size:12.5px;padding:20px 0}
+.vs-detail-atas{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  padding-bottom:12px;border-bottom:1px solid var(--line)}
+.vs-detail-judul{font-size:15px;font-weight:600;color:var(--ink)}
+.vs-bagian{margin-top:18px}
+.vs-bagian h4{font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;
+  color:var(--ink-faint);font-weight:600;margin-bottom:9px}
+.vs-bagian .halus{margin-top:9px}
+
+/* tiga kotak pembagian, warnanya sama dengan bilah kemajuan di grid */
+.vs-split{display:flex;gap:10px;flex-wrap:wrap}
+.vs-kotak{flex:1 1 140px;border:1px solid var(--line2);border-radius:9px;
+  padding:11px 13px;display:flex;flex-direction:column;gap:3px}
+.vs-kotak span{font-size:10px;letter-spacing:.09em;color:var(--ink-faint);
+  font-weight:600}
+.vs-kotak b{font-size:19px;font-variant-numeric:tabular-nums;color:var(--ink)}
+.vs-kotak em{font-style:normal;font-size:11.5px;color:var(--ink-faint)}
+.vs-k-train{border-color:var(--ok-pudar)}
+.vs-k-valid{border-color:var(--warn)}
+.vs-k-test{border-color:var(--latar-lembut)}
+
+/* deretan contoh gambar hasil */
+.vs-strip{display:flex;gap:7px;overflow-x:auto;padding-bottom:4px}
+.vs-strip img{flex:0 0 auto;width:96px;height:96px;object-fit:cover;
+  border-radius:7px;background:var(--sunk)}
+
+.vs-kelas{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
+  gap:7px}
+.vs-kelas div{display:flex;justify-content:space-between;gap:10px;
+  background:var(--sunk);border-radius:7px;padding:7px 10px;font-size:12.5px}
+.vs-kelas span{color:var(--ink-dim);overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}
+.vs-kelas b{color:var(--ink);font-variant-numeric:tabular-nums}
+.vs-neg span{color:var(--latar)}
+
+@media (max-width:900px){
+  .vs-tata{flex-direction:column}
+  .vs-kolom{flex:1 1 auto;width:100%;position:static}
+}
+.vs-ring-hilang{font-size:11px;color:var(--warn)}
+
+/* ================================================ halaman Versi: batas ukur
+   Kolom isi selebar layar membuat setiap kotak di dalamnya tampak nemplok di
+   salah satu sisi. Batasnya dipasang sekali di sini, bukan ditambal per kotak
+   dengan atribut style. */
+#vs-isi{max-width:1180px;margin-inline:auto}
+#vs-isi .pkosong{margin-top:60px}
+
+/* Wizard adalah halaman, bukan panel. Selama ia terbuka tidak ada daftar versi
+   dan tidak ada kotak "Belum ada versi" di bawahnya: dua hal yang menjawab
+   pertanyaan berbeda tidak boleh bertumpuk di satu layar. DOM-nya tidak
+   dibongkar, cuma disembunyikan — jadi Batal lalu masuk lagi tidak menghapus
+   satu pun isian. */
+#vs-isi[data-mode="wizard"] .vs-kepala,
+#vs-isi[data-mode="wizard"] .pkosong,
+#vs-isi[data-mode="wizard"] .vs-tata{display:none}
+
+/* ------------------------------------------- baris tombol tiap langkah
+   Sengaja BUKAN .chip/.cta: .cta membawa margin-top:26px dari pemakaiannya di
+   .card-form, dan .chip radiusnya 999px. Keduanya digabung di satu baris flex
+   menghasilkan tombol Kembali berbentuk lingkaran setinggi 70px. */
+.wz-tbl{height:36px;padding:0 20px;border-radius:8px;
+  font-family:inherit;font-size:13px;font-weight:600;line-height:1;
+  cursor:pointer;display:inline-flex;align-items:center;gap:7px;
+  border:1px solid transparent;transition:.14s}
+.wz-tbl-pri{background:var(--aksi);color:var(--aksi-ink);border-color:var(--aksi)}
+.wz-tbl-pri:hover{filter:brightness(1.08)}
+.wz-tbl-pri:disabled{opacity:.55;cursor:default;filter:none}
+.wz-tbl-sek{background:var(--panel);color:var(--ink-dim);border-color:var(--line2)}
+.wz-tbl-sek:hover{background:var(--hover);color:var(--ink);border-color:var(--ink-faint)}
+.wz-tbl:focus-visible{outline:2px solid var(--ok);outline-offset:2px}
+
+/* ------------------------------------------------------------------ saklar
+   Keadaan nyala memakai pasangan --aksi/--aksi-ink: satu-satunya pasangan di
+   berkas ini yang komentarnya sendiri menjanjikan kontras di kedua tema.
+   Keadaan mati mengandalkan --sunk yang SELALU lebih gelap daripada --raised
+   di kedua tema, jadi knobnya selalu lebih terang daripada lubangnya. */
+.sk{display:flex;align-items:center;gap:12px;padding:0 4px;min-height:44px;
+  cursor:pointer;position:relative}
+.sk-in{position:absolute;opacity:0;width:0;height:0}
+.sk-track{flex:0 0 auto;width:34px;height:20px;border-radius:999px;
+  background:var(--sunk);box-shadow:inset 0 0 0 1px var(--line2);
+  display:block;position:relative;transition:background .14s,box-shadow .14s}
+.sk-knob{position:absolute;top:2px;left:2px;width:16px;height:16px;
+  border-radius:50%;background:var(--raised);box-shadow:0 0 0 1px var(--line2);
+  transition:transform .14s,background .14s,box-shadow .14s}
+.sk-in:checked ~ .sk-track{background:var(--aksi);box-shadow:inset 0 0 0 1px var(--aksi)}
+.sk-in:checked ~ .sk-track .sk-knob{transform:translateX(14px);
+  background:var(--aksi-ink);box-shadow:none}
+.sk-in:focus-visible ~ .sk-track{outline:2px solid var(--ok);outline-offset:2px}
+.sk-teks{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:2px}
+.sk-teks b{font-size:13px;color:var(--ink);font-weight:600}
+.sk-teks em{font-style:normal;font-size:11.5px;color:var(--ink-faint);line-height:1.4}
+@media (prefers-reduced-motion:reduce){.sk-track,.sk-knob{transition:none}}
+
+/* Di popup saklarnya di KANAN: mata menyapu nama dulu, keadaan belakangan. */
+.op-gulung .sk .sk-track{order:2}
+.op-gulung .sk .sk-teks{order:1}
+
+/* ------------------------------------------- daftar langkah aktif (3 & 4) */
+/* Penanda hanya pada yang MENYIMPANG dari bawaan. Lencana yang muncul di
+   setiap baris tidak membawa informasi apa pun — 16 kali kata yang sama tidak
+   memberi tahu siapa pun sesuatu yang baru. Yang dicari orang saat menengok
+   resep adalah "apa yang berbeda?", dan justru itu yang dulu tidak terlihat. */
+.op-tanda{font-size:10px;letter-spacing:.04em;font-weight:600;
+  color:var(--aksi);background:var(--ok-lembut);border-radius:5px;padding:1px 6px}
+.op-mati{flex:0 0 auto;width:24px;height:24px;border:0;border-radius:6px;
+  background:transparent;color:var(--ink-faint);font-size:15px;line-height:1;
+  cursor:pointer;opacity:.45;transition:.12s;display:grid;place-items:center}
+.op-baris:hover .op-mati,.op-mati:focus-visible{opacity:1}
+.op-mati:hover{color:var(--stop);background:var(--bahaya-lembut)}
+.op-mati:focus-visible{outline:2px solid var(--ok);outline-offset:-2px}
+
+.op-atur{margin-top:10px;border:1px solid var(--line2);background:var(--panel);
+  color:var(--aksi);border-radius:8px;padding:8px 14px;font-family:inherit;
+  font-size:12.5px;font-weight:600;cursor:pointer}
+.op-atur:hover{background:var(--ok-lembut);border-color:var(--ok-pudar)}
+.op-atur:focus-visible{outline:2px solid var(--ok);outline-offset:2px}
+
+/* Tanpa ini, mematikan langkah adalah pintu satu arah yang tidak menyebutkan
+   jalan pulangnya. */
+.op-balik{margin-top:8px;font-size:11.5px;color:var(--ink-faint)}
+.op-balik button{border:0;background:transparent;color:var(--aksi);
+  font:inherit;cursor:pointer;text-decoration:underline;padding:0 2px}
+
+/* --------------------------------------------------------- popup operasi
+   Kotaknya jadi kolom tiga bagian: judul tetap, isi menggulung, kaki tetap.
+   .dlg-kotak biasa menggulung SELURUH kotak, jadi judul dan tombol tutup ikut
+   hilang ke atas begitu isinya 21 baris. */
+#op-dlg .dlg-kotak{width:min(560px,100%);max-height:min(660px,84vh);
+  padding:0;display:flex;flex-direction:column;overflow:hidden}
+.op-dlg-atas{flex:0 0 auto;padding:18px 20px 12px;border-bottom:1px solid var(--line)}
+.op-dlg-atas h3{margin:0 0 4px}
+.op-cari{width:100%;margin-top:12px;padding:7px 10px;font-size:13px;
+  font-family:inherit;background:var(--ground);color:var(--ink);
+  border:1px solid var(--line2);border-radius:7px}
+.op-cari:focus{outline:2px solid var(--ok);outline-offset:-1px}
+.op-cacah{float:right;font-size:11.5px;color:var(--ink-faint);
+  font-variant-numeric:tabular-nums}
+.op-gulung{flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;
+  padding:0 20px 8px}
+.op-grup{position:sticky;top:0;z-index:1;background:var(--panel);
+  padding:12px 0 6px;font-size:10px;text-transform:uppercase;
+  letter-spacing:.09em;color:var(--ink-faint);font-weight:600}
+.op-gulung .sk{border-bottom:1px solid var(--line)}
+.op-gulung .sk:last-child{border-bottom:0}
+.op-gulung .sk:hover{background:var(--hover)}
+.op-hampa{padding:18px 0;font-size:12.5px;color:var(--ink-faint);text-align:center}
+.op-dlg-bawah{flex:0 0 auto;display:flex;align-items:center;gap:10px;
+  padding:12px 20px;border-top:1px solid var(--line);background:var(--raised)}
+.op-dlg-bawah .spacer{flex:1}
+
+@media (max-width:900px){
+  .wz{max-width:none}
+  .wz-aksi{flex-wrap:wrap}
+  .wz-tbl{flex:1 1 auto;justify-content:center}
+  .wz-aksi .spacer{display:none}
+}

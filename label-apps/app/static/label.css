@@ -1,27 +1,123 @@
-/* Halaman anotasi. Tata letak tiga kolom seperti AnyLabeling:
-   toolbar alat di kiri, kanvas di tengah, panel di kanan. */
+/* Halaman anotasi.
+ *
+ * Tata letaknya dulu meniru AnyLabeling: dua bar penuh kontrol di atas, rel
+ * alat di tepi KIRI layar, dan enam panel bertumpuk di kolom kanan. Semuanya
+ * terlihat sekaligus, jadi tidak ada yang menonjol — dan alat menggambar
+ * berada sejauh mungkin dari tempat tangan sedang bekerja.
+ *
+ * Sekarang: satu bar tipis di atas untuk yang berlaku sehalaman, rel ikon
+ * untuk MEMILIH satu panel (bukan menampilkan semuanya), dan alat menggambar
+ * sebagai palet mengambang di tepi kanan kanvas. Yang dibaca sesekali —
+ * zoom, koordinat, status — mengecil jadi dok di sudut. Tidak ada tombol yang
+ * hilang; yang berubah hanya kapan ia menuntut perhatian.
+ */
 
 body.lab {
   height: 100vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  /* Latar kanvas. Dulu memakai --kanvas yang sengaja gelap di kedua tema;
+     kini ia ikut tema, seperti Roboflow. Alasan lama — poligon berwarna sulit
+     dinilai di latar terang — dijawab oleh tema gelap yang masih ada satu klik
+     dari sini, dan oleh bayangan tipis yang memisahkan gambar dari latarnya.
+     Token sendiri, bukan --kanvas: halaman Lihat masih memakai yang gelap. */
+  --papan: #eceff3;
+  --papan-tepi: #dfe3ea;
 }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) body.lab { --papan: #14181e; --papan-tepi: #232a33; }
+}
+:root[data-theme="dark"] body.lab { --papan: #14181e; --papan-tepi: #232a33; }
 
 /* ---------------------------------------------------------------- bar atas */
 
 .lab-top {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 14px;
+  gap: 8px;
+  padding: 0 12px;
+  height: 50px;
+  flex: 0 0 auto;
   background: var(--panel);
   border-bottom: 1px solid var(--line);
-  flex: 0 0 auto;
   font-size: 12.5px;
 }
-.lab-mode { color: var(--ink-dim); }
-.lab-mode b { color: var(--ink); }
+.lab-balik {
+  display: grid; place-items: center;
+  width: 34px; height: 34px; border-radius: 8px;
+  color: var(--ink-dim); text-decoration: none; flex: 0 0 auto;
+}
+.lab-balik:hover { background: var(--hover); color: var(--ink); }
+
+.lab-judul {
+  display: flex; align-items: baseline; gap: 7px; min-width: 0;
+}
+.lab-projek {
+  color: var(--ink-faint); text-decoration: none; font-size: 12px;
+  white-space: nowrap;
+}
+.lab-projek:hover { color: var(--aksi); }
+.lab-projek::after { content: "/"; margin-left: 7px; color: var(--line2); }
+.lab-ukuran { color: var(--ink-faint); font-size: 11px; flex: 0 0 auto; }
+.lab-berkas {
+  font-size: 13px; font-weight: 600; color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  max-width: 34vw;
+}
+
+/* Penunjuk urutan. Dulu dua chip "Sebelumnya / Berikutnya" di bar bawah, tanpa
+   nomor sama sekali — orang tahu sedang mengerjakan sesuatu, tidak tahu di
+   mana posisinya. */
+.lab-urut {
+  display: flex; align-items: center; gap: 2px; margin-left: 8px;
+  background: var(--sunk); border-radius: 999px; padding: 2px;
+  flex: 0 0 auto;
+}
+.lab-nav {
+  display: grid; place-items: center;
+  width: 28px; height: 28px; border-radius: 999px;
+  color: var(--ink-dim); text-decoration: none;
+}
+.lab-nav:hover { background: var(--panel); color: var(--ink); }
+.lab-nav[data-off] { opacity: .3; pointer-events: none; }
+.lab-urut-n { font-size: 12.5px; color: var(--ink-dim); padding: 0 6px;
+              font-variant-numeric: tabular-nums; }
+
+.lab-mode { color: var(--ink-faint); font-size: 12px; margin-left: 10px;
+            white-space: nowrap; }
+.lab-mode b { color: var(--ink-dim); font-weight: 600; }
+.lab-pesan { color: var(--ink-dim); font-size: 12px; max-width: 18vw; min-width: 0;
+             overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lab-top .who { color: var(--ink-faint); font-size: 11.5px; white-space: nowrap; }
+
+/* Tombol bar atas. Satu bentuk untuk tombol, tautan, dan select supaya barnya
+   terbaca sebagai satu baris, bukan tiga jenis kontrol yang kebetulan
+   berjajar. */
+.tbl {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--line); background: var(--panel); color: var(--ink-dim);
+  border-radius: 8px; padding: 0 10px; height: 34px;
+  font: inherit; font-size: 13px; cursor: pointer; text-decoration: none;
+  white-space: nowrap; transition: .12s;
+}
+.tbl:hover { border-color: var(--line2); color: var(--ink); background: var(--hover); }
+.tbl svg { flex: 0 0 auto; }
+.tbl-utama {
+  background: var(--aksi); border-color: var(--aksi); color: var(--aksi-ink);
+  font-weight: 600;
+}
+.tbl-utama:hover { background: var(--aksi); border-color: var(--aksi);
+                   color: var(--aksi-ink); filter: brightness(1.07); }
+/* Ada suntingan yang belum tersimpan: tombolnya berubah warna, bukan sekadar
+   berubah teks. */
+.tbl-utama[data-kotor] { background: var(--warn); border-color: var(--warn);
+                         color: #fff; }
+.tbl-lebar { width: 100%; justify-content: center; margin-top: 8px; }
+.tbl.tema { padding: 0 6px; color: var(--ink-dim); }
+/* Tombol tanpa teks: tetap 34px supaya sasarannya sama besar dengan yang
+   bertulisan, bukan sekadar sebesar ikonnya. */
+.tbl-ikon { width: 34px; padding: 0; justify-content: center; }
 
 /* ---------------------------------------------------------------- kerangka */
 
@@ -31,150 +127,93 @@ body.lab {
   min-height: 0;
 }
 
-.lab-tools {
+/* ------------------------------------------------------------------- rel */
+
+.lab-rel {
   flex: 0 0 auto;
-  width: 46px;
+  width: 64px;
   background: var(--panel);
   border-right: 1px solid var(--line);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  padding: 8px 0;
+  display: flex; flex-direction: column; align-items: center;
+  gap: 2px; padding: 8px 0;
 }
-.tool {
-  width: 32px; height: 32px;
-  border: 1px solid transparent;
-  background: transparent;
-  border-radius: 7px;
-  cursor: pointer;
-  font-size: 15px;
-  line-height: 1;
-  color: var(--ink-dim);
-  transition: .12s;
+.rel {
+  width: 54px; padding: 8px 0 6px;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  border: 0; background: transparent; color: var(--ink-faint);
+  border-radius: 10px; cursor: pointer; font: inherit; font-size: 10.5px;
+  letter-spacing: .01em; transition: .12s;
 }
-.tool:hover { background: var(--sunk); color: var(--ink); }
-.tool[data-on] {
-  background: var(--ink); color: var(--on-ink); border-color: var(--ink);
-}
-.tool-sep {
-  width: 22px; height: 1px; background: var(--line); margin: 5px 0;
-}
-.tool-simpan[data-kotor] {
-  background: var(--warn); color: var(--on-ink); border-color: var(--warn);
-}
-
-/* ---------------------------------------------------------------- kanvas */
-
-/* kolom tengah: bar Auto Labeling di atas, kanvas di bawah */
-.lab-tengah {
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-.lab-auto {
-  flex: 0 0 auto;
-  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
-  padding: 6px 10px;
-  background: var(--panel);
-  border-bottom: 1px solid var(--line);
-  font-size: 12px;
-}
-.lab-auto .lbl { color: var(--ink-faint); font-size: 11.5px; }
-.lab-auto select {
-  border: 1px solid var(--line2); background: var(--raised); color: var(--ink);
-  border-radius: 5px; padding: 3px 6px; font-size: 12px; font-family: inherit;
-}
-.ab {
-  border: 1px solid var(--line2); background: var(--raised); color: var(--ink-dim);
-  border-radius: 5px; padding: 4px 10px; font-size: 12px; cursor: pointer;
-  font-family: inherit; transition: .12s;
-}
-.ab:hover { border-color: var(--ink-faint); color: var(--ink); }
-.ab[data-on] { background: var(--ok); color: var(--on-ink); border-color: var(--ok); font-weight: 600; }
-.ab-ok[data-siap] { background: var(--ink); color: var(--on-ink); border-color: var(--ink); font-weight: 600; }
-.lab-pesan { color: var(--ink-dim); font-size: 11.5px; }
-
-.lab-canvas {
-  flex: 1 1 auto;
-  position: relative;
-  background: var(--kanvas);
-  overflow: hidden;
-  min-width: 0;
-}
-.lab-canvas canvas { display: block; cursor: crosshair; }
-.lab-canvas[data-mode="edit"] canvas { cursor: default; }
-.lab-canvas[data-geser] canvas { cursor: grabbing; }
-
-.lab-busy {
-  position: absolute; left: 50%; top: 14px; transform: translateX(-50%);
-  /* Pil "sedang bekerja" mengambang DI ATAS kanvas, yang selalu gelap di kedua
-     tema — jadi ia memang tetap gelap-dengan-teks-putih, bukan kelupaan. */
-  background: rgba(var(--bayang),.86); color: #fff;
-  padding: 6px 14px; border-radius: 999px;
-  font-size: 12.5px; display: none;
-}
-.lab-busy[data-on] { display: block; }
+.rel:hover { background: var(--hover); color: var(--ink-dim); }
+.rel[data-on] { background: var(--ok-lembut); color: var(--aksi); }
+.rel[data-on] svg { stroke-width: 2; }
+.rel:focus-visible { outline: 2px solid var(--aksi); outline-offset: -2px; }
 
 /* ---------------------------------------------------------------- panel */
 
 .lab-side {
   flex: 0 0 auto;
-  width: 260px;
+  width: 274px;
   background: var(--panel);
-  border-left: 1px solid var(--line);
+  border-right: 1px solid var(--line);
   display: flex;
   flex-direction: column;
-  /* Dengan enam panel di kolom 260px, isi bisa lebih tinggi daripada layar.
-     Kolomnya sendiri yang menggulung; sebelumnya overflow:hidden membuat
-     panel Objects terhimpit jadi segaris tipis. */
+  min-height: 0;
+}
+/* Satu panel pada satu waktu, dipilih dari rel. [hidden] milik menu View tetap
+   menang karena app.css memasang display:none !important untuknya. */
+.lab-side .pan { display: none; }
+.lab-side .pan[data-aktif] { display: flex; }
+.pan {
+  padding: 12px 13px 14px;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
   overflow-y: auto;
 }
-.pan {
-  border-bottom: 1px solid var(--line);
-  padding: 10px 12px 12px;
-  flex: 0 0 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-.pan-grow { flex: 1 1 auto; }
 .pan h3 {
   font-size: 10.5px; text-transform: uppercase; letter-spacing: .09em;
-  color: var(--ink-faint); font-weight: 600; margin-bottom: 8px;
+  color: var(--ink-faint); font-weight: 600; margin-bottom: 9px;
   display: flex; justify-content: space-between; align-items: center;
+  flex: 0 0 auto;
 }
 .pan h3 .ct { color: var(--ink-dim); font-variant-numeric: tabular-nums; }
-.pan select, .pan input[type=text] {
+/* Judul kecil DI DALAM panel, untuk memisahkan dua alur yang sama-sama AI. */
+.halus2 { font-size: 10px; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--ink-dim); font-weight: 600; margin: 14px 0 6px; }
+.halus2:first-of-type { margin-top: 0; }
+.pan select, .pan input[type=text], .pan input[type=number] {
   width: 100%; border: 1px solid var(--line2); background: var(--raised);
-  border-radius: 5px; padding: 5px 8px; font-size: 12.5px; font-family: inherit;
+  border-radius: 7px; padding: 6px 9px; font-size: 12.5px; font-family: inherit;
   color: var(--ink);
 }
-.pan input[type=range] { width: 100%; margin-top: 4px; }
+.pan input[type=text]:focus, .pan input[type=number]:focus,
+.pan select:focus { outline: 0; border-color: var(--aksi); }
+.pan input[type=range] { width: 100%; margin-top: 4px; accent-color: var(--aksi); }
 /* .halus pindah ke app.css: dipakai halaman kelola akun juga. */
 .peringatan { font-size: 11.5px; color: var(--stop); margin-top: 8px; line-height: 1.4; }
 
 /* daftar kelas */
-.kelas-list { display: flex; flex-direction: column; gap: 2px; max-height: 150px;
-              overflow-y: auto; }
+.kelas-list { display: flex; flex-direction: column; gap: 2px;
+              overflow-y: auto; min-height: 60px; }
 .kelas {
-  display: flex; align-items: center; gap: 7px;
-  padding: 4px 7px; border-radius: 5px; cursor: pointer;
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 8px; border-radius: 7px; cursor: pointer;
   font-size: 12.5px; border: 1px solid transparent;
 }
 .kelas:hover { background: var(--hover); }
-.kelas[data-on] { background: var(--ink); color: var(--on-ink); }
+.kelas[data-on] { background: var(--ok-lembut); border-color: var(--ok-pudar);
+                  color: var(--ink); font-weight: 600; }
 .kelas i { width: 10px; height: 10px; border-radius: 3px; flex: 0 0 auto; }
 .kelas span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.kelas-baru { margin-top: 7px; }
+.kelas-baru { margin-top: 8px; flex: 0 0 auto; }
 
 /* daftar objek */
 .obj-list { overflow-y: auto; display: flex; flex-direction: column; gap: 2px;
-            min-height: 84px; max-height: 240px; }
+            flex: 1 1 auto; min-height: 84px; }
 .obj {
-  display: flex; align-items: center; gap: 7px;
-  padding: 4px 7px; border-radius: 5px; cursor: pointer; font-size: 12.5px;
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 8px; border-radius: 7px; cursor: pointer; font-size: 12.5px;
 }
 .obj:hover { background: var(--hover); }
 /* Umpan balik saat urutan objek digeser. Tanpa penanda garis jatuh, orang
@@ -188,12 +227,11 @@ body.lab {
 .obj-kosong { color: var(--ink-faint); font-size: 12px; padding: 6px 2px; }
 
 /* daftar berkas */
-.file-list { overflow-y: auto; margin-top: 7px; display: flex;
-             flex-direction: column; gap: 1px;
-             min-height: 110px; max-height: 300px; }
+.file-list { overflow-y: auto; margin-top: 8px; display: flex;
+             flex-direction: column; gap: 1px; flex: 1 1 auto; min-height: 110px; }
 .fitem {
-  display: flex; align-items: center; gap: 7px; padding: 4px 7px;
-  border-radius: 5px; font-size: 12px; text-decoration: none; color: var(--ink);
+  display: flex; align-items: center; gap: 8px; padding: 5px 8px;
+  border-radius: 7px; font-size: 12px; text-decoration: none; color: var(--ink);
 }
 .fitem:hover { background: var(--hover); }
 .fitem[data-on] { background: var(--pilih); font-weight: 600; }
@@ -208,50 +246,171 @@ body.lab {
               white-space: nowrap; }
 .fitem b { color: var(--ink-faint); font-weight: 400; font-size: 11px; }
 
-/* ---------------------------------------------------------------- bar bawah */
+/* ---------------------------------------------------------------- kanvas */
 
-.lab-bawah {
-  flex: 0 0 auto;
-  display: flex; align-items: center; gap: 10px;
-  padding: 6px 14px;
-  background: var(--panel);
-  border-top: 1px solid var(--line);
-  font-size: 12px; color: var(--ink-dim);
+.lab-tengah {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  position: relative;      /* jangkar untuk palet, dok, dan pil Auto */
+  background: var(--papan);
 }
-.lab-bawah .chip { padding: 3px 10px; font-size: 12px; }
-.lab-bawah .chip[data-off] { opacity: .35; pointer-events: none; }
-
-/* ---------------------------------------------------------------- ikon */
-
-/* Ikon asli AnyLabeling berukuran 512px dan berwarna; diperkecil di sini.
-   Yang tidak aktif diredam supaya alat aktif tetap paling menonjol. */
-.tool img {
-  width: 19px; height: 19px; display: block; margin: 0 auto;
-  opacity: .62; transition: .12s;
+/* Marginnya bukan hiasan: palet, dok, dan pil Auto mengambang di ruang itu.
+   Tanpa margin mereka melayang DI ATAS gambar, dan bagian gambar yang tertutup
+   adalah bagian yang tidak bisa diklik — objek di tepi kanan bawah jadi tidak
+   bisa dilabeli sama sekali. */
+.lab-canvas {
+  flex: 1 1 auto;
+  position: relative;
+  overflow: hidden;
+  min-width: 0;
+  margin: 10px 92px 58px 10px;
 }
-.tool:hover img { opacity: 1; }
-.tool[data-on] img { opacity: 1; filter: brightness(0) invert(1); }
-.tool-simpan[data-kotor] img { filter: brightness(0) invert(1); }
-.ab img { width: 13px; height: 13px; vertical-align: -2px; margin-right: 4px; opacity: .7; }
-.ab[data-on] img, .ab-ok[data-siap] img { opacity: 1; filter: brightness(0) invert(1); }
+.lab-canvas canvas { display: block; cursor: crosshair; }
+.lab-canvas[data-mode="edit"] canvas { cursor: default; }
+.lab-canvas[data-geser] canvas { cursor: grabbing; }
+
+.lab-busy {
+  position: absolute; left: 50%; top: 14px; transform: translateX(-50%);
+  background: rgba(var(--bayang),.86); color: #fff;
+  padding: 6px 14px; border-radius: 999px;
+  font-size: 12.5px; display: none; z-index: 5;
+}
+.lab-busy[data-on] { display: block; }
+
+/* ------------------------------------------------------------- palet alat
+   Mengambang di tepi kanan kanvas — sejajar tangan yang sedang menggambar,
+   bukan di seberang layar. */
+.lab-palet {
+  position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+  z-index: 6;
+  display: flex; flex-direction: column; align-items: stretch; gap: 1px;
+  padding: 6px; border-radius: 14px;
+  background: var(--panel); border: 1px solid var(--line);
+  box-shadow: 0 6px 20px rgba(var(--bayang),.13);
+  max-height: calc(100% - 28px); overflow-y: auto;
+}
+.tool {
+  min-width: 40px; min-height: 40px;
+  display: grid; place-items: center;
+  border: 0; background: transparent;
+  border-radius: 10px; cursor: pointer;
+  color: var(--ink-dim);
+  font: inherit; font-size: 10px;
+  transition: .12s;
+}
+.tool:hover { background: var(--hover); color: var(--ink); }
+.tool[data-on] { background: var(--aksi); color: var(--aksi-ink); }
+.tool:focus-visible { outline: 2px solid var(--aksi); outline-offset: -2px; }
+/* Alat bernama: ikon di atas, nama di bawah — sama seperti rel panel di kiri,
+   supaya keduanya terbaca dengan cara yang sama. */
+.lab-palet .tool {
+  width: 62px; padding: 6px 0 5px;
+  grid-auto-flow: row; gap: 3px; line-height: 1.1;
+}
+.lab-palet .tool span { display: block; }
+.palet-judul {
+  font-size: 9px; text-transform: uppercase; letter-spacing: .1em;
+  color: var(--ink-faint); text-align: center; padding: 6px 0 3px;
+}
+.palet-judul:first-child { padding-top: 2px; }
+.tool.kecil { min-width: 30px; min-height: 30px; width: 30px; height: 30px;
+              border-radius: 8px; }
+.tool-sep { width: 26px; height: 1px; background: var(--line); margin: 5px auto; }
+.tool-sep.tegak { width: 1px; height: 18px; margin: 0 4px; }
+
+/* --------------------------------------------------------------- pil Auto
+   Alur SAM: taruh prompt, lalu sahkan. Tetap terlihat karena inilah kerjanya —
+   tetapi sebagai pil di bawah kanvas, bukan bar selebar layar di atasnya. */
+.lab-auto {
+  /* Di kanan bawah, sebaris di bawah palet alat: keduanya alat, dan dok status
+     di kiri jadi tidak pernah bertabrakan dengannya di layar sempit. */
+  position: absolute; right: 14px; bottom: 14px;
+  z-index: 6;
+  display: flex; align-items: center; gap: 4px;
+  padding: 5px 8px; border-radius: 999px;
+  background: var(--panel); border: 1px solid var(--line);
+  box-shadow: 0 6px 20px rgba(var(--bayang),.13);
+  font-size: 12px; max-width: 56%; flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.lab-auto .lbl { display: inline-flex; align-items: center; gap: 5px;
+                 color: var(--ink-faint); font-size: 11.5px; padding: 0 4px;
+                 text-transform: uppercase; letter-spacing: .07em; }
+.lab-auto select {
+  border: 1px solid var(--line); background: var(--raised); color: var(--ink-dim);
+  border-radius: 7px; padding: 4px 6px; font-size: 12.5px; font-family: inherit;
+  max-width: 140px;
+}
+.ab {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 0; background: transparent; color: var(--ink-dim);
+  border-radius: 8px; padding: 6px 10px; font-size: 12.5px; cursor: pointer;
+  font-family: inherit; transition: .12s;
+}
+.ab:hover { background: var(--hover); color: var(--ink); }
+.ab[data-on] { background: var(--ok); color: var(--on-ink); font-weight: 600; }
+.ab-ok { padding: 5px 11px; }
+.ab-ok[data-siap] { background: var(--aksi); color: var(--aksi-ink); font-weight: 600; }
+
+/* --------------------------------------------------------------- dok bawah
+   Zoom, koordinat, ukuran, status: dibaca sesekali, jadi kecil dan menempel di
+   sudut. Dulu ini bar selebar layar yang memakan tinggi kanvas terus-menerus. */
+.lab-dok {
+  position: absolute; left: 14px; bottom: 14px; z-index: 6;
+  display: flex; align-items: center; gap: 5px;
+  padding: 5px 10px 5px 6px; border-radius: 999px;
+  background: var(--panel); border: 1px solid var(--line);
+  box-shadow: 0 6px 20px rgba(var(--bayang),.13);
+  font-size: 12.5px; color: var(--ink-dim); max-width: 42%;
+}
+.lab-zoom { min-width: 42px; text-align: center; font-variant-numeric: tabular-nums; }
+.lab-dok #koord { min-width: 66px; }
+.lab-dok #status { overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+                   max-width: 34vw; }
+.lab-petunjuk { margin-left: 8px; color: var(--aksi); font-size: 12px; }
+.lab-petunjuk:empty { display: none; }
+
+/* -------------------------------------------------------------- spanduk
+   Peringatan di atas kanvas. Dibiarkan mendorong kanvas ke bawah, bukan
+   mengambang di atasnya: yang ini harus terbaca selama gambarnya terbuka, dan
+   sesuatu yang menutupi piksel gambar justru akan disingkirkan orang. */
+.lab-baca, .lab-rusak {
+  flex: 0 0 auto; margin: 10px 12px 0; padding: 8px 12px;
+  border-radius: 9px; font-size: 12.5px; line-height: 1.5;
+  background: var(--warn-bg); color: var(--ink);
+}
+.lab-rusak { border: 1px solid var(--warn); }
+.lab-rusak code { font-size: 11.5px; }
+
+/* Kanvas yang hanya bisa dilihat. Alatnya diredupkan dan dimatikan, bukan
+   dihilangkan: alat yang lenyap menyisakan teka-teki, alat yang mati beserta
+   alasannya di atasnya tidak. */
+body[data-baca-saja] #btn-simpan,
+body[data-baca-saja] .lab-auto,
+body[data-baca-saja] #btn-dup,
+body[data-baca-saja] #btn-del,
+body[data-baca-saja] #btn-undo,
+body[data-baca-saja] #btn-redo { opacity: .4; pointer-events: none; }
 
 /* ---------------------------------------------------------------- Text Editor */
 
 .pan textarea {
   width: 100%; border: 1px solid var(--line2); background: var(--raised);
-  border-radius: 5px; padding: 6px 8px; font-size: 12.5px; font-family: inherit;
+  border-radius: 7px; padding: 7px 9px; font-size: 12.5px; font-family: inherit;
   color: var(--ink); resize: vertical; min-height: 46px;
 }
-.pan textarea:focus { outline: 0; border-color: var(--ok); }
+.pan textarea:focus { outline: 0; border-color: var(--aksi); }
 .pan textarea:disabled { background: var(--sunk); color: var(--ink-faint); }
 
 /* ---------------------------------------------------------------- Flags */
 
-.flag-list { display: flex; flex-direction: column; gap: 1px; margin-bottom: 7px;
-             max-height: 120px; overflow-y: auto; }
+.flag-list { display: flex; flex-direction: column; gap: 1px; margin-bottom: 8px;
+             max-height: 220px; overflow-y: auto; }
 .flag {
-  display: flex; align-items: center; gap: 7px; padding: 3px 6px;
-  border-radius: 5px; font-size: 12.5px; cursor: pointer;
+  display: flex; align-items: center; gap: 8px; padding: 4px 7px;
+  border-radius: 7px; font-size: 12.5px; cursor: pointer;
 }
 .flag:hover { background: var(--hover); }
 .flag span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -266,8 +425,8 @@ body.lab {
 
 .menu { position: relative; }
 .menu-isi {
-  display: none; position: absolute; right: 0; top: 26px; z-index: 40;
-  background: var(--panel); border: 1px solid var(--line2); border-radius: 8px;
+  display: none; position: absolute; right: 0; top: 34px; z-index: 40;
+  background: var(--panel); border: 1px solid var(--line2); border-radius: 10px;
   padding: 7px 0; min-width: 232px; box-shadow: 0 8px 24px rgba(var(--bayang),.16);
 }
 .menu[data-buka] .menu-isi { display: block; }
@@ -282,13 +441,15 @@ body.lab {
   color: var(--ink-faint); font-weight: 600; padding: 4px 12px 3px;
 }
 .menu-pisah { height: 1px; background: var(--line); margin: 5px 0; }
-.pan[hidden], .lab-auto[hidden] { display: none; }
+/* Panel yang dimatikan lewat menu View: tombol relnya ikut hilang, kalau tidak
+   ia jadi tombol yang ditekan dan tidak melakukan apa-apa. */
+.rel[hidden], .lab-auto[hidden] { display: none; }
 
 /* ---------------------------------------------------------------- menu klik kanan */
 
 .ctx {
   display: none; position: fixed; z-index: 60; min-width: 200px;
-  background: var(--panel); border: 1px solid var(--line2); border-radius: 8px;
+  background: var(--panel); border: 1px solid var(--line2); border-radius: 10px;
   padding: 5px 0; box-shadow: 0 10px 28px rgba(var(--bayang),.20);
 }
 .ctx[data-on] { display: block; }
@@ -318,7 +479,7 @@ body.lab {
 .dlg-baris #dlg-teks{flex:6 1 0}
 .dlg-baris #dlg-grup{flex:2 1 0; min-width:84px}
 .dlg-daftar{max-height:190px; overflow-y:auto; border:1px solid var(--line2);
-  border-radius:6px; margin-bottom:10px}
+  border-radius:8px; margin-bottom:10px}
 .dlg-daftar:empty{display:none}
 .dlg-daftar .it{display:flex; align-items:center; gap:8px; padding:6px 9px;
   font-size:13px; cursor:pointer; color:var(--ink-dim)}
@@ -336,14 +497,10 @@ body.lab {
 .dlg-tombol{display:flex; gap:8px; justify-content:flex-end}
 .dlg-tombol .btn{font-size:12.5px; padding:7px 13px}
 
-/* Petunjuk "apa yang bisa dilakukan di bawah kursor" di bar bawah. */
-.lab-petunjuk{margin-left:14px; color:var(--ok); font-size:11.5px}
-.lab-petunjuk:empty{display:none}
-
 /* Aksi di dalam menu View (bukan centang) — padanan Show/Hide Polygons. */
 .menu-aksi{display:block; width:100%; text-align:left; background:transparent;
   border:0; padding:5px 10px; font:inherit; font-size:12.5px;
-  color:var(--ink-dim); cursor:pointer; border-radius:5px}
+  color:var(--ink-dim); cursor:pointer; border-radius:7px}
 .menu-aksi:hover{background:var(--ground); color:var(--ink)}
 .menu-aksi:focus-visible{outline:2px solid var(--ok); outline-offset:-2px}
 
@@ -353,15 +510,6 @@ body.lab {
   text-transform:uppercase; color:var(--ink-faint); border:1px solid var(--line2);
   border-radius:3px; padding:0 4px; margin-left:auto; flex:0 0 auto}
 #berkasinfo{margin:6px 2px 0; font-size:11px; color:var(--ink-faint)}
-
-/* Bar prompt teks: satu baris di bawah bar Auto Labeling. */
-#bar-teks input[type=text]{flex:1 1 260px; min-width:180px; padding:5px 9px;
-  font-size:12.5px; border:1px solid var(--line2); border-radius:5px;
-  background:var(--raised); color:var(--ink)}
-#bar-teks input[type=number]{width:70px; padding:5px 7px; font-size:12.5px;
-  border:1px solid var(--line2); border-radius:5px;
-  background:var(--raised); color:var(--ink)}
-#teks-info{white-space:nowrap}
 
 /* Panduan: gayanya pindah ke app.css. Cangkangnya kini dipakai halaman grid
    juga, dan halaman itu tidak memuat berkas ini — akibatnya panduannya
@@ -375,10 +523,9 @@ kbd{font-family:ui-monospace,"SF Mono",Menlo,monospace; font-size:10.5px;
   color:var(--ink-faint)}
 
 /* ---------------------------------------------------- melipat bagian panel
-   Enam bagian bertumpuk di kolom 260px membuat kolomnya panjang sekali. Tiap
-   judul bisa diklik untuk melipat isinya — TIDAK ada yang hilang, dan
-   pilihannya diingat. Berbeda dari menu View yang menyembunyikan panelnya
-   sama sekali; ini sekadar merapikan yang sedang tidak dipakai. */
+   Judulnya bisa diklik untuk melipat isinya. Sisa dari masa enam panel
+   bertumpuk; dipertahankan karena panel AI dan Setelan pun kadang ingin
+   dirapikan sementara daftar isinya dibaca. */
 .pan h3{cursor:pointer; user-select:none; gap:8px}
 .pan h3::after{content:"▾"; color:var(--ink-faint); font-size:9px;
   margin-left:auto; transition:transform .15s}
@@ -386,25 +533,15 @@ kbd{font-family:ui-monospace,"SF Mono",Menlo,monospace; font-size:10.5px;
 .pan h3 .ct + ::after{margin-left:8px}
 .pan[data-lipat] h3::after{transform:rotate(-90deg)}
 .pan[data-lipat] > *:not(h3){display:none}
-.pan[data-lipat]{padding-bottom:9px}
 .pan h3:hover{color:var(--ink)}
 .pan h3:focus-visible{outline:2px solid var(--ok); outline-offset:2px}
 
-/* Kanvas yang hanya bisa dilihat. Alatnya diredupkan dan dimatikan, bukan
-   dihilangkan: alat yang lenyap menyisakan teka-teki, alat yang mati beserta
-   alasannya di atasnya tidak. */
-.lab-baca { grid-column: 1 / -1; margin: 0 0 8px; padding: 8px 12px;
-  border-radius: 7px; font-size: 12.5px; line-height: 1.5;
-  background: var(--warn-bg); color: var(--ink); }
-body[data-baca-saja] .tool-simpan,
-body[data-baca-saja] .lab-auto,
-body[data-baca-saja] #btn-del,
-body[data-baca-saja] #btn-undo { opacity: .4; pointer-events: none; }
-
-/* Peringatan berkas anotasi rusak. Ditaruh di atas kanvas, bukan di bilah
-   status: bilah status berganti isi tiap tindakan, dan yang ini harus tetap
-   terbaca selama gambarnya terbuka. */
-.lab-rusak{margin:0 0 8px; padding:8px 12px; font-size:12.5px; line-height:1.5;
-  border:1px solid var(--warn); border-radius:7px; background:var(--warn-bg);
-  color:var(--ink)}
-.lab-rusak code{font-size:11.5px}
+/* Layar sempit: rel menyusut jadi ikon tanpa teks, panel menyempit. */
+/* Layar sempit menyusutkan KOLOM PANEL, bukan nama-nama di rel. Menyembunyikan
+   namanya mengembalikan persis masalah yang tadi diperbaiki: ikon yang harus
+   ditebak — dan justru di layar kecil, tempat orang paling butuh kepastian. */
+@media (max-width: 1180px) {
+  .lab-side { width: 236px; }
+  .lab-berkas { max-width: 22vw; }
+  .lab-pesan { max-width: 14vw; }
+}

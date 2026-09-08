@@ -449,6 +449,14 @@ def test_baca_rasio(tmp_path):
     from app.services import export as ex
     assert ex.baca_rasio("80,10,10") == (0.8, 0.1, 0.1)
     assert ex.baca_rasio("70/20/10") == (0.7, 0.2, 0.1)
+    # Titik dua: notasi paling wajar untuk rasio, dan justru itu yang dulu
+    # diajarkan kotak isian halaman Versi ("8:1:1", tooltip "train:valid:test").
+    # Dulu ia tidak dikenali sama sekali, lalu jatuh diam-diam ke bawaan —
+    # dan karena 8:1:1 kebetulan SAMA dengan bawaannya, tidak pernah terlihat.
+    # Yang mengetik 7:2:1 diam-diam mendapat 80/10/10.
+    assert ex.baca_rasio("8:1:1") == (0.8, 0.1, 0.1)
+    assert ex.baca_rasio("7:2:1") == (0.7, 0.2, 0.1)
+    assert ex.baca_rasio("50:30:20") == (0.5, 0.3, 0.2)
     # dinormalkan: pemakai tidak harus mengetik angka yang pas 100
     a = ex.baca_rasio("8,1,1")
     assert abs(a[0] - 0.8) < 1e-9 and abs(a[1] - 0.1) < 1e-9
@@ -844,3 +852,24 @@ def test_ringkasan_memisahkan_latar_dari_yang_belum_dilabeli(klien, lingkungan):
     assert j["tanpa_objek"] == 3, j
     assert j["latar"] == 2, j
     assert j["belum_dilabeli"] == 1, j
+
+
+def test_rasio_yang_tidak_terbaca_dikatakan_bukan_cuma_dijatuhkan(tmp_path):
+    """
+    Rasio yang tidak sah tetap jatuh ke bawaan — halaman ekspor tidak boleh
+    gagal karena satu parameter URL salah ketik — TETAPI keluhannya harus bisa
+    diambil pemanggil.
+
+    Inilah yang membuat satu bug hidup berbulan-bulan: baca_rasio selalu
+    berhasil, jadi tidak ada pemanggil yang punya bahan untuk mengatakan bahwa
+    yang dipakai bukan yang diminta.
+    """
+    from app.services import export as ex
+    assert ex.periksa_rasio("70,20,10") == ""
+    assert ex.periksa_rasio("7:2:1") == ""
+    assert ex.periksa_rasio("") == ""          # kosong = memang minta bawaan
+    for buruk in ("abc", "50,50", "-1,1,1", "0,0,0"):
+        pesan = ex.periksa_rasio(buruk)
+        assert pesan, buruk
+        assert buruk in pesan, "keluhannya harus menyebut apa yang diketik"
+        assert "80/10/10" in pesan, "dan apa yang dipakai sebagai gantinya"

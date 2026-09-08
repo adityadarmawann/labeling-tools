@@ -1,9 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Kelola akun{% endblock %}
 
 {% block body %}
 <header>
-  <div class="top"><h1>Kelola akun</h1>{% include "_header.html" %}</div>
+  <div class="top"><h1>{{ nama_app() }}</h1>{% include "_header.html" %}</div>
   <div style="height:12px"></div>
 </header>
 <main>
@@ -39,7 +38,7 @@
     <input id="a-sandi" type="password" autocomplete="new-password">
     <label class="kelas-baris" style="margin-top:12px">
       <input type="checkbox" id="a-admin"><span class="cb"></span>
-      <span>Jadikan admin — boleh mengelola akun orang lain</span>
+      <span>Jadikan admin: boleh mengelola akun orang lain</span>
     </label>
     <button class="cta" id="a-simpan" style="width:auto;padding:9px 20px">
       Tambah anggota</button>

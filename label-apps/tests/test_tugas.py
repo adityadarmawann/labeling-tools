@@ -1818,7 +1818,9 @@ def test_semua_halaman_menyebut_angka_dikerjakan_yang_sama(klien, lingkungan):
 
     angka = {}
     h = klien.get("/?ds=seangka").text
-    angka["chip grid"] = int(re.search(r"Sudah dilabeli <b>(\d+)</b>", h).group(1))
+    # Angka keadaan pindah dari chip berjajar ke baris dropdown "Keadaan".
+    angka["chip grid"] = int(
+        re.search(r"Sudah dilabeli</span><b>(\d+)</b>", h).group(1))
     angka["isi grid"] = klien.get("/?ds=seangka&f=sudah").text.count('class="card"')
 
     a = klien.get("/anotasi?ds=seangka").text
@@ -1848,7 +1850,7 @@ def test_semua_halaman_menyebut_angka_dikerjakan_yang_sama(klien, lingkungan):
     # Sementara angka "sudah dikerjakan" tidak bergeser sedikit pun: memasukkan
     # ke dataset bukan mengerjakan.
     h = klien.get("/?ds=seangka").text
-    assert "Sudah dilabeli <b>1</b>" in h, "grid kini cuma memuat isi dataset"
+    assert "Sudah dilabeli</span><b>1</b>" in h, "grid kini cuma memuat isi dataset"
 
 
 def test_bagi_menyerahkan_pemilihan_ke_server(klien, lingkungan):

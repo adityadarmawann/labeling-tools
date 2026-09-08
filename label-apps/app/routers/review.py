@@ -35,6 +35,13 @@ URUT = {
 }
 URUT_BAWAAN = "nama"
 
+# Jumlah kartu per halaman. Empat pilihan saja, dan angkanya sengaja bulat:
+# yang dibutuhkan orang bukan angka bebas, melainkan "sedikit dulu" atau
+# "sekalian semuanya". 50 jadi bawaan mengikuti Roboflow — pada projek 11.319
+# gambar, memuat semuanya sekali jalan berarti HTML puluhan megabita.
+PER_PILIHAN = (50, 100, 500, 1000)
+PER_BAWAAN = 50
+
 # Keadaan "tanpa kelas" yang bisa ikut dicentang di dropdown kelas. Keduanya
 # sama-sama gambar tanpa objek, tetapi artinya berlawanan: `latar` sudah selesai
 # diperiksa dan sengaja dikosongkan (padanan Mark Null di Roboflow), `unlab`
@@ -79,16 +86,6 @@ def _urutkan(items: list[dict], urut: str) -> list[dict]:
     if urut == "objek-sedikit":
         return sorted(items, key=lambda it: (len(it["shapes"]), nama(it)))
     return sorted(items, key=nama)
-
-
-def _diruang(sess, settings) -> bool:
-    """Apakah dataset yang terbuka berada di ruang kerja akun ini."""
-    try:
-        (sess.src.resolve()
-         .relative_to((Path(settings.uploads_root) / sess.user).resolve()))
-        return True
-    except (ValueError, OSError, AttributeError):
-        return False
 
 
 def _filter(items: list[dict], flt: str, kelas, tanpa=(), mode="atau", *,
@@ -181,6 +178,18 @@ async def index(request: Request, f: str = "all",
                 # sekelompok gambar yang tidak punya ciri lain yang bisa dicari.
                 tag_q: list[str] = Query([], alias="tg"),
                 batch_q: str = Query("", alias="bt"),
+                # Paginasi. Sebelum ini seluruh hasil saringan dirender sekali
+                # jalan: projek produksi terbesar 11.319 gambar berarti 11.319
+                # kartu dan 11.319 <img> dalam satu HTML. loading="lazy"
+                # menahan unduhan gambarnya, tetapi tidak menahan HTML-nya, dan
+                # bukan itu yang membuat halamannya berat.
+                per_q: int = Query(PER_BAWAAN, alias="per"),
+                hal_q: int = Query(1, alias="hal"),
+                # Nomor gambar pertama yang sedang terlihat, dikirim HANYA oleh
+                # pengatur "per halaman". Dengan ini mengubah 100 jadi 50 tidak
+                # melempar orang ke halaman 1: ia mendarat di halaman yang
+                # memuat gambar yang sama, dan perpindahannya bisa diramalkan.
+                dari_q: int = Query(0, alias="dari"),
                 ds: str = "",
                 sess: Session = Depends(current_session),
                 settings: Settings = Depends(get_settings)):
@@ -296,6 +305,20 @@ async def index(request: Request, f: str = "all",
         tampil = [it for it in tampil if pola in it["img"].name.lower()]
     tampil = _urutkan(tampil, urut)
 
+    # Potong jadi satu halaman. Dihitung SESUDAH seluruh saringan dan urutan,
+    # supaya "halaman 2" berarti halaman kedua dari yang sedang dilihat, bukan
+    # dari dataset penuh.
+    per = per_q if per_q in PER_PILIHAN else PER_BAWAAN
+    n_tampil = len(tampil)
+    n_hal = max(1, -(-n_tampil // per))          # pembulatan ke atas
+    hal = (dari_q - 1) // per + 1 if dari_q > 0 else hal_q
+    # Nomor halaman di luar rentang DIJEPIT, bukan dijawab dengan halaman
+    # kosong: datanya ada, nomornya yang salah, dan "tidak ada yang cocok" di
+    # situ adalah jawaban yang keliru.
+    hal = min(max(hal, 1), n_hal)
+    mulai = (hal - 1) * per
+    halaman = tampil[mulai:mulai + per]
+
     # Sidebar projek. Hanya untuk dataset yang ada di ruang kerja seseorang:
     # dataset yang dibuka langsung dari path server tidak punya halaman Unggah,
     # Anotasi, maupun Versi, dan menampilkan menunya berarti menawarkan empat
@@ -315,11 +338,20 @@ async def index(request: Request, f: str = "all",
         "n_luar": n_luar,
         "n_projek": hitung_ds["n_semua"],
         "local": is_local(request),
-        "items": tampil,
+        "items": halaman,
         "urut": urut,
         "urut_pilihan": URUT,
         "cari": cari,
-        "n_tampil": len(tampil),
+        "n_tampil": n_tampil,
+        # Paginasi. `mulai`/`akhir` sudah 1-berbasis supaya templatnya tidak
+        # perlu menambah satu di dua tempat dan lupa di salah satunya.
+        "per": per,
+        "per_pilihan": PER_PILIHAN,
+        "per_bawaan": PER_BAWAAN,
+        "hal": hal,
+        "n_hal": n_hal,
+        "mulai": mulai + 1 if halaman else 0,
+        "akhir": mulai + len(halaman),
         "severity": scanner.severity,
         "flt": f,
         "kelas": kelas,
@@ -353,17 +385,14 @@ async def index(request: Request, f: str = "all",
         "ada_tugas": bool(pelabel_dari) or bool(n_jatah_projek),
         "pemilik_projek": tdata["pemilik"],
         "kelas_hitung": dict(sorted(kelas_hitung.items())),
-        # Dataset yang dibuka langsung dari path server tidak boleh ditambahi,
-        # dan alasannya ikut dikirim supaya tombolnya bisa menjelaskan diri
-        # sendiri alih-alih hanya menghilang tanpa keterangan.
-        # Nama projek untuk tautan ke halaman unggah. Kosong berarti dataset
-        # ini bukan milik ruang kerja akun ini (dataset bersama, atau dibuka
-        # langsung dari path server), dan halaman unggah tidak berlaku untuknya.
-        "unggah_ds": (sess.src.name
-                      if _diruang(sess, settings) else ""),
+        # Kenapa dataset ini tidak bisa ditambahi gambar. Dulu kalimat ini
+        # menempel pada chip "Tambah gambar" yang dimatikan; chipnya sudah
+        # tidak ada (memasukkan gambar dikerjakan lewat "Unggah data" di
+        # sidebar), tetapi kalimatnya tetap perlu — justru untuk dataset yang
+        # TIDAK punya sidebar, karena di sana tidak ada pintu unggah sama
+        # sekali dan tanpa keterangan itu terbaca seperti fitur yang hilang.
         "tolak_tambah": tambah.boleh_ditambahi(
             sess.src, settings.uploads_root / safe_slug(sess.user)),
-        "bersplit": tambah.tata_letak(sess.src) == tambah.TATA_SPLIT,
     })
 
 

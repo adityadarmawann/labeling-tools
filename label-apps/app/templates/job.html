@@ -1,11 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Tugas {{ job.pelabel }}{% endblock %}
 {% block bodyclass %}berprojek{% endblock %}
 
 {% block body %}
 <header>
   <div class="top">
-    <h1>Tugas {{ job.pelabel }}</h1>
+    <h1>{{ nama_app() }}</h1>
     {% include "_header.html" %}
   </div>
 </header>
@@ -150,7 +149,7 @@
             {% if x.latar %}
             {#- Latar disebut lebih dulu walau ia juga "sudah dianotasi":
                 bedanya justru itu yang perlu terlihat sekilas. -#}
-            <span class="jb-cap jb-cap-bg" title="ditandai latar — tidak berisi objek">latar</span>
+            <span class="jb-cap jb-cap-bg" title="ditandai latar, tidak berisi objek">latar</span>
             {% elif x.di_dataset %}
             <span class="jb-cap jb-cap-ds" title="sudah di dataset">dataset</span>
             {% elif x.berlabel %}

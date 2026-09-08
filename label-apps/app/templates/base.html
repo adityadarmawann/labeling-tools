@@ -3,7 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{% block title %}Periksa anotasi{% endblock %}</title>
+{#- Judul tab = nama aplikasi saja. Nama halaman sengaja TIDAK ikut: tab
+    peramban sempit dan dipotong dari ujung kanan, jadi embel-embel di
+    belakangnya jarang terbaca utuh dan yang tersisa cuma potongan. Yang
+    menyatakan sedang di halaman mana sudah dikerjakan sidebar dan kepala
+    halaman. Yang harus tetap terbaca di tab hanyalah HIGOLAB vs HIGOLAB-DEV,
+    karena keduanya memang dibuka berdampingan. -#}
+<title>{{ nama_app() }}</title>
 <link rel="stylesheet" href="{{ statik('app.css') }}">
 <script>
 /* Dipasang sebelum CSS sempat melukis. Tanpa ini, halaman berkedip terang
