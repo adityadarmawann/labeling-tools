@@ -22,6 +22,14 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+# Tidak satu pun keluaran git di sini boleh membuka pager. `git log` yang lebih
+# tinggi daripada terminal berhenti di `less` dengan prompt ":" yang tidak
+# menyebutkan sedang menunggu apa, dan skripnya tampak menggantung di tengah
+# deploy. Akibat keduanya lebih halus: menutup pager menyisakan ketikan di
+# stdin, dan sisa itu kemudian termakan prompt konfirmasi di langkah 3 --
+# deploy membatalkan dirinya sendiri sedetik setelah bertanya.
+export GIT_PAGER=cat
+
 UJI=1; TANYA=1; STATUS=0; DARIDEV=0
 for a in "$@"; do
   case "$a" in
@@ -129,6 +137,16 @@ echo "3/5  Bersiap mengganti proses prod"
 ringkas | sed 's/^/     /'
 if [[ "$TANYA" == 1 ]]; then
   kuning "     Restart memutus semua sesi yang sedang berjalan."
+  # Buang ketikan yang terlanjur mengantre. Pertanyaan yang menentukan nasib
+  # produksi harus dijawab sesudah dibaca, bukan oleh tombol yang ditekan
+  # sebelum ia muncul.
+  #
+  # HANYA kalau stdin sebuah terminal. Lewat pipa seluruh masukan sudah
+  # tersedia saat ini juga, jadi pengurasnya akan ikut menelan jawabannya
+  # sendiri dan `echo ya | ./deploy.sh` tidak akan pernah lanjut.
+  if [[ -t 0 ]]; then
+    while read -r -t 0 2>/dev/null; do read -r _ || break; done
+  fi
   read -rp "     Ketik 'ya' untuk lanjut: " j
   [[ "$j" == "ya" ]] || { echo "     Dibatalkan."; exit 1; }
 fi
