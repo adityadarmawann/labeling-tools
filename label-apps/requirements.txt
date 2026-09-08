@@ -20,3 +20,10 @@ onnxruntime==1.28.0
 # osam menyediakan EfficientSAM dan SAM 2 tanpa perlu mengurus berkas ONNX
 # sendiri; MobileSAM tetap lewat onnxruntime langsung.
 osam==0.5.0
+# Pembuatan versi dataset. Sama seperti dua di atas, keduanya diimpor MALAS di
+# dalam fungsi (olah.py:128 dan _A()), jadi server tetap menyala tanpa mereka
+# dan yang mati hanyalah tab Versi — diam-diam, sampai orang menekan Buat dan
+# mendapat ModuleNotFoundError. albumentations menarik opencv-python-headless;
+# ia hidup berdampingan dengan opencv-python selama versinya sama.
+albumentations==2.0.8
+shapely==2.1.2
