@@ -34,7 +34,7 @@ import cv2
 import numpy as np
 
 from ..log import catat
-from . import olah
+from . import export, olah
 
 log = catat("labelapp.buatversi")
 
@@ -167,9 +167,17 @@ class Pekerjaan:
             (s.get("type") or "") not in ("rectangle",)
             for it in items for s in (it.get("shapes") or []))
         self.manifes: list[dict] = []
-        self.n_kelas = (max(self.names) + 1) if self.names else 0
-        # Indeks kelas: nama -> nomor, mengikuti data.yaml kalau ada.
-        self.idx = {n: i for i, n in (self.names or {}).items()}
+        # Indeks kelas lewat jalur yang sama dengan ekspor. Dulu dipetakan
+        # langsung dari self.names, dan itu punya dua lubang: dataset labelme
+        # TANPA data.yaml/classes.txt memberi names kosong, sehingga kelas_idx
+        # menjawab None untuk setiap bentuk dan SELURUH objek terbuang tanpa
+        # satu pun pesan — versinya jadi dataset tanpa anotasi. Lubang kedua:
+        # label yang ada di anotasi tetapi tidak tercantum di data.yaml ikut
+        # hilang. export.peta_kelas menutup keduanya, dan memakainya berarti
+        # indeks versi selalu sama dengan indeks ekspor biasa.
+        self.idx = export.peta_kelas(items, self.names)
+        self.names = {i: n for n, i in self.idx.items()}
+        self.n_kelas = len(self.idx)
         self._t0 = time.time()
         self._langkah_selesai = 0
         self._langkah_total = 1
@@ -726,8 +734,22 @@ class Pekerjaan:
     def tutup(self, catatan: str = "") -> dict:
         """data.yaml, MANIFES.json, dan ringkasan angka."""
         self.maju("tutup", 0, 1)
-        nama_kelas = [self.names.get(i, str(i)) for i in range(self.n_kelas)] \
-            if self.names else []
+        # Ganti nama dikerjakan DI SINI, bukan di _pra_ubah_kelas: yang diganti
+        # adalah daftar nama di data.yaml, sedangkan label per gambar menyimpan
+        # indeks. Menggantinya lebih awal akan merusak self.idx, yang memetakan
+        # nama ASLI bentuk ke indeks.
+        uk = ((self.resep.get("pra") or {}).get("ubah_kelas") or {})
+        ganti = {}
+        if uk.get("aktif"):
+            for k, v in (uk.get("nama") or {}).items():
+                teks = str(v).strip()
+                if teks:
+                    try:
+                        ganti[int(k)] = teks
+                    except (TypeError, ValueError):
+                        pass
+        nama_kelas = [ganti.get(i, self.names.get(i, str(i)))
+                      for i in range(self.n_kelas)] if self.names else []
         yaml = ["train: ../train/images", "val: ../valid/images",
                 "test: ../test/images", "",
                 f"nc: {len(nama_kelas)}",
@@ -848,6 +870,12 @@ def perkirakan(items: list[dict], names: dict, resep: dict, peta: dict) -> dict:
             "jumlah": n_split, "byte": byte,
             "objek_sumber": sum(per_kelas.values()),
             "kelas": len(per_kelas),
+            # Nama DAN indeksnya. Popup Modify Classes memakai indeks (itu yang
+            # dibaca _pra_ubah_kelas) tetapi harus menampilkan nama, dan tanpa
+            # keduanya di satu tempat ia hanya bisa menampilkan angka telanjang.
+            "daftar_kelas": [{"i": i, "nama": n, "objek": per_kelas.get(n, 0)}
+                             for n, i in sorted(export.peta_kelas(items, names).items(),
+                                                key=lambda kv: kv[1])],
             # Dua angka, karena keduanya menjawab pertanyaan berbeda: yang
             # pertama "berapa sampel negatif yang kupunya", yang kedua "berapa
             # yang dipakai fase pemulihan porsi" (fase itu hanya menyentuh

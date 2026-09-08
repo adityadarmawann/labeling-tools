@@ -2213,6 +2213,106 @@ body.berprojek main{display:flex;gap:0;padding:0;align-items:stretch}
 .op-gulung .sk:last-child{border-bottom:0}
 .op-gulung .sk:hover{background:var(--hover)}
 .op-hampa{padding:18px 0;font-size:12.5px;color:var(--ink-faint);text-align:center}
+
+/* ------------------------------------------------ baris pilihan + tombol angka
+   Saklarnya di dalam <label>, tombol angkanya di LUAR: label meneruskan setiap
+   klik ke input miliknya, jadi tombol di dalamnya akan ikut membalik saklar. */
+.op-pil{display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--line)}
+.op-pil:last-child{border-bottom:0}
+.op-pil:hover{background:var(--hover)}
+.op-pil .sk{flex:1 1 auto;min-width:0;border-bottom:0}
+.op-pil .sk:hover{background:transparent}
+.op-angka{flex:0 0 auto;display:inline-flex;align-items:center;gap:5px;
+  border:1px solid var(--line2);background:var(--panel);color:var(--ink-dim);
+  border-radius:7px;padding:5px 9px;font-family:inherit;font-size:11.5px;
+  font-weight:600;cursor:pointer;white-space:nowrap}
+.op-angka:hover{color:var(--aksi);border-color:var(--aksi);background:var(--ok-lembut)}
+.op-angka:focus-visible{outline:2px solid var(--ok);outline-offset:2px}
+/* Berapa angka yang sudah digeser dari bawaan. Tanpa ini, satu-satunya cara
+   tahu sebuah operasi sudah disetel adalah membuka satu per satu. */
+.op-angka-n{display:inline-grid;place-items:center;min-width:15px;height:15px;
+  padding:0 3px;border-radius:999px;background:var(--aksi);color:var(--aksi-ink);
+  font-size:9.5px;line-height:1}
+
+/* ---------------------------------------------------------- pengatur angka
+   Menggantikan daftar di kotak yang sama. Tombol pulangnya duduk di kepala
+   yang tidak ikut menggulung, supaya tidak pernah hilang ke atas. */
+.op-kembali{display:inline-block;margin:0 0 8px;border:0;background:transparent;
+  color:var(--aksi);font-family:inherit;font-size:11.5px;font-weight:600;
+  cursor:pointer;padding:2px 0}
+.op-kembali:hover{text-decoration:underline}
+.op-kembali:focus-visible{outline:2px solid var(--ok);outline-offset:2px}
+
+.pr{padding:14px 0;border-bottom:1px solid var(--line)}
+.pr:last-child{border-bottom:0}
+.pr-atas{display:flex;align-items:baseline;gap:10px;margin-bottom:9px}
+.pr-label{flex:1 1 auto;font-size:12.5px;color:var(--ink);font-weight:600}
+.pr-nilai{flex:0 0 auto;font-size:13px;font-weight:600;color:var(--ink-dim);
+  font-variant-numeric:tabular-nums}
+/* Angka yang sudah digeser dari bawaan diberi warna aksi: sesudah menutup dan
+   membuka popup, itu satu-satunya bekas bahwa ia pernah disentuh. */
+.pr-nilai.pr-geser{color:var(--aksi)}
+
+.pr-bar{width:100%;margin:0;height:18px;background:transparent;
+  -webkit-appearance:none;appearance:none;cursor:pointer;display:block}
+.pr-bar:focus{outline:0}
+/* Bagian kiri knob ikut berwarna. Jalur satu warna memaksa orang membaca
+   angka di atasnya untuk tahu posisinya; jalur terisi menjawabnya sekilas.
+   --isi ditulis JS ke elemen input, dan pseudo-element mewarisinya. */
+.pr-bar::-webkit-slider-runnable-track{height:4px;border-radius:999px;
+  box-shadow:inset 0 0 0 1px var(--line2);
+  background:linear-gradient(to right,var(--aksi) 0 var(--isi,0%),
+    var(--sunk) var(--isi,0%) 100%)}
+.pr-bar::-moz-range-track{height:4px;border-radius:999px;
+  box-shadow:inset 0 0 0 1px var(--line2);
+  background:linear-gradient(to right,var(--aksi) 0 var(--isi,0%),
+    var(--sunk) var(--isi,0%) 100%)}
+.pr-bar::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
+  width:16px;height:16px;margin-top:-6px;border-radius:50%;
+  background:var(--aksi);border:2px solid var(--panel);
+  box-shadow:0 1px 3px rgba(0,0,0,.28)}
+.pr-bar::-moz-range-thumb{width:16px;height:16px;border-radius:50%;
+  background:var(--aksi);border:2px solid var(--panel);
+  box-shadow:0 1px 3px rgba(0,0,0,.28)}
+.pr-bar:focus-visible::-webkit-slider-thumb{outline:2px solid var(--ok);outline-offset:2px}
+.pr-bar:focus-visible::-moz-range-thumb{outline:2px solid var(--ok);outline-offset:2px}
+
+.pr-kaki{display:flex;align-items:center;justify-content:space-between;gap:8px;
+  margin-top:7px;font-size:10.5px;color:var(--ink-faint);
+  font-variant-numeric:tabular-nums}
+.pr-bawaan{border:0;background:transparent;color:var(--ink-faint);font:inherit;
+  font-size:10.5px;cursor:pointer;padding:2px 6px;border-radius:5px}
+.pr-bawaan:hover{color:var(--aksi);background:var(--ok-lembut)}
+.pr-bawaan:focus-visible{outline:2px solid var(--ok);outline-offset:1px}
+
+.pr-sel{width:100%;padding:7px 10px;font-size:13px;font-family:inherit;
+  background:var(--ground);color:var(--ink);border:1px solid var(--line2);
+  border-radius:7px}
+.pr-sel:focus{outline:2px solid var(--ok);outline-offset:-1px}
+
+/* ------------------------------------------------------- peta kelas
+   Satu baris per kelas projek. Nama dan jumlah objeknya di kiri, karena yang
+   menentukan "kelas ini mau diapakan" justru seberapa banyak isinya. */
+.kl{display:flex;align-items:center;flex-wrap:wrap;gap:8px 10px;padding:11px 0;
+  border-bottom:1px solid var(--line)}
+.kl:last-child{border-bottom:0}
+.kl-kiri{flex:1 1 110px;min-width:0;display:flex;flex-direction:column;gap:2px}
+.kl-kiri b{font-size:12.5px;color:var(--ink);overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.kl-n{font-size:10.5px;color:var(--ink-faint);font-variant-numeric:tabular-nums}
+.kl-sel{flex:0 1 auto;max-width:180px;min-width:0;padding:6px 8px;font-size:12px;
+  font-family:inherit;background:var(--ground);color:var(--ink);
+  border:1px solid var(--line2);border-radius:7px}
+.kl-sel:focus{outline:2px solid var(--ok);outline-offset:-1px}
+.kl input.kl-nama{flex:0 1 140px;width:140px;min-width:110px;padding:6px 8px;
+  font-size:12px;font-family:inherit;background:var(--ground);color:var(--ink);
+  border:1px solid var(--line2);border-radius:7px}
+.kl input.kl-nama:focus{outline:2px solid var(--ok);outline-offset:-1px}
+/* Perubahan yang tidak berlaku selama saklarnya mati harus dikatakan sebelum
+   orang mengaturnya, bukan sesudah versinya jadi tanpa perubahan apa pun. */
+.kl-mati{margin:12px 0 4px;padding:9px 11px;border-radius:8px;
+  background:var(--bahaya-lembut);color:var(--ink-dim);font-size:11.5px;
+  line-height:1.45}
 .op-dlg-bawah{flex:0 0 auto;display:flex;align-items:center;gap:10px;
   padding:12px 20px;border-top:1px solid var(--line);background:var(--raised)}
 .op-dlg-bawah .spacer{flex:1}

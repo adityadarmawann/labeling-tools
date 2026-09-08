@@ -248,3 +248,250 @@ def test_hapus_versi_ikut_membuang_berkas_hasilnya(klien, lingkungan):
     assert (d / ".versi" / "v1").is_dir()
     assert klien.post("/api/versi/hapus?nomor=1").json()["ok"]
     assert not (d / ".versi" / "v1").exists(), "berkas hasil tertinggal"
+
+
+# ------------------------------------------- setiap pilihan benar-benar jalan
+@pytest.mark.parametrize("oid", list(__import__(
+    "app.services.olah", fromlist=["x"]).KATALOG_PRA))
+def test_setiap_operasi_preprocessing_jalan_sendiri_sendiri(oid):
+    """
+    Dinyalakan satu per satu pada gambar sungguhan.
+
+    Popup menawarkan delapan operasi; kalau salah satunya melempar, yang
+    menyalakannya baru tahu sesudah pembuatan versi berjalan setengah jalan dan
+    gagal. Di sini ia gagal dalam sepersekian detik.
+    """
+    from app.services import olah
+    rng = np.random.default_rng(11)
+    img = (rng.random((240, 320, 3)) * 255).astype(np.uint8)
+    # Koordinat YOLO: datar dan ternormalisasi, bukan pasangan (x, y).
+    label = [(0, [0.13, 0.13, 0.44, 0.13, 0.44, 0.54, 0.13, 0.54])]
+    par = {"aktif": True}
+    for k, s in olah.KATALOG_PRA[oid]["param"].items():
+        if s["jenis"] in ("int", "float"):
+            par[k] = s["bawaan"]
+    if oid == "potong_tetap":                 # bawaannya kotak penuh: no-op
+        par.update({"x1": 5, "y1": 5, "x2": 95, "y2": 95})
+    hasil = olah.terapkan_pra(img, label, {"pra": {oid: par}}, n_kelas=2)
+    assert hasil is not None, f"{oid} membuang gambar yang berisi objek"
+    keluar, _ = hasil
+    assert keluar.ndim == 3 and keluar.shape[2] == 3 and keluar.size > 0
+
+
+@pytest.mark.parametrize("oid", list(__import__(
+    "app.services.olah", fromlist=["x"]).KATALOG_AUG))
+def test_setiap_operasi_augmentasi_jalan_sendiri_sendiri(oid):
+    """Sama, untuk 21 augmentasi: dipaksa kena (p=1) supaya benar-benar jalan."""
+    from app.services import olah
+    rng = np.random.default_rng(12)
+    img = (rng.random((240, 320, 3)) * 255).astype(np.uint8)
+    # Koordinat YOLO: datar dan ternormalisasi, bukan pasangan (x, y).
+    label = [(0, [0.13, 0.13, 0.44, 0.13, 0.44, 0.54, 0.13, 0.54])]
+    pipa = olah.bangun_pipeline({"aug": {i: {"aktif": i == oid, "p": 1.0}
+                                         for i in olah.KATALOG_AUG}})
+    assert pipa is not None
+    hasil = olah.augmentasi_sekali(img, label, pipa, rng)
+    assert hasil is not None, f"{oid} tidak menghasilkan apa pun"
+    keluar, _ = hasil
+    assert keluar.ndim == 3 and keluar.size > 0
+
+
+def test_semua_pilihan_menyala_sekaligus_lewat_kelima_langkah(klien, lingkungan):
+    """
+    Kelima langkah wizard dijalankan sekaligus: seluruh preprocessing menyala,
+    seluruh 21 augmentasi menyala, tiap angka digeser jauh dari bawaannya, dan
+    keempat fase lanjutan hidup.
+
+    Ini yang tidak bisa dibuktikan uji satuan: gabungan. Grayscale sesudah
+    CLAHE, crop sesudah resize, lalu 21 transform acak di atasnya, lalu empat
+    fase yang masing-masing menambah berkas ke folder yang sama.
+
+    Filter Null sengaja DIMATIKAN, satu-satunya yang dimatikan: ia membuang
+    sampel negatif, dan Fase 7 justru bertugas memulihkan porsinya. Menyalakan
+    keduanya berarti meminta dua hal yang berlawanan sekaligus.
+    """
+    from app.services import olah
+    masuk(klien, "paul", PW_PAUL)
+    d = _ds(klien, n_botol=12, n_kaleng=5, n_negatif=6)
+    klien.post("/setsrc", params={"path": str(d)})
+
+    def geser(spec):
+        """Jauhkan tiap angka dari bawaannya, tetapi tetap di dalam rentang."""
+        par = {}
+        for k, s in spec.items():
+            if s["jenis"] not in ("int", "float", "peluang"):
+                continue
+            tengah = (s["min"] + s["maks"]) / 2
+            par[k] = int(round(tengah)) if s["jenis"] == "int" else round(tengah, 3)
+        return par
+
+    resep = {"pra": {}, "aug": {}, "volume": {"per_gambar": 1},
+             "fase": {"crop_zoom": {"aktif": True},
+                      "balans_skala": {"aktif": True},
+                      "balans_kelas": {"aktif": True},
+                      "porsi_negatif": {"aktif": True}}}
+    for oid, meta in olah.KATALOG_PRA.items():
+        if oid == "buang_kosong":
+            resep["pra"][oid] = {"aktif": False}
+            continue
+        resep["pra"][oid] = {"aktif": True, **geser(meta["param"])}
+    resep["pra"]["resize"].update({"mode": "fit", "lebar": 320, "tinggi": 320})
+    for oid, meta in olah.KATALOG_AUG.items():
+        resep["aug"][oid] = {"aktif": True, **geser(meta["param"])}
+
+    r = _mulai(klien, resep)
+    assert r.get("ok"), r
+    k = _tunggu(klien, batas=300)
+    assert k.get("selesai") and not k.get("galat"), k
+
+    isi = klien.get("/api/versi/isi", params={"nomor": 1}).json()
+    assert isi["ok"], isi
+    n = isi["versi"]["jumlah"]
+    assert n["train"] > 0 and n["valid"] > 0 and n["test"] > 0, n
+
+    # Angka yang digeser benar-benar ikut tersimpan bersama versinya: tanpa ini
+    # versi lama tidak bisa diulang, dan itu SATU-SATUNYA gunanya versi.
+    simpan = isi["versi"]["resep"]
+    assert simpan["aug"]["rotasi"]["derajat"] == 90
+    assert simpan["pra"]["resize"]["lebar"] == 320
+
+    # Ukurannya benar-benar 320 dan gambarnya benar-benar ada di disk.
+    from app.services import buatversi
+    items = buatversi.items_hasil(Path(isi["versi"]["dir"])) \
+        if isi["versi"].get("dir") else None
+    z = klien.get("/ekspor", params={"nomor": 1, "format": "yolo"})
+    assert z.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(z.content)) as zf:
+        gambar = [x for x in zf.namelist() if x.endswith((".jpg", ".png"))]
+        assert gambar, zf.namelist()[:20]
+        with zf.open(gambar[0]) as fh:
+            im = cv2.imdecode(np.frombuffer(fh.read(), np.uint8), cv2.IMREAD_COLOR)
+    assert im.shape[:2] == (320, 320), im.shape
+
+
+# ------------------------------------------------------------- Modify Classes
+def test_daftar_kelas_ikut_di_perkiraan(klien, lingkungan):
+    """Popup butuh nama DAN indeksnya; tanpa keduanya ia cuma bisa menampilkan
+    angka telanjang."""
+    masuk(klien, "paul", PW_PAUL)
+    d = _ds(klien, n_botol=6, n_kaleng=4, n_negatif=2)
+    klien.post("/setsrc", params={"path": str(d)})
+    r = klien.post("/api/versi/estimasi?split=80,10,10", json={"resep": {}}).json()
+    assert r["ok"], r
+    nama = {k["nama"]: k for k in r["daftar_kelas"]}
+    assert set(nama) == {"botol", "kaleng"}, r["daftar_kelas"]
+    assert nama["botol"]["objek"] == 6 and nama["kaleng"]["objek"] == 4
+    assert {k["i"] for k in r["daftar_kelas"]} == {0, 1}
+
+
+def test_gabung_buang_dan_ganti_nama_kelas_benar_benar_terjadi(klien, lingkungan):
+    """
+    Ketiganya sekaligus pada dataset tiga kelas: satu digabung ke lain, satu
+    dibuang, satu diganti namanya.
+
+    Yang diperiksa bukan resepnya tersimpan, melainkan BERKASNYA: data.yaml
+    memakai nama baru, dan tidak ada satu pun label yang masih menyebut kelas
+    yang dibuang.
+    """
+    masuk(klien, "paul", PW_PAUL)
+    d = _ruang(klien) / "vkelas"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "classes.txt").write_text("botol\nkaleng\ngelas\n")
+    rng = np.random.default_rng(5)
+    for i, kelas in enumerate(["botol"] * 8 + ["kaleng"] * 6 + ["gelas"] * 6):
+        im = (rng.random((240, 320, 3)) * 90 + 40).astype(np.uint8)
+        cv2.imwrite(str(d / f"k{i:02d}.jpg"), im)
+        (d / f"k{i:02d}.json").write_text(json.dumps({
+            "version": "0.4.36", "flags": {}, "imagePath": f"k{i:02d}.jpg",
+            "imageData": None, "imageHeight": 240, "imageWidth": 320,
+            "shapes": [{"label": kelas, "shape_type": "polygon",
+                        "points": [[60, 40], [150, 40], [150, 130], [60, 130]]}]}))
+    klien.post("/setsrc", params={"path": str(d)})
+
+    kel = {k["nama"]: k["i"] for k in klien.post(
+        "/api/versi/estimasi?split=80,10,10", json={"resep": {}}).json()["daftar_kelas"]}
+    resep = {"pra": {"ubah_kelas": {
+        "aktif": True,
+        # kaleng digabung ke botol, gelas dibuang, botol diganti namanya
+        "peta": {str(kel["kaleng"]): kel["botol"], str(kel["gelas"]): None},
+        "nama": {str(kel["botol"]): "wadah"},
+    }}, "aug": False, "volume": {"per_gambar": 0},
+        "fase": {"crop_zoom": {"aktif": False}, "balans_skala": {"aktif": False},
+                 "balans_kelas": {"aktif": False}, "porsi_negatif": {"aktif": False}}}
+    assert _mulai(klien, resep).get("ok")
+    k = _tunggu(klien, batas=180)
+    assert k.get("selesai") and not k.get("galat"), k
+
+    z = klien.get("/ekspor", params={"nomor": 1, "format": "yolo"})
+    assert z.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(z.content)) as zf:
+        yml = next(n for n in zf.namelist() if n.endswith("data.yaml"))
+        teks = zf.read(yml).decode()
+        indeks = set()
+        for n in zf.namelist():
+            if n.endswith(".txt") and "/labels/" in n:
+                for baris in zf.read(n).decode().split("\n"):
+                    if baris.strip():
+                        indeks.add(int(float(baris.split()[0])))
+    assert "'wadah'" in teks, teks
+    assert "'botol'" not in teks, teks
+    # gelas dibuang: indeksnya tidak boleh muncul di satu label pun.
+    assert kel["gelas"] not in indeks, (indeks, kel)
+    # kaleng digabung ke botol: indeks kaleng juga lenyap.
+    assert kel["kaleng"] not in indeks, (indeks, kel)
+    assert indeks == {kel["botol"]}, (indeks, kel)
+
+
+def test_ganti_nama_diabaikan_kalau_operasinya_mati(klien, lingkungan):
+    """Saklar mati berarti mati. Nama baru yang tetap terpakai membuat saklarnya
+    berbohong."""
+    masuk(klien, "paul", PW_PAUL)
+    d = _ds(klien, n_botol=6, n_kaleng=4, n_negatif=2)
+    klien.post("/setsrc", params={"path": str(d)})
+    resep = {"pra": {"ubah_kelas": {"aktif": False, "nama": {"0": "wadah"}}},
+             "aug": False, "volume": {"per_gambar": 0},
+             "fase": {"crop_zoom": {"aktif": False}, "balans_skala": {"aktif": False},
+                      "balans_kelas": {"aktif": False}, "porsi_negatif": {"aktif": False}}}
+    assert _mulai(klien, resep).get("ok")
+    assert _tunggu(klien, batas=180).get("selesai")
+    z = klien.get("/ekspor", params={"nomor": 1, "format": "yolo"})
+    with zipfile.ZipFile(io.BytesIO(z.content)) as zf:
+        teks = zf.read(next(n for n in zf.namelist()
+                            if n.endswith("data.yaml"))).decode()
+    assert "'wadah'" not in teks and "'botol'" in teks, teks
+
+
+def test_dataset_tanpa_daftar_kelas_tidak_kehilangan_objeknya(klien, lingkungan):
+    """
+    Projek labelme yang tidak punya data.yaml maupun classes.txt.
+
+    Dulu `names` kosong membuat kelas_idx() menjawab None untuk setiap bentuk,
+    seluruh objek terbuang, dan versinya jadi dataset tanpa satu pun anotasi —
+    tanpa galat, tanpa peringatan, dengan jumlah gambar yang terlihat benar.
+    Indeksnya sekarang lewat export.peta_kelas, jalur yang sama dengan ekspor
+    biasa, jadi keduanya tidak bisa lagi berbeda.
+    """
+    masuk(klien, "paul", PW_PAUL)
+    d = _ds(klien, n_botol=8, n_kaleng=5, n_negatif=3)
+    (d / "classes.txt").unlink()        # inilah bedanya
+    klien.post("/setsrc", params={"path": str(d)})
+
+    r = klien.post("/api/versi/estimasi?split=80,10,10", json={"resep": {}}).json()
+    assert [k["nama"] for k in r["daftar_kelas"]] == ["botol", "kaleng"], r["daftar_kelas"]
+
+    resep = {"aug": False, "volume": {"per_gambar": 0},
+             "fase": {"crop_zoom": {"aktif": False}, "balans_skala": {"aktif": False},
+                      "balans_kelas": {"aktif": False}, "porsi_negatif": {"aktif": False}}}
+    assert _mulai(klien, resep).get("ok")
+    assert _tunggu(klien, batas=180).get("selesai")
+
+    z = klien.get("/ekspor", params={"nomor": 1, "format": "yolo"})
+    with zipfile.ZipFile(io.BytesIO(z.content)) as zf:
+        teks = zf.read(next(n for n in zf.namelist()
+                            if n.endswith("data.yaml"))).decode()
+        objek = sum(
+            len([b for b in zf.read(n).decode().split("\n") if b.strip()])
+            for n in zf.namelist() if n.endswith(".txt") and "/labels/" in n)
+    assert "'botol'" in teks and "'kaleng'" in teks, teks
+    assert "nc: 2" in teks, teks
+    assert objek == 13, f"13 objek dilabeli, {objek} sampai ke versi"

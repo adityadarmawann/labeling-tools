@@ -280,6 +280,55 @@
     return !!(katalog && katalog[tahap][oid] && katalog[tahap][oid].bawaan_aktif);
   }
 
+  // Membuat entri resep TANPA ikut menyalakan operasinya. aktif() membaca
+  // "ada entri tanpa aktif:false" sebagai menyala, jadi menulis angka ke
+  // operasi yang bawaannya mati akan diam-diam menyalakannya. Yang menggeser
+  // batang Cutout tidak sedang meminta Cutout ikut dipakai.
+  function entri(tahap, oid) {
+    if (!resep[tahap][oid]) resep[tahap][oid] = { aktif: aktif(tahap, oid) };
+    return resep[tahap][oid];
+  }
+
+  // Nilai yang BERLAKU untuk satu angka: geseran orang kalau ada, kalau tidak
+  // bawaan katalog (yang isinya angka v14).
+  function nilaiPar(tahap, oid, kunci) {
+    const par = resep[tahap][oid] || {};
+    const s = katalog[tahap][oid].param[kunci];
+    return par[kunci] !== undefined ? par[kunci] : s.bawaan;
+  }
+
+  function digeser(tahap, oid, kunci) {
+    const par = resep[tahap][oid] || {};
+    if (par[kunci] === undefined) return false;
+    return Math.abs(par[kunci] - katalog[tahap][oid].param[kunci].bawaan) > 1e-9;
+  }
+
+  // Berapa hal yang sudah diubah orang pada satu operasi, untuk lencana di
+  // tombolnya. Peta kelas dihitung per KELAS yang tersentuh, bukan per
+  // parameter: "1" pada operasi yang membuang tiga kelas tidak menjawab apa
+  // pun, dan `peta` serta `nama` adalah dua parameter untuk satu layar.
+  function jumlahUbah(tahap, oid) {
+    const spec = katalog[tahap][oid].param || {};
+    if (spec.peta && spec.peta.jenis === 'peta_kelas') {
+      const par = resep[tahap][oid] || {};
+      return new Set([...Object.keys(par.peta || {}),
+                      ...Object.keys(par.nama || {})]).size;
+    }
+    return Object.keys(spec).filter((k) => digeser(tahap, oid, k)).length;
+  }
+
+  // Angka jadi teks. Peluang ditulis persen karena "0,18" tidak menjawab
+  // pertanyaan yang sedang diajukan orang, yaitu "seberapa sering".
+  function teksPar(s, v) {
+    if (s.jenis === 'peluang') return `${Math.round(v * 100)}%`;
+    if (s.jenis === 'int') return `${Math.round(v)}${s.satuan || ''}`;
+    if (s.jenis === 'float') {
+      const desimal = (s.langkah || 0.01) < 0.05 ? 2 : 1;
+      return `${Number(v).toFixed(desimal).replace('.', ',')}${s.satuan || ''}`;
+    }
+    return String(v);
+  }
+
   function gambarOperasi() {
     if (!katalog) return;
     for (const tahap of ['pra', 'aug']) {
@@ -356,10 +405,35 @@
   // 16 kalimat penuh. Deskripsi adalah bahan untuk MEMILIH; tempatnya di
   // popup, bukan di daftar hal yang sudah dipilih.
   function ringkasPar(meta, par) {
-    const p = Object.entries(meta.param || {});
-    if (!p.length) return '';
-    return p.map(([k, def]) => `${k} ${par[k] !== undefined ? par[k] : def.bawaan}`)
-      .join(' · ');
+    const spec = Object.entries(meta.param || {});
+    if (!spec.length) return '';
+    const nilai = (k, s) => (par[k] !== undefined ? par[k] : s.bawaan);
+    const beda = (k, s) => par[k] !== undefined
+      && Math.abs(par[k] - s.bawaan) > 1e-9;
+    // Peta kelas bukan angka: nilainya objek, dan teksPar akan mencetak
+    // "[object Object]". Yang berguna dibaca sekilas adalah berapa kelas
+    // yang tersentuh, bukan isi petanya.
+    if (meta.param.peta && meta.param.peta.jenis === 'peta_kelas') {
+      const peta = par.peta || {};
+      const nama = par.nama || {};
+      const buang = Object.values(peta).filter((v) => v === null).length;
+      const gabung = Object.values(peta).filter((v) => v !== null).length;
+      const bagian = [];
+      if (gabung) bagian.push(`${gabung} digabung`);
+      if (buang) bagian.push(`${buang} dibuang`);
+      if (Object.keys(nama).length) bagian.push(`${Object.keys(nama).length} ganti nama`);
+      return bagian.length ? bagian.join(' · ') : 'belum ada perubahan';
+    }
+    const pel = meta.param.p;
+    if (pel) {
+      // Augmentasi: yang paling ingin diketahui sekilas adalah seberapa
+      // sering efeknya kena, jadi peluang selalu tampil. Angka lain hanya
+      // kalau digeser; menuliskan kelimanya membuat petaknya jadi paragraf.
+      const sisa = spec.filter(([k, s]) => k !== 'p' && beda(k, s))
+        .map(([k, s]) => `${(s.label || k).toLowerCase()} ${teksPar(s, nilai(k, s))}`);
+      return [teksPar(pel, nilai('p', pel)), ...sisa].join(' · ');
+    }
+    return spec.map(([k, s]) => teksPar(s, nilai(k, s))).join(' · ');
   }
 
   // -------------------------------------------------------------- popup
@@ -372,26 +446,205 @@
   });
 
   let tahapPopup = 'pra';
+  // Operasi yang sedang diatur angkanya. null = popup sedang menampilkan
+  // daftar operasi.
+  let oidAtur = null;
 
-  function bukaPopup(tahap) {
-    if (!katalog) return;
-    tahapPopup = tahap;
+  function kepalaDaftar() {
+    const tahap = tahapPopup;
+    el('op-kembali').hidden = true;
     el('op-judul').textContent = tahap === 'pra' ? 'Preprocessing' : 'Augmentasi';
     el('op-ket').textContent = tahap === 'pra'
       ? 'Dikenakan ke setiap gambar di train, valid, dan test.'
       : 'Menghasilkan salinan tambahan dari data train.';
     // Kotak cari hanya kalau daftarnya memang panjang. Pada 8 operasi
     // preprocessing ia cuma satu kotak lagi untuk dilewati.
-    const cari = el('op-cari');
-    cari.hidden = Object.keys(katalog[tahap]).length <= 12;
-    cari.value = '';
+    el('op-cari').hidden = Object.keys(katalog[tahap]).length <= 12;
+    el('op-bawaan').textContent = 'Kembalikan ke bawaan';
+  }
+
+  function bukaPopup(tahap) {
+    if (!katalog) return;
+    tahapPopup = tahap;
+    oidAtur = null;
+    el('op-cari').value = '';
     gambarPopup();
     dlg.hidden = false;
+    const cari = el('op-cari');
     (cari.hidden ? dlg.querySelector('.sk-in') : cari)?.focus();
+  }
+
+  el('op-kembali').onclick = () => { oidAtur = null; gambarPopup(); };
+
+  // Satu angka: batang geser, nilai berjalan di kanan label, dan bawaan v14
+  // tercetak di bawahnya sebagai tombol supaya jalan pulangnya selalu ada.
+  function barisAngka(tahap, oid, kunci, s) {
+    const baris = document.createElement('div');
+    baris.className = 'pr';
+    const v = nilaiPar(tahap, oid, kunci);
+    baris.innerHTML =
+      `<div class="pr-atas"><span class="pr-label">${s.label || kunci}</span>` +
+      `<span class="pr-nilai">${teksPar(s, v)}</span></div>` +
+      `<input class="pr-bar" type="range" min="${s.min}" max="${s.maks}" ` +
+      `step="${s.langkah || 1}" value="${v}">` +
+      `<div class="pr-kaki"><span>${teksPar(s, s.min)}</span>` +
+      `<button type="button" class="pr-bawaan">bawaan ${teksPar(s, s.bawaan)}</button>` +
+      `<span>${teksPar(s, s.maks)}</span></div>`;
+    const bar = baris.querySelector('.pr-bar');
+    const cap = baris.querySelector('.pr-nilai');
+    const tandai = () => {
+      cap.textContent = teksPar(s, nilaiPar(tahap, oid, kunci));
+      cap.classList.toggle('pr-geser', digeser(tahap, oid, kunci));
+      const rentang = s.maks - s.min;
+      bar.style.setProperty('--isi',
+        `${rentang ? ((Number(bar.value) - s.min) / rentang) * 100 : 0}%`);
+    };
+    // Ditulis saat digeser supaya angkanya tidak pernah tertinggal di
+    // belakang batangnya; daftar di langkah 3/4 baru digambar ulang saat
+    // jarinya lepas, karena itu menyentuh seluruh petak.
+    bar.oninput = () => {
+      entri(tahap, oid)[kunci] = s.jenis === 'int'
+        ? Math.round(Number(bar.value)) : Number(bar.value);
+      tandai();
+    };
+    bar.onchange = () => { gambarOperasi(); };
+    baris.querySelector('.pr-bawaan').onclick = () => {
+      delete (resep[tahap][oid] || {})[kunci];
+      bar.value = s.bawaan;
+      tandai();
+      gambarOperasi();
+    };
+    tandai();
+    return baris;
+  }
+
+  function barisPilih(tahap, oid, kunci, s) {
+    const baris = document.createElement('div');
+    baris.className = 'pr pr-pilih';
+    const v = nilaiPar(tahap, oid, kunci);
+    baris.innerHTML =
+      `<div class="pr-atas"><span class="pr-label">${s.label || kunci}</span></div>` +
+      '<select class="pr-sel">' + (s.pilihan || []).map(
+        ([a, b]) => `<option value="${a}"${a === v ? ' selected' : ''}>${b}</option>`)
+        .join('') + '</select>';
+    const sel = baris.querySelector('.pr-sel');
+    sel.onchange = () => {
+      entri(tahap, oid)[kunci] = sel.value;
+      gambarOperasi();
+    };
+    return baris;
+  }
+
+  // Satu layar untuk seluruh kelas projek: gabung, buang, atau ganti nama.
+  // `peta` memakai INDEKS kelas (itu yang dibaca mesinnya) tetapi yang tampil
+  // harus nama, jadi keduanya datang bersama dari /api/versi/estimasi.
+  function layarKelas(tahap, oid) {
+    const bagian = document.createElement('div');
+    const daftar = (sumber && sumber.daftar_kelas) || [];
+    if (!daftar.length) {
+      bagian.innerHTML = '<p class="op-hampa">Dataset ini belum punya kelas '
+        + 'bernama, jadi tidak ada yang bisa digabung atau diganti.</p>';
+      return bagian;
+    }
+    const par = resep[tahap][oid] || {};
+    const peta = par.peta || {};
+    const nama = par.nama || {};
+
+    // Perubahan di sini tidak berlaku selama saklarnya mati. Mengatakannya di
+    // sini, bukan membiarkan orang menemukannya sesudah versinya jadi.
+    if (!aktif(tahap, oid)) {
+      const p = document.createElement('p');
+      p.className = 'kl-mati';
+      p.textContent = 'Modify Classes masih mati. Nyalakan saklarnya di daftar '
+        + 'langkah supaya perubahan di sini ikut dipakai.';
+      bagian.appendChild(p);
+    }
+
+    for (const k of daftar) {
+      const baris = document.createElement('div');
+      baris.className = 'kl';
+      const lain = daftar.filter((x) => x.i !== k.i);
+      const kini = peta[k.i] === null ? 'buang'
+        : (peta[k.i] !== undefined ? `g:${peta[k.i]}`
+          : (nama[k.i] !== undefined ? 'nama' : ''));
+      baris.innerHTML =
+        `<div class="kl-kiri"><b>${k.nama}</b>` +
+        `<span class="kl-n">${k.objek.toLocaleString('id')} objek</span></div>` +
+        '<select class="kl-sel">' +
+        `<option value=""${kini === '' ? ' selected' : ''}>Biarkan</option>` +
+        `<option value="nama"${kini === 'nama' ? ' selected' : ''}>Ganti nama</option>` +
+        lain.map((x) => `<option value="g:${x.i}"` +
+          `${kini === `g:${x.i}` ? ' selected' : ''}>Gabung ke ${x.nama}</option>`).join('') +
+        `<option value="buang"${kini === 'buang' ? ' selected' : ''}>Buang kelas ini</option>` +
+        '</select>' +
+        `<input class="kl-nama" type="text" maxlength="60" placeholder="nama baru" ` +
+        `value="${nama[k.i] !== undefined ? String(nama[k.i]).replace(/"/g, '&quot;') : ''}"` +
+        `${kini === 'nama' ? '' : ' hidden'}>`;
+      const sel = baris.querySelector('.kl-sel');
+      const inp = baris.querySelector('.kl-nama');
+      const tulis = () => {
+        const e = entri(tahap, oid);
+        e.peta = { ...(e.peta || {}) };
+        e.nama = { ...(e.nama || {}) };
+        delete e.peta[k.i];
+        delete e.nama[k.i];
+        if (sel.value === 'buang') e.peta[k.i] = null;
+        else if (sel.value.startsWith('g:')) e.peta[k.i] = Number(sel.value.slice(2));
+        else if (sel.value === 'nama') e.nama[k.i] = inp.value;
+        gambarOperasi();
+      };
+      sel.onchange = () => {
+        inp.hidden = sel.value !== 'nama';
+        if (!inp.hidden && !inp.value) inp.value = k.nama;
+        tulis();
+        if (!inp.hidden) inp.focus();
+      };
+      inp.oninput = tulis;
+      bagian.appendChild(baris);
+    }
+    return bagian;
+  }
+
+  function gambarAtur() {
+    const tahap = tahapPopup;
+    const oid = oidAtur;
+    const meta = katalog[tahap][oid];
+    const spec = meta.param || {};
+    el('op-kembali').hidden = false;
+    el('op-judul').textContent = meta.nama;
+    el('op-ket').textContent = meta.ket;
+    el('op-cari').hidden = true;
+    // Layar kelas tidak berisi satu angka pun; menyebutnya "angka bawaan"
+    // di sana menamai tombol menurut cara kerjanya, bukan akibatnya.
+    el('op-bawaan').textContent = (spec.peta && spec.peta.jenis === 'peta_kelas')
+      ? 'Kembalikan semua kelas' : 'Kembalikan angka bawaan';
+    const wadah = el('op-isi');
+    wadah.innerHTML = '';
+    for (const [kunci, s] of Object.entries(spec)) {
+      if (s.jenis === 'pilih') wadah.appendChild(barisPilih(tahap, oid, kunci, s));
+      else if (s.jenis === 'int' || s.jenis === 'float' || s.jenis === 'peluang') {
+        wadah.appendChild(barisAngka(tahap, oid, kunci, s));
+      } else if (s.jenis === 'peta_kelas') {
+        // `peta` dan `nama` diatur di SATU layar, karena keduanya menjawab
+        // pertanyaan yang sama ("kelas ini mau diapakan?"). `nama` karena itu
+        // tidak menggambar apa-apa sendiri.
+        wadah.appendChild(layarKelas(tahap, oid));
+      } else if (s.jenis !== 'nama_kelas') {
+        const p = document.createElement('p');
+        p.className = 'op-hampa';
+        p.textContent = `${s.label || kunci}: belum bisa diatur dari sini.`;
+        wadah.appendChild(p);
+      }
+    }
+    if (!wadah.children.length) {
+      wadah.innerHTML = '<p class="op-hampa">Operasi ini tidak punya angka.</p>';
+    }
   }
 
   function gambarPopup() {
     const tahap = tahapPopup;
+    if (oidAtur) { gambarAtur(); return; }
+    kepalaDaftar();
     const q = (el('op-cari').value || '').trim().toLowerCase();
     const wadah = el('op-isi');
     wadah.innerHTML = '';
@@ -415,6 +668,16 @@
       wadah.appendChild(h);
       for (const oid of ids) {
         const meta = katalog[tahap][oid];
+        // Hanya yang benar-benar punya kendali. Tombol yang membuka halaman
+        // berisi "belum bisa diatur" adalah jalan buntu yang terlihat seperti
+        // pintu. `nama` tidak ikut dihitung: ia digambar oleh layar yang sama
+        // dengan `peta`, jadi menghitungnya membuat satu layar terhitung dua.
+        const angka = Object.entries(meta.param || {})
+          .filter(([, s]) => ['int', 'float', 'peluang', 'pilih', 'peta_kelas']
+            .includes(s.jenis))
+          .map(([k]) => k);
+        const pil = document.createElement('div');
+        pil.className = 'op-pil';
         const lab = document.createElement('label');
         lab.className = 'sk';
         lab.innerHTML =
@@ -430,7 +693,20 @@
           gambarOperasi();
           cacah();
         };
-        wadah.appendChild(lab);
+        pil.appendChild(lab);
+        // Tombolnya di LUAR <label>: di dalamnya, tiap klik pada tombol ikut
+        // membalik saklarnya, karena label meneruskan klik ke input miliknya.
+        if (angka.length) {
+          const a = document.createElement('button');
+          a.type = 'button';
+          a.className = 'op-angka';
+          const n = jumlahUbah(tahap, oid);
+          a.innerHTML = `Angka${n ? `<span class="op-angka-n">${n}</span>` : ''} \u203a`;
+          a.title = `Atur angka ${meta.nama}`;
+          a.onclick = () => { oidAtur = oid; gambarPopup(); };
+          pil.appendChild(a);
+        }
+        wadah.appendChild(pil);
       }
     }
     if (!wadah.children.length) {
@@ -453,6 +729,15 @@
 
   el('op-cari').oninput = gambarPopup;
   el('op-bawaan').onclick = () => {
+    if (oidAtur) {
+      // Hanya angka operasi ini. Menyala atau matinya adalah keputusan lain,
+      // dan membatalkannya sekalian berarti tombol ini melakukan dua hal yang
+      // tidak diminta bersamaan.
+      resep[tahapPopup][oidAtur] = { aktif: aktif(tahapPopup, oidAtur) };
+      gambarPopup();
+      gambarOperasi();
+      return;
+    }
     // Jaring pengaman: seluruh penyimpangan dibuang, katalog yang berlaku lagi.
     resep[tahapPopup] = {};
     gambarPopup();

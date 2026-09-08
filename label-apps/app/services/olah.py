@@ -653,12 +653,12 @@ def bangun_pipeline(resep: dict):
         par = aug.get(oid)
         if par is not None and not par.get("aktif", True):
             continue
-        urut.append(bangun(A, par or {}))
+        urut.append(bangun(A, saring_par(KATALOG_AUG[oid]["param"], par or {})))
     for oid, bangun in AUG_TAMBAHAN:
         par = aug.get(oid)
         if not par or not par.get("aktif"):
             continue                      # tambahan bawaannya MATI
-        urut.append(bangun(A, par))
+        urut.append(bangun(A, saring_par(KATALOG_AUG[oid]["param"], par)))
     if not urut:
         return None
     return A.Compose(urut, keypoint_params=A.KeypointParams(
@@ -732,11 +732,14 @@ KATALOG_PRA = {
         "ket": "Ubah ukuran semua gambar. Mode fit memuat gambar utuh lalu "
                "mengisi sisa tepinya dengan warna tetap.",
         "param": {
-            "mode": _p("pilih", "fit", pilihan=[["fit", "Fit (isi tepi)"],
-                                                ["regang", "Regang"],
-                                                ["isi", "Isi lalu potong"]]),
-            "lebar": _p("int", TARGET_SIZE, min=64, maks=2048),
-            "tinggi": _p("int", TARGET_SIZE, min=64, maks=2048),
+            "mode": _p("pilih", "fit", label="Cara memuat",
+                       pilihan=[["fit", "Fit (isi tepi)"],
+                                ["regang", "Regang"],
+                                ["isi", "Isi lalu potong"]]),
+            "lebar": _p("int", TARGET_SIZE, min=64, maks=2048, langkah=32,
+                        label="Lebar", satuan=" px"),
+            "tinggi": _p("int", TARGET_SIZE, min=64, maks=2048, langkah=32,
+                         label="Tinggi", satuan=" px"),
         },
         "fn": _pra_resize,
         "ringkas": lambda p: f"{p.get('mode','fit')} {p.get('lebar',640)}×{p.get('tinggi',640)}",
@@ -751,7 +754,8 @@ KATALOG_PRA = {
         "nama": "Auto-Adjust Contrast", "kelompok": "tambahan", "bawaan_aktif": False,
         "ket": "Naikkan kontras per bagian gambar. Lebih aman daripada "
                "peregangan menyeluruh kalau ada satu sudut yang sangat terang.",
-        "param": {"klip": _p("float", 2.0, min=0.5, maks=8.0)},
+        "param": {"klip": _p("float", 2.0, min=0.5, maks=8.0, langkah=0.1,
+                             label="Batas kontras")},
         "fn": _pra_auto_kontras,
         "ringkas": lambda p: f"CLAHE klip {p.get('klip', 2.0)}",
     },
@@ -766,8 +770,10 @@ KATALOG_PRA = {
         "nama": "Static Crop", "kelompok": "tambahan", "bawaan_aktif": False,
         "ket": "Potong kotak tetap dalam persen, sama untuk setiap gambar.",
         "param": {
-            "x1": _p("int", 0, min=0, maks=99), "y1": _p("int", 0, min=0, maks=99),
-            "x2": _p("int", 100, min=1, maks=100), "y2": _p("int", 100, min=1, maks=100),
+            "x1": _p("int", 0, min=0, maks=99, label="Tepi kiri", satuan="%"),
+            "y1": _p("int", 0, min=0, maks=99, label="Tepi atas", satuan="%"),
+            "x2": _p("int", 100, min=1, maks=100, label="Tepi kanan", satuan="%"),
+            "y2": _p("int", 100, min=1, maks=100, label="Tepi bawah", satuan="%"),
         },
         "fn": _pra_potong_tetap,
         "ringkas": lambda p: f"{p.get('x1',0)},{p.get('y1',0)} – {p.get('x2',100)},{p.get('y2',100)}%",
@@ -783,7 +789,10 @@ KATALOG_PRA = {
         "nama": "Modify Classes", "kelompok": "tambahan", "bawaan_aktif": False,
         "ket": "Ganti nama, gabungkan, atau buang kelas tanpa menyentuh anotasi "
                "aslinya.",
-        "param": {"peta": _p("peta_kelas", {})},
+        # `peta` menggabungkan/membuang (dikerjakan _pra_ubah_kelas, per label),
+        # `nama` mengganti nama (dikerjakan buatversi saat menulis data.yaml).
+        "param": {"peta": _p("peta_kelas", {}, label="Gabung atau buang"),
+                  "nama": _p("nama_kelas", {}, label="Ganti nama")},
         "fn": _pra_ubah_kelas,
         "ringkas": lambda p: f"{len(p.get('peta') or {})} kelas diubah",
     },
@@ -822,15 +831,146 @@ _KET_TAMBAHAN = {
     "saturasi": ("Saturasi", "Hanya saturasi, tanpa menggeser rona."),
 }
 
+# Angka yang boleh digeser orang. Kuncinya HARUS sama persis dengan yang
+# dibaca pembangun transform di AUG_V14/AUG_TAMBAHAN, dan bawaannya HARUS sama
+# dengan bawaan p.get() di sana: katalog inilah yang mengaku "bawaan dari
+# v14", jadi kalau keduanya berbeda pengakuan itu bohong. tests/test_versi_par
+# membandingkan keduanya baris demi baris supaya tidak bisa menyimpang diam-diam.
+#
+# `sisi` pada crop_acak sengaja TIDAK dibuka: ia harus mengikuti ukuran resize,
+# dan dua tempat mengatur ukuran keluaran adalah cara termudah menghasilkan
+# dataset yang gambarnya tidak seragam.
+
+# Peluang tiap transform dipakai pada satu salinan (albumentations `p=`).
+_PELUANG = {
+    "flip_h": 0.5, "flip_v": 0.3, "rotasi": 0.7, "terang_kontras": 0.85,
+    "gamma": 0.40, "blackbody": 0.45, "iluminan": ILLUM_PROB, "hue_sat": 0.80,
+    "color_jitter": 0.50, "grayscale": 0.12, "bayangan": 0.18, "blur": 0.25,
+    "derau_gauss": 0.35, "derau_iso": 0.20, "crop_acak": 0.4, "affine": 0.6,
+    "rotasi_90": 0.5, "shear": 0.3, "cutout": 0.3, "eksposur": 0.3,
+    "saturasi": 0.3,
+}
+
+_PAR_AUG = {
+    "rotasi": {"derajat": _p("int", 25, min=0, maks=180, langkah=1,
+                             label="Sudut maksimum", satuan="\u00b0")},
+    "terang_kontras": {
+        "terang_min": _p("float", -0.45, min=-1.0, maks=0.0, langkah=0.01,
+                         label="Paling gelap"),
+        "terang_maks": _p("float", 0.35, min=0.0, maks=1.0, langkah=0.01,
+                          label="Paling terang"),
+        "kontras_min": _p("float", -0.30, min=-1.0, maks=0.0, langkah=0.01,
+                          label="Kontras terendah"),
+        "kontras_maks": _p("float", 0.30, min=0.0, maks=1.0, langkah=0.01,
+                           label="Kontras tertinggi"),
+    },
+    "gamma": {"min": _p("int", 60, min=10, maks=100, langkah=1,
+                        label="Gamma terendah"),
+              "maks": _p("int", 150, min=100, maks=300, langkah=1,
+                         label="Gamma tertinggi")},
+    "hue_sat": {"hue": _p("int", 50, min=0, maks=100, langkah=1,
+                          label="Geser rona"),
+                "sat": _p("int", 45, min=0, maks=100, langkah=1,
+                          label="Geser saturasi"),
+                "val": _p("int", 35, min=0, maks=100, langkah=1,
+                          label="Geser kecerahan")},
+    "color_jitter": {"terang": _p("float", 0.30, min=0.0, maks=1.0, langkah=0.01,
+                                  label="Terang"),
+                     "kontras": _p("float", 0.30, min=0.0, maks=1.0, langkah=0.01,
+                                   label="Kontras"),
+                     "saturasi": _p("float", 0.45, min=0.0, maks=1.0, langkah=0.01,
+                                    label="Saturasi"),
+                     "hue": _p("float", 0.12, min=0.0, maks=0.5, langkah=0.01,
+                               label="Rona")},
+    "blur": {"maks": _p("int", 5, min=3, maks=15, langkah=2,
+                        label="Radius maksimum", satuan=" px")},
+    "derau_gauss": {"min": _p("float", 0.02, min=0.0, maks=0.5, langkah=0.01,
+                              label="Derau paling lemah"),
+                    "maks": _p("float", 0.10, min=0.01, maks=1.0, langkah=0.01,
+                               label="Derau paling kuat")},
+    "crop_acak": {"skala_min": _p("float", 0.80, min=0.1, maks=1.0, langkah=0.01,
+                                  label="Sisa luas terkecil")},
+    "affine": {"skala_min": _p("float", 0.72, min=0.1, maks=1.0, langkah=0.01,
+                               label="Perbesaran terkecil"),
+               "skala_maks": _p("float", 1.10, min=1.0, maks=2.0, langkah=0.01,
+                                label="Perbesaran terbesar"),
+               "geser": _p("float", 0.25, min=0.0, maks=0.9, langkah=0.01,
+                           label="Geser maksimum")},
+    "shear": {"derajat": _p("int", 10, min=1, maks=45, langkah=1,
+                            label="Kemiringan", satuan="\u00b0")},
+    "cutout": {"jumlah": _p("int", 8, min=1, maks=32, langkah=1,
+                            label="Petak terbanyak"),
+               "ukuran": _p("float", 0.10, min=0.02, maks=0.5, langkah=0.01,
+                            label="Petak terbesar")},
+    "eksposur": {"kuat": _p("float", 0.25, min=0.05, maks=1.0, langkah=0.01,
+                            label="Kekuatan")},
+    "saturasi": {"sat": _p("int", 40, min=0, maks=100, langkah=1,
+                           label="Geser saturasi")},
+}
+
+# Pasangan yang tidak boleh terbalik. albumentations melempar ValueError kalau
+# gamma_limit=(150, 60), dan orang yang menggeser batang bawah melewati batang
+# atas tidak sedang meminta versinya gagal di tengah jalan.
+PASANGAN_PAR = [("terang_min", "terang_maks"), ("kontras_min", "kontras_maks"),
+                ("min", "maks"), ("skala_min", "skala_maks")]
+
+
+def _par_aug(oid: str) -> dict:
+    """Peluang selalu ada; sisanya menurut operasinya."""
+    return {"p": _p("peluang", _PELUANG[oid], min=0.0, maks=1.0, langkah=0.01,
+                    label="Peluang dipakai"),
+            **_PAR_AUG.get(oid, {})}
+
+
+def saring_par(spec: dict, par: dict) -> dict:
+    """
+    Jepit tiap angka ke rentang katalognya, lalu betulkan pasangan min/maks
+    yang terbalik.
+
+    Nilai yang tidak dikenal katalog dibiarkan lewat: `sisi` dan `n_kelas`
+    dipakai mesin tetapi sengaja tidak ditawarkan ke orang.
+    """
+    keluar = dict(par or {})
+    for kunci, s in (spec or {}).items():
+        if kunci not in keluar:
+            continue
+        nilai = keluar[kunci]
+        jenis = s.get("jenis")
+        if jenis in ("int", "float", "peluang"):
+            try:
+                nilai = int(nilai) if jenis == "int" else float(nilai)
+            except (TypeError, ValueError):
+                keluar[kunci] = s["bawaan"]
+                continue
+            if "min" in s:
+                nilai = max(s["min"], nilai)
+            if "maks" in s:
+                nilai = min(s["maks"], nilai)
+            keluar[kunci] = nilai
+        elif jenis == "pilih":
+            sah = [a for a, _ in s.get("pilihan", [])]
+            if nilai not in sah:
+                keluar[kunci] = s["bawaan"]
+    for bawah, atas in PASANGAN_PAR:
+        if bawah in keluar and atas in keluar:
+            try:
+                if keluar[bawah] > keluar[atas]:
+                    keluar[bawah], keluar[atas] = keluar[atas], keluar[bawah]
+            except TypeError:
+                pass
+    return keluar
+
+
 KATALOG_AUG = {}
 for _oid, _saklar, _b in AUG_V14:
     _nama, _ket = _KET_AUG[_oid]
     KATALOG_AUG[_oid] = {"nama": _nama, "kelompok": "default", "bawaan_aktif": True,
-                         "ket": _ket, "saklar_v14": _saklar, "param": {}}
+                         "ket": _ket, "saklar_v14": _saklar,
+                         "param": _par_aug(_oid)}
 for _oid, _b in AUG_TAMBAHAN:
     _nama, _ket = _KET_TAMBAHAN[_oid]
     KATALOG_AUG[_oid] = {"nama": _nama, "kelompok": "tambahan", "bawaan_aktif": False,
-                         "ket": _ket, "param": {}}
+                         "ket": _ket, "param": _par_aug(_oid)}
 
 
 def katalog_json() -> dict:
@@ -854,7 +994,7 @@ def terapkan_pra(img, label, resep: dict, n_kelas: int = 0):
         aktif = meta["bawaan_aktif"] if par is None else par.get("aktif", True)
         if not aktif:
             continue
-        p = dict(par or {})
+        p = saring_par(meta["param"], par or {})
         p.setdefault("n_kelas", n_kelas)
         hasil = meta["fn"](img, label, p)
         if hasil is None:
