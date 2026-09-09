@@ -239,6 +239,38 @@ def kanvas_polos(w: int, h: int, warna=None) -> np.ndarray:
     return np.full((h, w, 3), warna or warna_latar(), np.uint8)
 
 
+def warna_bgr(nilai) -> tuple[int, int, int] | None:
+    """
+    '#rrggbb' atau (b, g, r) -> (b, g, r). None berarti "ikut pelat RVM".
+
+    Peramban hanya bisa mengirim heks lewat <input type="color">, sedangkan
+    OpenCV bekerja dalam BGR. Penerjemahnya duduk di sini, satu tempat, supaya
+    tidak ada yang menebak urutan kanal di tempat lain.
+    """
+    if nilai is None:
+        return None
+    if isinstance(nilai, str):
+        teks = nilai.strip().lstrip("#")
+        if len(teks) != 6:
+            return None
+        try:
+            r, g, b = (int(teks[i:i + 2], 16) for i in (0, 2, 4))
+        except ValueError:
+            return None
+        return (b, g, r)
+    try:
+        b, g, r = (int(v) for v in nilai)
+    except (TypeError, ValueError):
+        return None
+    return tuple(min(255, max(0, v)) for v in (b, g, r))
+
+
+def hex_dari_bgr(warna) -> str:
+    """(b, g, r) -> '#rrggbb', untuk ditawarkan ke pemilih warna peramban."""
+    b, g, r = (int(min(255, max(0, v))) for v in warna)
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
 # =========================================================== operasi PRA
 #
 # Tanda tangan seragam: f(img, label, par) -> (img, label) atau None.
@@ -382,7 +414,7 @@ def _pra_resize(img, label, par):
     nw, nh = max(1, int(round(w * s))), max(1, int(round(h * s)))
     kecil = cv2.resize(img, (nw, nh),
                        interpolation=cv2.INTER_AREA if s < 1 else cv2.INTER_CUBIC)
-    keluar = kanvas_polos(W, H, par.get("warna"))
+    keluar = kanvas_polos(W, H, warna_bgr(par.get("warna")))
     pl, pt = (W - nw) // 2, (H - nh) // 2
     keluar[pt:pt + nh, pl:pl + nw] = kecil
     baru = []
@@ -856,6 +888,11 @@ KATALOG_PRA = {
                         label="Lebar", satuan=" px"),
             "tinggi": _p("int", TARGET_SIZE, min=64, maks=2048, langkah=32,
                          label="Tinggi", satuan=" px"),
+            # Hanya berlaku pada mode fit — dua mode lain tidak menyisakan tepi
+            # untuk diisi. Bawaannya None, artinya ikut median pelat RVM;
+            # katalog_json menggantinya dengan warna itu dalam heks supaya yang
+            # ditawarkan popup adalah warna yang benar-benar dipakai.
+            "warna": _p("warna", None, label="Warna isian tepi (mode fit)"),
         },
         "fn": _pra_resize,
         "ringkas": lambda p: f"{p.get('mode','fit')} {p.get('lebar',640)}×{p.get('tinggi',640)}",
@@ -1068,6 +1105,10 @@ def saring_par(spec: dict, par: dict) -> dict:
             if "maks" in s:
                 nilai = min(s["maks"], nilai)
             keluar[kunci] = nilai
+        elif jenis == "warna":
+            # Heks tak sah dikembalikan ke bawaan, bukan diteruskan ke
+            # np.full — yang akan melempar di tengah versi yang sudah jalan.
+            keluar[kunci] = nilai if warna_bgr(nilai) else s["bawaan"]
         elif jenis == "pilih":
             sah = [a for a, _ in s.get("pilihan", [])]
             if nilai not in sah:
@@ -1097,10 +1138,23 @@ for _oid, _b in AUG_TAMBAHAN:
 def katalog_json() -> dict:
     """Katalog untuk popup, tanpa objek Python yang tidak bisa di-JSON-kan."""
     def bersih(d):
-        return {k: {kk: vv for kk, vv in v.items() if kk not in ("fn", "ringkas")}
-                for k, v in d.items()}
-    return {"pra": bersih(KATALOG_PRA), "aug": bersih(KATALOG_AUG),
-            "urut_pra": URUT_PRA}
+        keluar = {}
+        for k, v in d.items():
+            item = {kk: vv for kk, vv in v.items() if kk not in ("fn", "ringkas")}
+            # param disalin, bukan dibagi: di bawah ada bawaan yang diisi saat
+            # permintaan datang, dan menulisnya ke dict katalog akan mengubah
+            # katalog seluruh proses.
+            item["param"] = {pk: dict(pv) for pk, pv in (v.get("param") or {}).items()}
+            keluar[k] = item
+        return keluar
+    pra = bersih(KATALOG_PRA)
+    # Warna isian tepi bawaannya bukan angka tetap melainkan median pelat RVM,
+    # dan itu baru diketahui setelah pelatnya dimuat. Popup harus menawarkan
+    # warna yang BENAR-BENAR dipakai kalau tidak ada yang menyentuhnya.
+    warna = pra.get("resize", {}).get("param", {}).get("warna")
+    if warna is not None and warna.get("bawaan") is None:
+        warna["bawaan"] = hex_dari_bgr(warna_latar())
+    return {"pra": pra, "aug": bersih(KATALOG_AUG), "urut_pra": URUT_PRA}
 
 
 def terapkan_pra(img, label, resep: dict, n_kelas: int = 0,

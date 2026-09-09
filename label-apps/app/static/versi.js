@@ -335,7 +335,14 @@
   function digeser(tahap, oid, kunci) {
     const par = resep[tahap][oid] || {};
     if (par[kunci] === undefined) return false;
-    return Math.abs(par[kunci] - katalog[tahap][oid].param[kunci].bawaan) > 1e-9;
+    const b = katalog[tahap][oid].param[kunci].bawaan;
+    // Bukan cuma angka. Warna isian tepi bernilai teks '#rrggbb', dan
+    // pengurangan pada teks menghasilkan NaN — yang membuat setiap warna yang
+    // dipilih orang terbaca "belum diubah", lencana operasinya ikut kosong.
+    if (typeof par[kunci] === 'number' && typeof b === 'number') {
+      return Math.abs(par[kunci] - b) > 1e-9;
+    }
+    return par[kunci] !== b;
   }
 
   // Berapa hal yang sudah diubah orang pada satu operasi, untuk lencana di
@@ -553,6 +560,38 @@
     return baris;
   }
 
+  // Pemilih warna. Tidak memakai batang seperti angka: yang ditanyakan bukan
+  // "seberapa besar" melainkan "yang mana", dan tiga batang RGB memaksa orang
+  // menyusun warna dari komponennya.
+  function barisWarna(tahap, oid, kunci, s) {
+    const baris = document.createElement('div');
+    baris.className = 'pr pr-warna';
+    const v = nilaiPar(tahap, oid, kunci) || s.bawaan || '#000000';
+    baris.innerHTML =
+      `<div class="pr-atas"><span class="pr-label">${s.label || kunci}</span>` +
+      `<span class="pr-nilai">${String(v).toUpperCase()}</span></div>` +
+      `<input class="pr-warna-in" type="color" value="${v}">` +
+      '<div class="pr-kaki"><span></span>' +
+      `<button type="button" class="pr-bawaan">bawaan ${String(s.bawaan || '').toUpperCase()}</button>` +
+      '<span></span></div>';
+    const inp = baris.querySelector('.pr-warna-in');
+    const cap = baris.querySelector('.pr-nilai');
+    const tandai = () => {
+      cap.textContent = String(inp.value).toUpperCase();
+      cap.classList.toggle('pr-geser', digeser(tahap, oid, kunci));
+    };
+    inp.oninput = () => { entri(tahap, oid)[kunci] = inp.value; tandai(); };
+    inp.onchange = () => { gambarOperasi(); };
+    baris.querySelector('.pr-bawaan').onclick = () => {
+      delete (resep[tahap][oid] || {})[kunci];
+      inp.value = s.bawaan || '#000000';
+      tandai();
+      gambarOperasi();
+    };
+    tandai();
+    return baris;
+  }
+
   function barisPilih(tahap, oid, kunci, s) {
     const baris = document.createElement('div');
     baris.className = 'pr pr-pilih';
@@ -657,6 +696,7 @@
     wadah.innerHTML = '';
     for (const [kunci, s] of Object.entries(spec)) {
       if (s.jenis === 'pilih') wadah.appendChild(barisPilih(tahap, oid, kunci, s));
+      else if (s.jenis === 'warna') wadah.appendChild(barisWarna(tahap, oid, kunci, s));
       else if (s.jenis === 'int' || s.jenis === 'float' || s.jenis === 'peluang') {
         wadah.appendChild(barisAngka(tahap, oid, kunci, s));
       } else if (s.jenis === 'peta_kelas') {
@@ -708,8 +748,8 @@
         // pintu. `nama` tidak ikut dihitung: ia digambar oleh layar yang sama
         // dengan `peta`, jadi menghitungnya membuat satu layar terhitung dua.
         const angka = Object.entries(meta.param || {})
-          .filter(([, s]) => ['int', 'float', 'peluang', 'pilih', 'peta_kelas']
-            .includes(s.jenis))
+          .filter(([, s]) => ['int', 'float', 'peluang', 'pilih', 'peta_kelas',
+            'warna'].includes(s.jenis))
           .map(([k]) => k);
         const pil = document.createElement('div');
         pil.className = 'op-pil';

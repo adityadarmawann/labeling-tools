@@ -2277,6 +2277,15 @@ body.berprojek main{display:flex;gap:0;padding:0;align-items:stretch}
 .pr-bar:focus-visible::-webkit-slider-thumb{outline:2px solid var(--ok);outline-offset:2px}
 .pr-bar:focus-visible::-moz-range-thumb{outline:2px solid var(--ok);outline-offset:2px}
 
+/* Petak warna selebar barisnya: contoh sekecil kotak centang tidak cukup
+   untuk menilai warna yang akan mengisi tepi ribuan gambar. */
+.pr-warna-in{width:100%;height:34px;padding:0;display:block;cursor:pointer;
+  background:transparent;border:1px solid var(--line2);border-radius:8px}
+.pr-warna-in::-webkit-color-swatch-wrapper{padding:3px}
+.pr-warna-in::-webkit-color-swatch{border:0;border-radius:5px}
+.pr-warna-in::-moz-color-swatch{border:0;border-radius:5px}
+.pr-warna-in:focus-visible{outline:2px solid var(--ok);outline-offset:2px}
+
 .pr-kaki{display:flex;align-items:center;justify-content:space-between;gap:8px;
   margin-top:7px;font-size:10.5px;color:var(--ink-faint);
   font-variant-numeric:tabular-nums}
