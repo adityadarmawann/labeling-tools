@@ -185,6 +185,52 @@ class Pekerjaan:
         # mematuhinya; lihat _pipa().
         self._sisi = olah.ukuran_keluaran(self.resep)
         self._pipa_cache: dict[tuple[int, int], object] = {}
+        # Modify Classes boleh MENGGABUNGKAN (2 -> 1) dan MEMBUANG (3 -> None).
+        # Keduanya menyisakan indeks yang tidak dipakai satu label pun, dan
+        # tanpa pemadatan data.yaml tetap mengumumkan nc yang lama lengkap
+        # dengan nama kelas yang sudah mati.
+        self._padat, self.nama_akhir = self._rencana_kelas()
+
+    def _rencana_kelas(self):
+        """
+        (peta indeks -> indeks yang sudah dipadatkan, daftar nama akhir).
+
+        Petanya None kalau tidak ada yang perlu dipadatkan, supaya jalur biasa
+        — yang tidak memakai Modify Classes sama sekali — tidak membayar apa
+        pun. Kuncinya indeks SESUDAH penggabungan, karena itulah yang ditulis
+        _pra_ubah_kelas ke label.
+
+        n_kelas sendiri sengaja TIDAK ikut mengecil: periksa_label berjalan
+        lebih dulu dan memakainya untuk membuang kelas di luar jangkauan, jadi
+        mengecilkannya di sini akan membuang label yang justru mau digabung.
+        """
+        if not self.names:
+            return None, []
+        uk = ((self.resep.get("pra") or {}).get("ubah_kelas") or {})
+        ganti, peta = {}, {}
+        if uk.get("aktif"):
+            for k, v in (uk.get("nama") or {}).items():
+                teks = str(v).strip()
+                if teks:
+                    try:
+                        ganti[int(k)] = teks
+                    except (TypeError, ValueError):
+                        pass
+            for k, v in (uk.get("peta") or {}).items():
+                try:
+                    peta[int(k)] = None if v is None else int(v)
+                except (TypeError, ValueError):
+                    pass
+        bertahan = set()
+        for i in range(self.n_kelas):
+            t = peta.get(i, i)
+            if t is not None:
+                bertahan.add(t)
+        bertahan = sorted(bertahan)
+        nama = [ganti.get(t, self.names.get(t, str(t))) for t in bertahan]
+        if bertahan == list(range(self.n_kelas)):
+            return None, nama
+        return {t: n for n, t in enumerate(bertahan)}, nama
 
     def _pipa(self, img):
         """
@@ -261,6 +307,9 @@ class Pekerjaan:
                 dibuang += 1
                 continue
             img, num = hasil
+            if self._padat is not None:
+                num = [(self._padat[c], poli) for c, poli in num
+                       if c in self._padat]
             stem = Path(nama_berkas).stem
             self._simpan(split, stem, img, num, "asli", nama_berkas)
             self.asli[split].append(stem)
@@ -763,22 +812,11 @@ class Pekerjaan:
     def tutup(self, catatan: str = "") -> dict:
         """data.yaml, MANIFES.json, dan ringkasan angka."""
         self.maju("tutup", 0, 1)
-        # Ganti nama dikerjakan DI SINI, bukan di _pra_ubah_kelas: yang diganti
-        # adalah daftar nama di data.yaml, sedangkan label per gambar menyimpan
-        # indeks. Menggantinya lebih awal akan merusak self.idx, yang memetakan
-        # nama ASLI bentuk ke indeks.
-        uk = ((self.resep.get("pra") or {}).get("ubah_kelas") or {})
-        ganti = {}
-        if uk.get("aktif"):
-            for k, v in (uk.get("nama") or {}).items():
-                teks = str(v).strip()
-                if teks:
-                    try:
-                        ganti[int(k)] = teks
-                    except (TypeError, ValueError):
-                        pass
-        nama_kelas = [ganti.get(i, self.names.get(i, str(i)))
-                      for i in range(self.n_kelas)] if self.names else []
+        # Disiapkan _rencana_kelas() di awal pekerjaan, bukan disusun di sini:
+        # daftar ini harus sepakat dengan indeks yang benar-benar ditulis ke
+        # label, dan yang memadatkan indeks itu fase_pra. Dua tempat menyusun
+        # daftar kelas adalah cara termudah membuat nc dan isinya berselisih.
+        nama_kelas = list(self.nama_akhir)
         yaml = ["train: ../train/images", "val: ../valid/images",
                 "test: ../test/images", "",
                 f"nc: {len(nama_kelas)}",
