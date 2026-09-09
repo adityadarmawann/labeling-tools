@@ -130,3 +130,55 @@ def test_setelan_env_tidak_ditimpa_nilai_bawaan_argparse(monkeypatch):
     b = run.build_parser().parse_args(["--max-upload-mb", "5"])
     run.to_environ(b)
     assert os.environ["LABELAPP_MAX_UPLOAD_MB"] == "5"
+
+
+# --------------------------------------------- gerbang persetujuan pendaftar
+def test_prod_tidak_mengaktifkan_pendaftar_secara_langsung():
+    """
+    env/prod.env tidak boleh menyalakan DAFTAR_LANGSUNG.
+
+    Menyalakannya membuang satu-satunya hal yang menggantikan verifikasi email
+    di aplikasi ini. security.daftar_sendiri menyebutnya sendiri: pendaftaran
+    liar harus berakhir sebagai daftar tunggu, bukan sebagai akses. Dengan
+    nilai 1, siapa pun yang bisa menjangkau portnya langsung memegang akses
+    penuh ke seluruh dataset tanpa satu pun orang menyetujuinya.
+
+    Dijaga di sini, bukan cuma di komentar berkasnya, karena setelan yang
+    kembali menyala tanpa ada yang sadar adalah cara kekeliruan ini bertahan.
+    """
+    from pathlib import Path
+
+    p = Path(__file__).resolve().parent.parent / "env" / "prod.env"
+    baris = [b.strip() for b in p.read_text(encoding="utf-8").splitlines()
+             if b.strip().startswith("LABELAPP_DAFTAR_LANGSUNG=")]
+    assert baris, "LABELAPP_DAFTAR_LANGSUNG hilang dari env/prod.env"
+    assert baris[-1] == "LABELAPP_DAFTAR_LANGSUNG=0", baris
+
+
+def test_pendaftar_menunggu_tidak_bisa_masuk():
+    """
+    Akun berstatus menunggu diperlakukan seperti sandi salah.
+
+    Membedakan keduanya di jawaban HTTP akan memberi tahu orang luar bahwa
+    nama akunnya benar -- dan daftar tunggu berubah jadi alat menebak nama.
+    """
+    import json
+    import tempfile
+    from pathlib import Path
+
+    from app.security import authenticate, hash_password, menunggu_setujuan
+
+    with tempfile.TemporaryDirectory() as d:
+        f = Path(d) / "users.json"
+        f.write_text(json.dumps({
+            "aktif": {"hash": hash_password("sandi-yang-panjang"), "nama": "aktif"},
+            "tunggu": {"hash": hash_password("sandi-yang-panjang"), "nama": "tunggu",
+                       "menunggu": True},
+        }))
+        users = json.loads(f.read_text())
+        assert authenticate(users, "aktif", "sandi-yang-panjang")
+        assert not authenticate(users, "tunggu", "sandi-yang-panjang"), \
+            "akun menunggu TIDAK boleh bisa masuk"
+        assert not authenticate(users, "aktif", "sandi-salah")
+        assert menunggu_setujuan(users, "tunggu")
+        assert not menunggu_setujuan(users, "aktif")
