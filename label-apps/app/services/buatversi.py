@@ -112,17 +112,32 @@ def _tulis(dirv: Path, split: str, nama: str, img, label, segmentasi: bool) -> N
     olah.tulis_label(dirv / split / "labels" / f"{nama}.txt", label, segmentasi)
 
 
-def _baca_item(it: dict):
+def _baca_item(it: dict, kode: int = 1):
     """
-    Satu item hasil pindai -> (img BGR, label ternormalkan).
+    Satu item hasil pindai -> (img BGR MENTAH, label ternormalkan di ruang
+    mentah yang sama).
 
     Bentuk `shape` aplikasi ini (pts piksel) diubah ke poligon ternormalkan,
     yaitu bentuk yang dipakai seluruh mesin olah.
+
+    Pikselnya dibaca APA ADANYA. Dulu di sini cv2.imread menegakkan gambar
+    ber-EXIF diam-diam, dan akibatnya saklar Auto-Orient tidak pernah
+    menentukan apa pun: menyalakan atau mematikannya menghasilkan berkas yang
+    sama persis. Sekarang yang menegakkan adalah langkah Auto-Orient sendiri.
+
+    `pts` yang disimpan aplikasi ini berada di ruang TAMPIL — itulah yang
+    dilihat orang di kanvas saat melabeli — jadi ia dinormalkan memakai ukuran
+    TAMPIL lalu dibawa ke ruang mentah lewat kebalikan kodenya. Dengan begitu
+    gambar dan labelnya berangkat dari ruang yang sama, apa pun pilihan
+    saklarnya nanti.
     """
-    img = cv2.imread(str(it["img"]))
+    img = cv2.imread(str(it["img"]),
+                     cv2.IMREAD_IGNORE_ORIENTATION | cv2.IMREAD_COLOR)
     if img is None:
         return None, None
     h, w = img.shape[:2]
+    if kode in (5, 6, 7, 8):        # tampil = sisi mentah yang tertukar
+        h, w = w, h
     label = []
     for s in it.get("shapes") or []:
         if s.get("label") is None:
@@ -137,6 +152,8 @@ def _baca_item(it: dict):
             x1, y1, x2, y2 = koor
             koor = [x1, y1, x2, y1, x2, y2, x1, y2]
         if len(koor) >= 6:
+            if kode != 1:
+                koor = olah.putar_exif_titik(koor, olah.INVERS_EXIF[kode])
             label.append((s["label"], koor))
     return img, label
 
@@ -292,7 +309,11 @@ class Pekerjaan:
                 self.maju("pra", i, total, dibuang=dibuang)
             nama_berkas = it["img"].name
             split = self.peta.get(nama_berkas) or self.peta.get(it["img"].stem) or "train"
-            img, label = _baca_item(it)
+            # Kode orientasi dibaca dari header, sama murahnya dengan dimensi.
+            # Ia dibutuhkan dua kali: menempatkan label di ruang mentah, dan
+            # memberi tahu Auto-Orient berapa banyak yang harus diputar.
+            kode = scanner.orientasi(it["img"])
+            img, label = _baca_item(it, kode)
             if img is None:
                 dibuang += 1
                 continue
@@ -302,7 +323,7 @@ class Pekerjaan:
                 ci = self.kelas_idx(c)
                 if ci is not None:
                     num.append((ci, poli))
-            hasil = olah.terapkan_pra(img, num, self.resep, self.n_kelas)
+            hasil = olah.terapkan_pra(img, num, self.resep, self.n_kelas, kode)
             if hasil is None:
                 dibuang += 1
                 continue

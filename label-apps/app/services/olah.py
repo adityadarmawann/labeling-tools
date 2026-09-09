@@ -265,16 +265,82 @@ def _pra_periksa_label(img, label, par):
     return img, out
 
 
+# EXIF orientation 1..8. Kodenya menyatakan bagaimana piksel TERSIMPAN harus
+# diubah supaya tampil tegak. Kebalikan tiap kode dipakai saat saklarnya mati:
+# 6 (putar 90 searah jarum) dibatalkan oleh 8, sedangkan 2, 3, 4, 5, dan 7
+# membatalkan dirinya sendiri.
+INVERS_EXIF = {1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 8, 7: 7, 8: 6}
+
+
+def putar_exif_gambar(img, kode: int):
+    """Piksel tersimpan -> piksel tegak, menurut kode EXIF orientation."""
+    if kode == 2:
+        return cv2.flip(img, 1)
+    if kode == 3:
+        return cv2.flip(img, -1)
+    if kode == 4:
+        return cv2.flip(img, 0)
+    if kode == 5:
+        return cv2.transpose(img)
+    if kode == 6:
+        return cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
+    if kode == 7:
+        return cv2.flip(cv2.transpose(img), -1)
+    if kode == 8:
+        return cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
+    return img
+
+
+def putar_exif_titik(poli: list[float], kode: int) -> list[float]:
+    """
+    Poligon TERNORMALKAN mengikuti putaran yang sama dengan gambarnya.
+
+    Ternormalkan, jadi tidak perlu tahu ukuran gambarnya sama sekali — dan
+    itu yang membuat pemetaannya bisa dibalik tanpa membawa dimensi ke
+    mana-mana.
+    """
+    keluar = []
+    for i in range(0, len(poli), 2):
+        x, y = poli[i], poli[i + 1]
+        if kode == 2:
+            u, v = 1.0 - x, y
+        elif kode == 3:
+            u, v = 1.0 - x, 1.0 - y
+        elif kode == 4:
+            u, v = x, 1.0 - y
+        elif kode == 5:
+            u, v = y, x
+        elif kode == 6:
+            u, v = 1.0 - y, x
+        elif kode == 7:
+            u, v = 1.0 - y, 1.0 - x
+        elif kode == 8:
+            u, v = y, 1.0 - x
+        else:
+            u, v = x, y
+        keluar.extend((u, v))
+    return keluar
+
+
 def _pra_auto_orient(img, label, par):
     """
-    Terapkan orientasi EXIF lalu buang metadatanya.
+    Tegakkan gambar menurut EXIF orientation, lalu buang metadatanya.
 
-    Sudah terjadi sebelum operasi ini dipanggil: cv2.imread menghormati EXIF
-    orientation sejak OpenCV 3.4.1, dan berkas hasil ditulis ulang tanpa EXIF.
-    Operasinya tetap ada supaya daftar preprocessing menyebutkan apa yang
-    berlaku — bukan supaya orang mengira ia bisa dimatikan.
+    Gambarnya dibaca MENTAH (cv2.IMREAD_IGNORE_ORIENTATION) dan labelnya ikut
+    dibawa ke ruang mentah, jadi operasi ini benar-benar yang menegakkan
+    keduanya. Sebelumnya cv2.imread menegakkan sendiri lebih dulu dan fungsi
+    ini tidak mengerjakan apa pun: saklarnya ada di layar tetapi mematikannya
+    tidak mengubah satu piksel pun.
+
+    Mematikannya sekarang berarti gambar keluar apa adanya seperti tersimpan
+    — miring kalau memang begitu tersimpannya — dan labelnya ikut miring
+    bersamanya, sehingga datasetnya tetap sah, hanya tidak ditegakkan.
     """
-    return img, label
+    kode = int(par.get("orientasi") or 1)
+    if kode == 1:
+        return img, label
+    return (putar_exif_gambar(img, kode),
+            [(c, putar_exif_titik(poli, kode)) for c, poli in label])
 
 
 def _pra_resize(img, label, par):
@@ -796,7 +862,9 @@ KATALOG_PRA = {
     },
     "auto_orient": {
         "nama": "Auto-Orient", "kelompok": "tambahan", "bawaan_aktif": True,
-        "ket": "Putar gambar mengikuti orientasi kamera, lalu buang metadatanya.",
+        "ket": "Tegakkan gambar menurut EXIF orientation lalu buang "
+               "metadatanya. Dimatikan berarti piksel keluar apa adanya "
+               "seperti tersimpan, dan labelnya ikut.",
         "param": {}, "fn": _pra_auto_orient,
         "ringkas": lambda p: "Diterapkan",
     },
@@ -1035,10 +1103,14 @@ def katalog_json() -> dict:
             "urut_pra": URUT_PRA}
 
 
-def terapkan_pra(img, label, resep: dict, n_kelas: int = 0):
+def terapkan_pra(img, label, resep: dict, n_kelas: int = 0,
+                 orientasi: int = 1):
     """
     Jalankan seluruh preprocessing yang aktif, berurutan tetap.
     Mengembalikan None kalau gambarnya harus dibuang dari versi.
+
+    `orientasi` adalah kode EXIF gambar ini; hanya auto_orient yang memakainya,
+    dan disalurkan lewat par dengan cara yang sama seperti n_kelas.
     """
     pra = (resep or {}).get("pra") or {}
     for oid in URUT_PRA:
@@ -1049,6 +1121,7 @@ def terapkan_pra(img, label, resep: dict, n_kelas: int = 0):
             continue
         p = saring_par(meta["param"], par or {})
         p.setdefault("n_kelas", n_kelas)
+        p.setdefault("orientasi", orientasi)
         hasil = meta["fn"](img, label, p)
         if hasil is None:
             return None

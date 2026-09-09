@@ -67,6 +67,25 @@ def dimensi(ip: Path) -> tuple[int, int] | None:
     return im.shape[:2]
 
 
+def orientasi(ip: Path) -> int:
+    """
+    Kode EXIF orientation sebuah gambar (1..8), 1 kalau tidak ada.
+
+    Dibaca dari header seperti dimensi(), dan karena alasan yang sama: yang
+    dibutuhkan satu angka, bukan seluruh pikselnya.
+
+    Kode inilah yang menentukan apakah piksel yang tersimpan sudah tegak atau
+    masih harus diputar. cv2.imread memutarnya diam-diam; pembuatan versi
+    memilih sendiri lewat saklar Auto-Orient, jadi ia perlu angkanya.
+    """
+    try:
+        with Image.open(ip) as im:
+            k = int((im.getexif() or {}).get(0x0112, 1) or 1)
+        return k if 1 <= k <= 8 else 1
+    except Exception:
+        return 1
+
+
 # Berkas nama kelas yang ADA tetapi tidak bisa dibaca. Dicatat di sini supaya
 # periksa_kelengkapan bisa membedakan "tidak punya data.yaml" dari "punya, tapi
 # rusak" — dua keadaan yang perlu tindakan berbeda dan dulu terlihat sama
