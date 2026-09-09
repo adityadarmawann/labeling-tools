@@ -133,8 +133,12 @@
           <div><span>Salinan per gambar</span><b>${(resep.volume || {}).per_gambar ?? '-'}</b></div>
           <div><span>Ukuran</span><b>${punyaHasil ? `${rs.lebar || 640}×${rs.tinggi || 640}` : '-'}</b></div>
           <div><span>Rasio diminta</span><b>${v.rasio || '-'}</b></div>
+          ${hasil.jenis ? `<div><span>Format anotasi</span><b>${
+            hasil.jenis === 'kotak' ? 'Kotak (deteksi)' : 'Poligon (segmentasi)'
+          }</b></div>` : ''}
           ${isi.byte ? `<div><span>Ukuran di disk</span><b>${mb(isi.byte)}</b></div>` : ''}
         </div>
+        ${hasil.dipulangkan ? `<p class="vs-pulang"><b>${hasil.dipulangkan} gambar</b> tidak ikut ke versi ini: bentuknya tidak bisa jadi mask di dataset poligon. Semuanya sudah dikembalikan ke kolom <b>Belum ditugaskan</b> di halaman Anotasi supaya ada yang membetulkannya. Anotasinya tidak dihapus; yang berubah hanya keanggotaan dataset.</p>` : ''}
       </div>`;
 
     const h = detail.querySelector('.vs-hapus');
@@ -900,7 +904,9 @@
       el('wz-fill').style.width = p + '%';
       el('wz-persen').textContent = p.toFixed(0) + '%';
       el('wz-fase').textContent =
-        (k.fase_nama || '') + (k.fase_ke ? ` (${k.fase_ke}/${k.fase_dari})` : '');
+        (k.fase_nama || '') + (k.fase_ke ? ` (${k.fase_ke}/${k.fase_dari})` : '')
+        + (k.dipulangkan
+           ? ` \u00b7 ${k.dipulangkan} dikembalikan ke Anotasi` : '');
       if (k.selesai) { clearInterval(jam); location.reload(); }
       if (k.batal) { clearInterval(jam); location.reload(); }
       if (k.galat) {

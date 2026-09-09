@@ -2225,3 +2225,52 @@ def test_kolom_papan_menyebut_satuannya(klien, lingkungan):
     h = " ".join(klien.get("/anotasi?ds=satuan").text.split())
     assert "2 gambar</span>" in h, "kolom Belum ditugaskan tanpa satuan"
     assert "1 tugas</span>" in h, "kolom Dikerjakan tanpa satuan"
+
+
+# ------------------------------------------------- setelan format anotasi
+def test_set_jenis_menolak_nilai_asing(tmp_path):
+    """Nilai di luar poligon/kotak harus ditolak, bukan disimpan apa adanya."""
+    import pytest as _pytest
+
+    from app.services import tugas
+
+    d = tmp_path / "p"
+    d.mkdir()
+    tugas.mulai_kurasi(d, "paul")
+    for jelek in ("segmentasi", "bbox", "POLIGON2", "ya"):
+        with _pytest.raises(ValueError):
+            tugas.set_jenis(d, jelek, "paul")
+    assert tugas.baca(d, "paul")["jenis_anotasi"] == ""
+
+
+def test_set_jenis_disimpan_dan_bisa_dikembalikan_ke_otomatis(tmp_path):
+    from app.services import tugas
+
+    d = tmp_path / "p"
+    d.mkdir()
+    tugas.mulai_kurasi(d, "paul")
+    tugas.set_jenis(d, "kotak", "paul")
+    assert tugas.baca(d, "paul")["jenis_anotasi"] == "kotak"
+    # Setelan menang atas tebakan, walau seluruh bentuknya poligon.
+    poligon = [{"shapes": [{"type": "polygon"}]}] * 100
+    assert tugas.jenis_berlaku(tugas.baca(d, "paul"), poligon) == "kotak"
+    # "" mengembalikannya ke tebakan.
+    tugas.set_jenis(d, "", "paul")
+    assert tugas.baca(d, "paul")["jenis_anotasi"] == ""
+    assert tugas.jenis_berlaku(tugas.baca(d, "paul"), poligon) == "poligon"
+
+
+def test_hanya_pengelola_boleh_mengubah_format_anotasi(klien, lingkungan):
+    """
+    Rutenya harus menolak, bukan cuma kendalinya disembunyikan dari layar.
+
+    Setelan ini mengembalikan gambar orang lain ke antrean kerja saat versi
+    dibuat, jadi ia mengubah pekerjaan tim -- bukan preferensi tampilan.
+    """
+    from tests.test_data import masuk, PW_PAUL
+
+    masuk(klien, "paul", PW_PAUL)
+    r = klien.post("/api/tugas/jenis",
+                   params={"ds": "projek-yang-tidak-ada", "jenis": "kotak"})
+    assert r.status_code == 200
+    assert r.json().get("ok") is False, r.json()

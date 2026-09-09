@@ -183,8 +183,40 @@ async def halaman_papan(request: Request, ds: str = "", urut: str = "terbaru",
         # menunggu dibagi dari orang yang kebetulan lewat.
         "anggota_semua": set(data["anggota"]),
         "urut_pilihan": svc.URUT_PAPAN,
+        # Format anotasi yang dituju projek. `jenis` kosong berarti belum
+        # ditentukan orang; `jenis_efektif` yang benar-benar dipakai, ditebak
+        # dari bentuk terbanyak. Keduanya dikirim supaya layar bisa membedakan
+        # "otomatis (poligon)" dari "poligon" yang dipilih sengaja.
+        "jenis": data.get("jenis_anotasi") or "",
+        "jenis_efektif": svc.jenis_berlaku(data, items),
+        "jenis_pilihan": svc.JENIS_ANOTASI,
         **papan,
     })
+
+
+@router.post("/api/tugas/jenis")
+async def set_jenis(ds: str = "", jenis: str = "",
+                    sess: Session = Depends(current_session_api),
+                    settings: Settings = Depends(get_settings)):
+    """
+    Tetapkan format anotasi yang dituju projek: "poligon", "kotak", atau ""
+    untuk kembali ke tebakan otomatis.
+
+    Hanya pemilik/pengelola. Setelan ini menentukan bentuk mana yang dianggap
+    tidak sesuai, dan bentuk tak sesuai dikembalikan ke antrean kerja saat
+    versi dibuat -- jadi ia mengubah pekerjaan orang lain, bukan cuma tampilan.
+    """
+    d = svc_projek.temukan(settings.uploads_root, sess.user, ds)
+    if d is None:
+        return {"ok": False, "error": "projek tidak ada"}
+    data = await asyncio.to_thread(svc.baca_projek, d, settings.uploads_root)
+    if not svc.boleh_kelola(data, sess.user):
+        return {"ok": False, "error": "hanya pemilik projek yang mengubah ini"}
+    try:
+        r = await asyncio.to_thread(svc.set_jenis, d, jenis, sess.user)
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
+    return {"ok": True, **r}
 
 
 @router.get("/tugas/{tid}", response_class=HTMLResponse)

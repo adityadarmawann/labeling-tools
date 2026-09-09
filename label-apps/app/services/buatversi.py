@@ -901,6 +901,12 @@ class Pekerjaan:
         ringkas = {"n": sum(jumlah.values()), "jumlah": jumlah, "objek": objek,
                    "kelas": len(per_kelas), "per_kelas": dict(per_kelas),
                    "negatif": negatif, "byte": ukuran_versi(self.ds, self.nomor),
+                   # Ikut DISIMPAN, bukan cuma ditampilkan sekilas saat berjalan:
+                   # tanpa ini, orang yang membuka versinya besok cuma melihat
+                   # jumlah gambar yang lebih sedikit tanpa satu pun keterangan
+                   # kenapa.
+                   "jenis": self.jenis,
+                   "dipulangkan": len(self.dipulangkan),
                    "detik": round(time.time() - self._t0, 1)}
         # `ringkas` memuat kunci "n", yang bentrok dengan parameter maju();
         # dikirim sebagai satu bundel supaya penambahan medan baru di ringkasan

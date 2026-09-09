@@ -57,6 +57,37 @@
   </p>
   {% endif %}
 
+  {#- Format anotasi yang dituju projek. Hanya pemilik, karena setelan ini
+      menentukan bentuk mana yang dianggap tidak sesuai -- dan bentuk tak
+      sesuai dikembalikan ke kolom "Belum ditugaskan" saat versi dibuat. Jadi
+      ia mengubah pekerjaan orang lain, bukan cuma tampilan.
+
+      Bawaannya "otomatis": ditebak dari bentuk TERBANYAK, dan tebakannya
+      disebutkan apa adanya supaya tidak ada yang mengira sudah memilih. -#}
+  {% if boleh_kelola %}
+  <div class="an-jenis">
+    <label class="halus" for="an-jenis">Format anotasi</label>
+    <select class="chip" id="an-jenis" data-ds="{{ pr.ds }}">
+      <option value=""{% if not jenis %} selected{% endif %}>Otomatis
+        ({{ "kotak" if jenis_efektif == "kotak" else "poligon" }}, dari bentuk
+        terbanyak)</option>
+      <option value="poligon"{% if jenis == "poligon" %} selected{% endif %}>
+        Poligon (segmentasi)</option>
+      <option value="kotak"{% if jenis == "kotak" %} selected{% endif %}>
+        Kotak (deteksi)</option>
+    </select>
+    <span class="halus" id="an-jenis-pesan">
+      {%- if jenis_efektif == "poligon" -%}
+      Kotak, titik, dan garis akan ditandai perlu dicek, lalu dikembalikan ke
+      sini saat versi dibuat.
+      {%- else -%}
+      Poligon diturunkan jadi kotak pembungkusnya saat versi dibuat. Tidak ada
+      bentuk yang ditolak.
+      {%- endif -%}
+    </span>
+  </div>
+  {% endif %}
+
   {# ---------------------------------------------------- urutan #}
   <form class="an-urut" method="get" action="/anotasi">
     <input type="hidden" name="ds" value="{{ pr.ds }}">

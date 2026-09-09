@@ -105,3 +105,32 @@
     };
   }
 })();
+
+/* ------------------------------------------------------ format anotasi
+ * Setelan projek, bukan tampilan: ia menentukan bentuk mana yang dianggap
+ * tidak sesuai, dan bentuk tak sesuai dikembalikan ke kolom "Belum
+ * ditugaskan" saat versi dibuat. Karena itu halamannya dimuat ulang sesudah
+ * disimpan -- temuan "perlu dicek" di seluruh papan ikut berubah, dan daftar
+ * yang masih menunjukkan keadaan lama lebih menyesatkan daripada menunggu
+ * sebentar.
+ */
+(() => {
+  const sel = document.getElementById('an-jenis');
+  if (!sel) return;
+  sel.onchange = async () => {
+    const pesan = document.getElementById('an-jenis-pesan');
+    sel.disabled = true;
+    if (pesan) pesan.textContent = 'menyimpan…';
+    try {
+      const r = await fetch(
+        `/api/tugas/jenis?ds=${encodeURIComponent(sel.dataset.ds)}`
+        + `&jenis=${encodeURIComponent(sel.value)}`, { method: 'POST' })
+        .then((x) => x.json());
+      if (!r || !r.ok) throw new Error((r && r.error) || 'gagal menyimpan');
+      location.reload();
+    } catch (e) {
+      sel.disabled = false;
+      if (pesan) pesan.textContent = String(e.message || e);
+    }
+  };
+})();
