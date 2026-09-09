@@ -34,7 +34,7 @@ import cv2
 import numpy as np
 
 from ..log import catat
-from . import export, olah, scanner
+from . import export, olah, scanner, tag, tugas, scanner
 
 log = catat("labelapp.buatversi")
 
@@ -168,7 +168,7 @@ class Pekerjaan:
 
     def __init__(self, ds: Path, nomor: int, items: list[dict], names: dict,
                  resep: dict, peta_split: dict, *, kunci: str, seed: int = 42,
-                 batal=None):
+                 batal=None, jenis: str = "", pemilik: str = ""):
         self.ds = Path(ds)
         self.nomor = nomor
         self.items = items
@@ -176,13 +176,25 @@ class Pekerjaan:
         self.resep = resep or {}
         self.peta = peta_split or {}
         self.kunci = kunci
+        self.pemilik = pemilik
         self.rng = random.Random(seed)
         self.np_rng = np.random.default_rng(seed)
         self._batal = batal or (lambda: False)
         self.dirv = dir_versi(ds, nomor)
-        self.segmentasi = any(
-            (s.get("type") or "") not in ("rectangle",)
-            for it in items for s in (it.get("shapes") or []))
+        # Format keluaran ditentukan SETELAN PROJEK (dengan tebakan mayoritas
+        # sebagai bawaan), bukan `any(bentuk bukan rectangle)` seperti dulu.
+        # Aturan lama itu membuat satu poligon nyasar di antara sepuluh ribu
+        # kotak menulis kesepuluh ribu kotak itu sebagai poligon empat titik --
+        # mask persegi yang tidak pernah digambar siapa pun. Lima bentuk
+        # `point`, yang bahkan tidak punya luas, sudah cukup memicunya.
+        self.jenis = (jenis or "").strip().lower()
+        if self.jenis not in ("poligon", "kotak"):
+            self.jenis = scanner.terapkan_jenis(list(items), "")
+        self.segmentasi = self.jenis == "poligon"
+        # Gambar yang memuat bentuk tak sesuai TIDAK ikut ke versi, dan
+        # dikembalikan ke "Belum ditugaskan" supaya ada orang yang benar-benar
+        # membetulkannya. Diisi fase_pra.
+        self.dipulangkan: list[str] = []
         self.manifes: list[dict] = []
         # Indeks kelas lewat jalur yang sama dengan ekspor. Dulu dipetakan
         # langsung dari self.names, dan itu punya dua lubang: dataset labelme
@@ -308,6 +320,19 @@ class Pekerjaan:
             if i % 25 == 0:
                 self.maju("pra", i, total, dibuang=dibuang)
             nama_berkas = it["img"].name
+            # Bentuk yang tidak bisa jadi mask di dataset poligon: gambarnya
+            # TIDAK ikut ke versi, dan dikeluarkan dari dataset supaya kembali
+            # ke kolom "Belum ditugaskan". Dulu bentuk seperti ini diam-diam
+            # ditulis sebagai poligon empat titik; sekarang ia jadi pekerjaan
+            # yang kelihatan, dan yang memutuskan bentuk sebenarnya adalah
+            # orang yang melihat fotonya.
+            #
+            # Anotasi aslinya TIDAK disentuh: yang berubah cuma keanggotaan
+            # dataset, dan itu bisa dibatalkan dengan satu klik.
+            if scanner.bentuk_tak_sesuai(it.get("shapes") or [], self.jenis):
+                self.dipulangkan.append(tag.kunci_gambar(self.ds, it["img"]))
+                dibuang += 1
+                continue
             split = self.peta.get(nama_berkas) or self.peta.get(it["img"].stem) or "train"
             # Kode orientasi dibaca dari header, sama murahnya dengan dimensi.
             # Ia dibutuhkan dua kali: menempatkan label di ruang mentah, dan
@@ -334,7 +359,16 @@ class Pekerjaan:
             stem = Path(nama_berkas).stem
             self._simpan(split, stem, img, num, "asli", nama_berkas)
             self.asli[split].append(stem)
-        self.maju("pra", total, total, dibuang=dibuang)
+        if self.dipulangkan:
+            try:
+                tugas.keluarkan(self.ds, self.dipulangkan, self.pemilik)
+            except OSError as e:
+                # Gagal menulis berkas tugas tidak boleh menggagalkan versinya:
+                # gambarnya sudah TIDAK ikut, dan itu bagian yang penting.
+                log.warning("gagal mengembalikan %s gambar ke antrean: %s",
+                            len(self.dipulangkan), e)
+        self.maju("pra", total, total, dibuang=dibuang,
+                  dipulangkan=len(self.dipulangkan))
         return dibuang
 
     # ------------------------------------------------------------- Fase 1

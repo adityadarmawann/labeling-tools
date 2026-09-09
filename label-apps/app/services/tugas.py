@@ -69,7 +69,7 @@ def _p(ds: Path) -> Path:
 def kosong(pemilik: str = "") -> dict:
     return {"versi": VERSI, "pemilik": pemilik, "anggota": {},
             "tugas": {}, "dataset": [], "undangan": {},
-            "kurasi": False, "warisan": True}
+            "kurasi": False, "jenis_anotasi": "", "warisan": True}
 
 
 def baca(ds: Path, pemilik: str = "") -> dict:
@@ -109,6 +109,10 @@ def baca(ds: Path, pemilik: str = "") -> dict:
             # daftar tanpa penanda. Tanpa aturan ini, projek yang pemiliknya
             # sudah memilih 38 gambar tetap menampilkan seluruh 476-nya.
             "kurasi": bool(d.get("kurasi")) or bool(d.get("dataset")),
+            # "" = belum ditentukan, jadi ditebak dari bentuk yang ada.
+            # Lihat set_jenis() untuk alasan kenapa ini setelan, bukan tebakan
+            # saja.
+            "jenis_anotasi": (d.get("jenis_anotasi") or "").strip().lower(),
             "warisan": False}
 
 
@@ -391,6 +395,54 @@ def masukkan(ds: Path, kunci_daftar: list[str], pemilik: str = "") -> dict:
         _tulis(ds, data)
     log.info("%s gambar masuk dataset di %s", len(baru), Path(ds).name)
     return {"ditambah": len(baru), "total": len(data["dataset"])}
+
+
+JENIS_ANOTASI = ("poligon", "kotak")
+
+
+def set_jenis(ds: Path, jenis: str, pemilik: str = "") -> dict:
+    """
+    Tetapkan format anotasi yang dituju projek ini: "poligon" atau "kotak".
+
+    Kenapa setelan, bukan tebakan semata. Dulu pembuatan versi memutuskannya
+    dengan `any(bentuk bukan rectangle)` atas SELURUH projek, sehingga satu
+    poligon nyasar di antara sepuluh ribu kotak membuat kesepuluh ribu kotak
+    itu ditulis sebagai poligon empat titik -- mask persegi yang mengajari
+    model bahwa objeknya memang berbentuk kotak. Keputusan sebesar itu harus
+    terlihat dan bisa dikoreksi orang, bukan disimpulkan dari satu bentuk.
+
+    "" mengembalikannya ke tebakan otomatis.
+    """
+    j = (jenis or "").strip().lower()
+    if j and j not in JENIS_ANOTASI:
+        raise ValueError(f"jenis anotasi tidak dikenal: {jenis!r}")
+    with _kunci:
+        data = baca(ds, pemilik)
+        if data["jenis_anotasi"] == j:
+            return _tanpa_perubahan(data, {"jenis": j})
+        data["jenis_anotasi"] = j
+        _tulis(ds, data)
+    log.info("jenis anotasi %s -> %r", Path(ds).name, j or "(otomatis)")
+    return {"jenis": j}
+
+
+def jenis_berlaku(data: dict, items: list | None = None) -> str:
+    """
+    Format yang BERLAKU: setelan projek kalau ada, kalau tidak ditebak dari
+    bentuk terbanyak. Tebakannya condong ke "poligon" saat seri, karena
+    menurunkan poligon jadi kotak masih masuk akal sedangkan menaikkan kotak
+    jadi poligon mengarang mask yang tidak pernah digambar siapa pun.
+    """
+    if data.get("jenis_anotasi") in JENIS_ANOTASI:
+        return data["jenis_anotasi"]
+    n_kotak = n_lain = 0
+    for it in items or []:
+        for s in it.get("shapes") or []:
+            if (s.get("type") or "polygon") == "rectangle":
+                n_kotak += 1
+            else:
+                n_lain += 1
+    return "kotak" if n_kotak > n_lain else "poligon"
 
 
 def keluarkan(ds: Path, kunci_daftar: list[str], pemilik: str = "") -> dict:

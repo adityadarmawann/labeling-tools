@@ -495,3 +495,77 @@ def test_dataset_tanpa_daftar_kelas_tidak_kehilangan_objeknya(klien, lingkungan)
     assert "'botol'" in teks and "'kaleng'" in teks, teks
     assert "nc: 2" in teks, teks
     assert objek == 13, f"13 objek dilabeli, {objek} sampai ke versi"
+
+
+# ------------------------------------ jenis anotasi: kotak vs poligon
+def test_satu_poligon_nyasar_tidak_lagi_mengubah_semua_kotak():
+    """
+    Regresi atas kekeliruan yang paling mahal di alur ini.
+
+    Format keluaran dulu ditentukan `any(bentuk bukan rectangle)` atas SELURUH
+    projek. Satu poligon nyasar di antara sepuluh ribu kotak membuat kesepuluh
+    ribu kotak itu ditulis sebagai poligon empat titik: mask persegi yang tidak
+    pernah digambar siapa pun, dan model belajar bahwa objeknya memang
+    berbentuk kotak. Lima bentuk `point`, yang bahkan tidak punya luas, sudah
+    cukup memicunya.
+    """
+    from app.services import tugas
+
+    kotak = [{"shapes": [{"type": "rectangle"}]}] * 10_000
+    poligon = [{"shapes": [{"type": "polygon"}]}] * 10_000
+    belum = {"jenis_anotasi": ""}
+
+    assert tugas.jenis_berlaku(belum, kotak) == "kotak"
+    assert tugas.jenis_berlaku(belum, kotak + poligon[:1]) == "kotak", \
+        "satu poligon nyasar TIDAK boleh membalik sepuluh ribu kotak"
+    assert tugas.jenis_berlaku(belum, poligon + kotak[:1]) == "poligon"
+    assert tugas.jenis_berlaku(belum, [{"shapes": [{"type": "point"}]}] * 5) \
+        == "poligon"
+    # Setelan projek selalu menang atas tebakan.
+    assert tugas.jenis_berlaku({"jenis_anotasi": "kotak"}, poligon) == "kotak"
+    assert tugas.jenis_berlaku({"jenis_anotasi": "poligon"}, kotak) == "poligon"
+
+
+def test_ketidaksesuaian_bentuk_bersifat_asimetris():
+    """
+    Poligon -> kotak itu penurunan yang wajar; kotak -> poligon mengarang mask.
+
+    Karena itu hanya arah kedua yang dianggap tidak sesuai. Menyamakan keduanya
+    akan menandai seluruh dataset deteksi yang sehat sebagai bermasalah.
+    """
+    from app.services.scanner import bentuk_tak_sesuai
+
+    bentuk = [{"type": "polygon"}, {"type": "rectangle"}, {"type": "circle"},
+              {"type": "point"}, {"type": "line"}, {"type": "linestrip"}]
+    assert bentuk_tak_sesuai(bentuk, "kotak") == []
+    tak = {s["type"] for s in bentuk_tak_sesuai(bentuk, "poligon")}
+    assert tak == {"rectangle", "point", "line", "linestrip"}, tak
+    assert bentuk_tak_sesuai(bentuk, "") == [], "tanpa jenis: perilaku lama"
+
+
+def test_bentuk_tak_sesuai_muncul_sebagai_temuan_di_grid(tmp_path):
+    """Pelabel harus melihat alasannya, bukan menemukan gambarnya lenyap."""
+    import cv2
+    import numpy as np
+
+    from app.services import scanner
+
+    d = tmp_path / "campur"
+    d.mkdir()
+    (d / "classes.txt").write_text("botol\n")
+    for i in range(6):
+        cv2.imwrite(str(d / f"g{i}.jpg"), np.zeros((100, 100, 3), np.uint8))
+        sh = ([{"label": "botol", "shape_type": "polygon",
+                "points": [[10, 10], [80, 10], [80, 80], [40, 90], [20, 70],
+                           [12, 40]]}] if i < 5 else
+              [{"label": "botol", "shape_type": "rectangle",
+                "points": [[10, 10], [80, 80]]}])
+        (d / f"g{i}.json").write_text(json.dumps({
+            "version": "0.4.36", "flags": {}, "imagePath": f"g{i}.jpg",
+            "imageData": None, "imageHeight": 100, "imageWidth": 100,
+            "shapes": sh}))
+    items, _ = scanner.scan(d)
+    nakal = [it for it in items if it["img"].name == "g5.jpg"][0]
+    assert any("dataset poligon" in x for x in nakal["issues"]), nakal["issues"]
+    lain = [it for it in items if it["img"].name == "g0.jpg"][0]
+    assert not any("dataset poligon" in x for x in lain["issues"])

@@ -311,6 +311,80 @@ JENIS_BENTUK = {
 # Jumlah sisi saat lingkaran dijadikan poligon untuk luas dan thumbnail.
 SISI_LINGKARAN = 32
 
+# Bentuk yang BISA menjadi mask sungguhan di dataset segmentasi. Lingkaran ikut
+# karena pemekarannya jadi poligon 32 sisi memang mengikuti benda bulat; kotak
+# TIDAK, karena empat titiknya mengarang mask persegi yang tidak pernah
+# digambar siapa pun. Titik, garis, dan garis patah tidak punya luas sama
+# sekali.
+BENTUK_MASK_SAH = ("polygon", "circle")
+
+
+def jenis_projek(src) -> str:
+    """
+    Setelan `jenis_anotasi` projek, dibaca LANGSUNG dari .tugas.json di folder
+    itu. Tidak lewat tugas.baca_projek() karena pemindai tidak tahu di mana
+    akar unggahan berada -- dan untuk membaca satu medan, ia memang tidak perlu
+    tahu.
+    """
+    p = Path(src) / ".tugas.json"
+    if not p.is_file():
+        return ""
+    try:
+        d = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ""
+    j = (d.get("jenis_anotasi") or "").strip().lower() if isinstance(d, dict) else ""
+    return j if j in ("poligon", "kotak") else ""
+
+
+def terapkan_jenis(items: list, jenis: str = "") -> str:
+    """
+    Tambahkan temuan ketidaksesuaian bentuk ke tiap item, kembalikan jenis yang
+    dipakai.
+
+    Dijalankan sebagai pas TERAKHIR karena tebakannya butuh melihat seluruh
+    bentuk lebih dulu: jenis ditentukan bentuk TERBANYAK, bukan bentuk pertama
+    yang kebetulan ditemui.
+    """
+    j = (jenis or "").strip().lower()
+    if j not in ("poligon", "kotak"):
+        n_kotak = sum(1 for it in items for s in it.get("shapes") or []
+                      if (s.get("type") or "polygon") == "rectangle")
+        n_lain = sum(1 for it in items for s in it.get("shapes") or []
+                     if (s.get("type") or "polygon") != "rectangle")
+        j = "kotak" if n_kotak > n_lain else "poligon"
+    if j != "poligon":
+        return j                      # tujuan kotak: tidak ada yang tak sesuai
+    for it in items:
+        tak = bentuk_tak_sesuai(it.get("shapes") or [], j)
+        if not tak:
+            continue
+        pesan = {f"{s.get('type') or 'bentuk'} di dataset poligon" for s in tak}
+        it["issues"] = sorted(set(it.get("issues") or []) | pesan)
+    return j
+
+
+def bentuk_tak_sesuai(shapes, jenis: str) -> list:
+    """
+    Bentuk yang tidak cocok dengan format tujuan dataset.
+
+    Sengaja ASIMETRIS, dan itu inti persoalannya:
+
+      tujuan "kotak"   -> tidak ada yang tidak cocok. Poligon diturunkan jadi
+                          kotak pembungkusnya, dan itu penurunan yang wajar:
+                          tidak ada yang dikarang, hanya ketelitian yang
+                          dilepas.
+      tujuan "poligon" -> kotak, titik, garis, dan garis patah TIDAK cocok.
+                          Menuliskannya sebagai poligon berarti mengarang mask
+                          yang tidak pernah ada, dan model belajar bahwa
+                          objeknya memang berbentuk begitu.
+    """
+    if (jenis or "").strip().lower() != "poligon":
+        return []
+    return [s for s in shapes or []
+            if (s.get("type") or s.get("shape_type") or "polygon")
+            not in BENTUK_MASK_SAH]
+
 
 def lingkaran_ke_poligon(pusat, tepi, n: int = SISI_LINGKARAN):
     """Circle labelme (titik pusat + satu titik di tepi) -> poligon n sisi."""
@@ -544,10 +618,15 @@ def tulis_yolo(tp: Path, bentuk: list[dict], W: int, H: int,
     return len(baris), peringatan
 
 
-def inspect(shapes, W, H, has_ann=False) -> list[str]:
+def inspect(shapes, W, H, has_ann=False, jenis: str = "") -> list[str]:
     if not shapes:
         return ["latar (tanpa objek)"] if has_ann else ["belum dilabeli"]
     out, frame = [], (W or 1) * (H or 1)
+    # Bentuk yang tidak bisa jadi mask di dataset poligon. Dilaporkan sebagai
+    # temuan, BUKAN diperbaiki diam-diam: yang tahu apakah benda itu memang
+    # persegi atau cuma dikotaki buru-buru adalah orang yang melihat fotonya.
+    for s in bentuk_tak_sesuai(shapes, jenis):
+        out.append(f"{s.get('type') or 'bentuk'} di dataset poligon")
     for s in shapes:
         if s["label"] is None:
             out.append("label kosong")
@@ -727,6 +806,7 @@ def scan(src: Path):
     else:
         items, names = _scan_labelme(src)
     items.sort(key=lambda it: (it.get("split", ""), it["img"].name))
+    terapkan_jenis(items, jenis_projek(src))
     return items, names
 
 
