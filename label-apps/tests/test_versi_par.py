@@ -98,6 +98,28 @@ def test_pasangan_min_maks_terbalik_dibetulkan():
     bangun_satu("gamma", {"min": 300, "maks": 10})
 
 
+@pytest.mark.parametrize("oid,kunci", [
+    (oid, k) for oid in olah.KATALOG_AUG
+    for bawah, atas in olah.PASANGAN_PAR
+    if bawah in olah.KATALOG_AUG[oid]["param"]
+    and atas in olah.KATALOG_AUG[oid]["param"]
+    for k in (bawah, atas)])
+def test_menggeser_satu_batang_saja_tidak_membalik_pasangan(oid, kunci):
+    """
+    Popup hanya menulis batang yang DISENTUH, jadi pasangannya sering tidak
+    ikut disebut sama sekali. derau_gauss.min bisa digeser sampai 0,5
+    sementara maks-nya masih di bawaan 0,1, dan yang sampai ke albumentations
+    adalah std_range=(0,5, 0,1) — ValueError, di tengah pembuatan versi yang
+    sudah berjalan berjam-jam.
+
+    Penjaga lamanya hanya menukar kalau KEDUA kunci ada di resep, jadi ia
+    melewatkan justru bentuk yang paling mungkin terjadi.
+    """
+    s = olah.KATALOG_AUG[oid]["param"][kunci]
+    for nilai in (s["min"], s["maks"]):
+        bangun_satu(oid, {kunci: nilai})       # tidak boleh melempar
+
+
 def test_kunci_asing_tidak_dibuang_saring_par():
     """`sisi` dan `n_kelas` dipakai mesin tetapi tidak ditawarkan ke orang."""
     hasil = olah.saring_par(olah.KATALOG_AUG["crop_acak"]["param"],

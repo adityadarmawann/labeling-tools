@@ -1114,12 +1114,22 @@ def saring_par(spec: dict, par: dict) -> dict:
             if nilai not in sah:
                 keluar[kunci] = s["bawaan"]
     for bawah, atas in PASANGAN_PAR:
-        if bawah in keluar and atas in keluar:
-            try:
-                if keluar[bawah] > keluar[atas]:
-                    keluar[bawah], keluar[atas] = keluar[atas], keluar[bawah]
-            except TypeError:
-                pass
+        if bawah not in (spec or {}) or atas not in (spec or {}):
+            continue
+        # Cukup SATU batang yang digeser untuk membalik pasangannya, dan popup
+        # memang hanya menulis batang yang disentuh. derau_gauss.min bisa
+        # sampai 0,5 sementara maks-nya masih di bawaan 0,1; yang sampai ke
+        # albumentations adalah std_range=(0,5, 0,1) dan ia melempar
+        # ValueError — di tengah pembuatan versi yang sudah berjalan berjam-jam.
+        # Karena itu pasangan yang belum disebut diisi bawaannya dulu, bukan
+        # dilewati.
+        keluar.setdefault(bawah, spec[bawah].get("bawaan"))
+        keluar.setdefault(atas, spec[atas].get("bawaan"))
+        try:
+            if keluar[bawah] > keluar[atas]:
+                keluar[bawah], keluar[atas] = keluar[atas], keluar[bawah]
+        except TypeError:
+            pass
     return keluar
 
 
