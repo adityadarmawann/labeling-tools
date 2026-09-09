@@ -181,6 +181,25 @@ class Pekerjaan:
         self._t0 = time.time()
         self._langkah_selesai = 0
         self._langkah_total = 1
+        # Ukuran keluaran preprocessing, kalau Resize menyala. crop_acak wajib
+        # mematuhinya; lihat _pipa().
+        self._sisi = olah.ukuran_keluaran(self.resep)
+        self._pipa_cache: dict[tuple[int, int], object] = {}
+
+    def _pipa(self, img):
+        """
+        Pipeline augmentasi untuk satu gambar.
+
+        Saat Resize menyala seluruh gambar berukuran sama, jadi cache ini
+        berisi tepat satu pipeline. Saat Resize DIMATIKAN ukurannya beragam,
+        dan crop_acak harus mengembalikan tiap gambar ke ukuran ASALNYA —
+        kalau tidak, ia diam-diam menyeragamkan sebagian train ke 640
+        sementara gambar aslinya tetap seperti apa adanya.
+        """
+        sisi = self._sisi or img.shape[:2]
+        if sisi not in self._pipa_cache:
+            self._pipa_cache[sisi] = olah.bangun_pipeline(self.resep, sisi=sisi)
+        return self._pipa_cache[sisi]
 
     # ---------------------------------------------------------- pembantu
     def cek(self):
@@ -261,8 +280,7 @@ class Pekerjaan:
         if n_salin <= 0:
             self.maju("aug", 0, 0)
             return 0
-        pipeline = olah.bangun_pipeline(self.resep)
-        if pipeline is None:
+        if not olah.ada_aug(self.resep):
             self.maju("aug", 0, 0)
             return 0
         sumber = list(self.asli["train"])
@@ -273,6 +291,7 @@ class Pekerjaan:
             img, label = self._muat_hasil("train", stem)
             if img is None:
                 continue
+            pipeline = self._pipa(img)
             for k in range(n_salin):
                 if (jadi + gagal) % 25 == 0:
                     self.maju("aug", jadi + gagal, total, jadi=jadi, gagal=gagal)
@@ -636,13 +655,18 @@ class Pekerjaan:
             sasaran = int(np.percentile(nilai, 75))
         rem = int(par.get("maks_per_kelas") or max(50, len(self.asli["train"]) // 2))
 
-        pipeline = olah.bangun_pipeline(self.resep)
+        # Fase ini menambal kekurangan dengan MENGAUGMENTASI. Tanpa satu pun
+        # transform yang menyala ia tidak bisa menghasilkan apa-apa, dan
+        # berputar tanpa hasil hanya membuat bilah kemajuan berbohong.
+        if not olah.ada_aug(self.resep):
+            self.maju("kelas", 0, 0)
+            return 0
         rencana = {c: min(max(sasaran - n, 0), rem) for c, n in hitung.items()}
         total = sum(rencana.values())
         jadi = 0
         sudah = 0
         for c, butuh in rencana.items():
-            if butuh <= 0 or not berkas_kelas[c] or pipeline is None:
+            if butuh <= 0 or not berkas_kelas[c]:
                 continue
             srcs = berkas_kelas[c]
             dibuat_obj = 0
@@ -659,7 +683,7 @@ class Pekerjaan:
                 if img is None or not label:
                     jaga += 1
                     continue
-                hasil = self._coba_aug(img, label, pipeline)
+                hasil = self._coba_aug(img, label, self._pipa(img))
                 if hasil is None:
                     jaga += 1
                     continue
@@ -708,10 +732,15 @@ class Pekerjaan:
             self.maju("neg", 0, 0, porsi=round(porsi0, 4))
             return 0
 
-        pipeline = olah.bangun_pipeline(self.resep)
+        # Porsi dipulihkan dengan MENGAUGMENTASI sampel negatif yang sudah
+        # ada; tanpa satu pun transform yang menyala tidak ada yang bisa
+        # dibuat, dan memutar gelangnya hanya menghabiskan waktu.
+        if not olah.ada_aug(self.resep):
+            self.maju("neg", 0, 0, porsi_asal=round(porsi0, 4))
+            return 0
         jadi = jaga = 0
         i = 0
-        while jadi < butuh and jaga < butuh * 4 and pipeline is not None:
+        while jadi < butuh and jaga < butuh * 4:
             self.cek()
             if (jadi + jaga) % 20 == 0:
                 self.maju("neg", jadi, butuh, porsi_asal=round(porsi0, 4))
@@ -721,7 +750,7 @@ class Pekerjaan:
             if img is None:
                 jaga += 1
                 continue
-            hasil = olah.augmentasi_sekali(img, [], pipeline)
+            hasil = olah.augmentasi_sekali(img, [], self._pipa(img))
             if hasil is None:
                 jaga += 1
                 continue

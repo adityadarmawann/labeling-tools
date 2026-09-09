@@ -607,7 +607,7 @@ AUG_V14 = [
     ("derau_iso",   "kamera_derau_iso",      lambda A, p: A.ISONoise(
         color_shift=(0.01, 0.05), intensity=(0.1, 0.5), p=p.get("p", 0.20))),
     ("crop_acak",   "geo_crop_acak",         lambda A, p: A.RandomResizedCrop(
-        size=(p.get("sisi", TARGET_SIZE), p.get("sisi", TARGET_SIZE)),
+        size=p.get("sisi_hw") or (TARGET_SIZE, TARGET_SIZE),
         scale=(p.get("skala_min", 0.80), 1.0), ratio=(0.9, 1.1), p=p.get("p", 0.4))),
     ("affine",      "geo_affine",            lambda A, p: A.Affine(
         scale=(p.get("skala_min", 0.72), p.get("skala_maks", 1.10)),
@@ -638,22 +638,72 @@ AUG_TAMBAHAN = [
 _TAMBAHAN = dict(AUG_TAMBAHAN)
 
 
-def bangun_pipeline(resep: dict):
+def ukuran_keluaran(resep: dict) -> tuple[int, int] | None:
+    """
+    (H, W) yang dihasilkan preprocessing, atau None kalau Resize dimatikan.
+
+    Dipakai crop_acak, yang harus mengeluarkan gambar seukuran gambar
+    masuknya. Tanpa ini ia memakai TARGET_SIZE mati: dataset yang
+    dipreprocessing ke 416 mendapat sebagian train 640 sementara valid dan
+    test tetap 416, dan tidak ada satu pun pesan yang menyebutnya.
+    """
+    par = ((resep or {}).get("pra") or {}).get("resize")
+    aktif = (KATALOG_PRA["resize"]["bawaan_aktif"] if par is None
+             else par.get("aktif", True))
+    if not aktif:
+        return None
+    par = par or {}
+    return (int(par.get("tinggi") or TARGET_SIZE),
+            int(par.get("lebar") or TARGET_SIZE))
+
+
+def ada_aug(resep: dict) -> bool:
+    """
+    Apakah resep menyalakan setidaknya satu transform augmentasi?
+
+    Menjawab dengan aturan yang sama persis dengan bangun_pipeline, tetapi
+    TANPA mengimpor albumentations. Dibutuhkan sejak pipeline disusun per
+    gambar: yang memutuskan sebuah fase berjalan atau tidak tidak lagi bisa
+    menunggu sampai ada gambar untuk menyusunnya.
+    """
+    aug = (resep or {}).get("aug") or {}
+    for oid, _saklar, _bangun in AUG_V14:
+        par = aug.get(oid)
+        if par is None or par.get("aktif", True):
+            return True
+    for oid, _bangun in AUG_TAMBAHAN:
+        par = aug.get(oid)
+        if par and par.get("aktif"):
+            return True
+    return False
+
+
+def bangun_pipeline(resep: dict, sisi: tuple[int, int] | None = None):
     """
     Susun albumentations.Compose dari resep.
 
     `resep["aug"]` = {id: {aktif: bool, ...param}}. Yang tidak disebut memakai
     bawaan v14 dan dianggap AKTIF — sama seperti panel SAKLAR v14 yang seluruh
     bawaannya True.
+
+    `sisi` (H, W) adalah ukuran keluaran yang harus dipatuhi crop_acak. Kalau
+    tidak disebut, diambil dari langkah Resize di resepnya.
     """
     A = _A()
     aug = (resep or {}).get("aug") or {}
+    if sisi is None:
+        sisi = ukuran_keluaran(resep)
     urut = []
     for oid, _saklar, bangun in AUG_V14:
         par = aug.get(oid)
         if par is not None and not par.get("aktif", True):
             continue
-        urut.append(bangun(A, saring_par(KATALOG_AUG[oid]["param"], par or {})))
+        p = saring_par(KATALOG_AUG[oid]["param"], par or {})
+        if oid == "crop_acak" and sisi:
+            # Lewat parameter, bukan konstanta: satu-satunya yang boleh
+            # menentukan ukuran keluaran adalah langkah Resize.
+            p["sisi_hw"] = (int(sisi[0]), int(sisi[1]))
+        urut.append(bangun(A, p))
     for oid, bangun in AUG_TAMBAHAN:
         par = aug.get(oid)
         if not par or not par.get("aktif"):
@@ -837,9 +887,12 @@ _KET_TAMBAHAN = {
 # v14", jadi kalau keduanya berbeda pengakuan itu bohong. tests/test_versi_par
 # membandingkan keduanya baris demi baris supaya tidak bisa menyimpang diam-diam.
 #
-# `sisi` pada crop_acak sengaja TIDAK dibuka: ia harus mengikuti ukuran resize,
-# dan dua tempat mengatur ukuran keluaran adalah cara termudah menghasilkan
-# dataset yang gambarnya tidak seragam.
+# `sisi` pada crop_acak sengaja TIDAK dibuka sebagai parameter yang bisa
+# disetel orang: ia harus mengikuti ukuran resize, dan dua tempat mengatur
+# ukuran keluaran adalah cara termudah menghasilkan dataset yang gambarnya
+# tidak seragam. Yang menyalurkannya adalah bangun_pipeline lewat `sisi_hw`;
+# sebelum itu ada, niat ini cuma tertulis di komentar dan crop_acak diam-diam
+# memakai 640 pada dataset yang dipreprocessing ke ukuran lain.
 
 # Peluang tiap transform dipakai pada satu salinan (albumentations `p=`).
 _PELUANG = {
