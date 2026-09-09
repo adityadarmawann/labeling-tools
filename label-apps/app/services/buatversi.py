@@ -34,7 +34,7 @@ import cv2
 import numpy as np
 
 from ..log import catat
-from . import export, olah
+from . import export, olah, scanner
 
 log = catat("labelapp.buatversi")
 
@@ -947,10 +947,17 @@ def items_hasil(ds: Path, nomor: int):
             continue
         for ip in sorted(gdir.glob("*.jpg")):
             lp = d / split / "labels" / f"{ip.stem}.txt"
-            dim = cv2.imread(str(ip), cv2.IMREAD_REDUCED_COLOR_8)
-            if dim is None:
+            # Dari HEADER, bukan ditebak. Dulu di sini dipakai
+            # IMREAD_REDUCED_COLOR_8 lalu dikalikan 8, dan pembulatan
+            # OpenCV membuatnya meleset untuk tiap ukuran yang bukan
+            # kelipatan 8: gambar 417 px dilaporkan 424. Angka itu masuk apa
+            # adanya ke `width`/`height` COCO dan <size> VOC, jadi anotasinya
+            # tidak lagi sejajar dengan gambarnya. Header sekaligus lebih
+            # murah daripada mendekode piksel yang tidak dipakai.
+            hw = scanner.dimensi(ip)
+            if hw is None:
                 continue
-            H, W = dim.shape[0] * 8, dim.shape[1] * 8
+            H, W = hw
             bentuk = []
             for c, poli in olah.baca_label(lp):
                 pts = np.array([[poli[i] * W, poli[i + 1] * H]
