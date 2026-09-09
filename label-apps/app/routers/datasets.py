@@ -113,8 +113,27 @@ async def pick_dir(sess: Session = Depends(current_session_api),
     return {"ok": True, "dir": str(d), "n": n}
 
 
+def _rencana(sess, belah: str):
+    """
+    Rencana split anti-bocor yang BERLAKU untuk permintaan ini.
+
+    Dulu selalu `sess.rencana_split`, dan itu membuat radio "Acak cepat /
+    Anti-bocor" di wizard tidak mengendalikan apa pun: nilainya tidak pernah
+    dibaca siapa pun, sementara yang benar-benar menentukan adalah ada atau
+    tidaknya rencana di sesi. Orang bisa memilih Anti-bocor, menyelesaikan
+    wizard, dan mendapat pembagian berdasarkan nama berkas tanpa satu pun
+    peringatan -- persis kebalikan dari yang ia pilih.
+
+    `belah` sengaja hanya mengenali "cepat" secara eksplisit. Permintaan lama
+    yang tidak mengirim parameter ini berperilaku persis seperti sebelumnya.
+    """
+    if (belah or "").strip().lower() == "cepat":
+        return None
+    return sess.rencana_split
+
+
 @router.post("/api/versi/buat")
-async def versi_buat(split: str = "", catatan: str = "",
+async def versi_buat(split: str = "", catatan: str = "", belah: str = "",
                      sess: Session = Depends(current_session_api),
                      settings: Settings = Depends(get_settings)):
     """
@@ -157,7 +176,7 @@ async def versi_buat(split: str = "", catatan: str = "",
             "dataset, bukan dari seluruh gambar yang diunggah.")}
 
     rasio = split or "8:1:1"
-    rencana = sess.rencana_split
+    rencana = _rencana(sess, belah)
     bagian = await asyncio.to_thread(export.bagi_split, items,
                                      export.baca_rasio(rasio), rencana)
     peta = {it["img"].name: s for s, daftar in bagian.items() for it in daftar}
@@ -217,7 +236,7 @@ async def versi_katalog(sess: Session = Depends(current_session_api)):
 
 
 @router.post("/api/versi/estimasi")
-async def versi_estimasi(request: Request, split: str = "",
+async def versi_estimasi(request: Request, split: str = "", belah: str = "",
                          sess: Session = Depends(current_session_api),
                          settings: Settings = Depends(get_settings)):
     """Berapa gambar dan berapa besar, SEBELUM apa pun ditulis."""
@@ -227,7 +246,7 @@ async def versi_estimasi(request: Request, split: str = "",
     items, names, _ = bahan
     resep = (await bodi_json(request)).get("resep") or {}
     rasio = split or "8:1:1"
-    rencana = sess.rencana_split
+    rencana = _rencana(sess, belah)
     bagian = await asyncio.to_thread(export.bagi_split, items,
                                      export.baca_rasio(rasio), rencana)
     peta = {it["img"].name: s for s, d in bagian.items() for it in d}
@@ -244,6 +263,7 @@ async def versi_estimasi(request: Request, split: str = "",
 
 @router.post("/api/versi/mulai")
 async def versi_mulai(request: Request, split: str = "", catatan: str = "",
+                      belah: str = "",
                       sess: Session = Depends(current_session_api),
                       settings: Settings = Depends(get_settings)):
     if buatversi.kemajuan(sess.user).get("jalan"):
@@ -254,7 +274,7 @@ async def versi_mulai(request: Request, split: str = "", catatan: str = "",
     items, names, hitung = bahan
     resep = (await bodi_json(request)).get("resep") or {}
     rasio = split or "8:1:1"
-    rencana = sess.rencana_split
+    rencana = _rencana(sess, belah)
     bagian = await asyncio.to_thread(export.bagi_split, items,
                                      export.baca_rasio(rasio), rencana)
     peta = {it["img"].name: s for s, d in bagian.items() for it in d}
@@ -389,6 +409,7 @@ async def versi_hapus(nomor: int = 0,
 
 @router.get("/api/ekspor/ringkasan")
 async def ekspor_ringkasan(format: str = "yolo-seg", split: str = "",
+                           belah: str = "",
                            sess: Session = Depends(current_session_api),
                            settings: Settings = Depends(get_settings)):
     """Angka yang ditampilkan sebelum orang menekan unduh."""
@@ -416,7 +437,7 @@ async def ekspor_ringkasan(format: str = "yolo-seg", split: str = "",
     # tugas.saring_dataset; projek yang belum pernah dibagi tidak terpengaruh.
     items, hitung = await asyncio.to_thread(tugas.saring_dataset, items,
                                             sess.src, settings.uploads_root)
-    rencana = sess.rencana_split
+    rencana = _rencana(sess, belah)
     r = await asyncio.to_thread(export.ringkasan, items, format == "yolo-seg",
                                 export.baca_rasio(split), names, rencana)
     return {"ok": True, "format": export.FORMAT[format],
@@ -430,7 +451,7 @@ async def ekspor_ringkasan(format: str = "yolo-seg", split: str = "",
 
 @router.get("/ekspor")
 async def ekspor(format: str = "yolo-seg", gambar: int = 1, split: str = "",
-                 tanda: str = "", nomor: int = 0,
+                 tanda: str = "", nomor: int = 0, belah: str = "",
                  sess: Session = Depends(current_session),
                  settings: Settings = Depends(get_settings)):
     """
@@ -458,7 +479,7 @@ async def ekspor(format: str = "yolo-seg", gambar: int = 1, split: str = "",
     # dibalik, gambar yang dikeluarkan dari dataset sesudah versinya dibuat
     # ikut hilang dari versi itu: kartunya bilang 4 gambar, ZIP-nya berisi 2,
     # dan versi yang isinya bisa berubah bukan versi.
-    rencana_dipakai = sess.rencana_split
+    rencana_dipakai = _rencana(sess, belah)
     if nomor:
         v = await asyncio.to_thread(versi.baca, sess.src, nomor)
         if v is None:

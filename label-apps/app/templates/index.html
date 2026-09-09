@@ -395,7 +395,7 @@
   {%- set p = it | imgpath %}
   {%- set sev = severity(it) %}
   <div class="card" data-s="{{ sev }}"><span class="rail"></span>
-    <a href="/view?path={{ p }}"><img loading="lazy" src="/thumb?path={{ p }}&s=320"></a>
+    <a href="/view?path={{ p }}" aria-label="Lihat {{ p.split('/')[-1] }}"><img loading="lazy" src="/thumb?path={{ p }}&s=320" alt="{{ p.split('/')[-1] }}"></a>
     <div class="meta">
       <div class="fn mono">{%- if it.split %}<span class="split">{{ it.split }}</span>{% endif %}{{ it.img.name }}</div>
       {%- set tg = tag_dari.get(it | id) %}

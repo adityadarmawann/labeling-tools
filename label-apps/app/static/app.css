@@ -2310,6 +2310,13 @@ body.berprojek main{display:flex;gap:0;padding:0;align-items:stretch}
 .kl input.kl-nama:focus{outline:2px solid var(--ok);outline-offset:-1px}
 /* Perubahan yang tidak berlaku selama saklarnya mati harus dikatakan sebelum
    orang mengaturnya, bukan sesudah versinya jadi tanpa perubahan apa pun. */
+/* Peringatan saat Anti-bocor dipilih tetapi pemeriksaannya belum dijalankan.
+   Warnanya peringatan, bukan bahaya: tidak ada yang rusak, orangnya cuma
+   belum menekan tombol yang membuat pilihannya berlaku. */
+.wz-belah-pesan{margin:8px 0 0;padding:9px 11px;border-radius:8px;
+  background:var(--bahaya-lembut);color:var(--ink-dim);font-size:11.5px;
+  line-height:1.45}
+
 .kl-mati{margin:12px 0 4px;padding:9px 11px;border-radius:8px;
   background:var(--bahaya-lembut);color:var(--ink-dim);font-size:11.5px;
   line-height:1.45}

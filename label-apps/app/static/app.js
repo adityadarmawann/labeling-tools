@@ -1089,6 +1089,7 @@ const Progres = (() => {
       return `
       <div class="pcard${p.dibuka ? ' dibuka' : ''}">
         <a class="psampul${p.sampul ? '' : ' kosong'}" href="/?ds=${ds}"
+           aria-label="Buka projek ${p.nama}"
            tabindex="-1" aria-hidden="true">
           ${p.sampul ? `<img loading="lazy" alt="" src="/api/projek/sampul?path=`
                        + `${encodeURIComponent(p.sampul)}">` : '\u25a4'}
@@ -1521,7 +1522,8 @@ const Progres = (() => {
       return `
       <div class="pcard${p.dibuka ? ' dibuka' : ''}">
         <a class="psampul${p.sampul ? '' : ' kosong'}"
-           href="/?ds=${encodeURIComponent(p.ds)}" tabindex="-1">${
+           href="/?ds=${encodeURIComponent(p.ds)}" tabindex="-1"
+           aria-hidden="true">${
           p.sampul ? `<img src="/api/projek/sampul?path=${encodeURIComponent(p.sampul)}" alt="">`
                    : '▤'}</a>
         <div class="pisi">

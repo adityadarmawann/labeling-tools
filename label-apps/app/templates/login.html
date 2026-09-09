@@ -10,11 +10,11 @@
     <p class="sub">Masuk dengan akun tim.</p>
 
     <label class="form-lbl" for="u">Nama akun</label>
-    <input id="u" name="user" type="text" autocomplete="username" autofocus
+    <input id="u" aria-label="Nama akun" name="user" type="text" autocomplete="username" autofocus
            value="{{ akun }}">
 
     <label class="form-lbl" for="p">Password</label>
-    <input id="p" name="pw" type="password" autocomplete="current-password">
+    <input id="p" aria-label="Kata sandi" name="pw" type="password" autocomplete="current-password">
 
     <button class="cta" type="submit">Masuk</button>
     {% if error %}<p class="bad">{{ error }}</p>{% endif %}

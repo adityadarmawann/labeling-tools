@@ -226,6 +226,39 @@
   const rasioTeks = () =>
     `${el('wz-train').value},${el('wz-valid').value},${el('wz-test').value}`;
 
+  // Cara membelah yang DIPILIH orang. Sebelumnya nilai radio ini tidak pernah
+  // dibaca siapa pun: yang menentukan hanyalah ada atau tidaknya rencana di
+  // sesi, sehingga memilih "Anti-bocor" tanpa menjalankan splittingnya tetap
+  // menghasilkan pembagian berdasarkan nama berkas -- tanpa peringatan.
+  const belahMode = () => (document.querySelector(
+    'input[name="wz-belah"]:checked') || {}).value || 'cepat';
+
+  // Rencana anti-bocor hanya ada sesudah tombolnya dijalankan di sesi ini.
+  let adaRencana = false;
+
+  function segarkanBelah() {
+    const bocor = belahMode() === 'bocor';
+    const pr = el('wz-belah-pesan');
+    if (pr) {
+      pr.hidden = !(bocor && !adaRencana);
+      pr.textContent = 'Anti-bocor dipilih, tetapi pemeriksaan isi gambarnya '
+        + 'belum dijalankan. Tekan "Jalankan splitting anti-bocor" di bawah; '
+        + 'tanpa itu pembagiannya tetap memakai nama berkas.';
+    }
+    const lanjut = document.querySelector(
+      '[data-langkah="2"] [data-lanjut]');
+    if (lanjut) lanjut.disabled = bocor && !adaRencana;
+  }
+
+  document.querySelectorAll('input[name="wz-belah"]').forEach((r) => {
+    r.addEventListener('change', () => {
+      segarkanBelah();
+      // Angka perkiraan ikut berubah, jadi jangan biarkan yang lama terbaca
+      // seolah masih berlaku.
+      if (sumber) hitungPerkiraan().catch(() => {});
+    });
+  });
+
   function gambarSplit() {
     if (!sumber) return;
     const a = ['wz-train', 'wz-valid', 'wz-test'].map((i) => Number(el(i).value) || 0);
@@ -262,6 +295,8 @@
           `${r.n_sesi} sesi · terbesar ${(r.grup_terbesar_pct * 100 || 0).toFixed(1)}%` +
           (r.peringatan.length ? ` · ${r.peringatan.join(' · ')}` : '');
         document.querySelector('input[name="wz-belah"][value="bocor"]').checked = true;
+        adaRencana = true;
+        segarkanBelah();
       } else {
         pr.gagal((r && r.error) || 'gagal');
       }
@@ -757,7 +792,8 @@
   }
 
   const kirimResep = (url) => fetch(
-    `${url}?split=${encodeURIComponent(rasioTeks())}`,
+    `${url}?split=${encodeURIComponent(rasioTeks())}`
+    + `&belah=${encodeURIComponent(belahMode())}`,
     { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ resep: kumpulkanResep() }) })
     .then((r) => r.json()).catch(() => null);
@@ -775,6 +811,9 @@
     el('wz-perkira').textContent = 'menghitung perkiraan…';
     const r = await kirimResep('/api/versi/estimasi');
     if (!r || !r.ok) { el('wz-perkira').textContent = (r && r.error) || 'gagal'; return; }
+    // Sumber kebenarannya server, bukan ingatan klien: sesi bisa saja sudah
+    // punya rencana dari kunjungan sebelumnya di tab yang sama.
+    if (belahMode() === 'bocor') { adaRencana = !!r.berencana; segarkanBelah(); }
     // Sama seperti panel ekspor: rasio yang tidak terbaca tetap dipakai
     // sebagai bawaan, tetapi dikatakan di sebelah angka yang terpengaruh.
     const keluhan = r.rasio_pesan
@@ -793,7 +832,8 @@
   el('wz-buat').onclick = async () => {
     const c = encodeURIComponent(el('wz-catatan').value || '');
     const r = await fetch(
-      `/api/versi/mulai?split=${encodeURIComponent(rasioTeks())}&catatan=${c}`,
+      `/api/versi/mulai?split=${encodeURIComponent(rasioTeks())}&catatan=${c}`
+      + `&belah=${encodeURIComponent(belahMode())}`,
       { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ resep: kumpulkanResep() }) })
       .then((x) => x.json()).catch(() => null);

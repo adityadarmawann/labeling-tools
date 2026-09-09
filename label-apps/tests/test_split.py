@@ -649,3 +649,37 @@ def test_unduhan_menandai_balasannya_supaya_bisa_ditunggu(klien, lingkungan,
     # tanpa tanda, tidak ada cookie yang ditinggalkan
     r2 = klien.get("/ekspor?format=yolo-seg")
     assert "unduh_siap" not in r2.headers.get("set-cookie", "")
+
+
+# ------------------------------------------------- pilihan cara membelah
+def test_belah_cepat_mengabaikan_rencana_anti_bocor(klien, lingkungan):
+    """
+    Radio "Acak cepat" harus benar-benar mengabaikan rencana yang ada.
+
+    Sebelum ini, nilai radionya tidak pernah dibaca siapa pun: yang menentukan
+    hanyalah ada atau tidaknya rencana di sesi. Orang yang sudah menjalankan
+    splitting anti-bocor lalu berpindah ke "Acak cepat" tetap mendapat
+    pembagian anti-bocor, dan sebaliknya -- pilihan yang tidak memilih apa pun.
+    """
+    from app.routers.datasets import _rencana
+
+    class Sesi:
+        rencana_split = {"g00.jpg": "train"}
+
+    s = Sesi()
+    assert _rencana(s, "cepat") is None
+    assert _rencana(s, "CEPAT ") is None, "harus tahan spasi dan huruf besar"
+    assert _rencana(s, "bocor") is s.rencana_split
+    # Permintaan lama tidak mengirim parameter ini sama sekali; perilakunya
+    # tidak boleh berubah.
+    assert _rencana(s, "") is s.rencana_split
+    assert _rencana(s, None) is s.rencana_split
+
+
+def test_rute_versi_menerima_parameter_belah(klien, lingkungan):
+    """Keempat rute yang memakai rencana harus menerima `belah`."""
+    import inspect
+    from app.routers import datasets as d
+
+    for fn in (d.versi_buat, d.versi_estimasi, d.versi_mulai, d.ekspor):
+        assert "belah" in inspect.signature(fn).parameters, fn.__name__

@@ -72,12 +72,14 @@
               <input type="radio" name="wz-belah" value="cepat" checked>
               <span><b>Acak cepat</b>, berdasarkan nama berkas. Seketika.</span></label>
             <label class="wz-pilihan">
-              <input type="radio" name="wz-belah" value="bocor">
+              <input type="radio" name="wz-belah" value="bocor"
+                     aria-describedby="wz-belah-pesan">
               <span><b>Anti-bocor</b>, kelompokkan per sesi pemotretan lalu
                 periksa isi tiap gambar, supaya foto yang sama tidak masuk
                 train dan valid sekaligus. Perlu beberapa menit.</span></label>
           </div>
-          <div class="jalur-status" id="wz-bocor-jalur"></div>
+          <p class="wz-belah-pesan" id="wz-belah-pesan" hidden></p>
+            <div class="jalur-status" id="wz-bocor-jalur"></div>
           <p class="menu-catatan" id="wz-bocor-hasil"></p>
           {#- Aksi sekunder langkah ini duduk di UJUNG KANAN baris tombol,
               bukan tercecer di atasnya: satu baris tombol per langkah, dan
