@@ -872,31 +872,46 @@ def perkirakan(items: list[dict], names: dict, resep: dict, peta: dict) -> dict:
 
     n = sum(n_split.values())
     tambah = 0
-    if volume.get("per_gambar", 1) and (resep.get("aug") is not False):
+    # Tiga fase di bawah menambah gambar dengan MENGAUGMENTASI, jadi semuanya
+    # ikut mati kalau seluruh transform dimatikan di langkah Augmentasi.
+    # Pemeriksaan lama berbunyi `resep.get("aug") is not False`, dan wizard
+    # tidak pernah mengirim False — ia mengirim dict berisi saklar yang semua
+    # matinya. Akibatnya perkiraan menjanjikan puluhan gambar yang tidak
+    # pernah ditulis. crop_zoom dan balans_skala TIDAK ikut: keduanya memakai
+    # potong/zoom/skala sendiri, bukan pipeline albumentations.
+    punya_aug = olah.ada_aug(resep)
+    if volume.get("per_gambar", 1) and punya_aug:
         tambah += (train_obj + train_neg) * int(volume.get("per_gambar", 1))
     if (fase.get("crop_zoom") or {}).get("aktif", True):
         tambah += int(train_obj * float((fase.get("crop_zoom") or {}).get("porsi", 0.20)))
     if (fase.get("balans_skala") or {}).get("aktif", True):
         p = fase.get("balans_skala") or {}
         tambah += train_obj * (int(p.get("sapu_kecil", 2)) + int(p.get("sapu_besar", 1)))
-    if (fase.get("balans_kelas") or {}).get("aktif", True) and len(per_kelas) > 1:
+    if (fase.get("balans_kelas") or {}).get("aktif", True) and len(per_kelas) > 1 \
+            and punya_aug:
         nilai = sorted(per_kelas.values())
         sasaran = int(np.percentile(nilai, 75))
         # Dikalikan lipatan fase sebelumnya: kekurangan dihitung dari keadaan
         # SESUDAH fase-fase itu, bukan dari gambar asli.
         lipat = (n + tambah) / max(n, 1)
         tambah += int(sum(max(sasaran - v, 0) for v in per_kelas.values()) * lipat)
-    if (fase.get("porsi_negatif") or {}).get("aktif", True) and train_neg:
+    if (fase.get("porsi_negatif") or {}).get("aktif", True) and train_neg and punya_aug:
         porsi0 = train_neg / max(train_obj + train_neg, 1)
         pos_akhir = (train_obj / max(train_obj + train_neg, 1)) * (n + tambah)
         tambah += max(0, int(porsi0 * pos_akhir / max(1 - porsi0, 1e-9)) - train_neg)
 
     total = n + tambah
-    sisi = int(((pra.get("resize") or {}).get("lebar")) or olah.TARGET_SIZE)
+    # Lewat ukuran_keluaran, bukan membaca `lebar` mentah: resize yang
+    # DIMATIKAN tetapi masih menyimpan lebar 416 dulu ikut terhitung 416.
+    sisi_hw = olah.ukuran_keluaran(resep)
+    sisi = sisi_hw[1] if sisi_hw else olah.TARGET_SIZE
     # ~70 KB untuk JPEG 640x640 mutu 92; diskalakan kuadratik terhadap sisi.
     byte = int(total * 70_000 * (sisi / 640.0) ** 2)
     return {"n_sumber": n, "n": total, "tambahan": tambah,
             "jumlah": n_split, "byte": byte,
+            # Supaya langkah Buat bisa mengatakannya, bukan membiarkan orang
+            # menemukan sendiri bahwa tiga fase yang tampak menyala diam saja.
+            "ada_aug": punya_aug,
             "objek_sumber": sum(per_kelas.values()),
             "kelas": len(per_kelas),
             # Nama DAN indeksnya. Popup Modify Classes memakai indeks (itu yang

@@ -818,7 +818,15 @@
     // sebagai bawaan, tetapi dikatakan di sebelah angka yang terpengaruh.
     const keluhan = r.rasio_pesan
       ? `<span class="split-warn">${r.rasio_pesan}</span><br>` : '';
-    el('wz-perkira').innerHTML = keluhan +
+    // Tiga fase penambah menumpang pipeline augmentasi. Kalau seluruh
+    // transform dimatikan di langkah 4, ketiganya tidak menghasilkan apa pun
+    // — sementara sakelarnya di sana tetap tampak menyala dan tidak
+    // menceritakan itu kepada siapa pun.
+    const matiAug = r.ada_aug === false
+      ? '<span class="split-warn">Semua transform augmentasi dimatikan, jadi '
+        + 'Salinan per gambar, Seimbangkan jumlah kelas, dan Pulihkan porsi '
+        + 'sampel negatif ikut tidak berjalan.</span><br>' : '';
+    el('wz-perkira').innerHTML = keluhan + matiAug +
       `<b>${r.n.toLocaleString('id')}</b> gambar diperkirakan ` +
       `(${r.n_sumber.toLocaleString('id')} sumber + ${r.tambahan.toLocaleString('id')} hasil), ` +
       `sekitar <b>${mb(r.byte)}</b> di disk.` +
