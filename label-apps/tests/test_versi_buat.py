@@ -82,7 +82,16 @@ def test_katalog_memisahkan_bawaan_v14_dari_tambahan(klien, lingkungan):
     pra_default = [i for i, v in k["pra"].items() if v["kelompok"] == "default"]
     aug_default = [i for i, v in k["aug"].items() if v["kelompok"] == "default"]
     assert "resize" in pra_default and "periksa_label" in pra_default
-    assert len(aug_default) == 16, "Fase 1 v14 punya 16 transform"
+    # 19 = 16 transform Fase 1 v14, ditambah tiga saklar yang JUGA terdaftar di
+    # panel v14 tetapi di sana cuma varian Fase 5: vignette, turun-naik
+    # resolusi, dan artefak JPEG. Ketiganya tidak pernah menghasilkan satu
+    # berkas pun di v14 (PHASE5_VARIANTS_PER_RESULT=1 membuat jumlah varian
+    # tambahan nol), jadi di sini mereka jadi transform yang berdiri sendiri.
+    # Tetap kelompok "default" karena asalnya memang saklar v14, bukan tambahan
+    # gaya Roboflow.
+    assert len(aug_default) == 19, sorted(aug_default)
+    for i in ("vignette", "downscale", "artefak_jpeg"):
+        assert i in aug_default, i
     assert all(v.get("saklar_v14") for i, v in k["aug"].items()
                if v["kelompok"] == "default")
     # Tambahan bawaannya MATI: menyalakannya keputusan orang, bukan bawaan.

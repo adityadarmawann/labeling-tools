@@ -15,6 +15,9 @@ antarmukanya:
      dibetulkan, supaya albumentations tidak melempar di tengah pembuatan
      versi yang sudah berjalan setengah jam.
 """
+import random
+
+import cv2
 import numpy as np
 import pytest
 
@@ -35,8 +38,20 @@ def bangun_satu(oid: str, par: dict):
 
 
 def sidik(t) -> dict:
-    """Sidik jari transform: seluruh argumen yang benar-benar dipakainya."""
-    return {"kelas": type(t).__name__, "p": t.p, **t.get_transform_init_args()}
+    """Sidik jari transform: seluruh argumen yang benar-benar dipakainya.
+
+    A.Lambda perlu penanganan sendiri. Argumen initnya cuma nama dan fungsi,
+    jadi dua Lambda dengan setelan yang jauh berbeda punya sidik yang sama
+    persis -- dan penjaga di bawah, yang memastikan tiap batang geser benar-
+    benar tersambung, akan lolos tanpa menguji apa pun. Setelannya ditempelkan
+    ke fungsinya di olah.py justru untuk bisa dibaca di sini.
+    """
+    dasar = {"kelas": type(t).__name__, "p": t.p, **t.get_transform_init_args()}
+    # albumentations menyimpan fungsinya di custom_apply_fns, bukan di .image.
+    fn = (getattr(t, "custom_apply_fns", None) or {}).get("image")
+    if getattr(fn, "setelan", None) is not None:
+        dasar["setelan"] = fn.setelan
+    return dasar
 
 
 def bawaan(oid: str) -> dict:
@@ -173,3 +188,99 @@ def test_resize_menolak_ukuran_liar_tanpa_menggagalkan_versi():
     resep = {"pra": {"resize": {"aktif": True, "lebar": 99_999, "tinggi": 0}}}
     keluar, _ = olah.terapkan_pra(img, [], resep)
     assert keluar.shape[0] == 64 and keluar.shape[1] == 2048
+
+
+# ============================================================
+# TIGA SAKLAR v14 YANG DULU CUMA ADA DI KOMENTAR
+# ============================================================
+#
+# `cahaya_vignette`, `kamera_downscale` dan `kamera_artefak_jpeg` terdaftar di
+# panel saklar v14 tetapi tidak pernah menghasilkan satu berkas pun di sana:
+# ketiganya varian Fase 5, dan bawaan PHASE5_VARIANTS_PER_RESULT=1 membuat
+# jumlah varian tambahan nol. Di HIGOLAB komentarnya sempat menyatakan
+# ketiganya "ADA dan benar-benar bekerja" padahal tidak satu pun terpasang.
+#
+# Karena itu yang diuji di sini BUKAN bahwa transformnya terbangun -- itu
+# sudah dijaga tes di atas -- melainkan bahwa piksel gambarnya benar-benar
+# berubah ke arah yang dimaksud, dan bahwa menggeser angkanya mengubah
+# seberapa jauh. Sebuah saklar yang menyala tanpa mengubah apa pun persis
+# itulah kekeliruan yang mau dicegah.
+
+def _sendiri(oid: str, par: dict):
+    """Pipeline yang HANYA menyalakan satu augmentasi.
+
+    Augmentasi v14 bawaannya AKTIF semua, jadi tanpa mematikan sisanya yang
+    terukur adalah gabungan flip, rotasi dan pergeseran warna -- bukan operasi
+    yang sedang diperiksa.
+    """
+    aug = {o: {"aktif": False} for o, _s, _b in olah.AUG_V14}
+    aug[oid] = {"aktif": True, "p": 1.0, **par}
+    return olah.bangun_pipeline({"aug": aug})
+
+
+def _tekstur(n=512):
+    rng = np.random.default_rng(1)
+    return np.clip(rng.normal(170, 38, (n, n, 3)), 0, 255).astype(np.uint8)
+
+
+def _jalan(oid, par):
+    img = _tekstur()
+    label = [(0, [0.2, 0.2, 0.8, 0.2, 0.8, 0.8, 0.2, 0.8])]
+    keluar, lab = olah.augmentasi_sekali(img, label, _sendiri(oid, par),
+                                         random.Random(3))
+    assert len(lab) == len(label), "label ikut hilang padahal piksel saja yang berubah"
+    return img, keluar
+
+
+def _ketajaman(a):
+    return cv2.Laplacian(cv2.cvtColor(a, cv2.COLOR_BGR2GRAY), cv2.CV_64F).var()
+
+
+def test_vignette_menggelapkan_tepi_bukan_seluruh_gambar():
+    """Kalau ia menggelapkan rata, yang dibuat bukan vignette melainkan
+    pengurang terang -- dan itu sudah ada di terang_kontras."""
+    img, keluar = _jalan("vignette", {"kuat_min": 0.80, "kuat_maks": 0.85})
+    n = img.shape[0]
+    tengah = lambda a: a[n // 2 - 40:n // 2 + 40, n // 2 - 40:n // 2 + 40].mean()
+    tepi = lambda a: np.concatenate([a[:40].ravel(), a[-40:].ravel()]).mean()
+    turun_tengah = tengah(img) - tengah(keluar)
+    turun_tepi = tepi(img) - tepi(keluar)
+    assert turun_tepi > turun_tengah * 2, (turun_tepi, turun_tengah)
+
+
+def test_vignette_makin_kuat_makin_gelap_tepinya():
+    tepi = []
+    for kuat in (0.05, 0.45, 0.85):
+        _img, keluar = _jalan("vignette",
+                              {"kuat_min": kuat, "kuat_maks": min(kuat + 0.05, 1.0)})
+        tepi.append(np.concatenate([keluar[:40].ravel(),
+                                    keluar[-40:].ravel()]).mean())
+    assert tepi[0] > tepi[1] > tepi[2], tepi
+
+
+def test_downscale_menghapus_tekstur_dan_makin_kecil_makin_hilang():
+    """Yang hilang tekstur, bukan bentuk: itu gunanya meniru kamera murah."""
+    tajam = []
+    for a, b in ((0.90, 0.95), (0.45, 0.50), (0.10, 0.15)):
+        img, keluar = _jalan("downscale", {"skala_min": a, "skala_maks": b})
+        tajam.append(_ketajaman(keluar))
+    assert _ketajaman(_tekstur()) > tajam[0] > tajam[1] > tajam[2], tajam
+
+
+def test_artefak_jpeg_makin_rendah_mutunya_makin_jauh_dari_aslinya():
+    beda = []
+    for a, b in ((88, 92), (35, 40), (3, 6)):
+        img, keluar = _jalan("artefak_jpeg", {"mutu_min": a, "mutu_maks": b})
+        beda.append(float(np.abs(keluar.astype(np.float32)
+                                 - img.astype(np.float32)).mean()))
+    assert beda[0] < beda[1] < beda[2], beda
+
+
+@pytest.mark.parametrize("oid", ["vignette", "downscale", "artefak_jpeg"])
+def test_ketiganya_ditawarkan_ke_peramban_beserta_angkanya(oid):
+    """Terpasang di mesin tetapi tidak muncul di panel sama saja tidak ada."""
+    kat = olah.katalog_json()["aug"]
+    assert oid in kat, f"{oid} tidak muncul di panel augmentasi"
+    par = kat[oid]["param"]
+    assert "p" in par
+    assert [k for k in par if k != "p"], f"{oid} tidak punya angka yang bisa digeser"

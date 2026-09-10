@@ -27,8 +27,17 @@ Tiga hal yang SENGAJA menyimpang dari v14, beserta alasannya:
   3. Tiga saklar v14 — `kamera_downscale`, `cahaya_vignette`,
      `kamera_artefak_jpeg` — tidak pernah menghasilkan berkas apa pun pada
      setelan bawaannya (PHASE5_VARIANTS_PER_RESULT=1 membuat n_extra=0 di
-     f:1434). Di sini ketiganya ADA dan benar-benar bekerja, karena jumlah
-     varian per hasil bisa diatur; kalau tidak, saklarnya berbohong.
+     f:1409). Di sini ketiganya transform yang berdiri sendiri di pipeline
+     augmentasi, bukan varian Fase 5, jadi menyalakannya benar-benar berarti
+     sesuatu.
+
+     Catatan sejarah, supaya tidak terulang: paragraf ini pernah menyatakan
+     ketiganya "ADA dan benar-benar bekerja" sejak awal — padahal saat itu
+     tidak satu pun terpasang. Tidak ada A.Downscale maupun
+     A.ImageCompression di _A(), dan tidak ada fungsi vignette sama sekali.
+     Komentar yang menjanjikan lebih daripada yang dikerjakan kodenya lebih
+     buruk daripada tidak ada komentar: ia menghentikan orang berikutnya dari
+     memeriksa.
 """
 from __future__ import annotations
 
@@ -515,6 +524,61 @@ FISHEYE_K1_RANGE = (0.08, 0.20)     # f:464
 FISHEYE_PROB = 0.35                 # f:465
 FISHEYE_MAX_R = 0.80                # f:479
 
+# Vignette v14 (f:1373). Tepi yang menggelap adalah ciri lensa murah kamera
+# RVM, dan tanpa ini model belajar bahwa sudut frame selalu seterang tengahnya.
+VIGNETTE_KUAT = (0.40, 0.85)        # f:1375
+VIGNETTE_RADIUS = (0.45, 0.85)      # f:1376
+VIGNETTE_GESER_PUSAT = 0.05         # f:1377-1378, pusat gelap tidak pas tengah
+
+# Turun-naik resolusi v14 (f:1366, tetapan f:522). Nilainya di v14 sisi piksel
+# tetap [480, 320] pada frame 640; di sini disimpan sebagai RASIO supaya tetap
+# berarti sama saat ukuran keluarannya bukan 640.
+DOWNSCALE_SKALA = (320 / 640, 480 / 640)   # = (0.50, 0.75)
+
+# Artefak JPEG v14 (f:1387, tetapan f:523). Rentang 5-85 dibuang di v14 karena
+# artefak beratnya menghapus tekstur yang justru jadi pembeda kelas.
+JPEG_MUTU = (35, 90)                # f:523
+
+
+def vignette_acak(img, kuat=None, radius=None, **_):
+    """Gelapkan tepi frame. Dipanggil A.Lambda, jadi labelnya tidak bergerak.
+
+    Disalin dari apply_vignette v14 (f:1373-1384), termasuk pusat yang sengaja
+    digeser sedikit dari tengah: lensa yang benar-benar simetris tidak ada, dan
+    vignette yang selalu terpusat sempurna justru jadi pola yang bisa dihafal.
+    """
+    h, w = img.shape[:2]
+    kuat = np.random.uniform(*(kuat or VIGNETTE_KUAT))
+    radius = np.random.uniform(*(radius or VIGNETTE_RADIUS))
+    cx = w / 2 + np.random.uniform(-w * VIGNETTE_GESER_PUSAT,
+                                   w * VIGNETTE_GESER_PUSAT)
+    cy = h / 2 + np.random.uniform(-h * VIGNETTE_GESER_PUSAT,
+                                   h * VIGNETTE_GESER_PUSAT)
+    Y, X = np.ogrid[:h, :w]
+    jarak = np.sqrt((X - cx) ** 2 + (Y - cy) ** 2)
+    maks = np.sqrt(cx ** 2 + cy ** 2)
+    topeng = np.clip(1.0 - kuat * np.clip(jarak / (maks * radius), 0, 1),
+                     0, 1).astype(np.float32)
+    return np.clip(img.astype(np.float32) * topeng[..., None],
+                   0, 255).astype(np.uint8)
+
+
+def _vignette_fn(kuat, radius):
+    """A.Lambda memanggil fungsinya tanpa argumen tambahan, jadi setelan yang
+    digeser orang dititipkan lewat closure — bukan lewat tetapan modul, yang
+    akan membuat dua versi berjalan bersamaan saling menimpa setelannya.
+
+    `setelan` ditempelkan ke fungsinya supaya angka itu bisa DIBACA dari luar.
+    Tanpa itu sidik jari A.Lambda cuma berisi nama transformnya, sehingga dua
+    vignette dengan setelan yang jauh berbeda tampak identik — dan penjaga yang
+    memastikan tiap batang geser benar-benar tersambung jadi buta untuk operasi
+    ini. Nilainya tidak dipakai saat menjalankan; yang dipakai closure-nya.
+    """
+    def terap(img, **_):
+        return vignette_acak(img, kuat=kuat, radius=radius)
+    terap.setelan = {"kuat": tuple(kuat), "radius": tuple(radius)}
+    return terap
+
 
 def gain_dari_rona(hue_deg: float, kuat: float):
     warna = cv2.cvtColor(np.uint8([[[int(hue_deg / 2) % 180, 255, 255]]]),
@@ -713,6 +777,25 @@ AUG_V14 = [
                            "y": (-p.get("geser", 0.25), p.get("geser", 0.25))},
         rotate=0, shear=0, p=p.get("p", 0.6),
         border_mode=cv2.BORDER_CONSTANT, fill=warna_latar())),
+    # Ketiganya ADA di daftar saklar v14 tetapi tidak pernah menghasilkan satu
+    # berkas pun di sana: keduanya varian Fase 5, dan bawaan
+    # PHASE5_VARIANTS_PER_RESULT=1 membuat n_extra=0 (f:1409), jadi tidak ada
+    # varian tambahan yang pernah dipilih. Di sini ketiganya transform biasa
+    # yang berdiri sendiri, jadi menyalakannya benar-benar berarti sesuatu.
+    ("vignette",    "cahaya_vignette",       lambda A, p: A.Lambda(
+        image=_vignette_fn(
+            (p.get("kuat_min", VIGNETTE_KUAT[0]), p.get("kuat_maks", VIGNETTE_KUAT[1])),
+            (p.get("radius_min", VIGNETTE_RADIUS[0]),
+             p.get("radius_maks", VIGNETTE_RADIUS[1]))),
+        p=p.get("p", 0.25))),
+    ("downscale",   "kamera_downscale",      lambda A, p: A.Downscale(
+        scale_range=(p.get("skala_min", DOWNSCALE_SKALA[0]),
+                     p.get("skala_maks", DOWNSCALE_SKALA[1])),
+        p=p.get("p", 0.20))),
+    ("artefak_jpeg", "kamera_artefak_jpeg",  lambda A, p: A.ImageCompression(
+        quality_range=(p.get("mutu_min", JPEG_MUTU[0]),
+                       p.get("mutu_maks", JPEG_MUTU[1])),
+        p=p.get("p", 0.25))),
 ]
 
 # Tambahan gaya Roboflow yang TIDAK ada di v14.
@@ -976,6 +1059,12 @@ _KET_AUG = {
     "crop_acak": ("Crop acak", "Potong lalu kembalikan ke ukuran semula."),
     "affine": ("Geser & skala", "Digeser dan diperbesar-kecilkan. Tepinya diisi warna ruang "
                     "detektor."),
+    "vignette": ("Vignette", "Tepi frame menggelap seperti lensa murah. Pusat gelapnya "
+                    "digeser sedikit dari tengah supaya polanya tidak bisa dihafal."),
+    "downscale": ("Turun-naik resolusi", "Dikecilkan lalu dikembalikan ke ukuran semula, "
+                    "meniru kamera beresolusi rendah. Teksturnya hilang, bentuknya tidak."),
+    "artefak_jpeg": ("Artefak JPEG", "Disimpan ulang dengan mutu rendah, meniru gambar yang "
+                    "sudah berkali-kali dikompresi."),
 }
 _KET_TAMBAHAN = {
     "rotasi_90": ("Rotasi 90°", "Putar kelipatan 90°."),
@@ -1005,6 +1094,7 @@ _PELUANG = {
     "gamma": 0.40, "blackbody": 0.45, "iluminan": ILLUM_PROB, "hue_sat": 0.80,
     "color_jitter": 0.50, "grayscale": 0.12, "bayangan": 0.18, "blur": 0.25,
     "derau_gauss": 0.35, "derau_iso": 0.20, "crop_acak": 0.4, "affine": 0.6,
+    "vignette": 0.25, "downscale": 0.20, "artefak_jpeg": 0.25,
     "rotasi_90": 0.5, "shear": 0.3, "cutout": 0.3, "eksposur": 0.3,
     "saturasi": 0.3,
 }
@@ -1054,6 +1144,25 @@ _PAR_AUG = {
                                 label="Perbesaran terbesar"),
                "geser": _p("float", 0.25, min=0.0, maks=0.9, langkah=0.01,
                            label="Geser maksimum")},
+    "vignette": {"kuat_min": _p("float", VIGNETTE_KUAT[0], min=0.0, maks=1.0,
+                                langkah=0.01, label="Paling samar"),
+                 "kuat_maks": _p("float", VIGNETTE_KUAT[1], min=0.0, maks=1.0,
+                                 langkah=0.01, label="Paling pekat"),
+                 "radius_min": _p("float", VIGNETTE_RADIUS[0], min=0.1, maks=1.5,
+                                  langkah=0.01, label="Lingkar terang tersempit"),
+                 "radius_maks": _p("float", VIGNETTE_RADIUS[1], min=0.1, maks=1.5,
+                                   langkah=0.01, label="Lingkar terang terlebar")},
+    # Rentang skala, bukan sisi piksel tetap seperti v14: pada keluaran yang
+    # bukan 640 px, "kecilkan ke 320" berarti pengurangan tekstur yang
+    # berbeda-beda, sedangkan rasio berarti sama di ukuran mana pun.
+    "downscale": {"skala_min": _p("float", DOWNSCALE_SKALA[0], min=0.1, maks=1.0,
+                                  langkah=0.01, label="Sekecil-kecilnya"),
+                  "skala_maks": _p("float", DOWNSCALE_SKALA[1], min=0.1, maks=1.0,
+                                   langkah=0.01, label="Sebesar-besarnya")},
+    "artefak_jpeg": {"mutu_min": _p("int", JPEG_MUTU[0], min=1, maks=100, langkah=1,
+                                    label="Mutu terendah"),
+                     "mutu_maks": _p("int", JPEG_MUTU[1], min=1, maks=100, langkah=1,
+                                     label="Mutu tertinggi")},
     "shear": {"derajat": _p("int", 10, min=1, maks=45, langkah=1,
                             label="Kemiringan", satuan="\u00b0")},
     "cutout": {"jumlah": _p("int", 8, min=1, maks=32, langkah=1,
@@ -1070,7 +1179,9 @@ _PAR_AUG = {
 # gamma_limit=(150, 60), dan orang yang menggeser batang bawah melewati batang
 # atas tidak sedang meminta versinya gagal di tengah jalan.
 PASANGAN_PAR = [("terang_min", "terang_maks"), ("kontras_min", "kontras_maks"),
-                ("min", "maks"), ("skala_min", "skala_maks")]
+                ("min", "maks"), ("skala_min", "skala_maks"),
+                ("mutu_min", "mutu_maks"), ("kuat_min", "kuat_maks"),
+                ("radius_min", "radius_maks")]
 
 
 def _par_aug(oid: str) -> dict:
