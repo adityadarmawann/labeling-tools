@@ -375,7 +375,6 @@ async def index(request: Request, f: str = "all",
         "n_obj": sum(len(i["shapes"]) for i in items),
         # Penugasan: siapa pemilik tiap gambar, dan berapa jatahku. Kosong di
         # projek yang belum pernah dibagi, dan chip-nya pun tidak muncul.
-        "tag_dari": tag_dari,
         "tag_hitung": svc_tag.hitung(tdata_tag),
         "tag_pilih": tag_pilih,
         "batch_pilih": batch_q,

@@ -183,7 +183,13 @@ def test_grid_menyaring_menurut_tag_dan_unggahan(klien, lingkungan):
     klien.post("/api/tag/pasang", json={"paths": g[1:3], "tambah": ["redup"]})
 
     h = klien.get("/").text
-    assert 'id="menu-tag"' in h and h.count("kartu-tag") == 3
+    # Kartu tidak lagi mencetak pil tag di mukanya; tag dilihat dan disunting
+    # di halaman Lihat. Yang dijaga di sini fakta yang sama seperti dulu --
+    # tagnya dikenali halaman ini -- tetapi lewat menu saringannya, karena
+    # itulah yang membuatnya berguna.
+    assert 'id="menu-tag"' in h
+    assert 'name="tg" value="pagi"' in h and 'name="tg" value="redup"' in h
+    assert "kartu-tag" not in h, "pil tag seharusnya tidak lagi di kartu"
 
     assert klien.get("/?f=all&tg=pagi").text.count('class="card"') == 2
     assert klien.get("/?f=all&tg=redup").text.count('class="card"') == 2

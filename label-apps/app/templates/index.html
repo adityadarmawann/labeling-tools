@@ -413,12 +413,6 @@
     {%- endif %}
     <a href="/view?path={{ p }}" aria-label="Lihat {{ p.split('/')[-1] }}"><img loading="lazy" src="/thumb?path={{ p }}&s=320" alt="{{ p.split('/')[-1] }}"></a>
     <div class="meta">
-      {%- set tg = tag_dari.get(it | id) %}
-      {%- if tg and tg.tag %}
-      <div class="kartu-tag">
-        {%- for x in tg.tag %}<span class="tg-pil">{{ x }}</span>{% endfor %}
-      </div>
-      {%- endif %}
       {%- set milik = pelabel_dari.get(it | id) %}
       {%- if milik %}
       <div class="tugas-cap{% if milik == sess.user %} tugas-aku{% endif %}"

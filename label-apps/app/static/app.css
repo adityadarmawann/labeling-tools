@@ -1900,7 +1900,6 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
 /* Tag pada kartu grid. Dipisah dari .labs (kelas objek) karena keduanya
    menjawab pertanyaan berbeda: kelas itu ISI gambarnya, tag itu keterangan
    yang dipasang orang tentang gambarnya. */
-.kartu-tag{display:flex;gap:4px;flex-wrap:wrap;margin-top:5px}
 .tg-pil{font-size:10px;padding:1px 7px;border-radius:999px;
   background:var(--warn-bg);color:var(--ink-dim);max-width:100%;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
