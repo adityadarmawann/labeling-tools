@@ -266,6 +266,15 @@ main{padding:20px 22px 60px}
    terpotong tetap terbaca lewat title tombolnya. */
 .acts .btn{min-width:0;padding:5px 2px;white-space:nowrap;overflow:hidden;
   text-overflow:ellipsis}
+/* Tombol teks selebar TEKSNYA, bukan dibagi rata. Membagi rata memeras
+   "Batal latar" di bawah lebar katanya sendiri padahal ruangnya sebenarnya
+   cukup; yang utama yang mengambil sisa, karena ia paling sering ditekan dan
+   paling tahan dipendekkan. */
+.acts .btn{flex:0 1 auto}
+.acts .btn.pri{flex:1 1 auto}
+/* Tombol ikon selebar isinya saja, bukan ikut dibagi rata. */
+.acts .btn-ikon{flex:0 0 auto;padding:5px 7px;display:grid;place-items:center}
+.acts .btn-ikon .ik{display:block}
 
 .hero{max-width:520px;margin:16vh auto 0;text-align:center;padding:0 24px}
 .hero h2{font-size:22px;font-weight:600;letter-spacing:.01em}

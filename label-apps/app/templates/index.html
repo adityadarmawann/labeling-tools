@@ -4,6 +4,7 @@
    path server tidak punya bagian-bagian itu. Kelas bodinya ikut bersyarat:
    tanpa sidebar, tata letak berprojek menghapus padding main dan grid-nya
    menempel ke tepi layar. #}
+{% from "_ikon.html" import ikon %}
 {% block bodyclass %}{% if pr %}berprojek grid-tetap{% endif %}{% endblock %}
 
 {# Setiap tautan saringan membawa urutan dan pencarian yang sedang aktif.
@@ -453,8 +454,14 @@
          >{{ 'Edit label' if it.shapes else 'Labeli' }}</a>
       <a class="btn" href="/view?path={{ p }}">Lihat</a>
       {%- if local %}
-      <button class="btn" onclick="openIn('{{ p }}',this)"
-              title="Buka berkas ini di AnyLabeling desktop">Desktop</button>
+      {#- Ikon, bukan teks. Empat tombol berteks tidak muat di kartu selebar
+          212px, dan "Desktop" adalah yang paling pantas kehilangan labelnya:
+          ia hanya muncul saat aplikasi dibuka dari mesin servernya sendiri,
+          dan katanya sendiri tidak menjelaskan apa yang terjadi. Maknanya
+          dibawa title dan aria-label. -#}
+      <button class="btn btn-ikon" onclick="openIn('{{ p }}',this)"
+              aria-label="Buka di AnyLabeling desktop"
+              title="Buka berkas ini di AnyLabeling desktop">{{ ikon('desktop', 15) }}</button>
       {%- endif %}
       {%- if sev == 'bg' %}
       <button class="btn" onclick="markbg('{{ p }}',false)"
