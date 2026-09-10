@@ -397,7 +397,12 @@
   {%- for it in items %}
   {%- set p = it | imgpath %}
   {%- set sev = severity(it) %}
-  <div class="card" data-s="{{ sev }}"><span class="rail"></span>
+  {#- Nama berkas TIDAK lagi tercetak di muka kartu: pada 50 kartu ia lima
+      puluh baris teks yang jarang dibaca, sementara yang dicari orang adalah
+      labelnya dan siapa pelabelnya. Ia pindah ke `title` supaya tetap bisa
+      dilihat dengan menunjuk kartunya, dan tetap ada di aria-label kotak
+      centang serta alt gambar untuk pembaca layar. Rinciannya di "Lihat". -#}
+  <div class="card" data-s="{{ sev }}" title="{{ it.img.name }}"><span class="rail"></span>
     {%- if pr %}
     {#- Kotak centang untuk tindakan borongan. Di dalam kartu, BUKAN menimpa
         tautannya: menaruhnya di atas gambar membuat klik untuk membuka dan
@@ -408,13 +413,10 @@
     {%- endif %}
     <a href="/view?path={{ p }}" aria-label="Lihat {{ p.split('/')[-1] }}"><img loading="lazy" src="/thumb?path={{ p }}&s=320" alt="{{ p.split('/')[-1] }}"></a>
     <div class="meta">
-      <div class="fn mono">{%- if it.split %}<span class="split">{{ it.split }}</span>{% endif %}{{ it.img.name }}</div>
       {%- set tg = tag_dari.get(it | id) %}
-      {%- if tg and (tg.tag or tg.batch) %}
+      {%- if tg and tg.tag %}
       <div class="kartu-tag">
         {%- for x in tg.tag %}<span class="tg-pil">{{ x }}</span>{% endfor %}
-        {%- if tg.batch %}<span class="tg-pil tg-batch"
-           title="dari unggahan {{ tg.batch }}">{{ tg.batch }}</span>{% endif %}
       </div>
       {%- endif %}
       {%- set milik = pelabel_dari.get(it | id) %}
@@ -423,6 +425,7 @@
            title="ditugaskan ke {{ milik }}">{{ milik }}</div>
       {%- endif %}
       <div class="labs">
+        {%- if it.split %}<span class="split">{{ it.split }}</span>{% endif %}
         {%- for l in it.shapes | map(attribute='label') | map('string') | unique | sort %}
         {%- if loop.index <= 4 %}<span class="lab">{{ l }}</span>{% endif %}
         {%- endfor %}

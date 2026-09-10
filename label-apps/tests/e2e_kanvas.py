@@ -2097,14 +2097,17 @@ def jalankan_grid(d):
     time.sleep(1.3)
 
     # -------------------------------------------------------------- urutkan
-    pertama = d.js("document.querySelector('.card .fn').textContent.trim()")
+    # Nama berkas tidak lagi dicetak di muka kartu; ia pindah ke `title`
+    # kartunya. Yang diperiksa tetap sama: kartu pertama BERUBAH saat urutannya
+    # dibalik.
+    nama1 = ("(document.querySelector('.card') || {}).title || ''")
+    pertama = d.js(nama1)
     d.js("""(() => { const u = document.getElementById('urut');
         u.value = 'nama-turun'; u.dispatchEvent(new Event('change')); })()""")
     time.sleep(1.4)
     cek("mengubah urutan benar-benar membalik daftarnya",
-        d.js("document.querySelector('.card .fn').textContent.trim()") != pertama,
-        "%s -> %s" % (pertama,
-                      d.js("document.querySelector('.card .fn').textContent.trim()")))
+        d.js(nama1) != pertama,
+        "%s -> %s" % (pertama, d.js(nama1)))
     cek("urutan bertahan sebagai pilihan, bukan ikut dibersihkan",
         d.js("document.getElementById('urut').value") == "nama-turun")
 

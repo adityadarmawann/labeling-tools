@@ -1607,8 +1607,10 @@ def _grid_nama(klien, **q):
     # bukan satu string "['a', 'b']" yang tidak berarti apa-apa di server.
     url = "/?" + urllib.parse.urlencode(q, doseq=True) if q else "/"
     html = klien.get(url).text
-    return re.findall(r'<div class="fn mono">(?:<span class="split">[^<]*</span>)?([^<]+)</div>',
-                      html)
+    # Nama berkas tidak lagi dicetak di muka kartu -- ia pindah ke `title`
+    # kartunya. Identitasnya tetap ada di markup, jadi urutan dan hasil
+    # saringan masih bisa diperiksa; yang berubah cuma tempat membacanya.
+    return re.findall(r'<div class="card"[^>]*\btitle="([^"]+)"', html)
 
 
 def _dataset_berwaktu(tmp, jeda):
@@ -1981,7 +1983,7 @@ def test_tombol_kartu_membedakan_melabeli_dari_menyunting(klien, lingkungan,
     html = klien.get("/").text
     kartu = {}
     for bagian in html.split('<div class="card"')[1:]:
-        nama = re.search(r'class="fn mono">(?:.*?</span>)?([^<]+)<', bagian).group(1)
+        nama = re.search(r'\btitle="([^"]+)"', bagian).group(1)
         aksi = bagian[bagian.index('class="acts"'):]
         kartu[nama.strip()] = "Edit label" if ">Edit label</a>" in aksi else "Labeli"
 

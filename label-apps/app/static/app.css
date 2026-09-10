@@ -215,8 +215,6 @@ main{padding:20px 22px 60px}
 .meta{padding:9px 11px 10px}
 /* direction:rtl sengaja tidak dipakai: ia memindahkan titik ke depan sehingga
    "000036.jpg" terbaca "jpg.000036". */
-.fn{font-size:11.5px;color:var(--ink-dim);white-space:nowrap;overflow:hidden;
-  text-overflow:ellipsis}
 .labs{margin-top:5px;display:flex;gap:4px;flex-wrap:wrap}
 /* Dibatasi ke dalam .labs. Tanpa pembatasan itu selektornya juga mengenai
    <body class="lab"> di halaman anotasi — badan halaman mewarisi latar dan
@@ -1906,7 +1904,6 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
 .tg-pil{font-size:10px;padding:1px 7px;border-radius:999px;
   background:var(--warn-bg);color:var(--ink-dim);max-width:100%;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.tg-pil.tg-batch{background:var(--sunk);color:var(--ink-faint)}
 .lh-tag{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px}
 .tg-pil.tg-sunting{display:inline-flex;align-items:center;gap:3px;
   font-size:11px;padding:2px 4px 2px 8px}
