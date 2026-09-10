@@ -688,6 +688,14 @@ input:focus{outline:0;border-color:var(--ok)}
    membungkus dua baris dengan lingkaran melayang di tengahnya, dan tombol yang
    menempel langsung ke daftar tanpa pemisah. */
 #kelas-isi{min-width:302px;padding:0;overflow:hidden}
+/* Selebar isinya yang terpanjang, "hasil penyeimbangan", supaya tidak satu
+   pun pilihannya perlu dipotong elipsis: menu ini cuma punya enam baris, dan
+   nama yang terpotong di menu sesempit itu tidak ada gunanya. */
+#split-isi{min-width:246px;padding:0;overflow:hidden}
+#split-isi form{display:flex;flex-direction:column}
+#split-isi .menu-judul{padding:11px 14px 5px}
+#tag-isi{padding:0;overflow:hidden}
+#tag-isi .menu-judul{padding:11px 14px 5px}
 #kelas-isi form{display:flex;flex-direction:column;max-height:min(70vh,520px)}
 #kelas-isi .menu-judul{padding:12px 14px 6px}
 
@@ -739,6 +747,28 @@ input:focus{outline:0;border-color:var(--ok)}
   font-weight:600;color:var(--ink-faint);background:var(--sunk);
   padding:1px 6px;border-radius:99px;min-width:24px;text-align:center}
 .kelas-tanpa .kelas-baris span{font-style:italic}
+
+/* Menu Tag dan Bagian memakai <span class="kelas-n"> untuk angkanya, bukan <b>
+   seperti menu Kelas. Tanpa dua baris di bawah keduanya kena `.kelas-baris
+   span{flex:1}` dan membelah lebarnya rata dua, sehingga namanya terpotong
+   elipsis di tengah baris yang sebetulnya masih lapang: "hasil augment…  4". */
+.kelas-baris .kelas-nama{flex:1 1 auto;min-width:0}
+.kelas-baris .kelas-n{flex:0 0 auto;font-variant-numeric:tabular-nums;
+  font-size:11px;font-weight:600;color:var(--ink-faint);background:var(--sunk);
+  padding:1px 6px;border-radius:99px;min-width:24px;text-align:center}
+
+/* Kaki menu bercentang (Tag, Bagian): Terapkan + Bersihkan.
+   `.menu-isi a` menjadikan setiap tautan di dalam menu satu baris penuh —
+   benar untuk menu yang isinya daftar tautan, tetapi di sini ia menimpa
+   `.chip` sehingga "Bersihkan" tampil sebagai kotak selebar menu, bukan
+   sebagai tombol di samping Terapkan. */
+.menu-kaki{display:flex;gap:8px;padding:11px 14px;
+  border-top:1px solid var(--line);background:var(--raised)}
+.menu-kaki .chip{flex:0 0 auto}
+.menu-isi .menu-kaki a.chip{display:inline-block;width:auto;
+  padding:5px 11px;border-radius:999px}
+.menu-isi .menu-kaki a.chip:hover{background:transparent;
+  border-color:var(--ink-faint);color:var(--ink)}
 
 .kelas-aksi{display:flex;gap:8px;padding:11px 14px;border-top:1px solid var(--line);
   background:var(--raised)}

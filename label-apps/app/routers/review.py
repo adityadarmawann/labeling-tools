@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections import Counter
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Query, Request, Response
@@ -178,6 +179,13 @@ async def index(request: Request, f: str = "all",
                 # sekelompok gambar yang tidak punya ciri lain yang bisa dicari.
                 tag_q: list[str] = Query([], alias="tg"),
                 batch_q: str = Query("", alias="bt"),
+                # Split asal (train/valid/test) pada ekspor bersplit, dan
+                # asal-usul gambar (foto asli, hasil augmentasi, hasil
+                # penyeimbangan) pada dataset yang diunggah sudah ber-aug-bal.
+                # Keduanya di satu menu karena keduanya menjawab pertanyaan yang
+                # sama: bagian mana dari dataset ini yang sedang saya lihat.
+                split_q: list[str] = Query([], alias="sp"),
+                turunan_q: list[str] = Query([], alias="tu"),
                 # Paginasi. Sebelum ini seluruh hasil saringan dirender sekali
                 # jalan: projek produksi terbesar 11.319 gambar berarti 11.319
                 # kartu dan 11.319 <img> dalam satu HTML. loading="lazy"
@@ -300,6 +308,20 @@ async def index(request: Request, f: str = "all",
     if batch_q:
         tampil = [it for it in tampil
                   if (tag_dari.get(id(it)) or {}).get("batch") == batch_q]
+
+    # Split dan asal-usul gambar. Keduanya bersifat "punya salah satu" seperti
+    # tag: "train atau valid" satu pertanyaan, dan menuntut keduanya sekaligus
+    # mustahil karena satu gambar cuma punya satu split.
+    split_pilih = [x for x in dict.fromkeys(split_q) if x]
+    if split_pilih:
+        pilih = set(split_pilih)
+        tampil = [it for it in tampil if (it.get("split") or "") in pilih]
+    turunan_pilih = [x for x in dict.fromkeys(turunan_q)
+                     if x in ("asli", "aug", "bal")]
+    if turunan_pilih:
+        pilih = set(turunan_pilih)
+        tampil = [it for it in tampil
+                  if scanner.jenis_turunan(it["img"].name) in pilih]
     if cari:
         pola = cari.lower()
         tampil = [it for it in tampil if pola in it["img"].name.lower()]
@@ -378,6 +400,17 @@ async def index(request: Request, f: str = "all",
         "tag_hitung": svc_tag.hitung(tdata_tag),
         "tag_pilih": tag_pilih,
         "batch_pilih": batch_q,
+        # Menu Split hanya digambar kalau ada yang bisa dipilih. Dataset labelme
+        # biasa tidak punya split sama sekali, dan dataset yang belum pernah
+        # diaugmentasi tidak punya turunan; menu kosong di sana cuma satu
+        # tombol lagi untuk dilewati.
+        "split_hitung": dict(sorted(
+            Counter(it["split"] for it in items if it.get("split")).items())),
+        "turunan_hitung": dict(sorted(
+            Counter(scanner.jenis_turunan(it["img"].name)
+                    for it in items).items())),
+        "split_pilih": split_pilih,
+        "turunan_pilih": turunan_pilih,
         # `pelabel_dari` sendiri tidak lagi diserahkan: kartu tidak mencetak
         # cap pelabel lagi. Perhitungannya TETAP dipakai di bawah untuk
         # `ada_tugas`, yang menentukan muncul tidaknya saringan "Tugasku".

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 
 import cv2
@@ -310,6 +311,56 @@ JENIS_BENTUK = {
 }
 # Jumlah sisi saat lingkaran dijadikan poligon untuk luas dan thumbnail.
 SISI_LINGKARAN = 32
+
+# Akhiran nama berkas yang menandai gambar TURUNAN, yaitu hasil augmentasi atau
+# penyeimbangan, bukan foto yang benar-benar dipotret.
+#
+# Dipakai menyaring dataset yang diunggah dalam keadaan sudah ber-aug-bal.
+# Bentuknya diambil dari keluaran aug-bal-v14.py yang sebenarnya, bukan dari
+# perkiraan. Pada satu keluaran berisi 55.580 berkas, seluruh ruas yang pernah
+# muncul cuma tujuh:
+#
+#   (kosong)                foto asli                        11.319
+#   _aug1                   Fase 1, augmentasi dasar          8.837
+#   _swout0 _swout1 _swin2  Fase sweep                       20.283
+#   _p5crop_normal          Fase 5, ruasnya berpasangan       3.208
+#   _p5zoom_normal          (_normal / _ds / _vgn / _jpg /
+#   _p5combo_normal          _fish menempel sesudahnya)
+#   _sc<c>b<bin>_<n>        Fase 5B, penyeimbangan skala      ~1.400
+#   _bal<kelas>_<n>         Fase 3, penyeimbangan kelas       ~1.000
+#
+# Ruasnya bisa BERANTAI: "_swout1_sc1b2_11_bal4_774" lewat tiga fase. Kalau
+# salah satunya penyeimbangan, gambarnya dihitung "bal" — fase itu yang
+# menentukan berapa banyak salinan ini ada, dan itulah yang dicari orang saat
+# menyaringnya.
+#
+# Dicocokkan UTUH per ruas, tidak dengan awalan. Awalan "sw" menangkap
+# "foto_sweater.jpg", "bal" menangkap "rak_balkon.jpg", dan "sc" menangkap
+# "hasil_scan_2.jpg"; salah menandai foto sungguhan sebagai salinan mesin jauh
+# lebih merugikan daripada melewatkan satu salinan.
+POLA_BAL = re.compile(r"^(?:bal|neg)\d*$")
+POLA_AUG = re.compile(r"^(?:aug|swout|swin|p5crop|p5zoom|p5combo)\d*$"
+                      r"|^sc\d+b\d+$")
+
+
+def jenis_turunan(nama: str) -> str:
+    """
+    "asli" | "aug" | "bal" untuk satu nama berkas.
+
+    "asli" berarti tidak ada satu pun ruas turunan. Pembedaan ini yang membuat
+    orang bisa memeriksa atau mengunduh foto sungguhan saja, terpisah dari
+    puluhan ribu salinan hasil augmentasi yang menyertainya.
+    """
+    # Ruas pertama adalah nama aslinya dan TIDAK pernah diperiksa: berkas yang
+    # kebetulan bernama "aug1.jpg" tetap foto, dan yang menjadikan sebuah nama
+    # turunan adalah ruas yang DITAMBAHKAN di belakangnya.
+    ruas = [r.lower() for r in Path(nama).stem.split("_")[1:]]
+    if any(POLA_BAL.match(r) for r in ruas):
+        return "bal"
+    if any(POLA_AUG.match(r) for r in ruas):
+        return "aug"
+    return "asli"
+
 
 # Bentuk yang BISA menjadi mask sungguhan di dataset segmentasi. Lingkaran ikut
 # karena pemekarannya jadi poligon 32 sisi memang mengikuti benda bulat; kotak

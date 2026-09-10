@@ -554,6 +554,69 @@ async def ekspor(format: str = "yolo-seg", gambar: int = 1, split: str = "",
     return r
 
 
+@router.get("/api/ekspor/asli")
+async def ekspor_asli_ringkasan(sess: Session = Depends(current_session_api),
+                                settings: Settings = Depends(get_settings)):
+    """Angka untuk dibaca SEBELUM unduhannya dimulai.
+
+    Yang paling perlu diketahui lebih dulu adalah berapa banyak yang TIDAK
+    ikut: pada dataset yang diunggah dalam keadaan sudah ber-aug-bal, foto
+    aslinya bisa tinggal seperlima isi folder, dan angka itu terbaca sebagai
+    kehilangan kalau baru ditemukan sesudah ZIP-nya dibuka.
+    """
+    if sess.src is None:
+        return {"ok": False, "error": "belum ada dataset yang dibuka"}
+    with sess.lock:
+        items = list(sess.items)
+    items, _ = await asyncio.to_thread(tugas.saring_dataset, items, sess.src,
+                                       settings.uploads_root)
+    asli, sisa = export.pisah_turunan(items)
+    return {"ok": True, "n": len(asli), "aug": sisa["aug"], "bal": sisa["bal"],
+            "n_obj": sum(len(it["shapes"]) for it in asli)}
+
+
+@router.get("/ekspor/asli")
+async def ekspor_asli(tanda: str = "",
+                      sess: Session = Depends(current_session),
+                      settings: Settings = Depends(get_settings)):
+    """
+    Unduh dataset ASLI: satu ZIP datar berisi images/ + labels/.
+
+    Terpisah dari /ekspor dan memang tidak diberi satu pun pilihan. /ekspor
+    melayani halaman Versi, tempat orang memilih format, rasio split, dan resep
+    augmentasi; yang keluar dari sana adalah HASIL pilihan-pilihan itu. Rute
+    ini menjawab pertanyaan yang berlawanan — "kembalikan dataset saya seperti
+    sebelum semua itu" — dan setiap pilihan yang ditambahkan di sini justru
+    menjauhkannya dari jawaban itu.
+    """
+    if sess.src is None:
+        return Response("belum ada dataset terbuka", status_code=400,
+                        media_type="text/plain; charset=utf-8")
+    nama = sess.src.name
+    with sess.lock:
+        items = list(sess.items)
+        names = dict(sess.names)
+    items, _ = await asyncio.to_thread(tugas.saring_dataset, items, sess.src,
+                                       settings.uploads_root)
+    items, sisa = export.pisah_turunan(items)
+    if not items:
+        return Response(
+            "tidak ada foto asli yang bisa diunduh. Seluruh isi dataset ini "
+            "hasil augmentasi atau penyeimbangan — foto sumbernya ada di "
+            "tempat lain.", status_code=409,
+            media_type="text/plain; charset=utf-8")
+    data = await asyncio.to_thread(export.zip_asli, items, nama,
+                                   names=names, sisa=sisa)
+    r = Response(data, media_type="application/zip", headers={
+        "Content-Disposition": f'attachment; filename="{nama}-asli.zip"',
+        "Content-Length": str(len(data)),
+    })
+    if tanda:
+        r.set_cookie("unduh_siap", str(tanda), max_age=120, path="/",
+                     samesite="lax")
+    return r
+
+
 # ============================================================
 # PEMBELAHAN TRAIN / VALID / TEST
 # ============================================================

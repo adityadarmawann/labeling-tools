@@ -158,6 +158,72 @@ async function rescan() {
   }
 }
 
+// Unduh dataset ASLI: satu ZIP datar images/ + labels/, tanpa split dan tanpa
+// salinan hasil augmentasi.
+//
+// Angkanya diminta LEBIH DULU, bukan langsung mengunduh. Pada dataset yang
+// diunggah dalam keadaan sudah ber-aug-bal, foto asli bisa tinggal seperlima
+// isi folder — dan selisih sebesar itu, kalau baru ketahuan setelah ZIP-nya
+// dibuka, terbaca sebagai berkas yang hilang, bukan sebagai pilihan yang
+// memang diambil tombol ini.
+(() => {
+  const b = document.getElementById('unduh-asli');
+  if (!b) return;
+  b.onclick = async () => {
+    b.disabled = true;
+    const pr = Progres.mulai('Menyiapkan ZIP dataset asli');
+    pr.taktentu('menghitung isi dataset…');
+    let j;
+    try {
+      j = await (await fetch('/api/ekspor/asli')).json();
+    } catch (e) {
+      pr.gagal('Gagal menghubungi server');
+      b.disabled = false;
+      return;
+    }
+    if (!j.ok) { pr.gagal(j.error); toast('Gagal: ' + j.error); b.disabled = false; return; }
+    if (!j.n) {
+      pr.gagal('tidak ada foto asli untuk diunduh');
+      toast('Seluruh isi dataset ini hasil augmentasi atau penyeimbangan.');
+      b.disabled = false;
+      return;
+    }
+    const buang = j.aug + j.bal;
+    if (buang && !confirm(
+        `${j.n} foto asli (${j.n_obj} objek) akan diunduh sebagai satu ZIP `
+        + 'berisi images/ dan labels/, tanpa split train/valid/test.\n\n'
+        + `TIDAK ikut: ${j.aug} hasil augmentasi dan ${j.bal} hasil `
+        + 'penyeimbangan. Keduanya salinan yang dibuat mesin, dan bisa dibuat '
+        + 'ulang kapan saja lewat halaman Versi.')) {
+      pr.selesai('dibatalkan');
+      b.disabled = false;
+      return;
+    }
+    // Cookie yang dipasang server saat balasannya mulai mengalir. Unduhan
+    // lewat navigasi tidak punya kejadian yang bisa ditunggu JS, dan ZIP
+    // dataset besar butuh menit-menit untuk dibentuk.
+    const tanda = String(Date.now());
+    const mulai = Date.now();
+    pr.taktentu('jangan tutup tab ini');
+    location.href = '/ekspor/asli?tanda=' + tanda;
+    const pantau = setInterval(() => {
+      const lewat = (Date.now() - mulai) / 1000;
+      if (document.cookie.includes('unduh_siap=' + tanda)) {
+        clearInterval(pantau);
+        document.cookie = 'unduh_siap=; Max-Age=0; path=/';
+        pr.selesai(`ZIP siap, ${j.n} gambar`);
+        b.disabled = false;
+      } else if (lewat > 1800) {
+        clearInterval(pantau);
+        pr.gagal('Belum selesai setelah 30 menit; periksa log server');
+        b.disabled = false;
+      } else {
+        pr.taktentu(`${lewat.toFixed(0)} dtk, jangan tutup tab ini`);
+      }
+    }, 500);
+  };
+})();
+
 // Panah kiri/kanan untuk pindah gambar di tampilan besar.
 document.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT') return;
@@ -256,7 +322,8 @@ async function dariDrop(dt) {
   // berlaku), dua lainnya berisi form bercentang yang butuh Terapkan — jadi
   // klik di dalam menu keadaan sengaja TIDAK dihentikan.
   for (const [wadah, tombol, tautan] of [['menu-keadaan', 'keadaan-tombol', true],
-                                         ['menu-tag', 'tag-tombol', false]]) {
+                                         ['menu-tag', 'tag-tombol', false],
+                                         ['menu-split', 'split-tombol', false]]) {
     const mm = document.getElementById(wadah);
     if (!mm) continue;
     document.getElementById(tombol).onclick = ev => {

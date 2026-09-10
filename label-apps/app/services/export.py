@@ -334,6 +334,110 @@ def bagi_split(items: list[dict], rasio=RASIO_BAWAAN,
     return hasil
 
 
+def pisah_turunan(items: list[dict]) -> tuple[list[dict], dict[str, int]]:
+    """
+    (foto asli saja, {"aug": n, "bal": n}) — memisahkan salinan mesin.
+
+    Dipakai unduhan dataset asli. Angka yang dikembalikan BUKAN hiasan: yang
+    ditinggalkan di sini bisa puluhan ribu berkas, dan unduhan yang diam-diam
+    memuat seperlima isi dataset adalah cara terburuk memberi tahu orang bahwa
+    dataset mereka pernah diaugmentasi.
+    """
+    from .scanner import jenis_turunan
+
+    asli, sisa = [], {"aug": 0, "bal": 0}
+    for it in items:
+        j = jenis_turunan(it["img"].name)
+        if j == "asli":
+            asli.append(it)
+        else:
+            sisa[j] += 1
+    return asli, sisa
+
+
+def zip_asli(items: list[dict], nama_dataset: str, segmentasi: bool = True,
+             names: dict | None = None, sisa: dict | None = None) -> bytes:
+    """
+    Dataset apa adanya -> ZIP DATAR, tanpa split:
+
+        data.yaml
+        README.txt
+        images/   labels/
+
+    Ini bentuk yang bisa diunggah kembali ke HIGOLAB apa adanya: scanner
+    mengenali sebuah folder sebagai dataset YOLO begitu ia punya `images/` dan
+    `labels/` bersebelahan, dan `data.yaml` di sampingnya yang membuat kelasnya
+    terbaca sebagai nama, bukan sebagai angka 0/1/2.
+
+    Bedanya dengan ekspor Versi disengaja dan menyeluruh. Di sana yang diunduh
+    adalah HASIL sebuah resep — sudah dibelah train/valid/test, sudah
+    dipreprocessing, sudah diaugmentasi — dan bentuk itu tidak bisa diunggah
+    balik tanpa menjadi dataset yang berbeda dari yang dimulai. Di sini tidak
+    ada satu pun keputusan yang dibekukan ke dalam ZIP-nya.
+    """
+    peta = peta_kelas(items, names)
+    buf = io.BytesIO()
+    n_objek = 0
+    dipakai: dict[int, str] = {}
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for it in items:
+            p: Path = it["img"]
+            # Dataset bersplit yang diratakan bisa punya dua `img-01.jpg` dari
+            # folder berbeda. Tanpa penomoran ini yang kedua menimpa yang
+            # pertama di dalam ZIP, dan yang hilang tidak disebut di mana pun.
+            nama = _nama_unik(dipakai, p.name)
+            dipakai[id(it)] = nama
+            batang = nama.rpartition(".")[0] or nama
+            baris = baris_yolo(it, peta, segmentasi)
+            n_objek += len(baris)
+            # Gambar tanpa objek tetap dapat berkas label kosong: itu penanda
+            # contoh negatif yang sah, bukan label yang lupa ditulis.
+            z.writestr(f"labels/{batang}.txt",
+                       "\n".join(baris) + ("\n" if baris else ""))
+            z.write(p, f"images/{nama}")
+        for sub in ("images", "labels"):
+            z.writestr(f"{sub}/", "")
+        # `train:`/`val:` di data.yaml menunjuk ../train/images yang memang
+        # tidak ada di sini — itu sebabnya yang ditulis bentuk datarnya.
+        urut = [l for l, _ in sorted(peta.items(), key=lambda kv: kv[1])]
+        nk = ", ".join("'" + str(k).replace("'", "''") + "'" for k in urut)
+        z.writestr("data.yaml",
+                   "train: ../images\n"
+                   "val: ../images\n"
+                   "\n"
+                   f"nc: {len(peta)}\n"
+                   f"names: [{nk}]\n"
+                   "\n"
+                   "labeling-tools:\n"
+                   f"  dataset: {nama_dataset}\n"
+                   "  format: YOLO segmentation (datar, tanpa split)\n")
+        sisa = sisa or {}
+        catatan = ""
+        if sisa.get("aug") or sisa.get("bal"):
+            catatan = (
+                "\nTIDAK ikut diunduh\n"
+                "-------------------\n"
+                f"Hasil augmentasi   : {sisa.get('aug', 0)}\n"
+                f"Hasil penyeimbangan: {sisa.get('bal', 0)}\n"
+                "Keduanya salinan yang dibuat mesin dari foto di atas, dan\n"
+                "bisa dibuat ulang kapan saja lewat halaman Versi. Yang ada di\n"
+                "ZIP ini hanya foto yang benar-benar dipotret.\n")
+        z.writestr("README.txt",
+                   f"{nama_dataset}\n{'=' * len(nama_dataset)}\n\n"
+                   "Dataset asli, diekspor dari HIGOLAB.\n"
+                   "Tata letaknya DATAR: images/ dan labels/ bersebelahan,\n"
+                   "tanpa train/valid/test. Folder ini bisa diunggah kembali\n"
+                   "ke HIGOLAB apa adanya.\n\n"
+                   f"Gambar : {len(items)}\n"
+                   f"Objek  : {n_objek}\n"
+                   f"Kelas  : {len(peta)}  {', '.join(urut)}\n"
+                   + catatan +
+                   "\nPembagian train/valid/test, preprocessing dan augmentasi\n"
+                   "TIDAK dibekukan ke dalam ZIP ini. Ketiganya ada di halaman\n"
+                   "Versi, dan tetap bisa dipilih ulang sesudah diunggah.\n")
+    return buf.getvalue()
+
+
 def zip_yolo(items: list[dict], nama_dataset: str, segmentasi: bool,
              sertakan_gambar: bool = True, rasio=RASIO_BAWAAN,
              names: dict | None = None, rencana: dict | None = None) -> bytes:

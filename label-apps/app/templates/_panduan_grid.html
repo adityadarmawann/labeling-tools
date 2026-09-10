@@ -81,6 +81,22 @@
     <dd>Keterangan yang kamu pasang sendiri pada sekelompok gambar, mis.
       "lampu-redup" atau "ulang-foto". Nama unggahan juga jadi tag otomatis,
       dan itu satu-satunya cara menemukan kembali satu batch unggahan.</dd>
+
+    <dt>Bagian</dt>
+    <dd>Hanya muncul kalau ada yang bisa dipilih. Isinya dua hal yang menjawab
+      pertanyaan sama &mdash; bagian mana dari dataset ini yang sedang kamu
+      lihat:
+      <ul>
+        <li><b>Split</b> &mdash; train, valid, atau test, untuk dataset yang
+          diunggah dalam keadaan sudah dibelah. Tidak ada di dataset labelme
+          biasa.</li>
+        <li><b>Asal gambar</b> &mdash; foto asli, hasil augmentasi, atau hasil
+          penyeimbangan, dibaca dari akhiran nama berkasnya. Berguna pada
+          dataset yang diunggah sudah ber-aug-bal: di sana satu foto sungguhan
+          bisa tenggelam di antara belasan salinan.</li>
+      </ul>
+      Beberapa centang berarti "punya salah satu"; satu gambar cuma bisa berada
+      di satu split, jadi menuntut dua sekaligus selalu nol.</dd>
   </dl>
 </section>
 
@@ -99,14 +115,29 @@
       tampil. Ctrl+F peramban hanya mengenai halaman ini.</dd>
 
     <dt>Bersihkan saringan</dt>
-    <dd>Membatalkan keadaan, kelas, tag, dan pencarian sekaligus. Urutan dan
-      jumlah per halaman tidak ikut dibatalkan, karena keduanya pengaturan tampilan,
-      bukan saringan.</dd>
+    <dd>Membatalkan keadaan, kelas, tag, Bagian, dan pencarian sekaligus.
+      Angka di tombolnya menyebut berapa saringan yang sedang berlaku. Urutan
+      dan jumlah per halaman tidak ikut dibatalkan, karena keduanya pengaturan
+      tampilan, bukan saringan.</dd>
 
     <dt>Pindai ulang</dt>
     <dd>Membaca ulang isi folder dari disk. Perlu kalau berkasnya diubah dari
       luar aplikasi: AnyLabeling desktop, salin-tempel, atau rsync. Perubahan
       dari dalam aplikasi sudah terbaca sendiri.</dd>
+
+    <dt>Unduh dataset</dt>
+    <dd>Mengunduh dataset <em>apa adanya</em>: satu ZIP berisi
+      <code>images/</code> dan <code>labels/</code> bersebelahan, tanpa
+      pembagian train/valid/test dan tanpa salinan hasil augmentasi atau
+      penyeimbangan. Bentuk ini bisa diunggah kembali ke HIGOLAB apa adanya.
+      <p>Berbeda dari <b>Ekspor</b> di halaman Versi. Yang keluar dari sana
+        adalah <em>hasil</em> sebuah resep &mdash; sudah dibelah, sudah
+        dipreprocessing, sudah diaugmentasi &mdash; dan bentuk itu tidak bisa
+        diunggah balik tanpa menjadi dataset yang berbeda dari yang kamu
+        mulai.</p>
+      <p>Kalau ada salinan yang tidak ikut, jumlahnya disebutkan dulu sebelum
+        unduhannya dimulai, dan ditulis lagi di <code>README.txt</code> di
+        dalam ZIP-nya.</p></dd>
   </dl>
 </section>
 

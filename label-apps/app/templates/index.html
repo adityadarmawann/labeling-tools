@@ -10,7 +10,7 @@
 {# Setiap tautan saringan membawa urutan dan pencarian yang sedang aktif.
    Tanpa itu, mengklik satu chip diam-diam mengembalikan urutan ke bawaan —
    dan orang menyangka daftarnya yang berubah, bukan urutannya. #}
-{% macro tautan(val_f=none, val_c=none, val_s=none, val_q=none, val_x=none, val_m=none, val_tg=none, val_bt=none, val_hal=none) -%}
+{% macro tautan(val_f=none, val_c=none, val_s=none, val_q=none, val_x=none, val_m=none, val_tg=none, val_bt=none, val_sp=none, val_tu=none, val_hal=none) -%}
 {%- set ff = val_f if val_f is not none else flt -%}
 {%- set cc = val_c if val_c is not none else kelas -%}
 {%- if cc is string -%}{%- set cc = [cc] if cc else [] -%}{%- endif -%}
@@ -20,6 +20,8 @@
 {%- set mm = val_m if val_m is not none else mode -%}
 {%- set gg = val_tg if val_tg is not none else tag_pilih -%}
 {%- set bb = val_bt if val_bt is not none else batch_pilih -%}
+{%- set pp = val_sp if val_sp is not none else split_pilih -%}
+{%- set uu = val_tu if val_tu is not none else turunan_pilih -%}
 ?f={{ ff }}{% for k in cc %}&c={{ k | urlquote }}{% endfor %}
 {%- for k in xx %}&x={{ k }}{% endfor %}
 {%- if mm and mm != "atau" %}&m={{ mm }}{% endif %}
@@ -27,6 +29,8 @@
 {%- if qq %}&q={{ qq | urlquote }}{% endif %}
 {%- for g in gg %}&tg={{ g | urlquote }}{% endfor %}
 {%- if bb %}&bt={{ bb | urlquote }}{% endif %}
+{%- for k in pp %}&sp={{ k | urlquote }}{% endfor %}
+{%- for k in uu %}&tu={{ k }}{% endfor %}
 {#- `per` ikut karena ia preferensi tampilan, sama seperti urutan; membuangnya
     diam-diam saat orang mengklik saringan adalah kekeliruan yang sama yang
     dulu terjadi pada `s`. `hal` justru SENGAJA tidak ikut kecuali diminta:
@@ -49,6 +53,13 @@
 {%- if 'm' not in kecuali and mode != 'atau' %}<input type="hidden" name="m" value="{{ mode }}">{% endif -%}
 {%- if 'g' not in kecuali %}{% for g in tag_pilih %}<input type="hidden" name="tg" value="{{ g }}">{% endfor %}{% endif -%}
 {%- if 'b' not in kecuali and batch_pilih %}<input type="hidden" name="bt" value="{{ batch_pilih }}">{% endif -%}
+{#- Split dan asal gambar punya hurufnya sendiri ('n', dari "bagian"), BUKAN
+    menumpang huruf 'b' milik unggahan: menu Tag membuang 'b' supaya bisa
+    menimpa pilihan unggahannya sendiri, dan kalau keduanya satu huruf maka
+    mencentang sebuah tag diam-diam membatalkan saringan split yang sedang
+    berlaku. -#}
+{%- if 'n' not in kecuali %}{% for k in split_pilih %}<input type="hidden" name="sp" value="{{ k }}">{% endfor %}{% endif -%}
+{%- if 'n' not in kecuali %}{% for k in turunan_pilih %}<input type="hidden" name="tu" value="{{ k }}">{% endfor %}{% endif -%}
 {%- if 'p' not in kecuali and per != per_bawaan %}<input type="hidden" name="per" value="{{ per }}">{% endif -%}
 {%- endmacro %}
 
@@ -140,6 +151,14 @@
     {%- endif %}
     <button class="chip" onclick="rescan()"
             title="Membaca ulang isi folder. Perlu kalau berkas diubah dari luar aplikasi: AnyLabeling desktop, salin-tempel, rsync.">Pindai ulang</button>
+    {#- Unduhan dataset ASLI, dan sengaja berdiri sendiri — bukan satu baris
+        lagi di dalam menu Ekspor. Menu itu menjawab "dalam format apa dataset
+        ini mau dilatih"; tombol ini menjawab "kembalikan dataset saya seperti
+        sebelum semuanya", dan menaruh keduanya di satu daftar membuat yang
+        kedua terbaca sebagai format keenam. Tidak punya pilihan apa pun, jadi
+        tidak perlu menu. -#}
+    <button class="chip" id="unduh-asli" type="button"
+            title="Unduh dataset apa adanya: satu ZIP berisi images/ dan labels/ bersebelahan, tanpa split train/valid/test dan tanpa salinan hasil augmentasi. Bentuk ini bisa diunggah kembali ke HIGOLAB.">Unduh dataset</button>
     {#- Hanya untuk dataset yang dibuka lewat path server: di sana sidebar
         projek tidak dirender sama sekali, dan tanpa tautan ini grid jadi
         halaman tanpa jalan pulang. Untuk projek, panah "← Semua projek" di
@@ -312,11 +331,10 @@
         {%- else %}Tag{% endif %} &#9662;</button>
       <span class="menu-isi" id="tag-isi">
         <form method="get" action="/">
-          <input type="hidden" name="f" value="{{ flt }}">
-          {% if urut and urut != 'nama' %}<input type="hidden" name="s" value="{{ urut }}">{% endif %}
-          {% if cari %}<input type="hidden" name="q" value="{{ cari }}">{% endif %}
-          {%- for k in kelas %}<input type="hidden" name="c" value="{{ k }}">{% endfor %}
-          {%- for x in tanpa %}<input type="hidden" name="x" value="{{ x }}">{% endfor %}
+          {#- 'g' dan 'b' dibuang karena form inilah yang menuliskannya. Sisanya
+              dititipkan, termasuk saringan Bagian: mencentang sebuah tag tidak
+              boleh diam-diam mengembalikan grid ke seluruh split. -#}
+          {{ titipan('gb') }}
 
           {% if tag_hitung.tag %}
           <span class="menu-judul">Punya salah satu tag</span>
@@ -358,6 +376,77 @@
     </span>
     {%- endif %}
 
+    {#- Bagian mana dari dataset ini yang sedang dilihat. Dua pertanyaan yang
+        berdekatan, jadi satu menu:
+
+        Split  -- train/valid/test pada ekspor bersplit. Selama ini asalnya
+                  tercetak di kartu tetapi tidak bisa disaring sama sekali,
+                  jadi "lihat valid saja" mustahil dijawab.
+        Asal   -- foto asli, hasil augmentasi, atau hasil penyeimbangan.
+                  Dataset yang diunggah dalam keadaan sudah ber-aug-bal
+                  memuat puluhan ribu salinan, dan tanpa saringan ini foto
+                  sungguhannya tenggelam di antaranya.
+
+        Menunya tidak digambar kalau tidak ada yang bisa dipilih: dataset
+        labelme biasa tidak punya split, dan dataset yang belum pernah
+        diaugmentasi cuma punya satu jenis asal. -#}
+    {%- set ada_split = split_hitung | length > 0 %}
+    {%- set ada_turunan = turunan_hitung | length > 1 %}
+    {%- if ada_split or ada_turunan %}
+    <span class="menu menu-kiri" id="menu-split">
+      <button class="chip" id="split-tombol"
+              {%- if split_pilih or turunan_pilih %} data-on{% endif %}>
+        {%- set n_pilih = (split_pilih | length) + (turunan_pilih | length) %}
+        {%- if n_pilih == 1 %}{{ (split_pilih + turunan_pilih)[0] }}
+        {%- elif n_pilih %}{{ n_pilih }} bagian
+        {%- else %}Bagian{% endif %} &#9662;</button>
+      <span class="menu-isi" id="split-isi">
+        <form method="get" action="/">
+          {#- 'n' dibuang karena form inilah yang menuliskan sp dan tu. Tag dan
+              unggahan TIDAK dibuang: keduanya saringan lain yang sedang
+              berlaku, dan mengganti split bukan alasan untuk melepasnya. -#}
+          {{ titipan('n') }}
+
+          {% if ada_split %}
+          <span class="menu-judul">Split</span>
+          <div class="kelas-daftar">
+            {%- for nama, n in split_hitung.items() %}
+            <label class="kelas-baris">
+              <input type="checkbox" name="sp" value="{{ nama }}"
+                     {% if nama in split_pilih %}checked{% endif %}>
+              <span class="cb"></span><span class="kelas-nama">{{ nama }}</span>
+              <span class="kelas-n">{{ n }}</span></label>
+            {%- endfor %}
+          </div>
+          {% endif %}
+
+          {% if ada_turunan %}
+          {% if ada_split %}<span class="menu-pisah"></span>{% endif %}
+          <span class="menu-judul">Asal gambar</span>
+          <div class="kelas-daftar">
+            {%- for kode, judul in [('asli', 'foto asli'),
+                                    ('aug', 'hasil augmentasi'),
+                                    ('bal', 'hasil penyeimbangan')] %}
+            {%- if kode in turunan_hitung %}
+            <label class="kelas-baris">
+              <input type="checkbox" name="tu" value="{{ kode }}"
+                     {% if kode in turunan_pilih %}checked{% endif %}>
+              <span class="cb"></span><span class="kelas-nama">{{ judul }}</span>
+              <span class="kelas-n">{{ turunan_hitung[kode] }}</span></label>
+            {%- endif %}
+            {%- endfor %}
+          </div>
+          {% endif %}
+
+          <div class="menu-kaki">
+            <button class="chip aksi" type="submit">Terapkan</button>
+            <a class="chip" href="{{ tautan(val_sp=[], val_tu=[]) }}">Bersihkan</a>
+          </div>
+        </form>
+      </span>
+    </span>
+    {%- endif %}
+
     <span class="saring-pisah"></span>
 
     {#- Urutan bukan saringan: ia tidak pernah menyala, dan tidak ikut
@@ -383,10 +472,12 @@
     {%- if pilihan_nama %}{% set _ = saring_aktif.append(pilihan_nama | join(', ')) %}{% endif %}
     {%- if tag_pilih %}{% set _ = saring_aktif.append('tag ' + (tag_pilih | join(', '))) %}{% endif %}
     {%- if batch_pilih %}{% set _ = saring_aktif.append('unggahan ' + batch_pilih) %}{% endif %}
+    {%- if split_pilih %}{% set _ = saring_aktif.append('bagian ' + (split_pilih | join(', '))) %}{% endif %}
+    {%- if turunan_pilih %}{% set _ = saring_aktif.append('asal ' + (turunan_pilih | join(', '))) %}{% endif %}
     {%- if cari %}{% set _ = saring_aktif.append('cari "' + cari + '"') %}{% endif %}
     {%- if saring_aktif %}
     <a class="chip saring-bersih" title="{{ saring_aktif | join(' · ') }}"
-       href="{{ tautan(val_f='all', val_c=[], val_x=[], val_m='atau', val_q='', val_tg=[], val_bt='') }}"
+       href="{{ tautan(val_f='all', val_c=[], val_x=[], val_m='atau', val_q='', val_tg=[], val_bt='', val_sp=[], val_tu=[]) }}"
        >&times; Bersihkan saringan <b>{{ saring_aktif | length }}</b></a>
     {%- endif %}
   </div>
@@ -501,7 +592,7 @@
     <p class="empty-saring">Saringan yang berlaku:
       <b>{{ saring_aktif | join(' · ') }}</b></p>
     <p><a class="chip saring-bersih"
-          href="{{ tautan(val_f='all', val_c=[], val_x=[], val_m='atau', val_q='', val_tg=[], val_bt='') }}"
+          href="{{ tautan(val_f='all', val_c=[], val_x=[], val_m='atau', val_q='', val_tg=[], val_bt='', val_sp=[], val_tu=[]) }}"
           >&times; Bersihkan saringan</a></p>
     {%- endif %}
     {%- endif %}

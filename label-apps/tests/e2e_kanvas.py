@@ -117,6 +117,31 @@ def siapkan():
             "imagePath": q.name, "imageData": None,
             "imageHeight": 60, "imageWidth": 80,
         }))
+    # Dataset ketiga: ekspor bergaya Roboflow yang SUDAH dibelah dan SUDAH
+    # ber-aug-bal. Ini satu-satunya bentuk yang membuat menu "Bagian" muncul,
+    # dan dataset `grid` di atas rata — tidak punya split, tidak punya turunan
+    # — jadi menunya tidak akan pernah tergambar di sana.
+    #
+    # Susunannya sengaja tidak seimbang (7/3/3) supaya tiap jawaban punya
+    # angka yang berbeda: kalau ketiga splitnya sama banyak, saringan yang
+    # salah kolom pun akan lolos.
+    rencana = {
+        "train": ["a1.jpg", "a2.jpg", "a1_aug1.jpg", "a1_aug2.jpg",
+                  "a2_p5crop_normal.jpg", "a1_bal3_12.jpg",
+                  "meja_swalayan.jpg"],
+        "valid": ["v1.jpg", "v1_aug1.jpg", "v2_neg1.jpg"],
+        "test": ["t1.jpg", "t2.jpg", "augustus_pagi.jpg"],
+    }
+    bd = TMP / "datasets" / "bagian"
+    for bagian, daftar in rencana.items():
+        (bd / bagian / "images").mkdir(parents=True, exist_ok=True)
+        (bd / bagian / "labels").mkdir(parents=True, exist_ok=True)
+        for i, n in enumerate(daftar):
+            cv2.imwrite(str(bd / bagian / "images" / n),
+                        np.full((48, 64, 3), (40 + i * 17) % 256, np.uint8))
+            (bd / bagian / "labels" / (Path(n).stem + ".txt")
+             ).write_text("0 0.5 0.5 0.3 0.3\n")
+    (bd / "data.yaml").write_text("names:\n  0: botol\n")
     return ip
 
 
@@ -363,6 +388,7 @@ def jalankan(d, ip):
                      ("panel", lambda: jalankan_panel(d)),
                      ("kontrol", lambda: jalankan_kontrol(d)),
                      ("grid", lambda: jalankan_grid(d)),
+                     ("bagian", lambda: jalankan_bagian(d)),
                      ("potret", lambda: jalankan_potret(d))):
         if BLOK and nama not in BLOK:
             continue
@@ -1181,6 +1207,37 @@ def jalankan_potret(d):
     d.js("location.href = '/'")
     time.sleep(1.2)
     simpan("grid")
+
+    # Baris saringan pada dataset yang PALING padat kontrolnya: bersplit dan
+    # ber-aug-bal, jadi menu "Bagian" ikut tergambar di samping yang lain.
+    # Kepadatan baris itu yang perlu dilihat dengan mata; angka-angkanya sudah
+    # dijaga blok `bagian`.
+    d.js(f"fetch('/setsrc?path={TMP / 'datasets' / 'bagian'}', {{method:'POST'}})"
+         ".then(r => r.json())", tunggu=True)
+    d.js("location.href = '/'")
+    time.sleep(1.2)
+    simpan("grid-bagian")
+    d.js("document.getElementById('split-tombol').click()")
+    time.sleep(0.4)
+    simpan("grid-bagian-menu")
+    luber_b = d.js("(function(){ const r = document.getElementById('split-isi')"
+                   ".getBoundingClientRect();"
+                   " return (r.left < 0 || r.right > innerWidth)"
+                   "        ? `left=${r.left|0} right=${r.right|0}` : ''; })()")
+    cek("menu Bagian tidak keluar dari tepi layar",
+        terlihat_kosong(luber_b), luber_b)
+    # Baris saringan tetap SATU baris: begitu ia membungkus, grid di bawahnya
+    # ikut turun dan tinggi bar atas yang dipatok CSS tidak lagi cocok.
+    tinggi = d.js("Math.round(document.querySelector('.bar-saring')"
+                  ".getBoundingClientRect().height)")
+    cek("baris saringan tidak membungkus ke baris kedua", tinggi and tinggi < 60,
+        "tinggi=%s" % tinggi)
+    d.js("document.body.click()")
+    time.sleep(0.3)
+    d.js(f"fetch('/setsrc?path={TMP / 'datasets' / 'grid'}', {{method:'POST'}})"
+         ".then(r => r.json())", tunggu=True)
+    d.js("location.href = '/'")
+    time.sleep(1.2)
     d.js("document.getElementById('kelas-tombol').click()")
     time.sleep(0.4)
     simpan("grid-kelas")
@@ -2260,6 +2317,147 @@ def jalankan_grid(d):
     cek("halaman kanvas kembali terbuka untuk blok berikutnya",
         bool(d.js("typeof S !== 'undefined' && !!S.shapes")))
 
+
+def jalankan_bagian(d):
+    """
+    Menu "Bagian": saringan split (train/valid/test) dan asal gambar
+    (asli/aug/bal).
+
+    pytest sudah menjaga bahwa rutenya menyaring dengan benar. Yang TIDAK bisa
+    dibuktikan pytest adalah bahwa tombolnya membuka menunya: pembukanya
+    didaftarkan satu per satu di app.js, dan menu yang lupa didaftarkan tetap
+    tergambar dengan rapi di HTML sambil tidak pernah bisa dibuka sama sekali.
+    """
+    print("  -- menu Bagian --")
+    BD = TMP / "datasets" / "bagian"
+
+    def buka(url="/"):
+        d.js(f"location.href = {url!r}")
+        time.sleep(1.3)
+
+    def n_kartu():
+        return d.js("document.querySelectorAll('.card').length")
+
+    ok = d.js(f"fetch('/setsrc?path={BD}', {{method:'POST'}}).then(r => r.json())",
+              tunggu=True)
+    cek("dataset bersplit terbuka", (ok or {}).get("n") == 13, str(ok)[:90])
+    buka("/")
+    cek("seluruh 13 gambar tampil tanpa saringan", n_kartu() == 13,
+        "n=%s" % n_kartu())
+
+    # ------------------------------------------------------------------ menu
+    cek("menu Bagian tergambar", bool(d.js("!!document.getElementById('menu-split')")))
+    d.js("document.getElementById('split-tombol').click()")
+    time.sleep(0.35)
+    cek("tombolnya membuka menunya",
+        bool(d.js("document.getElementById('menu-split').hasAttribute('data-buka')")))
+    # Klik DI DALAM menu tidak boleh menutupnya: isinya form bercentang yang
+    # baru berlaku sesudah Terapkan, jadi menutup di centang pertama membuat
+    # dua pilihan sekaligus mustahil.
+    d.js("document.querySelector('#split-isi .kelas-baris').click()")
+    time.sleep(0.3)
+    cek("mencentang tidak menutup menunya",
+        bool(d.js("document.getElementById('menu-split').hasAttribute('data-buka')")))
+
+    baris = d.js("[...document.querySelectorAll('#split-isi .kelas-baris')]"
+                 ".map(a => a.textContent.replace(/\\s+/g,' ').trim())")
+    cek("memuat tiga split dan tiga asal beserta angkanya",
+        len(baris or []) == 6, str(baris))
+    cek("angkanya benar per split",
+        "train 7" in " ".join(baris) and "valid 3" in " ".join(baris)
+        and "test 3" in " ".join(baris), str(baris))
+    cek("angkanya benar per asal gambar",
+        "foto asli 7" in " ".join(baris)
+        and "hasil augmentasi 4" in " ".join(baris)
+        and "hasil penyeimbangan 2" in " ".join(baris), str(baris))
+
+    # ------------------------------------------------------------- menyaring
+    d.js("[...document.querySelectorAll('#split-isi input[name=sp]')]"
+         ".forEach(i => i.checked = i.value === 'train')")
+    d.js("document.querySelector('#split-isi button[type=submit]').click()")
+    time.sleep(1.3)
+    cek("Terapkan menyaring ke train saja", n_kartu() == 7, "n=%s" % n_kartu())
+    cek("tombolnya menyala dan menyebutkan pilihannya",
+        "train" in (d.js("document.getElementById('split-tombol').textContent") or ""),
+        d.js("document.getElementById('split-tombol').textContent"))
+
+    # Saringan kedua ditambahkan di atas yang pertama, bukan menggantikannya.
+    d.js("document.getElementById('split-tombol').click()")
+    time.sleep(0.35)
+    d.js("[...document.querySelectorAll('#split-isi input[name=tu]')]"
+         ".forEach(i => i.checked = i.value === 'aug')")
+    d.js("document.querySelector('#split-isi button[type=submit]').click()")
+    time.sleep(1.3)
+    cek("split dan asal menyempit bersama, bukan melebar",
+        n_kartu() == 3, "n=%s" % n_kartu())
+    cek("keduanya ikut terbaca di URL",
+        d.js("location.search.includes('sp=train')")
+        and d.js("location.search.includes('tu=aug')"), d.js("location.search"))
+
+    # ------------------------------------------------------- Bersihkan saringan
+    cek("Bersihkan saringan menghitung Bagian juga",
+        "2" in (d.js("document.querySelector('.saring-bersih').textContent") or ""),
+        d.js("document.querySelector('.saring-bersih').textContent"))
+    d.js("document.querySelector('.saring-bersih').click()")
+    time.sleep(1.3)
+    cek("dan benar-benar melepasnya", n_kartu() == 13, "n=%s" % n_kartu())
+    cek("tanpa meninggalkan sp/tu di URL",
+        not d.js("location.search.includes('sp=')")
+        and not d.js("location.search.includes('tu=')"), d.js("location.search"))
+
+    # ------------------------------------------------------- Unduh dataset
+    # Dataset ini justru kasus yang paling perlu dijaga: 7 foto asli di antara
+    # 4 hasil augmentasi dan 2 hasil penyeimbangan, jadi selisihnya besar dan
+    # harus disebutkan SEBELUM unduhannya dimulai.
+    buka("/")
+    cek("tombol Unduh dataset ada di baris Pindai ulang",
+        bool(d.js("!!document.getElementById('unduh-asli')")))
+    ring = d.js("fetch('/api/ekspor/asli').then(r => r.json())", tunggu=True)
+    cek("ringkasannya menghitung asli, aug dan bal terpisah",
+        (ring or {}).get("n") == 7 and ring.get("aug") == 4
+        and ring.get("bal") == 2, str(ring)[:120])
+
+    # Konfirmasinya diambil alih, bukan dibiarkan muncul: dialog peramban
+    # sungguhan menahan halaman sehingga Runtime.evaluate tidak pernah dijawab
+    # dan seluruh berkas uji menggantung. Sekalian isinya diperiksa — di
+    # situlah angka yang tidak ikut diunduh benar-benar sampai ke orangnya.
+    d.js("window.__tanya = ''; window.confirm = t => { window.__tanya = t;"
+         " return false; };")
+    d.js("document.getElementById('unduh-asli').click()")
+    time.sleep(1.0)
+    tanya = d.js("window.__tanya") or ""
+    cek("tombolnya menanyakan dulu, dengan angkanya", "7 foto asli" in tanya,
+        tanya.replace("\n", " ")[:110])
+    cek("dan menyebut yang TIDAK ikut diunduh",
+        "4 hasil augmentasi" in tanya and "2 hasil penyeimbangan" in tanya,
+        tanya.replace("\n", " ")[:140])
+    cek("membatalkan tidak meninggalkan tombol mati",
+        not d.js("document.getElementById('unduh-asli').disabled"))
+
+    # Isi ZIP-nya diambil lewat fetch, bukan dengan menekan tombolnya:
+    # unduhan sungguhan di Chrome headless mendarat di luar jangkauan CDP.
+    isi = d.js("fetch('/ekspor/asli').then(r => r.arrayBuffer())"
+               ".then(b => { const u = new Uint8Array(b); let s = '';"
+               " for (let i = 0; i < u.length; i++) s += String.fromCharCode(u[i]);"
+               " return s.length + '|' + (s.match(/images\\/[^\\x00]{1,40}\\.jpg/g)"
+               " || []).join(','); })", tunggu=True) or ""
+    cek("ZIP-nya datar: images/ tanpa train, valid atau test",
+        "images/" in isi and "train/" not in isi and "valid/" not in isi,
+        isi[:150])
+    cek("dan tidak memuat satu pun salinan hasil augmentasi",
+        "_aug" not in isi and "_bal" not in isi and "_neg" not in isi,
+        isi[:150])
+
+    # Kembalikan keadaan untuk blok sesudahnya, sama seperti akhir jalankan_grid.
+    d.js(f"fetch('/setsrc?path={TMP / 'datasets' / 'uji'}', {{method:'POST'}})"
+         ".then(r => r.json())", tunggu=True)
+    buka(f"/label?path={TMP / 'datasets' / 'uji' / 'uji-00.jpg'}")
+    for _ in range(40):
+        if d.js("typeof S !== 'undefined' && !!S.shapes"):
+            break
+        time.sleep(0.2)
+    cek("halaman kanvas kembali terbuka untuk blok berikutnya",
+        bool(d.js("typeof S !== 'undefined' && !!S.shapes")))
 
 
 if __name__ == "__main__":
