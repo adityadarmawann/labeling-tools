@@ -114,6 +114,59 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ---------------------------------------------------------------- papan periksa
 
+/*
+ * Jalur chip kelas di kartu grid: mengkatupkan yang tidak muat.
+ *
+ * Tinggi kartu tidak boleh berubah karena jumlah kelasnya. CSS sudah mengunci
+ * jalurnya ke satu baris (.labs, tinggi 19px, tanpa membungkus), tetapi CSS
+ * saja tidak bisa MENGHITUNG berapa chip yang tidak muat, dan chip yang
+ * terpotong diam-diam adalah kelas yang hilang tanpa jejak. Persis itu yang
+ * terjadi pada template lama: ia mencetak paling banyak empat kelas, jadi
+ * gambar berlabel lima kelas tampak sama saja dengan yang berlabel empat.
+ *
+ * Di sini chip disembunyikan dari kanan satu per satu sampai jalurnya tidak
+ * lagi meluap, lalu pil "+N" menyebut berapa yang disembunyikan dan title-nya
+ * menyebut nama-namanya. Berapa yang muat bergantung lebar kolom, jadi ini
+ * dihitung ulang setiap kali jendela berubah ukuran.
+ */
+function katupLabel() {
+  document.querySelectorAll('#grid .labs').forEach(jalur => {
+    const sisa = jalur.querySelector('.lab-sisa');
+    if (!sisa) return;                       // 0 atau 1 kelas: tidak ada yang bisa hilang
+    const chip = [...jalur.querySelectorAll('.lab')];
+    chip.forEach(c => { c.hidden = false; });
+    jalur.classList.add('ada-sisa');
+    sisa.hidden = false;
+    // Chip pertama selalu dipertahankan: satu nama terpotong masih memberi
+    // tahu kelas apa isinya, sedangkan jalur yang isinya cuma "+5" tidak.
+    let n = 0;
+    for (let i = chip.length - 1; i >= 1; i--) {
+      if (jalur.scrollWidth <= jalur.clientWidth + 1) break;
+      chip[i].hidden = true;
+      n++;
+    }
+    if (n) {
+      const nama = chip.filter(c => c.hidden).map(c => c.textContent);
+      sisa.textContent = '+' + n;
+      sisa.title = (n === 1 ? 'satu kelas lagi: ' : n + ' kelas lagi: ') + nama.join(', ');
+    } else {
+      sisa.hidden = true;
+      jalur.classList.remove('ada-sisa');
+    }
+  });
+}
+
+document.addEventListener('DOMContentLoaded', katupLabel);
+// Sekali lagi setelah fonta siap: lebar teks bisa berubah setelah pengukuran
+// pertama, dan penghitung yang salah satu angka lebih buruk daripada tidak ada.
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(katupLabel);
+let jamKatup = 0;
+window.addEventListener('resize', () => {
+  clearTimeout(jamKatup);
+  jamKatup = setTimeout(katupLabel, 120);
+});
+
+
 async function openIn(p, btn) {
   const old = btn.textContent;
   btn.textContent = 'Membuka...';

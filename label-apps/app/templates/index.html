@@ -412,20 +412,34 @@
              aria-label="Pilih {{ p.split('/')[-1] }}"></label>
     {%- endif %}
     <a href="/view?path={{ p }}" aria-label="Lihat {{ p.split('/')[-1] }}"><img loading="lazy" src="/thumb?path={{ p }}&s=320" alt="{{ p.split('/')[-1] }}"></a>
+    {#- Cap pelabel pindah ke sudut kanan atas gambar, sejajar kotak centang
+        di sudut kiri. Dulu ia satu baris sendiri di dalam .meta, dan karena
+        hanya gambar yang sudah dibagi yang punya cap, kartu bercap jadi lebih
+        tinggi 20px daripada tetangganya. Di sudut gambar ia tidak memakai
+        tinggi sama sekali. -#}
+    {%- set milik = pelabel_dari.get(it | id) %}
+    {%- if milik %}
+    <div class="tugas-cap{% if milik == sess.user %} tugas-aku{% endif %}"
+         title="ditugaskan ke {{ milik }}">{{ milik }}</div>
+    {%- endif %}
     <div class="meta">
-      {%- set milik = pelabel_dari.get(it | id) %}
-      {%- if milik %}
-      <div class="tugas-cap{% if milik == sess.user %} tugas-aku{% endif %}"
-           title="ditugaskan ke {{ milik }}">{{ milik }}</div>
-      {%- endif %}
-      <div class="labs">
+      {#- Chip kelas. SEMUA kelas dicetak sekarang; dulu template ini berhenti
+          di kelas keempat, sehingga gambar berlabel lima kelas tampak persis
+          sama dengan yang berlabel empat dan satu kelas hilang tanpa jejak.
+          Jalurnya dikunci setinggi satu baris oleh CSS, dan katupLabel() di
+          app.js menyembunyikan chip yang tidak muat lalu menghitungnya di pil
+          "+N" tepat di sebelah chip terakhir. Nama lengkap tiap kelas ada di
+          title chipnya, daftar penuhnya di title jalurnya, dan nama yang
+          dikatupkan ada di title pil "+N". -#}
+      {%- set kelas = it.shapes | map(attribute='label') | map('string') | unique | sort | list %}
+      <div class="labs"{% if kelas %} title="{{ kelas | join(', ') }}"{% endif %}>
         {%- if it.split %}<span class="split">{{ it.split }}</span>{% endif %}
-        {%- for l in it.shapes | map(attribute='label') | map('string') | unique | sort %}
-        {%- if loop.index <= 4 %}<span class="lab">{{ l }}</span>{% endif %}
-        {%- endfor %}
+        {%- for l in kelas %}<span class="lab" title="{{ l }}">{{ l }}</span>{% endfor %}
+        {%- if kelas | length > 1 %}<span class="lab-sisa" hidden>+{{ kelas | length - 1 }}</span>{% endif %}
       </div>
       {%- if it.issues %}
-      <div class="iss{% if sev == 'stop' %} stop{% endif %}">{{ it.issues | join(' · ') }}</div>
+      <div class="iss{% if sev == 'stop' %} stop{% endif %}"
+           title="{{ it.issues | join(' · ') }}">{{ it.issues | join(' · ') }}</div>
       {%- endif %}
     </div>
     <div class="acts">
@@ -439,12 +453,15 @@
          >{{ 'Edit label' if it.shapes else 'Labeli' }}</a>
       <a class="btn" href="/view?path={{ p }}">Lihat</a>
       {%- if local %}
-      <button class="btn" onclick="openIn('{{ p }}',this)">Desktop</button>
+      <button class="btn" onclick="openIn('{{ p }}',this)"
+              title="Buka berkas ini di AnyLabeling desktop">Desktop</button>
       {%- endif %}
       {%- if sev == 'bg' %}
-      <button class="btn" onclick="markbg('{{ p }}',false)">Batal latar</button>
+      <button class="btn" onclick="markbg('{{ p }}',false)"
+              title="Batal tanda latar">Batal latar</button>
       {%- elif not it.shapes %}
-      <button class="btn" onclick="markbg('{{ p }}',true)">Latar</button>
+      <button class="btn" onclick="markbg('{{ p }}',true)"
+              title="Tandai sebagai latar (tanpa objek)">Latar</button>
       {%- endif %}
     </div>
   </div>

@@ -212,20 +212,47 @@ main{padding:20px 22px 60px}
 .card[data-s="stop"] .rail{background:var(--stop)}
 .card[data-s="bg"] .rail{background:var(--latar)}
 .card img{width:100%;aspect-ratio:1;object-fit:contain;display:block;background:var(--sunk)}
-.meta{padding:9px 11px 10px}
+/* Tinggi .meta DIKUNCI, bukan mengikuti isinya.
+   Sebelumnya isi kotak ini boleh tumbuh: chip kelas membungkus ke baris kedua
+   dan ketiga, baris temuan kadang dua baris, cap pelabel hanya ada di sebagian
+   gambar. Di kisi, satu kartu yang tumbuh menaikkan SELURUH barisnya, jadi
+   satu gambar berlabel lima kelas membuat empat tetangganya ikut menganga.
+   Diukur di projek botol-kaleng-tetra-mlp-cup-1 dan paragon-kahf: tinggi kartu
+   berbeda-beda 314/336/358 px pada jendela 1400px. Dengan tinggi tetap, setiap
+   kartu 310,5 px berapa pun jumlah kelasnya.
+   48 = 9 (padding atas) + 19 (satu baris chip) + 5 + 15 (satu baris temuan). */
+.meta{height:48px;padding:9px 11px 0;overflow:hidden}
 /* direction:rtl sengaja tidak dipakai: ia memindahkan titik ke depan sehingga
    "000036.jpg" terbaca "jpg.000036". */
-.labs{margin-top:5px;display:flex;gap:4px;flex-wrap:wrap}
+/* Jalur chip: TEPAT satu baris, tidak pernah membungkus. Yang tidak muat
+   disembunyikan oleh app.js dan dihitung oleh pil "+N" di sebelah chip
+   terakhir yang masih terbaca. Nama yang lebih panjang dari kartunya
+   (paragon-kahf memakai nama 31 karakter) dipotong dengan elipsis, dan nama
+   utuhnya tetap bisa dibaca lewat title di tiap chip maupun di jalurnya. */
+.labs{margin-top:0;height:19px;display:flex;gap:4px;flex-wrap:nowrap;
+  align-items:center;overflow:hidden}
 /* Dibatasi ke dalam .labs. Tanpa pembatasan itu selektornya juga mengenai
    <body class="lab"> di halaman anotasi — badan halaman mewarisi latar dan
    warna teks pil kecil ini, dan itu sudah terjadi diam-diam sejak awal. */
-.labs .lab{font-size:10.5px;padding:1px 6px;border-radius:3px;
-  background:var(--lab-bg);color:var(--lab-ink)}
+.labs .lab{font-size:10.5px;line-height:1.55;padding:1px 6px;border-radius:3px;
+  background:var(--lab-bg);color:var(--lab-ink);
+  flex:0 0 auto;max-width:100%;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis}
+/* Saat pil penghitung ikut tampil, chip pertama harus menyisakan tempat
+   untuknya; kalau tidak, satu nama panjang mendorong penghitungnya keluar
+   layar dan orang tidak pernah tahu masih ada kelas lain. */
+.labs.ada-sisa .lab{max-width:calc(100% - 34px)}
+.lab-sisa{flex:0 0 auto;font-size:10.5px;line-height:1.55;padding:1px 5px;
+  border-radius:3px;background:var(--sunk);color:var(--ink-dim);
+  font-variant-numeric:tabular-nums;cursor:default}
 /* Asal split pada ekspor bersplit. Perlu terlihat karena memperbaiki anotasi
    di `valid` punya arti berbeda dari memperbaikinya di `train`. */
 .split{font-size:9.5px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;
   padding:1px 5px;margin-right:5px;border-radius:3px;background:var(--split-bg);color:var(--split-ink)}
-.iss{margin-top:6px;font-size:10.5px;color:var(--warn);line-height:1.35}
+/* Satu baris juga, dengan alasan yang sama. Dua temuan yang digabung titik
+   tengah gampang melewati lebar kartu; teks penuhnya ada di title. */
+.iss{margin-top:5px;height:15px;font-size:10.5px;color:var(--warn);
+  line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .iss.stop{color:var(--stop)}
 .acts{display:flex;gap:6px;padding:0 11px 11px}
 .btn{flex:1;text-align:center;border:1px solid var(--line2);background:var(--raised);
@@ -233,6 +260,12 @@ main{padding:20px 22px 60px}
   text-decoration:none;transition:.12s}
 .btn:hover{border-color:var(--ok);color:var(--ok)}
 .btn.pri:hover{border-color:var(--warn);color:var(--warn)}
+/* Tombolnya pun tidak boleh membungkus. Kartu yang ditandai latar punya empat
+   tombol, dan "Batal latar" pecah dua baris di kartu sempit — satu-satunya
+   sisa penyebab kartu tidak sama tinggi setelah .meta dikunci. Teks yang
+   terpotong tetap terbaca lewat title tombolnya. */
+.acts .btn{min-width:0;padding:5px 2px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis}
 
 .hero{max-width:520px;margin:16vh auto 0;text-align:center;padding:0 24px}
 .hero h2{font-size:22px;font-weight:600;letter-spacing:.01em}
@@ -1866,9 +1899,14 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
 .bg-menunggu:hover{background:transparent}
 
 /* Penanda siapa yang ditugaskan pada sebuah gambar, di kartu grid. */
-.tugas-cap{display:inline-block;margin-top:5px;font-size:10px;padding:1px 7px;
+/* Di sudut kanan atas gambar, sejajar kotak centang di sudut kiri, supaya ia
+   tidak lagi memakai satu baris di dalam .meta dan membuat kartu yang sudah
+   dibagi lebih tinggi daripada yang belum. */
+.tugas-cap{position:absolute;top:6px;right:6px;z-index:2;
+  display:inline-block;font-size:10px;padding:1px 7px;
   border-radius:999px;background:var(--sunk);color:var(--ink-dim);
-  max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  max-width:calc(100% - 46px);overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}
 .tugas-cap.tugas-aku{background:var(--ok-lembut);color:var(--aksi);font-weight:600}
 
 /* ==================================================== halaman versi */
