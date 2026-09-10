@@ -2554,3 +2554,31 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
   .wz-tbl{flex:1 1 auto;justify-content:center}
   .wz-aksi .spacer{display:none}
 }
+
+/* ---------------------------------------------------------- foto latar RVM
+   Formulir di langkah 4 wizard versi. Kartunya menampilkan PELAT JADI, bukan
+   foto yang diunggah: yang perlu dinilai mata adalah hasil olahannya. */
+.wz-latar{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.wz-latar .halus{margin:4px 0 10px;line-height:1.55}
+.lt-daftar{display:flex;gap:10px;flex-wrap:wrap}
+.lt-kartu{margin:0;width:132px;border:1px solid var(--line);border-radius:9px;
+  overflow:hidden;background:var(--sunk)}
+.lt-kartu img{display:block;width:132px;height:132px;object-fit:cover}
+.lt-kartu figcaption{display:flex;align-items:center;gap:6px;
+  padding:5px 4px 5px 8px;font-size:11px;color:var(--ink-dim);
+  background:var(--panel);border-top:1px solid var(--line)}
+.lt-kartu figcaption{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.lt-buang{margin-left:auto;flex:0 0 auto;width:20px;height:20px;line-height:1;
+  border:1px solid var(--line2);border-radius:5px;background:var(--raised);
+  color:var(--ink-faint);cursor:pointer;font-size:13px}
+.lt-buang:hover{border-color:var(--stop);color:var(--stop)}
+.lt-aksi{display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap}
+.lt-pilih{cursor:pointer}
+/* Batas 3 foto sudah kena: tombolnya diredupkan, tidak dihilangkan — tombol
+   yang lenyap menyisakan teka-teki, sedangkan yang redup dijelaskan angkanya
+   di sebelahnya. */
+.lt-pilih.lt-penuh{opacity:.45;cursor:not-allowed}
+.lt-aksi .halus{flex:1 1 200px;line-height:1.5}
+.lt-mode{margin:12px 0 0;max-width:340px}
+.lt-ket{margin:7px 0 0 !important;min-height:2.6em}
+.lt-mode-cap{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}

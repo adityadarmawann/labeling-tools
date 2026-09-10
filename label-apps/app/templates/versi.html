@@ -133,6 +133,47 @@
             <label class="sk"><input class="sk-in" type="checkbox" role="switch" id="wz-f-kelas" checked><span class="sk-track"><span class="sk-knob"></span></span><span class="sk-teks"><b>Seimbangkan jumlah kelas</b><em>Perbanyak kelas minoritas sampai persentil 75.</em></span></label>
             <label class="sk"><input class="sk-in" type="checkbox" role="switch" id="wz-f-neg" checked><span class="sk-track"><span class="sk-knob"></span></span><span class="sk-teks"><b>Pulihkan porsi sampel negatif</b><em>Fase lain hanya memperbanyak gambar berobjek, jadi porsi negatif menyusut. Ini mengembalikannya ke porsi dataset asli.</em></span></label>
           </div>
+
+          {#- Foto ruang detektor milik projek ini.
+
+              Ditaruh di langkah 4 karena di sinilah pelat itu dipakai: fase
+              crop/zoom dan skala menempel objek ke pelat latar, dan tanpa
+              pelat yang benar objek kecil kembali duduk di atas bidang polos.
+              Pengukuran v13: sesudah augmentasi 50,3% piksel data latih putih
+              polos, dan memindahkan objek yang sama ke latar putih membuat
+              akurasi melonjak 0/7 -> 3/7. Latarnya yang jadi soal, bukan
+              objeknya. -#}
+          <div class="wz-latar" id="wz-latar">
+            <span class="menu-judul">Foto ruang detektor</span>
+            <p class="halus">Foto ruang RVM dalam keadaan <b>kosong</b>, tanpa
+              objek di dalamnya. Tiap foto diolah jadi 9 pelat: bantalannya
+              dibuang, warna lampunya dinetralkan, lalu dibuat varian
+              diredupkan sampai diterangkan. Objek dataset ditempel ke pelat
+              itu lewat masker bentuknya, dan satu warna lampu dikenakan ke
+              objek beserta latarnya sekaligus.</p>
+            <div class="lt-daftar" id="lt-daftar"></div>
+
+            {#- Mode pengolahan warna, dipilih SEBELUM berkasnya dipilih karena
+                ia menentukan bagaimana foto itu diolah. Dua pilihan saja, dan
+                keduanya punya alasan yang bisa dibaca di tempat. -#}
+            <div class="seg lt-mode" id="lt-mode">
+              <label class="seg-opt" data-on>
+                <input type="radio" name="lt-mode" value="netral" checked>
+                <span>Netralkan warna</span></label>
+              <label class="seg-opt">
+                <input type="radio" name="lt-mode" value="asli">
+                <span>Warna asli</span></label>
+            </div>
+            <p class="halus lt-ket" id="lt-ket"></p>
+
+            <div class="lt-aksi">
+              <label class="chip lt-pilih">Tambah foto latar
+                <input type="file" id="lt-berkas" accept="image/*" multiple hidden>
+              </label>
+              <span class="halus" id="lt-info"></span>
+            </div>
+          </div>
+
           <div class="wz-aksi">
             <button class="wz-tbl wz-tbl-sek" type="button" data-mundur>Kembali</button>
             <button class="wz-tbl wz-tbl-pri" type="button" data-lanjut>Lanjut</button></div>

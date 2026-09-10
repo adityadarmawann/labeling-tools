@@ -223,15 +223,54 @@ def warna_latar() -> tuple[int, int, int]:
     return _warna_latar or WARNA_LATAR_CADANGAN
 
 
-def kanvas_latar(w: int, h: int, rng: random.Random) -> np.ndarray:
+def pelat_projek(ds) -> list[np.ndarray]:
+    """Pelat bawaan DITAMBAH pelat milik projek `ds`, kalau ada.
+
+    Ditambah, bukan diganti: latar yang lebih beragam membuat model lebih
+    sulit menghafal satu ruangan, dan membuang pelat bawaan berarti dataset
+    kecil kehilangan variasi yang sudah ada tanpa mendapat gantinya.
+
+    Tidak di-cache di modul ini. Cache global `_pelat` boleh ada karena isinya
+    ikut dibundel bersama aplikasi dan tidak pernah berubah; pelat projek
+    berubah tiap kali orang mengunggah atau menghapus foto, dan cache yang
+    dikunci nama projek akan menyajikan pelat yang sudah dibuang. Pemanggilnya
+    (buatversi) memuat sekali di awal lalu memegangnya sendiri.
     """
-    Kanvas berisi potongan pelat RVM acak. HANYA untuk tahap augmentasi —
+    from . import latar as svc_latar
+
+    kumpul = list(muat_pelat())
+    if ds is None:
+        return kumpul
+    for p in svc_latar.daftar_pelat(Path(ds)):
+        im = cv2.imread(str(p))
+        if im is not None:
+            kumpul.append(im)
+    return kumpul
+
+
+def kanvas_latar(w: int, h: int, rng: random.Random,
+                 pelat: list[np.ndarray] | None = None,
+                 indeks: int | None = None) -> np.ndarray:
+    """
+    Kanvas berisi potongan pelat RVM. HANYA untuk tahap augmentasi —
     pemakaian di preprocessing membuat hasilnya tidak deterministik.
+
+    `pelat` boleh diserahkan pemanggil supaya pelat milik projek ikut terpakai
+    tanpa dibaca ulang dari disk pada tiap gambar.
+
+    `indeks` memilih pelat TERTENTU alih-alih acak. Ini yang dipakai pemerataan
+    per kelas di buatversi: pemilihan acak membuat kelas yang sampelnya sedikit
+    hanya menyentuh sebagian kecil pelat — terukur pada 18 pelat, kelas dengan
+    6 sampel cuma menginjak 4 pelat dan 14 pelat tidak pernah dipakainya sama
+    sekali. Latar yang selalu sama untuk satu kelas adalah pintasan: model
+    belajar "ruangan ini berarti kelas itu", persis kekeliruan yang membuat
+    v13 memakai warna sebagai pintasan kelas.
     """
-    pelat = muat_pelat()
+    pelat = muat_pelat() if pelat is None else pelat
     if not pelat:
         return np.full((h, w, 3), warna_latar(), np.uint8)
-    src = pelat[rng.randrange(len(pelat))]
+    src = pelat[rng.randrange(len(pelat))] if indeks is None \
+        else pelat[indeks % len(pelat)]
     sh, sw = src.shape[:2]
     if sh < h or sw < w:
         s = max(h / sh, w / sw)

@@ -943,6 +943,104 @@
     }
   };
 
+  // ------------------------------------------- foto latar ruang detektor
+  //
+  // Pelat projek DITAMBAHKAN ke pelat bawaan, tidak menggantikannya, dan
+  // angkanya disebutkan supaya orang tahu berapa yang sebenarnya dipakai.
+  // Pratinjaunya sengaja menampilkan PELAT JADI, bukan foto yang tadi
+  // diunggah: yang perlu dinilai mata adalah hasil olahannya — bantalan
+  // terbuang, warna dinetralkan, terang divariasikan — dan kalau yang
+  // ditunjukkan fotonya sendiri, kekeliruan di ketiga langkah itu tidak
+  // pernah terlihat.
+  async function gambarLatar() {
+    const wadah = el('lt-daftar');
+    const info = el('lt-info');
+    if (!wadah) return;
+    const r = await fetch('/api/latar').then((x) => x.json()).catch(() => null);
+    if (!r || !r.ok) {
+      wadah.innerHTML = '';
+      info.textContent = (r && r.error) || 'gagal membaca foto latar';
+      return;
+    }
+    wadah.innerHTML = r.foto.map((f) => `
+      <figure class="lt-kartu">
+        <img src="/api/latar/pratinjau?nama=${encodeURIComponent(f.nama)}&t=${Date.now()}"
+             alt="Pelat latar dari ${f.nama}">
+        <figcaption><span class="lt-mode-cap">${
+          f.mode === 'asli' ? 'warna asli' : 'dinetralkan'}</span>
+          <button class="lt-buang" type="button" data-nama="${f.nama}"
+            title="Hapus foto latar ini">&times;</button></figcaption>
+      </figure>`).join('');
+    const sisa = r.maks - r.foto.length;
+    el('lt-berkas').disabled = sisa <= 0;
+    document.querySelector('.lt-pilih').classList.toggle('lt-penuh', sisa <= 0);
+    info.textContent = r.foto.length
+      ? `${r.n_pelat} pelat dari ${r.foto.length} foto, dipakai bersama `
+        + `${r.n_bawaan} pelat bawaan`
+        + (sisa > 0 ? ` · bisa tambah ${sisa} lagi` : ' · sudah penuh')
+      : `Belum ada. Augmentasi memakai ${r.n_bawaan} pelat bawaan aplikasi.`;
+    wadah.querySelectorAll('.lt-buang').forEach((b) => {
+      b.onclick = async () => {
+        if (!confirm(`Hapus foto latar ${b.dataset.nama}? Pelat yang dibuat `
+                     + 'darinya ikut hilang.')) return;
+        await fetch(`/api/latar/buang?nama=${encodeURIComponent(b.dataset.nama)}`,
+                    { method: 'POST' });
+        gambarLatar();
+      };
+    });
+  }
+
+  // Keterangan mode ditulis di sini, bukan di templat, supaya ia berubah
+  // mengikuti pilihan yang sedang aktif. Dua kalimat yang menjelaskan
+  // AKIBATNYA, bukan cara kerjanya: yang perlu diputuskan orang adalah mana
+  // yang cocok untuk ruangannya.
+  const KET_MODE = {
+    netral: 'Warna lampu pada foto dibuang, lalu tiap pelat diberi sedikit '
+      + 'variasi suhu warna. Pilih ini kalau lampu ruanganmu berganti-ganti '
+      + 'warna — augmentasi akan menambahkan warna lampunya sendiri, dan '
+      + 'warna yang terlanjur terekam di foto akan bertumpuk dengannya.',
+    asli: 'Warna foto tidak disentuh sama sekali; yang berubah hanya '
+      + 'terang-gelapnya. Pilih ini kalau lampu ruanganmu memang selalu satu '
+      + 'warna itu dan kamu ingin pelatnya persis seperti aslinya.',
+  };
+  function modeLatar() {
+    const r = document.querySelector('#lt-mode input:checked');
+    return r ? r.value : 'netral';
+  }
+  if (el('lt-mode')) {
+    const perbarui = () => {
+      el('lt-ket').textContent = KET_MODE[modeLatar()];
+      el('lt-mode').querySelectorAll('.seg-opt').forEach((o) => {
+        o.toggleAttribute('data-on', o.querySelector('input').checked);
+      });
+    };
+    el('lt-mode').addEventListener('change', perbarui);
+    perbarui();
+  }
+
+  if (el('lt-berkas')) {
+    el('lt-berkas').onchange = async (ev) => {
+      const berkas = [...ev.target.files];
+      ev.target.value = '';
+      const info = el('lt-info');
+      for (const f of berkas) {
+        info.textContent = `mengunggah ${f.name}…`;
+        const r = await fetch(
+          `/api/latar?name=${encodeURIComponent(f.name)}`
+          + `&mode=${encodeURIComponent(modeLatar())}`,
+          { method: 'PUT', body: f }).then((x) => x.json()).catch(() => null);
+        // Berhenti di kegagalan pertama, dengan sebabnya: melanjutkan diam-diam
+        // membuat orang mengira semuanya masuk padahal batasnya sudah kena.
+        if (!r || !r.ok) {
+          info.textContent = (r && r.error) || 'gagal mengunggah';
+          break;
+        }
+      }
+      gambarLatar();
+    };
+    gambarLatar();
+  }
+
   // Kalau halaman dibuka saat masih ada pekerjaan berjalan, susul saja.
   fetch('/api/versi/kemajuan').then((r) => r.json()).then((k) => {
     if (k && k.jalan) {

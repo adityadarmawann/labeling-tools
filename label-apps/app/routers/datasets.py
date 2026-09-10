@@ -14,6 +14,7 @@ from ..deps import (bodi_json, current_session, current_session_api,
 from ..log import catat
 from ..services import (anylabeling, buatversi, export, riwayat, scanner, split,
                         tugas, versi)
+from ..services import latar as svc_latar
 from ..services import tag as svc_tag
 
 _log = catat("labelapp.split")
@@ -233,6 +234,87 @@ async def _muat_bahan(sess, settings):
 async def versi_katalog(sess: Session = Depends(current_session_api)):
     """Daftar operasi untuk kedua popup. Dibaca sekali saat wizard dibuka."""
     return {"ok": True, **buatversi.olah.katalog_json()}
+
+
+async def _projek_sendiri(sess: Session, settings: Settings):
+    """(tdata, galat) — latar adalah setelan projek, jadi aturannya sama
+    dengan versi: yang mengurusnya pemilik projek."""
+    if sess.src is None:
+        return None, {"ok": False, "error": "belum ada dataset terbuka"}
+    tdata = await asyncio.to_thread(tugas.baca_projek, sess.src,
+                                    settings.uploads_root)
+    if not tugas.boleh_kelola(tdata, sess.user):
+        return None, {"ok": False, "error": (
+            "hanya pemilik projek yang mengurus foto latar"
+            if tdata["pemilik"] else
+            "folder dataset bersama tidak punya pemilik — salin dulu ke ruang "
+            "kerjamu")}
+    return tdata, None
+
+
+@router.get("/api/latar")
+async def latar_ringkas(sess: Session = Depends(current_session_api),
+                        settings: Settings = Depends(get_settings)):
+    """Foto latar ruang detektor milik projek ini, untuk menggambar formulir."""
+    if sess.src is None:
+        return {"ok": False, "error": "belum ada dataset terbuka"}
+    r = await asyncio.to_thread(svc_latar.ringkas, sess.src)
+    return {"ok": True, "n_bawaan": len(buatversi.olah.muat_pelat()), **r}
+
+
+@router.put("/api/latar")
+async def latar_tambah(request: Request, name: str = "", mode: str = "netral",
+                       sess: Session = Depends(current_session_api),
+                       settings: Settings = Depends(get_settings)):
+    """
+    Unggah satu foto ruang detektor KOSONG.
+
+    Dikirim mentah lewat PUT, sama seperti /upload: satu berkas per permintaan,
+    jadi kegagalan satu foto tidak menjatuhkan yang lain, dan tidak perlu
+    menyusun multipart untuk satu berkas.
+    """
+    _tdata, galat = await _projek_sendiri(sess, settings)
+    if galat:
+        return galat
+    data = await request.body()
+    if not data:
+        return {"ok": False, "error": "berkasnya kosong"}
+    if len(data) > settings.max_upload_bytes:
+        return {"ok": False,
+                "error": f"berkasnya lebih besar dari {settings.max_upload_mb} MB"}
+    return await asyncio.to_thread(svc_latar.tambah, sess.src, name, data, mode)
+
+
+@router.post("/api/latar/buang")
+async def latar_buang(nama: str = "",
+                      sess: Session = Depends(current_session_api),
+                      settings: Settings = Depends(get_settings)):
+    _tdata, galat = await _projek_sendiri(sess, settings)
+    if galat:
+        return galat
+    return await asyncio.to_thread(svc_latar.buang, sess.src, nama)
+
+
+@router.get("/api/latar/pratinjau")
+async def latar_pratinjau(nama: str = "",
+                          sess: Session = Depends(current_session_api),
+                          settings: Settings = Depends(get_settings)):
+    """Satu pelat JADI, supaya orang melihat hasil olahannya — bukan fotonya.
+
+    Yang perlu dinilai mata bukan foto yang tadi diunggah, melainkan pelat
+    yang benar-benar dipakai augmentasi: bantalannya sudah terbuang, warnanya
+    sudah dinetralkan, dan terangnya sudah divariasikan. Kalau yang ditunjukkan
+    fotonya sendiri, kekeliruan di ketiga langkah itu tidak pernah terlihat.
+    """
+    if sess.src is None:
+        return Response(status_code=404)
+    pelat = await asyncio.to_thread(svc_latar.daftar_pelat, sess.src)
+    batang = Path(nama).stem
+    cocok = [p for p in pelat if p.stem.startswith(batang + "_p")] or pelat
+    if not cocok:
+        return Response(status_code=404)
+    return Response(cocok[len(cocok) // 2].read_bytes(), media_type="image/png",
+                    headers={"Cache-Control": "no-store"})
 
 
 @router.post("/api/versi/estimasi")

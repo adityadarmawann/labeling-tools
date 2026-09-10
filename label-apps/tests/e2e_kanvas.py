@@ -142,6 +142,18 @@ def siapkan():
             (bd / bagian / "labels" / (Path(n).stem + ".txt")
              ).write_text("0 0.5 0.5 0.3 0.3\n")
     (bd / "data.yaml").write_text("names:\n  0: botol\n")
+
+    # Foto "ruang detektor kosong" untuk menguji formulir latar di wizard versi.
+    # Sengaja berona ungu DAN berbantalan putih di atas-bawah, karena keduanya
+    # yang harus diperbaiki pengolah pelat: bantalannya dibuang, ronanya
+    # dinetralkan.
+    ruang = np.full((480, 640, 3), (150, 80, 130), np.uint8)
+    ruang = np.clip(ruang.astype(int)
+                    + np.random.default_rng(4).integers(-20, 20, ruang.shape),
+                    0, 255).astype(np.uint8)
+    ruang[:90] = 255
+    ruang[-90:] = 255
+    cv2.imwrite(str(TMP / "ruang-rvm.png"), ruang)
     return ip
 
 
@@ -389,6 +401,7 @@ def jalankan(d, ip):
                      ("kontrol", lambda: jalankan_kontrol(d)),
                      ("grid", lambda: jalankan_grid(d)),
                      ("bagian", lambda: jalankan_bagian(d)),
+                     ("latar", lambda: jalankan_latar(d)),
                      ("potret", lambda: jalankan_potret(d))):
         if BLOK and nama not in BLOK:
             continue
@@ -2339,6 +2352,99 @@ def jalankan_grid(d):
     d.js(f"fetch('/setsrc?path={TMP / 'datasets' / 'uji'}', {{method:'POST'}})"
          ".then(r => r.json())", tunggu=True)
     buka(f"/label?path={TMP / 'datasets' / 'uji' / 'uji-00.jpg'}")
+    for _ in range(40):
+        if d.js("typeof S !== 'undefined' && !!S.shapes"):
+            break
+        time.sleep(0.2)
+    cek("halaman kanvas kembali terbuka untuk blok berikutnya",
+        bool(d.js("typeof S !== 'undefined' && !!S.shapes")))
+
+
+def jalankan_latar(d):
+    """
+    Formulir foto ruang detektor di langkah 4 wizard versi.
+
+    Diuji lewat peramban, bukan lewat rutenya saja, karena yang dipertanyakan
+    justru sambungannya: input berkas yang tidak terpasang pendengarnya tetap
+    tergambar rapi, tetap bisa diklik, dan tetap tidak mengunggah apa pun.
+    Berkasnya dipilih lewat DOM.setFileInputFiles — jalur yang sama dengan
+    orang menekan tombol dan memilih berkas di jendela sistem.
+    """
+    print("  -- formulir foto latar --")
+    d.js("location.href = '/versi?ds=projek-satu'")
+    time.sleep(2.6)
+    for _ in range(3):
+        d.js("(document.querySelector('.wz-item[data-buka] [data-lanjut]')"
+             " || {click(){}}).click()")
+        time.sleep(1.0)
+    cek("langkah 4 wizard versi terbuka",
+        d.js("(document.querySelector('.wz-item[data-buka]')||{dataset:{}})"
+             ".dataset.langkah") == "4")
+    cek("formulir foto latar ada di langkah 4",
+        bool(d.js("!!document.getElementById('lt-berkas')")))
+    awal = d.js("(document.getElementById('lt-info')||{}).textContent") or ""
+    cek("sebelum diunggah, keterangannya menyebut pelat bawaan",
+        "bawaan" in awal, awal[:90])
+    cek("belum ada kartu foto",
+        d.js("document.querySelectorAll('#lt-daftar .lt-kartu').length") == 0)
+
+    # Pilihan mode warna, beserta keterangan yang ikut berubah.
+    cek("dua pilihan mode warna tersedia",
+        d.js("document.querySelectorAll('#lt-mode input').length") == 2)
+    ket_netral = d.js("(document.getElementById('lt-ket')||{}).textContent") or ""
+    cek("bawaannya menetralkan, keterangannya menyebut warna lampu",
+        d.js("document.querySelector('#lt-mode input:checked').value") == "netral"
+        and "lampu" in ket_netral, ket_netral[:80])
+    d.js("document.querySelector('#lt-mode input[value=asli]').checked = true;"
+         " document.getElementById('lt-mode')"
+         ".dispatchEvent(new Event('change', {bubbles:true}))")
+    time.sleep(0.4)
+    ket_asli = d.js("(document.getElementById('lt-ket')||{}).textContent") or ""
+    cek("memilih 'Warna asli' mengubah keterangannya",
+        ket_asli != ket_netral and "tidak disentuh" in ket_asli, ket_asli[:80])
+    # Dikembalikan ke bawaan sebelum berkasnya diunggah.
+    d.js("document.querySelector('#lt-mode input[value=netral]').checked = true;"
+         " document.getElementById('lt-mode')"
+         ".dispatchEvent(new Event('change', {bubbles:true}))")
+    time.sleep(0.3)
+
+    # Pilih berkas sungguhan, lalu picu change seperti peramban.
+    doc = d.kirim("DOM.getDocument")["root"]["nodeId"]
+    simpul = d.kirim("DOM.querySelector", nodeId=doc,
+                     selector="#lt-berkas")["nodeId"]
+    d.kirim("DOM.setFileInputFiles", files=[str(TMP / "ruang-rvm.png")],
+            nodeId=simpul)
+    d.js("document.getElementById('lt-berkas')"
+         ".dispatchEvent(new Event('change', {bubbles:true}))")
+    time.sleep(4.0)
+
+    n_kartu = d.js("document.querySelectorAll('#lt-daftar .lt-kartu').length")
+    cek("kartu muncul sesudah berkas dipilih", n_kartu == 1, "n=%s" % n_kartu)
+    info = d.js("(document.getElementById('lt-info')||{}).textContent") or ""
+    cek("keterangannya menyebut 9 pelat dan sisa jatahnya",
+        "9 pelat" in info and "2 lagi" in info, info[:110])
+    # Pratinjaunya harus PELAT JADI 640x640, bukan ikon gambar rusak dan bukan
+    # foto aslinya yang 640x480: yang perlu dinilai mata hasil olahannya.
+    gbr = d.js("(function(){ const i = document.querySelector('#lt-daftar img');"
+               " return i ? i.naturalWidth + 'x' + i.naturalHeight : 'tidak ada';"
+               " })()")
+    cek("pratinjau pelat termuat 640x640", gbr == "640x640", gbr)
+
+    # Hapus lewat tombol silang di kartunya.
+    d.js("window.confirm = () => true;"
+         " document.querySelector('#lt-daftar .lt-buang').click()")
+    time.sleep(3.0)
+    cek("tombol hapus membuang kartunya",
+        d.js("document.querySelectorAll('#lt-daftar .lt-kartu').length") == 0)
+    cek("dan keterangannya kembali ke keadaan awal",
+        "Belum ada" in (d.js("(document.getElementById('lt-info')||{})"
+                             ".textContent") or ""),
+        d.js("(document.getElementById('lt-info')||{}).textContent"))
+
+    # Kembalikan keadaan untuk blok sesudahnya.
+    d.js(f"fetch('/setsrc?path={TMP / 'datasets' / 'uji'}', {{method:'POST'}})"
+         ".then(r => r.json())", tunggu=True)
+    d.js(f"location.href = '/label?path={TMP / 'datasets' / 'uji' / 'uji-00.jpg'}'")
     for _ in range(40):
         if d.js("typeof S !== 'undefined' && !!S.shapes"):
             break

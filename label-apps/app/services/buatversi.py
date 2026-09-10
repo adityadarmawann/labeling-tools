@@ -179,6 +179,23 @@ class Pekerjaan:
         self.pemilik = pemilik
         self.rng = random.Random(seed)
         self.np_rng = np.random.default_rng(seed)
+        # Pelat bawaan DITAMBAH pelat ruang detektor milik projek ini. Dibaca
+        # SEKALI di sini, bukan pada tiap gambar: satu versi bisa menempel
+        # puluhan ribu kali, dan membaca ulang folder tiap kali berarti puluhan
+        # ribu pembacaan disk untuk isi yang tidak berubah selama versi jalan.
+        self.pelat = olah.pelat_projek(ds)
+        # Giliran pelat PER KELAS. Tanpa ini pelatnya dipilih acak tiap kali
+        # menempel, dan kelas yang sampelnya sedikit hanya menyentuh sebagian
+        # kecil pelat: terukur pada 18 pelat, kelas dengan 6 sampel cuma
+        # menginjak 4 pelat sementara 14 lainnya tidak pernah. Latar yang
+        # selalu sama untuk satu kelas adalah pintasan yang gampang dipelajari
+        # -- "ruangan ini berarti kelas itu" -- dan itu justru bentuk kegagalan
+        # yang membuat pelat latar diadakan sejak awal.
+        #
+        # Tiap kelas mulai dari titik yang berbeda, bukan sama-sama dari nol:
+        # kalau semuanya mulai dari 0, kelas A dan kelas B selalu berbagi pelat
+        # yang sama pada langkah yang sama, dan pemerataannya jadi semu.
+        self._giliran: dict[int, int] = {}
         self._batal = batal or (lambda: False)
         self.dirv = dir_versi(ds, nomor)
         # Format keluaran ditentukan SETELAN PROJEK (dengan tebakan mayoritas
@@ -431,6 +448,30 @@ class Pekerjaan:
         return img, olah.baca_label(self.dirv / split / "labels" / f"{stem}.txt")
 
     # ------------------------------------------------------------- Fase 5
+    def _pelat_giliran(self, label) -> int | None:
+        """Nomor pelat berikutnya untuk kelas yang ada di `label`.
+
+        Kelasnya diambil yang PALING BANYAK menempati gambar ini, bukan yang
+        pertama: gambar dengan satu botol besar dan satu tutup kecil pada
+        dasarnya gambar botol, dan itulah kelas yang perlu diratakan.
+
+        None kalau tidak ada pelat sama sekali; pemanggil jatuh ke acak.
+        """
+        if not self.pelat or not label:
+            return None
+        luas: dict[int, float] = {}
+        for c, poli in label:
+            xs = poli[0::2]
+            ys = poli[1::2]
+            luas[c] = luas.get(c, 0.0) + (max(xs) - min(xs)) * (max(ys) - min(ys))
+        kelas = max(luas, key=luas.get)
+        # Titik mulai berbeda per kelas, lalu maju satu tiap kali dipakai.
+        n = self._giliran.get(kelas)
+        if n is None:
+            n = kelas % len(self.pelat)
+        self._giliran[kelas] = n + 1
+        return n
+
     def _tempel(self, kanvas, kecil, label_kecil, ox, oy):
         """
         Tempel `kecil` ke `kanvas` di (ox, oy) lewat masker poligon objeknya,
@@ -483,7 +524,8 @@ class Pekerjaan:
         S = max(h, w)
         s = min(S / pw, S / ph)
         nw, nh = int(pw * s), int(ph * s)
-        kanvas = olah.kanvas_latar(S, S, self.rng)
+        kanvas = olah.kanvas_latar(S, S, self.rng, self.pelat,
+                                       self._pelat_giliran(label))
         pl, pt = (S - nw) // 2, (S - nh) // 2
         kanvas[pt:pt + nh, pl:pl + nw] = cv2.resize(potong, (nw, nh),
                                                     interpolation=cv2.INTER_AREA)
@@ -506,7 +548,8 @@ class Pekerjaan:
         sf = self.rng.uniform(0.20, 0.55)
         nw, nh = max(8, int(w * sf)), max(8, int(h * sf))
         kecil = cv2.resize(img, (nw, nh), interpolation=cv2.INTER_AREA)
-        kanvas = olah.kanvas_latar(S, S, self.rng)
+        kanvas = olah.kanvas_latar(S, S, self.rng, self.pelat,
+                                       self._pelat_giliran(label))
         m = int(S * 0.08)
         ox = self.rng.randint(m, max(m, S - nw - m)) if S - nw - 2 * m > 0 else m
         oy = self.rng.randint(m, max(m, S - nh - m)) if S - nh - 2 * m > 0 else m
@@ -596,7 +639,8 @@ class Pekerjaan:
         skala = cv2.resize(img, (nw, nh),
                            interpolation=cv2.INTER_AREA if faktor < 1 else cv2.INTER_CUBIC)
         if faktor <= 1.0:
-            kanvas = olah.kanvas_latar(S, S, self.rng)
+            kanvas = olah.kanvas_latar(S, S, self.rng, self.pelat,
+                                       self._pelat_giliran(label))
             ox = self.rng.randint(0, max(0, S - nw))
             oy = self.rng.randint(0, max(0, S - nh))
             kanvas = self._tempel(kanvas, skala, [(c, list(p)) for c, p in label], ox, oy)
@@ -611,7 +655,8 @@ class Pekerjaan:
         sy = min(max(0, cy - S // 2), max(0, nh - S))
         jendela = skala[sy:sy + S, sx:sx + S]
         if jendela.shape[0] < S or jendela.shape[1] < S:
-            kanvas = olah.kanvas_latar(S, S, self.rng)
+            kanvas = olah.kanvas_latar(S, S, self.rng, self.pelat,
+                                       self._pelat_giliran(label))
             kanvas[:jendela.shape[0], :jendela.shape[1]] = jendela
             jendela = kanvas
         baru = [(c, [v for i in range(0, len(p), 2)
