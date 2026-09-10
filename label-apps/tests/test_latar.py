@@ -452,3 +452,139 @@ def test_tanpa_pelat_projek_daftarnya_tetap_bawaan_apa_adanya(tmp_path):
     d.mkdir()
     assert [id(p) for p in olah.pelat_projek(d)] == \
         [id(p) for p in olah.muat_pelat()]
+
+
+# ============================================================
+# PELAT DI VALID DAN TEST
+# ============================================================
+
+def _obj_berstruktur(rng):
+    """Objek yang teksturnya BERTAHAN saat dikecilkan.
+
+    Derau per-piksel murni hilang begitu di-resize (INTER_AREA
+    merata-ratakannya), sehingga penjaga keterbacaan menolak hampir semua
+    hasil zoom-keluar — artefak data uji, bukan sifat foto sungguhan.
+    """
+    ob = np.zeros((90, 90, 3), np.uint8)
+    ob[:, :] = (40, 40, 200)
+    ob[::6, :] = (220, 220, 240)
+    ob[:, ::9] = (10, 10, 90)
+    cv2.circle(ob, (45, 45), 26, (240, 180, 60), -1)
+    cv2.rectangle(ob, (12, 12), (78, 30), (20, 220, 220), -1)
+    return ob
+
+
+def _projek_besar(klien, per_kelas=20):
+    ruang = Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = ruang / "eval-latar"
+    d.mkdir(parents=True, exist_ok=True)
+    rng = np.random.default_rng(3)
+    kelas = ["botol", "kaleng", "tetra"]
+    rencana = [k for k in kelas for _ in range(per_kelas)]
+    for i, k in enumerate(rencana):
+        im = (rng.random((240, 320, 3)) * 70 + 30).astype(np.uint8)
+        im[70:160, 90:180] = _obj_berstruktur(rng)
+        cv2.imwrite(str(d / f"g{i:03d}.jpg"), im)
+        (d / f"g{i:03d}.json").write_text(json.dumps({
+            "version": "0.4.36", "flags": {}, "imagePath": f"g{i:03d}.jpg",
+            "imageHeight": 240, "imageWidth": 320, "imageData": None,
+            "shapes": [{"label": k, "shape_type": "polygon",
+                        "points": [[90, 70], [180, 70], [180, 160], [90, 160]]}]}))
+    klien.post(f"/setsrc?path={d}")
+    klien.post("/api/tugas/dataset-siap", json={})
+    return d
+
+
+def _pasang_pelat(d, mode, warna=(20, 200, 20)):
+    rng = np.random.default_rng(9)
+    im = np.full((480, 640, 3), warna, np.uint8)
+    im = np.clip(im.astype(int) + rng.integers(-8, 8, im.shape),
+                 0, 255).astype(np.uint8)
+    ad = latar.folder(d) / latar.ASLI
+    ad.mkdir(parents=True, exist_ok=True)
+    cv2.imwrite(str(ad / f"latar-1-{mode}.png"), im)
+    return latar.bangun_ulang(d)
+
+
+def _manifes(d):
+    return json.loads((d / ".versi" / "v1" / "MANIFES.json").read_text())["berkas"]
+
+
+def test_pelat_warna_asli_boleh_masuk_valid_dan_test(klien, lingkungan):
+    """Alat ukur yang isinya cuma foto berlatar meja menjawab pertanyaan yang
+    salah: yang mau diukur kemampuan di RUANG DETEKTOR."""
+    from tests.test_versi_buat import _mulai, _tunggu
+
+    masuk(klien, "paul", PW_PAUL)
+    d = _projek_besar(klien)
+    assert _pasang_pelat(d, "asli") == 9
+    assert _mulai(klien, {"volume": {"per_gambar": 1}})["ok"]
+    assert _tunggu(klien).get("selesai")
+
+    brk = _manifes(d)
+    ev = [v for v in brk if v["asal"] == "latar_eval"]
+    assert ev, "tidak ada gambar berlatar pelat di alat ukur"
+    # Pagar 1: tidak pernah di train.
+    assert {v["split"] for v in ev} <= {"valid", "test"}, \
+        {v["split"] for v in ev}
+    # Pagar 2: sumbernya dari split yang SAMA — kalau tidak, data latih bocor
+    # ke alat ukurnya.
+    letak = {Path(v["sumber"]).stem: v["split"]
+             for v in brk if v["asal"] == "asli"}
+    for v in ev:
+        assert letak.get(Path(v["sumber"]).stem) == v["split"], v
+    # Pagar 3: MENAMBAH, bukan mengganti.
+    for sp in ("valid", "test"):
+        assert any(v["split"] == sp and v["asal"] == "asli" for v in brk), sp
+
+
+def test_train_selalu_jauh_lebih_banyak_daripada_alat_ukur(klien, lingkungan):
+    """Kalau alat ukur menyamai train, yang terjadi 'diuji di ruang detektor
+    tanpa pernah cukup berlatih di sana' — dan angkanya jatuh tanpa sebab yang
+    kelihatan."""
+    from tests.test_versi_buat import _mulai, _tunggu
+
+    masuk(klien, "paul", PW_PAUL)
+    d = _projek_besar(klien)
+    _pasang_pelat(d, "asli")
+    assert _mulai(klien, {"volume": {"per_gambar": 1}})["ok"]
+    assert _tunggu(klien).get("selesai")
+
+    brk = _manifes(d)
+    PELAT = ("crop_zoom", "skala", "latar_eval")
+    tr = sum(1 for v in brk if v["split"] == "train" and v["asal"] in PELAT)
+    ev = sum(1 for v in brk if v["split"] != "train" and v["asal"] in PELAT)
+    assert tr > ev * 3, f"train {tr} vs alat ukur {ev}"
+
+
+def test_pelat_yang_warnanya_diubah_tidak_pernah_masuk_alat_ukur(klien,
+                                                                 lingkungan):
+    """Pagar yang paling mudah bocor tanpa terasa.
+
+    Pelat bawaan aplikasi SEMUANYA dinetralkan — warnanya digeser. Kalau fase
+    ini jatuh ke pelat bawaan saat projek tidak punya pelat berwarna asli,
+    alat ukurnya diam-diam berisi warna buatan.
+    """
+    from tests.test_versi_buat import _mulai, _tunggu
+
+    masuk(klien, "paul", PW_PAUL)
+    d = _projek_besar(klien)
+    # Hanya pelat mode "netral" yang tersedia -> alat ukur harus TETAP kosong.
+    assert _pasang_pelat(d, "netral") == 9
+    assert latar.daftar_pelat(d, mode="asli") == []
+    assert _mulai(klien, {"volume": {"per_gambar": 1}})["ok"]
+    assert _tunggu(klien).get("selesai")
+    ev = [v for v in _manifes(d) if v["asal"] == "latar_eval"]
+    assert ev == [], f"{len(ev)} gambar berwarna buatan masuk alat ukur"
+
+
+def test_bisa_dimatikan_lewat_resep(klien, lingkungan):
+    from tests.test_versi_buat import _mulai, _tunggu
+
+    masuk(klien, "paul", PW_PAUL)
+    d = _projek_besar(klien)
+    _pasang_pelat(d, "asli")
+    assert _mulai(klien, {"volume": {"per_gambar": 1},
+                          "fase": {"latar_eval": {"aktif": False}}})["ok"]
+    assert _tunggu(klien).get("selesai")
+    assert [v for v in _manifes(d) if v["asal"] == "latar_eval"] == []

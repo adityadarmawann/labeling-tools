@@ -50,6 +50,7 @@ FASE = [
     ("skala", "Menyeimbangkan ukuran objek"),
     ("kelas", "Menyeimbangkan jumlah kelas"),
     ("neg",   "Memulihkan porsi sampel negatif"),
+    ("lateval", "Latar ruang detektor untuk valid/test"),
     ("tutup", "Menulis manifes"),
 ]
 
@@ -541,14 +542,20 @@ class Pekerjaan:
         kotak = (pl / S, pt / S, (pl + nw) / S, (pt + nh) / S)
         return kanvas, olah.saring_label(baru, kotak)
 
-    def _zoom_keluar(self, img, label):
-        """Kecilkan seluruh frame lalu tempel di posisi acak pada pelat RVM."""
+    def _zoom_keluar(self, img, label, kanvas=None):
+        """Kecilkan seluruh frame lalu tempel di posisi acak pada pelat RVM.
+
+        `kanvas` boleh diserahkan pemanggil supaya fase alat ukur bisa memaksa
+        pelat berwarna asli — di valid dan test, pelat yang warnanya digeser
+        tidak boleh ikut sama sekali.
+        """
         h, w = img.shape[:2]
         S = max(h, w)
         sf = self.rng.uniform(0.20, 0.55)
         nw, nh = max(8, int(w * sf)), max(8, int(h * sf))
         kecil = cv2.resize(img, (nw, nh), interpolation=cv2.INTER_AREA)
-        kanvas = olah.kanvas_latar(S, S, self.rng, self.pelat,
+        if kanvas is None:
+            kanvas = olah.kanvas_latar(S, S, self.rng, self.pelat,
                                        self._pelat_giliran(label))
         m = int(S * 0.08)
         ox = self.rng.randint(m, max(m, S - nw - m)) if S - nw - 2 * m > 0 else m
@@ -844,6 +851,95 @@ class Pekerjaan:
         return jadi
 
     # ------------------------------------------------------------- Fase 7
+    def fase_latar_eval(self):
+        """
+        Tambahkan gambar berlatar pelat ke VALID dan TEST.
+
+        Ini satu-satunya fase selain preprocessing yang menyentuh valid dan
+        test, dan penyimpangannya dari aturan "alat ukur tidak pernah
+        diaugmentasi" disengaja serta dibatasi ketat.
+
+        Kenapa boleh: yang diukur valid/test seharusnya kemampuan di RUANG
+        DETEKTOR. Kalau isinya cuma foto asli yang berlatar meja atau bantalan
+        polos, angkanya menjawab pertanyaan yang salah — persis kekeliruan v13,
+        yang mAP-nya bagus lalu gagal 0/7 di RVM.
+
+        Empat pagar yang membuatnya tetap alat ukur:
+
+          1. HANYA pelat "warna asli". Pelat yang warnanya digeser -- termasuk
+             seluruh pelat bawaan aplikasi, yang dinetralkan -- tidak pernah
+             masuk. Alat ukur yang isinya warna buatan mengukur sesuatu yang
+             tidak ada di ruang detektor mana pun.
+          2. Sumbernya HANYA gambar valid/test itu sendiri. Mengambil dari
+             train akan membocorkan data latih ke alat ukurnya.
+          3. MENAMBAH, tidak mengganti. Foto aslinya tetap ada, jadi angka
+             lama tetap bisa dibandingkan.
+          4. Jumlahnya dijaga tetap jauh di bawah train (lihat _batas_eval).
+        """
+        par = (self.resep.get("fase") or {}).get("latar_eval") or {}
+        if not par.get("aktif", True):
+            self.maju("lateval", 0, 0)
+            return 0
+        from . import latar as svc_latar
+
+        jalur = svc_latar.daftar_pelat(self.ds, mode="asli")
+        pelat = []
+        for p in jalur:
+            im = cv2.imread(str(p))
+            if im is not None:
+                pelat.append(im)
+        if not pelat:
+            # Tidak ada pelat berwarna asli: tidak ada yang boleh masuk alat
+            # ukur. Diam-diam memakai pelat bawaan yang sudah dinetralkan
+            # justru melanggar pagar pertama.
+            self.maju("lateval", 0, 0)
+            return 0
+
+        porsi = float(par.get("porsi", 0.30))
+        jadi = 0
+        for split in ("valid", "test"):
+            kolam = [s for s in self.asli.get(split, [])
+                     if olah.baca_label(self.dirv / split / "labels" / f"{s}.txt")]
+            n = min(int(len(kolam) * porsi), self._batas_eval())
+            if n <= 0:
+                continue
+            # Seed tetap: alat ukur harus sama isinya tiap kali versi dibuat
+            # ulang dari resep yang sama, kalau tidak dua angka tidak bisa
+            # dibandingkan.
+            pilih = random.Random(1234).sample(kolam, n)
+            for i, stem in enumerate(pilih):
+                self.cek()
+                img, label = self._muat_hasil(split, stem)
+                if img is None or not label:
+                    continue
+                S = max(img.shape[:2])
+                kanvas = olah.kanvas_latar(S, S, self.rng, pelat,
+                                           self._pelat_giliran(label))
+                hasil = self._zoom_keluar(img, label, kanvas=kanvas)
+                if not hasil or not hasil[1]:
+                    continue
+                g, l = hasil
+                if not olah.objek_terbaca(g, l):
+                    continue
+                self._simpan(split, f"{stem}_latar", g, l, "latar_eval", stem)
+                jadi += 1
+        self.maju("lateval", 1, 1, jadi=jadi)
+        return jadi
+
+    def _batas_eval(self) -> int:
+        """Berapa gambar berlatar pelat yang boleh masuk SATU split alat ukur.
+
+        Train harus tetap jauh lebih banyak. Kalau tidak, "model belajar di
+        ruang detektor" berubah jadi "model diuji di ruang detektor tanpa
+        pernah cukup berlatih di sana", dan angkanya jatuh tanpa sebab yang
+        kelihatan. Seperempat dari jumlah gambar train berlatar pelat sudah
+        lebih dari cukup untuk mengukur, dan tidak mungkin menyamainya.
+        """
+        n_train = sum(1 for m in self.manifes
+                      if m["split"] == "train"
+                      and m.get("asal") in ("crop_zoom", "skala"))
+        return max(0, n_train // 4)
+
     def fase_negatif(self):
         """
         Pulihkan porsi sampel negatif.
@@ -970,6 +1066,10 @@ class Pekerjaan:
             self.fase_skala()
             self.fase_kelas()
             self.fase_negatif()
+            # Paling akhir: batasnya dihitung dari jumlah gambar berlatar
+            # pelat di train, jadi seluruh fase yang menghasilkannya harus
+            # sudah selesai lebih dulu.
+            self.fase_latar_eval()
             return self.tutup(catatan)
         except Dibatalkan:
             buang_hasil(self.ds, self.nomor)

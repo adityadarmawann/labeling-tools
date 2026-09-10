@@ -157,11 +157,21 @@ def daftar_asli(ds: Path) -> list[Path]:
                   if p.suffix.lower() in IMG_EXT and p.is_file())
 
 
-def daftar_pelat(ds: Path) -> list[Path]:
+def daftar_pelat(ds: Path, mode: str = "") -> list[Path]:
+    """Pelat projek. `mode` menyaring menurut cara pengolahan fotonya.
+
+    `mode="asli"` dipakai valid dan test: di sana hanya boleh masuk pelat yang
+    WARNANYA tidak diubah — diredupkan atau diterangkan boleh, digeser
+    warnanya tidak. Alat ukur yang isinya warna buatan mengukur sesuatu yang
+    tidak pernah ada di ruang detektor mana pun.
+    """
     d = folder(ds) / PELAT
     if not d.is_dir():
         return []
-    return sorted(d.glob("*.png"))
+    pelat = sorted(d.glob("*.png"))
+    if not mode:
+        return pelat
+    return [p for p in pelat if mode_dari(p.name.rsplit("_p", 1)[0]) == mode]
 
 
 MODE = ("netral", "asli")
