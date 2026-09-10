@@ -1360,9 +1360,11 @@ def test_gambar_baru_menunggu_di_anotasi_bukan_langsung_di_dataset(klien,
     klien.post("/api/tugas/dataset", json={"gambar": [str(d / "a.jpg")]})
     h = klien.get("/").text
     assert h.count('class="card"') == 1
-    assert "1</b> gambar lain di projek ini belum masuk dataset" in h
-    assert klien.get("/api/ekspor/ringkasan?format=yolo-seg&split=8:1:1"
-                     ).json()["n_dataset"] == 1
+    # Grid tidak lagi mengumumkan berapa yang di luar dataset -- itu ukuran
+    # pekerjaan pelabelan, dan tempatnya halaman Anotasi. Faktanya tetap
+    # dijaga, lewat angka yang memang dipakai ekspor.
+    j = klien.get("/api/ekspor/ringkasan?format=yolo-seg&split=8:1:1").json()
+    assert j["n_dataset"] == 1 and j["n_semua"] == 2
 
 
 def test_sistem_tidak_memasukkan_apa_pun_atas_nama_pemiliknya(klien, lingkungan):
@@ -1399,7 +1401,8 @@ def test_sistem_tidak_memasukkan_apa_pun_atas_nama_pemiliknya(klien, lingkungan)
     assert r["ok"] and r["ditambah"] == 4
     h = klien.get("/").text
     assert h.count('class="card"') == 4
-    assert "1</b> gambar lain di projek ini belum masuk dataset" in h
+    j = klien.get("/api/ekspor/ringkasan?format=yolo-seg&split=8:1:1").json()
+    assert j["n_dataset"] == 4 and j["n_semua"] == 5
 
 
 def test_semua_jalur_penambah_gambar_tunduk_pada_aturan_yang_sama(klien,
@@ -2034,13 +2037,15 @@ def test_undangan_yang_sudah_dipakai_tidak_bisa_dibatalkan(klien, aplikasi,
     assert klien.post("/api/tugas/batalkan-undangan?token=xxx").json()["ok"] is False
 
 
-def test_chip_tugasku_menunjuk_pekerjaan_yang_belum_masuk_dataset(
+def test_jatah_pelabel_yang_belum_masuk_dataset_dihitung_di_anotasi(
         klien, aplikasi, lingkungan):
-    """Pelabel yang mencari jatahnya di halaman Dataset selalu melihat nol.
+    """Sisa jatah pelabel diukur di halaman ANOTASI, bukan di grid Dataset.
 
-    Chip "Tugasku" menghitung dalam lingkup halaman ini, dan itu benar —
-    halaman ini memang cuma memuat isi dataset. Yang salah adalah diam soal
-    sisanya: pada projek yang baru dibagi, seluruh jatahnya ada di luar sana.
+    Grid Dataset memuat gambar yang sudah selesai dianotasi lalu dimasukkan;
+    berapa yang belum dikerjakan bukan pertanyaan yang dijawab di sini, dan
+    catatannya dulu justru menaruh dua kalimat sekaligus di atas grid. Yang
+    tetap harus benar adalah ANGKANYA, dan angka itu dipakai halaman Anotasi
+    serta lencana sidebarnya.
     """
     from conftest import klien_baru
     from tests.test_data import masuk, PW_ANGGI, PW_PAUL
@@ -2055,9 +2060,53 @@ def test_chip_tugasku_menunjuk_pekerjaan_yang_belum_masuk_dataset(
     klien.post("/api/tugas/dataset", json={"gambar": [g[0]]})
 
     tamu = klien_baru(aplikasi, "anggi", PW_ANGGI)
+    # Halaman Anotasi yang menghitungnya: 2 dari 3 gambar belum masuk dataset,
+    # dan 1 di antaranya jatah anggi.
+    a = tamu.get("/anotasi?ds=paul/jatah-luar")
+    assert a.status_code == 200, a.text[:200]
+    j = tamu.get("/api/ekspor/ringkasan?format=yolo-seg&split=8:1:1").json()
+    assert j["n_semua"] - j["n_dataset"] == 2, j
+
+    # Grid Dataset sendiri diam soal itu, dan diamnya disengaja. Yang dijaga
+    # catatannya, bukan frasanya: "belum masuk dataset" masih dipakai panduan
+    # dan sidebar untuk menerangkan hal yang sama di tempat yang benar.
     h = " ".join(tamu.get("/?ds=paul/jatah-luar").text.split())
-    assert "1 jatahmu belum masuk dataset" in h, h[h.find("Tugasku") - 80:][:300]
-    assert "/anotasi?ds=paul" in h
+    assert 'class="ds-catatan"' not in h
+    assert "jatahmu belum masuk dataset" not in h
+    assert "di antaranya jatahmu" not in h
+
+
+def test_grid_dataset_tidak_lagi_memasang_bilah_kemajuan(klien, lingkungan):
+    """Bilah yang selalu 100% bukan keterangan, cuma baris yang dilewati.
+
+    Grid Dataset memuat gambar yang sudah SELESAI dianotasi lalu dimasukkan ke
+    dataset, jadi menurut definisinya bilahnya penuh. Yang mengukur pekerjaan
+    pelabelan adalah halaman Anotasi, dan komponen bilahnya (.lajur) tetap
+    dipakai di sana.
+    """
+    from tests.test_data import masuk, PW_PAUL
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    d = _projek(_ruang(klien), "kepala", n=3)
+    klien.post(f"/setsrc?path={d}")
+    g = sorted(str(q) for q in d.glob("*.jpg"))
+    klien.post("/api/tugas/dataset", json={"gambar": [g[0]]})
+
+    h = klien.get("/").text
+    assert 'class="lajur"' not in h
+    assert "% selesai" not in h
+    assert 'class="ds-catatan"' not in h
+
+    # Yang tersisa justru yang memang tentang isi dataset ini, dan tombolnya
+    # tetap terpasang -- membuang bilahnya tidak boleh ikut membuang alatnya.
+    alat = h.split('class="ds-alat"')[1].split("</div>")[0]
+    assert "objek" in alat
+    assert "rescan()" in alat and 'id="unduh-asli"' in alat
+
+    # Rincian per keadaan tidak hilang, cuma pindah ke tempat yang angkanya
+    # lebih tepat daripada proporsi bilah.
+    assert 'id="menu-keadaan"' in h
 
 
 # ============================================================

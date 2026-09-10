@@ -73,9 +73,14 @@ def jalankan(base: str, sandi: str) -> int:
 
     # ---------------------------------------------------------- grid
     h = c.get("/").text
-    cek("grid + bilah kemajuan",
-        'class="lajur"' in h and "% selesai" in h and 'class="card"' in h,
+    # Bilah kemajuan sudah tidak ada di grid: ia mengukur pekerjaan pelabelan,
+    # dan halaman ini justru memuat yang sudah selesai. Yang dijaga sekarang
+    # baris alatnya -- jumlah objek dan tombol yang bekerja pada dataset ini.
+    cek("grid + baris alat dataset",
+        'class="ds-alat"' in h and "objek" in h and 'class="card"' in h,
         f'{h.count(chr(34) + "card" + chr(34))} kartu')
+    cek("bilah kemajuan tidak lagi di grid",
+        'class="lajur"' not in h and "% selesai" not in h)
     for f in ("all", "unlab", "sudah", "issue", "bg"):
         t = c.get("/", params={"f": f})
         cek(f"saringan f={f}", t.status_code == 200,

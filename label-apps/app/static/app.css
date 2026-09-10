@@ -81,11 +81,19 @@ body.berprojek header{padding-bottom:13px}
 /* Kumpulan alat di atas grid. Bilah kemajuan tidak perlu jarak atas lagi —
    yang di atasnya sekarang tepi kolom, bukan judul halaman. */
 .alat{margin-bottom:2px}
-.ds-catatan{font-size:12.5px;color:var(--ink-dim);margin:0 0 10px;
-  padding:8px 11px;border:1px solid var(--line);border-radius:8px;
-  background:var(--sunk)}
-.ds-catatan a{color:var(--aksi);text-decoration:none;margin-left:4px}
-.ds-catatan a:hover{text-decoration:underline}
+/* Baris alat dataset: jumlah objek di kiri, tombol yang bekerja pada dataset
+   ini di kanan.
+
+   Dulu di sini ada bilah kemajuan dan dua catatan "belum masuk dataset", tiga
+   strip bertumpuk dengan latar berselang-seling. Ketiganya mengukur pekerjaan
+   PELABELAN, dan pekerjaan itu tidak dilakukan di halaman ini — yang masuk ke
+   sini justru gambar yang sudah selesai dianotasi. Bilahnya selalu penuh, dan
+   bilah yang selalu 100% cuma satu baris yang harus dilewati tiap kali.
+   Komponen bilahnya sendiri (.lajur) TETAP dipakai halaman Anotasi. */
+.ds-alat{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  margin:12px 0 0}
+/* Mendorong seluruh tombol ke kanan; ia satu-satunya isi yang bukan tombol. */
+.ds-alat > .path:first-child{flex:1 1 auto}
 
 /* Tautan ke kanvas pada tiap ubin job. Dibuat kecil dan di bawah gambarnya,
    bukan menutupi gambar: kotak centang di atasnya yang dipakai berulang kali,
@@ -124,7 +132,6 @@ body.berprojek header{padding-bottom:13px}
    warna aksi; yang belum tetap terbaca, karena "belum ada jatahmu" adalah
    keterangan yang justru paling dicari orang yang baru diundang. */
 .plabel-tugas{color:var(--aksi);border-color:var(--aksi)}
-.alat .kemajuan{margin-top:0}
 h1{font-size:15px;font-weight:600;letter-spacing:.02em}
 .path{font-size:12px;color:var(--ink-faint)}
 /* Path folder boleh menyusut, dan itu yang menjaga baris kepala tetap satu
@@ -139,11 +146,13 @@ h1{font-size:15px;font-weight:600;letter-spacing:.02em}
 .path-src{flex:1 1 120px;min-width:60px;overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left}
 
-/* rekaman kesehatan dataset: tiap tick = 1 gambar */
-/* Kemajuan dataset: satu bilah membulat, satu warna per keadaan.
-   Warnanya sama dengan garis tepi kartu di grid (.card .rail), supaya warna
-   yang sama berarti hal yang sama di dua tempat. */
-.kemajuan{display:flex;align-items:center;gap:12px;margin:14px 0 0}
+/* Bilah kemajuan: satu bilah membulat, satu warna per keadaan. Warnanya sama
+   dengan garis tepi kartu di grid (.card .rail), supaya warna yang sama
+   berarti hal yang sama di dua tempat.
+
+   Dipakai halaman ANOTASI (.an-lajur), tempat pekerjaan pelabelan benar-benar
+   diukur. Grid tidak lagi memakainya: di sana isinya justru gambar yang sudah
+   selesai, jadi bilahnya selalu penuh. */
 .lajur{flex:1 1 auto;display:flex;height:10px;border-radius:999px;
   overflow:hidden;background:var(--sunk);box-shadow:inset 0 0 0 1px var(--line)}
 /* flex-basis:0 supaya lebarnya murni dari flex-grow, yaitu jumlah gambarnya.
@@ -155,7 +164,6 @@ h1{font-size:15px;font-weight:600;letter-spacing:.02em}
 .lajur .p-warn{background:var(--warn)}
 .lajur .p-bg{background:var(--latar)}
 .lajur .p-stop{background:var(--stop)}
-.kemajuan .angka{font-size:12px;color:var(--ink-dim);white-space:nowrap}
 
 /* Titik warna keadaan. Inilah yang menghubungkan sebuah baris saringan ke
    potongan bilah kemajuan di atasnya, sehingga angkanya tidak perlu ditulis

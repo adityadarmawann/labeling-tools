@@ -1175,33 +1175,32 @@ def jalankan_potret(d):
     cek("kotak cari tetap ringkas, tidak selebar barisnya",
         100 < lebar < 400, "lebar=%.0f" % lebar)
 
-    # Bilah kemajuan. Yang diperiksa geometrinya, karena di situlah kekeliruan
-    # yang tidak terlihat di HTML muncul: potongan yang lebarnya nol, ujung yang
-    # tidak membulat, atau bilah yang melebihi barisnya.
+    # Bilah kemajuan sudah TIDAK ada di grid. Halaman ini memuat gambar yang
+    # sudah selesai dianotasi lalu dimasukkan ke dataset, jadi bilahnya selalu
+    # penuh — dan bilah yang selalu 100% bukan keterangan, cuma satu baris yang
+    # harus dilewati tiap kali. Komponennya (.lajur) tetap dipakai halaman
+    # Anotasi, tempat pekerjaan pelabelan benar-benar diukur.
     d.js("location.href = '/'")
     time.sleep(1.2)
-    bilah = d.js("(function(){ const l = document.querySelector('.lajur');"
-                 " if (!l) return null;"
-                 " const r = l.getBoundingClientRect();"
-                 " const p = [...l.children].map(i => i.getBoundingClientRect().width);"
-                 " return {h: Math.round(r.height), w: Math.round(r.width),"
-                 "  radius: getComputedStyle(l).borderTopLeftRadius,"
-                 "  n: p.length, min: Math.min(...p),"
-                 "  jumlah: Math.round(p.reduce((a, b) => a + b, 0)),"
-                 "  titik: document.querySelectorAll('#keadaan-isi .titik.t-ok,"
-                 "    #keadaan-isi .titik.t-warn, #keadaan-isi .titik.t-bg,"
-                 "    #keadaan-isi .titik.t-stop').length,"
-                 "  luber: r.right > innerWidth}; })()")
-    cek("bilah kemajuan: satu bilah membulat, tidak melebihi layar",
-        bilah and bilah["radius"] == "999px" and not bilah["luber"], f"{bilah}")
-    cek("bilah kemajuan: tiap potongan punya lebar, jumlahnya penuh",
-        bilah and bilah["n"] >= 1 and bilah["min"] >= 3
-        and abs(bilah["jumlah"] - bilah["w"]) <= 2, f"{bilah}")
-    # Keempat keadaan berwarna pindah dari chip berjajar ke baris dropdown
-    # "Keadaan"; warnanyalah yang menghubungkannya ke potongan bilah di atas,
-    # jadi keempatnya harus tetap ada.
+    kepala = d.js("(function(){"
+                  " return {lajur: document.querySelectorAll('.lajur').length,"
+                  "  persen: document.body.innerHTML.includes('% selesai'),"
+                  "  catatan: document.querySelectorAll('.ds-catatan').length,"
+                  "  alat: !!document.querySelector('.ds-alat'),"
+                  "  tombol: !!document.getElementById('unduh-asli')"
+                  "          && !!document.querySelector('[onclick=\"rescan()\"]'),"
+                  "  titik: document.querySelectorAll('#keadaan-isi .titik.t-ok,"
+                  "    #keadaan-isi .titik.t-warn, #keadaan-isi .titik.t-bg,"
+                  "    #keadaan-isi .titik.t-stop').length}; })()")
+    cek("bilah kemajuan dan catatannya sudah tidak di grid",
+        kepala and kepala["lajur"] == 0 and not kepala["persen"]
+        and kepala["catatan"] == 0, f"{kepala}")
+    cek("baris alat dataset tetap ada beserta tombolnya",
+        kepala and kepala["alat"] and kepala["tombol"], f"{kepala}")
+    # Keempat keadaan berwarna ada di baris dropdown "Keadaan", dan di situlah
+    # sekarang rinciannya dibaca — dengan angka pasti, bukan proporsi bilah.
     cek("empat keadaan berwarna membawa titiknya di dropdown Keadaan",
-        bilah and bilah["titik"] == 4, f"{bilah}")
+        kepala and kepala["titik"] == 4, f"{kepala}")
 
     # Grid: baris urutkan/cari dan dropdown kelas
     d.js("location.href = '/'")

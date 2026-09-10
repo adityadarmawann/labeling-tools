@@ -236,7 +236,6 @@ async def index(request: Request, f: str = "all",
     items, hitung_ds = await asyncio.to_thread(
         tugas.saring_dataset, seluruh, sess.src,
         settings.uploads_root)
-    n_luar = hitung_ds["n_semua"] - hitung_ds["n_dataset"]
 
     kelas_hitung: dict[str, int] = {}
     for it in items:
@@ -354,10 +353,10 @@ async def index(request: Request, f: str = "all",
         "sess": sess,
         "pr": pr,
         "aktif": "dataset",
-        # Berapa gambar projek ini yang BELUM masuk dataset. Halamannya
-        # menyebutkannya dan menautkan ke Anotasi: grid yang menampilkan 38
-        # dari 476 tanpa mengatakan apa-apa terbaca seperti gambarnya hilang.
-        "n_luar": n_luar,
+        # `n_luar` -- berapa gambar projek ini yang belum masuk dataset --
+        # TIDAK lagi diserahkan. Ia mengukur pekerjaan pelabelan, dan halaman
+        # ini memuat yang sudah selesai; angkanya ada di halaman Anotasi dan di
+        # lencana sidebarnya, tempat pekerjaan itu benar-benar dikerjakan.
         "n_projek": hitung_ds["n_semua"],
         "local": is_local(request),
         "items": halaman,
@@ -415,7 +414,9 @@ async def index(request: Request, f: str = "all",
         # cap pelabel lagi. Perhitungannya TETAP dipakai di bawah untuk
         # `ada_tugas`, yang menentukan muncul tidaknya saringan "Tugasku".
         "n_tugasku": len(tugasku_id),
-        "n_jatah_projek": n_jatah_projek,
+        # `n_jatah_projek` sendiri tidak diserahkan: sisa jatah disebutkan di
+        # halaman Anotasi, bukan di sini. Hitungannya TETAP dipakai untuk
+        # `ada_tugas`, yang menentukan muncul tidaknya saringan "Tugasku".
         "ada_tugas": bool(pelabel_dari) or bool(n_jatah_projek),
         "pemilik_projek": tdata["pemilik"],
         "kelas_hitung": dict(sorted(kelas_hitung.items())),

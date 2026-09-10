@@ -105,43 +105,21 @@
    saringan itu memang milik daftar gambar di bawahnya, bukan milik halaman.
    Kepala jadi sependek lima halaman projek lainnya, dan sidebarnya sejajar. #}
 <div class="alat">
-  {#- Grid yang menampilkan 38 dari 476 tanpa mengatakan apa-apa terbaca
-      seperti gambarnya hilang. Yang di luar dataset bukan hilang: ia sedang
-      menunggu dikerjakan, dan tautannya ke tempat mengerjakannya. -#}
-  {% if pr and n_luar %}
-  <p class="ds-catatan">
-    <b>{{ n_luar }}</b> gambar lain di projek ini belum masuk dataset.
-    <a href="/anotasi?ds={{ pr.ds | urlquote }}">Kerjakan di Anotasi &rarr;</a>
-  </p>
-  {% endif %}
+{#- Bilah kemajuan dan catatan "belum masuk dataset" DIBUANG dari halaman ini.
 
-  {# Kemajuan dataset dalam satu bilah, satu warna per keadaan.
-     Sebelumnya ini deretan tick, satu per gambar. Deretan itu memang
-     memperlihatkan DI MANA pelabelan berhenti, tetapi hanya untuk 400 gambar
-     pertama, dan pada 476 gambar ia sudah terbaca seperti barcode: tidak ada
-     angka, tidak ada keterangan warna, dan proporsinya tidak bisa dibaca.
+    Keduanya mengukur pekerjaan pelabelan — berapa yang sudah dianotasi, berapa
+    yang belum, berapa jatah yang tersisa — dan pekerjaan itu tidak dilakukan di
+    sini. Halaman ini memuat gambar yang sudah SELESAI dianotasi lalu dimasukkan
+    ke dataset; menurut definisinya bilah itu selalu penuh, dan bilah yang selalu
+    100% bukan keterangan, cuma satu baris yang harus dilewati tiap kali.
+    Tempatnya di halaman Anotasi, dan lencana di sidebar sudah membawa angkanya.
 
-     Keempat potongan di bawah saling lepas dan jumlahnya pas `total`.
-     Warnanya sama dengan garis tepi kartu di grid, jadi warna yang sama
-     berarti hal yang sama di dua tempat. #}
-  {% set selesai = total - n_stop %}
-  {#- Satu baris untuk "dataset ini sedang bagaimana": bilahnya, persennya,
-      jumlah objeknya, dan tombol pindai ulang. Ketiganya menjawab pertanyaan
-      yang sama, dan tak satu pun cukup penting untuk punya barisnya sendiri.
-      Sebelum ini mereka tersebar di dua baris berbeda. -#}
+    Yang tertinggal cuma yang benar-benar tentang isi dataset ini: jumlah
+    objeknya, dan tombol-tombol yang bekerja pada dataset itu sendiri. Rincian
+    per keadaan tetap ada, dengan angka yang lebih tepat daripada proporsi
+    bilah, di dropdown "Semua keadaan" pada baris saringan. -#}
 <div class="grid-atas">
-  <div class="kemajuan">
-    <div class="lajur" role="img"
-         aria-label="{{ selesai }} dari {{ total }} gambar selesai">
-      {%- for n, k, nama in [(n_ok, "ok", "Sudah dilabeli"),
-                             (n_warn, "warn", "Perlu dicek"),
-                             (n_bg, "bg", "Latar"),
-                             (n_stop, "stop", "Belum dilabeli")] %}
-        {%- if n %}<i class="p-{{ k }}" style="flex-grow:{{ n }}"
-           title="{{ nama }}: {{ n }} gambar ({{ (n * 100 / total) | round | int }}%)"></i>{% endif -%}
-      {% endfor -%}
-    </div>
-    <span class="angka mono">{{ (selesai * 100 / total) | round | int if total else 0 }}% selesai</span>
+  <div class="ds-alat">
     <span class="path mono">{{ n_obj }} objek</span>
     {%- if not pr and tolak_tambah %}
     {#- Dataset tanpa sidebar tidak punya pintu unggah sama sekali; kalimat ini
@@ -169,17 +147,7 @@
         path server bukan projek di ruang kerja siapa pun, dan /versi
         mengalihkannya ke daftar projek. -#}
     {% if not pr %}{% include "_ekspor.html" %}{% endif %}
-  </div>
-
-  {#- "N jatahmu belum masuk dataset" menunjuk KELUAR halaman ini; di baris
-      saringan yang seragam ia akan terbaca sebagai saringan keenam. -#}
-  {%- if ada_tugas and pr and n_jatah_projek > n_tugasku %}
-  <p class="ds-catatan">
-    <a href="/anotasi?ds={{ pr.ds | urlquote }}"
-       title="Jatahmu yang belum masuk dataset dikerjakan di halaman Anotasi">
-      {{ n_jatah_projek - n_tugasku }} jatahmu belum masuk dataset &rarr;</a>
-  </p>
-  {%- endif %}
+  </div>{# /.ds-alat #}
 
   {#- Satu baris saringan, urutannya mengikuti Roboflow: nama berkas dulu,
       lalu saringan yang menyempitkan, lalu urutan. Sebelumnya isinya tersebar

@@ -1813,44 +1813,58 @@ def test_saringan_latar_terpisah_dari_belum_dilabeli(klien, lingkungan):
     assert _chip(html, "Belum dilabeli") == 1
 
 
-def _potongan(html: str) -> dict:
-    """Potongan bilah kemajuan -> {keadaan: bobotnya}."""
-    import re
-    return {k: int(v) for k, v in
-            re.findall(r'class="p-(\w+)" style="flex-grow:(\d+)"', html)}
+def _keadaan_kartu(klien) -> dict:
+    """{saringan: jumlah kartu yang benar-benar dirender}."""
+    return {f: klien.get(f"/?f={f}").text.count('class="card"')
+            for f in ("all", "issue", "bg", "unlab", "sudah")}
 
 
-def test_bilah_kemajuan_sepadan_dengan_isi_dataset(klien, lingkungan):
-    """Bilah kemajuan harus bisa dipercaya sebagai gambaran seluruh dataset.
+def test_keadaan_gambar_saling_lepas_dan_menjumlah_seluruh_dataset(
+        klien, lingkungan):
+    """Tiap gambar punya SATU keadaan, dan keempatnya menutupi seluruh dataset.
 
-    Dua hal yang dijaga. Potongannya saling lepas dan jumlahnya pas jumlah
-    gambar — kalau tidak, satu gambar terhitung dua kali dan bilahnya
-    memperbesar kemajuan yang sebenarnya. Dan keadaan yang nol tidak
-    digambar sama sekali; potongan dengan lebar minimum akan terlihat sebagai
-    pekerjaan yang tidak pernah ada.
+    Kalau tidak, satu gambar terhitung dua kali dan angka keadaan memperbesar
+    pekerjaan yang sebenarnya sudah selesai.
+
+    Dulu ini diperiksa lewat potongan bilah kemajuan di atas grid. Bilah itu
+    sudah dibuang — halaman ini memuat gambar yang sudah selesai dianotasi,
+    jadi bilahnya selalu penuh — tetapi yang dijaganya tetap berlaku dan tetap
+    terlihat: sekarang diperiksa lewat saringannya sendiri, yaitu jumlah kartu
+    yang benar-benar dirender, bukan lewat lebar sebuah gambar.
     """
     masuk(klien, "paul", PW_PAUL)
     src = lingkungan["roots"] / "ds-alpha"          # 4 gambar, 2 berlabel
     klien.post(f"/setsrc?path={src}")
 
-    html = klien.get("/").text
     # Kedua gambar berlabel di dataset uji ini berstatus "perlu dicek", dan itu
-    # justru inti perkaranya: chip "Sudah dilabeli" ikut menghitung keduanya,
-    # jadi chip itu TIDAK bisa dipakai sebagai potongan bilah tanpa membuat dua
-    # gambar yang sama terhitung dua kali.
-    assert _potongan(html) == {"warn": 2, "stop": 2}, _potongan(html)
+    # justru inti perkaranya: "Sudah dilabeli" ikut menghitung keduanya, jadi
+    # angka itu TIDAK saling lepas dengan "Perlu dicek" dan tidak boleh
+    # dijumlahkan begitu saja dengan yang lain.
+    n = _keadaan_kartu(klien)
+    assert n == {"all": 4, "issue": 2, "bg": 0, "unlab": 2, "sudah": 2}, n
+    assert n["issue"] + n["bg"] + n["unlab"] <= n["all"]
+    html = klien.get("/").text
     assert _chip(html, "Sudah dilabeli") == 2 and _chip(html, "Perlu dicek") == 2
-    assert "50% selesai" in html
 
     klien.post(f"/markbg?path={_gambar(lingkungan, 'ds-alpha', 3)}")
-    html = klien.get("/").text
-    pot = _potongan(html)
-    assert pot == {"warn": 2, "bg": 1, "stop": 1}, pot
-    assert sum(pot.values()) == 4, "potongan tidak menjumlah seluruh gambar"
-    assert "75% selesai" in html, "latar itu sudah selesai diperiksa"
+    n = _keadaan_kartu(klien)
+    assert n == {"all": 4, "issue": 2, "bg": 1, "unlab": 1, "sudah": 3}, n
+    # Keempat keadaan yang saling lepas menjumlah seluruh dataset. "Sudah
+    # dilabeli" memuat yang latar dan yang perlu dicek, jadi yang murni "ok"
+    # adalah sisanya -- dan di sini sisanya nol.
+    ok_murni = n["sudah"] - n["issue"] - n["bg"]
+    assert ok_murni == 0, n
+    assert ok_murni + n["issue"] + n["bg"] + n["unlab"] == n["all"], n
 
-    # Chip membawa titik warna yang sama dengan potongannya; itu yang
-    # menjadikan barisan chip sekaligus keterangan bilah.
+    # Angka di dropdown harus sama dengan jumlah kartu saat saringan itu
+    # dipilih; tanpa ini keduanya bisa berbeda tanpa satu pun tanda.
+    html = klien.get("/").text
+    for nama, f in (("Perlu dicek", "issue"), ("Latar", "bg"),
+                    ("Belum dilabeli", "unlab"), ("Sudah dilabeli", "sudah")):
+        assert _chip(html, nama) == n[f], (nama, _chip(html, nama), n[f])
+
+    # Tiap keadaan membawa titik warnanya, dan warna itu yang menghubungkannya
+    # ke garis tepi kartu di grid.
     for keadaan in ("ok", "warn", "stop", "bg"):
         assert f'class="titik t-{keadaan}"' in html, keadaan
 
