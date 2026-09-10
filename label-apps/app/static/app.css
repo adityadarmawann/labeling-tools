@@ -2189,6 +2189,12 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
 .wz-tinjau div:last-child,.vs-tinjau div:last-child{border-bottom:0}
 .wz-tinjau span,.vs-tinjau span{flex:0 0 170px;color:var(--ink-faint)}
 .wz-tinjau b,.vs-tinjau b{color:var(--ink);font-weight:600}
+/* Fase yang dimatikan tetap disebut, di barisnya sendiri: menghilangkannya
+   dari daftar terbaca sebagai fitur yang memang tidak dipunyai — persis salah
+   paham yang membuat orang mengira balancer belum ada di sini. */
+.wz-fase-tinjau{font-weight:500}
+.wz-fase-mati{display:block;margin-top:3px;font-weight:400;
+  color:var(--ink-faint)}
 .wz-perkira{font-size:12.5px;color:var(--ink-dim);line-height:1.6;
   background:var(--sunk);border-radius:9px;padding:11px 13px;margin-bottom:14px}
 .wz-perkira b{color:var(--ink)}

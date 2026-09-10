@@ -578,3 +578,33 @@ def test_bentuk_tak_sesuai_muncul_sebagai_temuan_di_grid(tmp_path):
     assert any("dataset poligon" in x for x in nakal["issues"]), nakal["issues"]
     lain = [it for it in items if it["img"].name == "g0.jpg"][0]
     assert not any("dataset poligon" in x for x in lain["issues"])
+
+
+def test_fase_lanjutan_ikut_ditinjau_sebelum_tombol_buat(klien, lingkungan):
+    """Langkah 5 harus menyebut keempat fase lanjutan, termasuk balancer.
+
+    Keempatnya menyala sejak awal dan justru merekalah yang paling banyak
+    menambah gambar. Sebelum ini langkah 5 diam sama sekali soal mereka, jadi
+    satu-satunya cara tahu balancer sedang menyala adalah kembali ke langkah 4
+    dan membuka panelnya -- dan orang yang tidak menemukannya menyimpulkan
+    fiturnya memang belum ada.
+
+    Yang diperiksa di sini kerangkanya: keempat sakelar ada di halaman, dan
+    peninjaunya membaca keempatnya. Bahwa teksnya benar-benar berubah saat
+    salah satunya dimatikan dijaga uji e2e, karena itu perilaku JS.
+    """
+    masuk(klien, "paul", PW_PAUL)
+    d = _ds(klien)
+    h = klien.get(f"/versi?ds={d.name}").text
+    for oid in ("wz-f-crop", "wz-f-skala", "wz-f-kelas", "wz-f-neg"):
+        assert f'id="{oid}"' in h, oid
+    # Semuanya tercentang sejak awal: itu yang membuat "Buat versi" tanpa
+    # menyentuh apa pun sudah menjalankan balancer.
+    blok = h.split('class="wz-fase"')[1].split("</div>")[0]
+    assert blok.count("checked") == 4, blok[:400]
+
+    js = klien.get("/static/versi.js").text
+    assert "Fase lanjutan" in js, "peninjau langkah 5 tidak menyebut fase"
+    for oid in ("wz-f-crop", "wz-f-skala", "wz-f-kelas", "wz-f-neg"):
+        assert js.count(oid) >= 2, (
+            f"{oid} dibaca saat menyusun resep tetapi tidak saat meninjau")

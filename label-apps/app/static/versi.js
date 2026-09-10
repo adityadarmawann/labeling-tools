@@ -847,10 +847,32 @@
     const daftar = (tahap) => Object.keys(katalog ? katalog[tahap] : {})
       .filter((i) => aktif(tahap, i))
       .map((i) => katalog[tahap][i].nama);
+    // Fase lanjutan ikut ditinjau, dan itu bukan hiasan: keempatnya menyala
+    // sejak awal dan justru merekalah yang paling banyak menambah gambar —
+    // "Seimbangkan jumlah kelas" bisa melipatgandakan kelas minoritas. Tanpa
+    // baris ini langkah 5 diam soal keempatnya, sehingga satu-satunya cara
+    // tahu balancer sedang menyala adalah kembali ke langkah 4 dan membukanya.
+    // Yang tidak aktif TETAP disebut, sebagai "mati": senyap tentang sesuatu
+    // yang dimatikan terbaca sama dengan senyap karena tidak punya fiturnya.
+    // Yang mati disebut di barisnya sendiri, dengan kata "mati" yang benar-
+    // benar tertulis — bukan sekadar dicoret. Coretan cuma pembeda visual:
+    // teksnya terbaca sama persis saat dipindai cepat atau dibacakan pembaca
+    // layar, jadi "Seimbangkan jumlah kelas" yang dicoret gampang terbaca
+    // sebagai menyala, yaitu kebalikan dari yang sebenarnya.
+    const FASE = [['wz-f-crop', 'Crop & zoom'],
+                  ['wz-f-skala', 'Seimbangkan ukuran objek'],
+                  ['wz-f-kelas', 'Seimbangkan jumlah kelas'],
+                  ['wz-f-neg', 'Pulihkan porsi sampel negatif']];
+    const nyala = FASE.filter(([id]) => el(id).checked).map(([, n]) => n);
+    const mati = FASE.filter(([id]) => !el(id).checked).map(([, n]) => n);
+    const fase = (nyala.join(', ') || 'semuanya dimatikan')
+      + (mati.length
+        ? `<span class="wz-fase-mati">mati: ${mati.join(', ')}</span>` : '');
     t.innerHTML =
       `<div><span>Preprocessing</span><b>${daftar('pra').join(', ') || '-'}</b></div>` +
       `<div><span>Augmentasi</span><b>${daftar('aug').join(', ') || 'dimatikan'}</b></div>` +
       `<div><span>Salinan per gambar</span><b>${el('wz-salin').value}</b></div>` +
+      `<div><span>Fase lanjutan</span><b class="wz-fase-tinjau">${fase}</b></div>` +
       `<div><span>Pembagian</span><b>${rasioTeks().replace(/,/g, ' / ')}</b></div>`;
     el('wz-perkira').textContent = 'menghitung perkiraan…';
     const r = await kirimResep('/api/versi/estimasi');
