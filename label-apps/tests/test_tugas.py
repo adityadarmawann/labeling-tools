@@ -2098,11 +2098,14 @@ def test_grid_dataset_tidak_lagi_memasang_bilah_kemajuan(klien, lingkungan):
     assert "% selesai" not in h
     assert 'class="ds-catatan"' not in h
 
-    # Yang tersisa justru yang memang tentang isi dataset ini, dan tombolnya
-    # tetap terpasang -- membuang bilahnya tidak boleh ikut membuang alatnya.
-    alat = h.split('class="ds-alat"')[1].split("</div>")[0]
-    assert "objek" in alat
-    assert "rescan()" in alat and 'id="unduh-asli"' in alat
+    # Baris alat di atas grid ikut hilang: isinya sudah dibagi ke tempat yang
+    # lebih tepat, dan membuang bilahnya tidak boleh ikut membuang alatnya.
+    assert 'class="ds-alat"' not in h
+    # Jumlah objek turun ke bilah halaman, sebaris dengan jumlah gambar.
+    kaki = h.split('class="hal-info"')[1].split("</span></span>")[0]
+    assert "objek" in kaki, kaki[:200]
+    # Tombolnya tetap terpasang, sekarang di ujung baris saringan.
+    assert 'id="unduh-asli"' in h
 
     # Rincian per keadaan tidak hilang, cuma pindah ke tempat yang angkanya
     # lebih tepat daripada proporsi bilah.

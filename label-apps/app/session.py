@@ -11,6 +11,7 @@ dicabut.
 """
 from __future__ import annotations
 
+import os
 import secrets
 import shutil
 import threading
@@ -68,6 +69,45 @@ def cap_sekarang(src) -> int:
         return _cap_ubah.get(str(Path(src).resolve()), 0)
 
 
+def sidik_disk(src) -> tuple[int, int, int]:
+    """
+    Tanda tangan murah isi folder: (jumlah berkas, mtime terbaru, total byte).
+
+    `_cap_ubah` di atas hanya tahu perubahan yang ditulis APLIKASI INI. Berkas
+    yang disunting dari luar — AnyLabeling desktop lewat tombol Desktop di
+    kartu, salin-tempel, rsync — tidak menaikkannya sama sekali, jadi
+    `segarkan()` melewatinya tanpa sadar. Tanda tangan ini yang menangkapnya.
+
+    Sengaja mencatat mtime DAN ukuran: menyunting anotasi bisa menghasilkan
+    berkas yang ukurannya sama persis, dan menyalin berkas bisa
+    mempertahankan mtime aslinya. Salah satunya berubah pada hampir semua
+    perubahan nyata.
+
+    Terukur 1,5 ms untuk 563 berkas dan 8,7 ms untuk 1.437 -- sekitar 6 mikro-
+    detik per berkas, jadi projek produksi terbesar (11.319 gambar, ~22.600
+    berkas) berada di kisaran 140 ms. Itu harga satu kali muat halaman, jauh
+    di bawah 5,8 detik yang dibutuhkan pemindaian penuh.
+    """
+    n = t = s = 0
+    for dirpath, dirnames, filenames in os.walk(src):
+        # Folder bertitik memang tidak pernah ikut dipindai; menyertakannya di
+        # sini membuat penulisan sidecar (.tugas.json, .versi/) terbaca sebagai
+        # perubahan dari luar dan memicu pemindaian penuh tiap kali.
+        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+        for f in filenames:
+            if f.startswith("."):
+                continue
+            try:
+                st = os.stat(os.path.join(dirpath, f))
+            except OSError:
+                continue
+            n += 1
+            s += st.st_size
+            if st.st_mtime_ns > t:
+                t = st.st_mtime_ns
+    return n, t, s
+
+
 def berubah_sejak(src, cap: int):
     """
     Gambar yang berubah sesudah `cap`, atau None kalau riwayatnya tidak cukup.
@@ -101,6 +141,10 @@ class Session:
         self.items: list[dict] = []
         # Nilai penanda perubahan saat isi ini dipindai. Lihat _cap_ubah.
         self.cap = 0
+        # Tanda tangan folder saat isi ini terakhir dibaca. Lihat sidik_disk:
+        # ini yang menangkap perubahan dari LUAR aplikasi, yang tidak pernah
+        # menaikkan `cap`.
+        self._sidik: tuple[int, int, int] | None = None
         self.names: dict[int, str] = {}
         self.labelfile: Path | None = None
         self.thumbdir = settings.thumb_root / safe_slug(user)
@@ -132,6 +176,9 @@ class Session:
         # lebih baik memicu satu pemindaian berlebih daripada terlewat.
         self.cap = cap_sekarang(self.src)
         self.items, self.names = scanner.scan(self.src)
+        # Dicatat SESUDAH memindai: yang dijanjikan tanda tangan ini adalah
+        # "isi folder saat items terakhir dibaca".
+        self._sidik = sidik_disk(self.src)
         # Penempat memegang jumlah gambar per split saat ia dibuat. Setelah
         # pemindaian ulang angka itu sudah usang, jadi dibuang — kalau tidak,
         # penambahan berikutnya membagi berdasarkan keadaan yang sudah lewat.
@@ -179,6 +226,12 @@ class Session:
                     return True
                 self.muat_ulang_item(it)
             self.cap = cap
+            # Perubahan ini ditulis aplikasi sendiri dan sudah disusulkan, jadi
+            # tanda tangannya ikut disegarkan. Tanpa baris ini periksa_disk()
+            # akan melihat folder yang "berbeda" sesudah tiap kali melabeli,
+            # lalu memicu pemindaian penuh 5,8 detik untuk perubahan yang baru
+            # saja diproses dengan cara murah.
+            self._sidik = sidik_disk(self.src)
         return True
 
     def muat_ulang_item(self, it: dict) -> None:
@@ -215,6 +268,33 @@ class Session:
         if self.src is None:
             return []
         return self.load(self.src)
+
+    def periksa_disk(self) -> bool:
+        """
+        Susulkan perubahan, TERMASUK yang ditulis di luar aplikasi.
+
+        Ini yang membuat memuat ulang halaman di peramban setara dengan tombol
+        "Pindai ulang" yang dulu ada di atas grid. Tombol itu dibuang karena
+        menekan sebuah tombol untuk melihat keadaan yang sebenarnya adalah
+        pekerjaan yang tidak perlu diminta ke orang — tetapi membuangnya hanya
+        benar kalau memuat ulang halaman memang menggantikannya, dan sebelum
+        ini tidak.
+
+        Dua jalur, murah dulu. `segarkan()` menangani yang ditulis aplikasi ini
+        sendiri dan cuma membaca ulang gambar yang berubah. Yang tersisa —
+        berkas yang disunting AnyLabeling desktop, disalin, atau di-rsync —
+        tidak menaikkan `cap` sama sekali, dan itu ditangkap tanda tangan
+        folder lalu dijawab dengan pemindaian penuh.
+        """
+        if self.src is None:
+            return False
+        berubah = self.segarkan()
+        sidik = sidik_disk(self.src)
+        if sidik == self._sidik:
+            return berubah
+        with self.lock:
+            self.load(self.src)
+        return True
 
     def find(self, path: str) -> dict | None:
         """

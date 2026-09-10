@@ -214,7 +214,15 @@ async def index(request: Request, f: str = "all",
         if str(sess.src or "") != str(d):
             await asyncio.to_thread(sess.load, d)
         else:
-            await asyncio.to_thread(sess.segarkan)
+            await asyncio.to_thread(sess.periksa_disk)
+    elif sess.src is not None:
+        # Dataset yang dibuka lewat path server tidak membawa `ds` di URL-nya,
+        # jadi dulu ia melewatkan penyegaran sama sekali: memuat ulang halaman
+        # menampilkan keadaan saat folder itu pertama dibuka, entah berapa lama
+        # sebelumnya. Sejak "Pindai ulang" dibuang, memuat ulang halamanlah
+        # satu-satunya cara meminta keadaan terbaru — dan ia harus benar di
+        # kedua macam dataset, bukan cuma di projek.
+        await asyncio.to_thread(sess.periksa_disk)
 
     # Belum memilih dataset -> tampilkan pemilih, bukan grid kosong.
     if sess.src is None:

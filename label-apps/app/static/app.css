@@ -81,19 +81,11 @@ body.berprojek header{padding-bottom:13px}
 /* Kumpulan alat di atas grid. Bilah kemajuan tidak perlu jarak atas lagi —
    yang di atasnya sekarang tepi kolom, bukan judul halaman. */
 .alat{margin-bottom:2px}
-/* Baris alat dataset: jumlah objek di kiri, tombol yang bekerja pada dataset
-   ini di kanan.
-
-   Dulu di sini ada bilah kemajuan dan dua catatan "belum masuk dataset", tiga
-   strip bertumpuk dengan latar berselang-seling. Ketiganya mengukur pekerjaan
-   PELABELAN, dan pekerjaan itu tidak dilakukan di halaman ini — yang masuk ke
-   sini justru gambar yang sudah selesai dianotasi. Bilahnya selalu penuh, dan
-   bilah yang selalu 100% cuma satu baris yang harus dilewati tiap kali.
-   Komponen bilahnya sendiri (.lajur) TETAP dipakai halaman Anotasi. */
-.ds-alat{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
-  margin:12px 0 0}
-/* Mendorong seluruh tombol ke kanan; ia satu-satunya isi yang bukan tombol. */
-.ds-alat > .path:first-child{flex:1 1 auto}
+/* Pendorong di baris saringan: memisahkan saringan (kiri) dari tindakan atas
+   dataset (kanan) tanpa menuntut keduanya tahu ada berapa isi di sisi lain.
+   Boleh menyusut sampai nol supaya baris ini tidak pernah membungkus hanya
+   karena pendorongnya menuntut lebar. */
+.saring-dorong{flex:1 1 0;min-width:0}
 
 /* Tautan ke kanvas pada tiap ubin job. Dibuat kecil dan di bawah gambarnya,
    bukan menutupi gambar: kotak centang di atasnya yang dipakai berulang kali,
@@ -283,12 +275,18 @@ main{padding:20px 22px 60px}
    terpotong tetap terbaca lewat title tombolnya. */
 .acts .btn{min-width:0;padding:5px 2px;white-space:nowrap;overflow:hidden;
   text-overflow:ellipsis}
-/* Tombol teks selebar TEKSNYA, bukan dibagi rata. Membagi rata memeras
-   "Batal latar" di bawah lebar katanya sendiri padahal ruangnya sebenarnya
-   cukup; yang utama yang mengambil sisa, karena ia paling sering ditekan dan
-   paling tahan dipendekkan. */
-.acts .btn{flex:0 1 auto}
-.acts .btn.pri{flex:1 1 auto}
+/* Tombol teks DIBAGI RATA, termasuk yang utama.
+
+   Sebelumnya yang utama mengambil seluruh sisa ruang, jadi "Edit label"
+   tampil jauh lebih lebar daripada "Lihat" di sebelahnya padahal keduanya
+   sama-sama satu tindakan atas gambar yang sama. Lebar yang berbeda terbaca
+   sebagai tingkatan yang tidak ada: yang lebar tampak tombol utama dan yang
+   sempit tampak pelengkap. Yang membedakan keduanya sudah cukup lewat warna
+   .pri, dan itu tidak perlu diulang dengan ukuran.
+
+   flex-basis 0, bukan auto: dengan auto pembagiannya masih mengikuti panjang
+   teks masing-masing, dan "Edit label" tetap lebih lebar daripada "Lihat". */
+.acts .btn{flex:1 1 0}
 /* Tombol ikon selebar isinya saja, bukan ikut dibagi rata. */
 .acts .btn-ikon{flex:0 0 auto;padding:5px 7px;display:grid;place-items:center}
 .acts .btn-ikon .ik{display:block}
@@ -580,6 +578,23 @@ input:focus{outline:0;border-color:var(--ok)}
    terbaca sebagai satu kelompok, dan tiga baris kontrol mendorong kartu
    pertama 80 piksel lebih jauh ke bawah. */
 .bar-saring{gap:8px;padding:10px 0 12px}
+/* Baris kontrol dataset-lewat-path. Rapat ke baris saringan di atasnya —
+   keduanya kontrol atas daftar yang sama — dan tidak pernah muncul di projek. */
+.ds-luar{gap:8px;padding:0 0 12px;margin-top:-4px}
+/* Kalimat "Tidak bisa ditambahi: ..." memuat alasan sepanjang apa pun, dan
+   terukur memakan 1329 px dari 1441: sisanya membungkus ke baris kedua,
+   pendorong ikut turun, dan menu Ekspor yang mendarat di kiri membuka ke luar
+   tepi layar (left=-48).
+
+   flex-basis KECIL, bukan auto. Dengan flex-wrap:wrap sebuah baris membungkus
+   LEBIH DULU daripada menyusut, jadi `flex:0 1 auto` tidak menolong sama
+   sekali: basis-nya tetap selebar teksnya, tombolnya tetap terdorong turun,
+   dan penyusutan baru terjadi di dalam baris yang sudah telanjur pecah.
+   Dengan basis 120 px ia tidak pernah menuntut lebih dulu, lalu tumbuh
+   mengisi sisa ruang. Pola yang sama dipakai .path-src di bar atas, dan
+   alasannya sama persis. Kalimat utuhnya tetap ada di title. */
+.ds-luar .path{flex:1 1 120px;min-width:60px;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
 .saring-cari{display:flex;align-items:center;gap:8px;flex:0 1 auto}
 .cari-nama{border:1px solid var(--line2);background:var(--raised);color:var(--ink);
   border-radius:999px;padding:5px 12px;font-size:12.5px;
@@ -649,6 +664,10 @@ input:focus{outline:0;border-color:var(--ok)}
 .hal-pp select:focus{outline:2px solid var(--ok);outline-offset:1px}
 .hal-info{font-size:12px;color:var(--ink-dim);font-variant-numeric:tabular-nums}
 .hal-info em{font-style:normal;color:var(--ink-faint)}
+/* Jumlah objek: keterangan yang sama pentingnya dengan jumlah gambar di
+   sebelahnya, tetapi bukan yang dicari lebih dulu — jadi diredupkan, bukan
+   diberi baris sendiri. */
+.hal-objek{color:var(--ink-faint)}
 .hal-nav{display:flex;align-items:center;gap:4px;margin-left:auto}
 /* Radius 7px, bukan 999px: nomor halaman bukan saringan, dan bentuk yang
    berbeda mencegahnya terbaca sebagai chip yang bisa dinyalakan. */

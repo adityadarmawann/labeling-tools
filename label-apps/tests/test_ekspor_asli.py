@@ -203,14 +203,25 @@ def test_dataset_yang_seluruhnya_turunan_ditolak_bukan_zip_kosong(klien,
     assert "hasil augmentasi atau penyeimbangan" in r.text
 
 
-def test_tombolnya_ada_di_samping_pindai_ulang(klien, lingkungan):
+def test_tombolnya_di_ujung_kanan_baris_saringan(klien, lingkungan):
+    """Sebaris dengan Cari dan dropdown saringan, didorong ke kanan.
+
+    Bukan di baris sendiri di atas grid: satu tombol yang berdiri sendirian di
+    baris kosong terbaca lebih penting daripada yang sebenarnya. Dan bukan satu
+    baris lagi di dalam menu Ekspor: menu itu menjawab "dalam format apa
+    dataset ini mau dilatih", tombol ini menjawab "kembalikan dataset saya
+    seperti sebelum semuanya".
+    """
     _projek_beraugbal(klien)
     h = klien.get("/").text
     assert 'id="unduh-asli"' in h
-    # Berdampingan, bukan satu baris lagi di dalam menu Ekspor: menu itu
-    # menjawab "dalam format apa dataset ini mau dilatih", tombol ini menjawab
-    # "kembalikan dataset saya seperti sebelum semuanya".
-    assert h.index("rescan()") < h.index('id="unduh-asli"')
+    # Dipotong di penutup .grid-atas, bukan di "</div>" pertama: baris saringan
+    # memuat dropdown yang isinya ber-div sendiri, jadi potongan pertama
+    # berhenti jauh sebelum ujung barisnya.
+    baris = h.split('class="bar bar-saring"')[1].split("/.grid-atas")[0]
+    assert 'id="unduh-asli"' in baris, "di luar baris saringan"
+    # Sesudah pendorong, jadi ia menempel di kanan berapa pun saringan di kiri.
+    assert baris.index("saring-dorong") < baris.index('id="unduh-asli"')
     assert "menu-ekspor" not in h.split('id="unduh-asli"')[0][-400:]
 
 

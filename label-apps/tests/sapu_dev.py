@@ -76,28 +76,33 @@ def jalankan(base: str, sandi: str) -> int:
     # Bilah kemajuan sudah tidak ada di grid: ia mengukur pekerjaan pelabelan,
     # dan halaman ini justru memuat yang sudah selesai. Yang dijaga sekarang
     # baris alatnya -- jumlah objek dan tombol yang bekerja pada dataset ini.
-    cek("grid + baris alat dataset",
-        'class="ds-alat"' in h and "objek" in h and 'class="card"' in h,
+    cek("grid + jumlah objek di bilah halaman",
+        "objek" in h and 'class="hal-info"' in h and 'class="card"' in h,
         f'{h.count(chr(34) + "card" + chr(34))} kartu')
-    cek("bilah kemajuan tidak lagi di grid",
-        'class="lajur"' not in h and "% selesai" not in h)
+    cek("bilah kemajuan dan baris alat tidak lagi di grid",
+        'class="lajur"' not in h and "% selesai" not in h
+        and 'class="ds-alat"' not in h and 'onclick="rescan()"' not in h)
+    cek("Unduh dataset pindah ke baris saringan",
+        'id="unduh-asli"' in h.split('class="bar bar-saring"')[1].split("/.grid-atas")[0])
     for f in ("all", "unlab", "sudah", "issue", "bg"):
         t = c.get("/", params={"f": f})
         cek(f"saringan f={f}", t.status_code == 200,
             f'{t.text.count(chr(34) + "card" + chr(34))} kartu')
     cek("urutkan", c.get("/", params={"s": "nama-turun"}).status_code == 200)
     cek("cari nama berkas", c.get("/", params={"q": "IMG"}).status_code == 200)
-    # Halaman Dataset hanya memuat yang sudah dimasukkan, dan mengatakan berapa
-    # yang belum. Grid yang menampilkan 38 dari 476 tanpa keterangan terbaca
-    # seperti gambarnya hilang.
+    # Halaman Dataset hanya memuat yang sudah dimasukkan. Berapa yang BELUM
+    # tidak lagi disebut di sini -- itu ukuran pekerjaan pelabelan, dan
+    # tempatnya halaman Anotasi beserta lencana sidebarnya.
     h = c.get("/", params={"ds": PROJEK}).text
     n_kartu = h.count('class="card"')
     j = c.get("/api/ekspor/ringkasan",
               params={"format": "yolo-seg", "split": "8:1:1"}).json()
     cek("grid sama dengan isi ekspor", n_kartu == j.get("n_dataset"),
         f'{n_kartu} kartu vs {j.get("n_dataset")} diekspor dari {j.get("n_semua")}')
-    cek("yang di luar dataset disebutkan",
-        "belum masuk dataset" in h or n_kartu == j.get("n_semua"))
+    luar = (j.get("n_semua") or 0) - (j.get("n_dataset") or 0)
+    cek("yang di luar dataset dihitung lencana Anotasi",
+        not luar or re.search(r'Anotasi<b class="sisi-angka">(\d+)</b>', h),
+        f"{luar} di luar dataset")
 
     # ---------------------------------------------------------- satu gambar
     p1 = unquote(re.findall(r'/view\?path=([^"&]+)', c.get("/").text)[0])

@@ -1183,20 +1183,35 @@ def jalankan_potret(d):
     d.js("location.href = '/'")
     time.sleep(1.2)
     kepala = d.js("(function(){"
+                  " const cari = document.querySelector('.cari-nama');"
+                  " const unduh = document.getElementById('unduh-asli');"
+                  " const bar = document.querySelector('.bar-saring');"
                   " return {lajur: document.querySelectorAll('.lajur').length,"
                   "  persen: document.body.innerHTML.includes('% selesai'),"
                   "  catatan: document.querySelectorAll('.ds-catatan').length,"
                   "  alat: !!document.querySelector('.ds-alat'),"
-                  "  tombol: !!document.getElementById('unduh-asli')"
-                  "          && !!document.querySelector('[onclick=\"rescan()\"]'),"
+                  "  pindai: !!document.querySelector('[onclick=\"rescan()\"]'),"
+                  "  unduh: !!unduh,"
+                  "  sebaris: !!unduh && Math.abs(unduh.getBoundingClientRect().top"
+                  "            - cari.getBoundingClientRect().top) <= 3,"
+                  "  dikanan: !!unduh && (bar.getBoundingClientRect().right"
+                  "            - unduh.getBoundingClientRect().right) < 12,"
+                  "  objek: (document.querySelector('.hal-info')||{}).textContent"
+                  "          .includes('objek'),"
                   "  titik: document.querySelectorAll('#keadaan-isi .titik.t-ok,"
                   "    #keadaan-isi .titik.t-warn, #keadaan-isi .titik.t-bg,"
                   "    #keadaan-isi .titik.t-stop').length}; })()")
     cek("bilah kemajuan dan catatannya sudah tidak di grid",
         kepala and kepala["lajur"] == 0 and not kepala["persen"]
         and kepala["catatan"] == 0, f"{kepala}")
-    cek("baris alat dataset tetap ada beserta tombolnya",
-        kepala and kepala["alat"] and kepala["tombol"], f"{kepala}")
+    # Baris alat di atas grid dibuang; isinya dibagi ke tempat yang lebih tepat.
+    cek("tombol Pindai ulang sudah tidak ada",
+        kepala and not kepala["pindai"] and not kepala["alat"], f"{kepala}")
+    cek("Unduh dataset sebaris dengan Cari, di ujung kanan",
+        kepala and kepala["unduh"] and kepala["sebaris"] and kepala["dikanan"],
+        f"{kepala}")
+    cek("jumlah objek turun ke bilah halaman di kaki",
+        kepala and kepala["objek"], f"{kepala}")
     # Keempat keadaan berwarna ada di baris dropdown "Keadaan", dan di situlah
     # sekarang rinciannya dibaca — dengan angka pasti, bukan proporsi bilah.
     cek("empat keadaan berwarna membawa titiknya di dropdown Keadaan",
@@ -2276,20 +2291,35 @@ def jalankan_grid(d):
     time.sleep(1.6)
     cek("tombol Latar menandai gambarnya sebagai latar",
         d.js("document.querySelectorAll('.card').length") == sebelum - 1
-        or "Batal latar" in d.js("document.body.innerText"),
+        or "Batal" in d.js("document.body.innerText"),
         "%s -> %s" % (sebelum, n_kartu()))
     buka("/?f=bg")
     cek("gambar itu pindah ke keadaan Latar", n_kartu() >= 1, "n=%s" % n_kartu())
     d.js("document.querySelector('.card button[onclick^=\"markbg\"]').click()")
     time.sleep(1.6)
     buka("/?f=bg")
-    cek("Batal latar mengembalikannya", n_kartu() == 0, "n=%s" % n_kartu())
+    cek("Batal mengembalikannya", n_kartu() == 0, "n=%s" % n_kartu())
 
-    # ------------------------------------------------------------- pindai ulang
+    # --------------------------------------------- memuat ulang = pindai ulang
+    # Tombol "Pindai ulang" dibuang, dan itu hanya benar kalau memuat ulang
+    # halaman memang menggantikannya. Yang diuji justru kasus yang dulu jadi
+    # alasan tombol itu ada: berkas anotasi yang disunting DI LUAR aplikasi,
+    # yang tidak menaikkan penanda perubahan internal sama sekali.
+    jp = GD / "g-000.json"
+    asli = jp.read_text()
+    isi = json.loads(asli)
+    isi["shapes"][0]["label"] = "disunting-dari-luar"
+    jp.write_text(json.dumps(isi))
     buka("/")
-    d.js("document.querySelector('button[onclick=\"rescan()\"]').click()")
-    time.sleep(2.2)
-    cek("Pindai ulang tidak merusak halaman", n_kartu() == 50, "n=%s" % n_kartu())
+    cek("memuat ulang halaman menyusulkan suntingan dari luar aplikasi",
+        "disunting-dari-luar" in d.js("document.body.innerHTML"),
+        "label tidak tersusul -- tombol Pindai ulang masih dibutuhkan")
+    jp.write_text(asli)
+    buka("/")
+    cek("dan mengembalikannya juga tersusul",
+        "disunting-dari-luar" not in d.js("document.body.innerHTML"))
+    cek("jumlah kartunya tidak berubah karenanya", n_kartu() == 50,
+        "n=%s" % n_kartu())
 
     # ---------------------------------------------------------------- panduan
     d.js("document.getElementById('btn-panduan').click()")
@@ -2409,7 +2439,7 @@ def jalankan_bagian(d):
     # 4 hasil augmentasi dan 2 hasil penyeimbangan, jadi selisihnya besar dan
     # harus disebutkan SEBELUM unduhannya dimulai.
     buka("/")
-    cek("tombol Unduh dataset ada di baris Pindai ulang",
+    cek("tombol Unduh dataset ada di baris saringan",
         bool(d.js("!!document.getElementById('unduh-asli')")))
     ring = d.js("fetch('/api/ekspor/asli').then(r => r.json())", tunggu=True)
     cek("ringkasannya menghitung asli, aug dan bal terpisah",

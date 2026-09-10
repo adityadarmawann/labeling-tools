@@ -114,40 +114,15 @@
     100% bukan keterangan, cuma satu baris yang harus dilewati tiap kali.
     Tempatnya di halaman Anotasi, dan lencana di sidebar sudah membawa angkanya.
 
-    Yang tertinggal cuma yang benar-benar tentang isi dataset ini: jumlah
-    objeknya, dan tombol-tombol yang bekerja pada dataset itu sendiri. Rincian
-    per keadaan tetap ada, dengan angka yang lebih tepat daripada proporsi
-    bilah, di dropdown "Semua keadaan" pada baris saringan. -#}
+    Baris alat di atas grid ikut hilang bersamanya, dan isinya dibagi ke tempat
+    yang lebih tepat: jumlah objek turun ke bilah halaman di kaki, sebaris
+    dengan "1-38 dari 38" yang juga menghitung isi; tombolnya pindah ke ujung
+    kanan baris saringan. "Pindai ulang" tidak pindah ke mana pun — ia dibuang,
+    dan memuat ulang halaman yang menggantikannya (lihat Session.periksa_disk).
+
+    Rincian per keadaan tetap ada, dengan angka yang lebih tepat daripada
+    proporsi bilah, di dropdown "Semua keadaan" pada baris saringan. -#}
 <div class="grid-atas">
-  <div class="ds-alat">
-    <span class="path mono">{{ n_obj }} objek</span>
-    {%- if not pr and tolak_tambah %}
-    {#- Dataset tanpa sidebar tidak punya pintu unggah sama sekali; kalimat ini
-        satu-satunya yang menjelaskan kenapa. -#}
-    <span class="path mono" title="{{ tolak_tambah }}">Tidak bisa ditambahi:
-      {{ tolak_tambah }}</span>
-    {%- endif %}
-    <button class="chip" onclick="rescan()"
-            title="Membaca ulang isi folder. Perlu kalau berkas diubah dari luar aplikasi: AnyLabeling desktop, salin-tempel, rsync.">Pindai ulang</button>
-    {#- Unduhan dataset ASLI, dan sengaja berdiri sendiri — bukan satu baris
-        lagi di dalam menu Ekspor. Menu itu menjawab "dalam format apa dataset
-        ini mau dilatih"; tombol ini menjawab "kembalikan dataset saya seperti
-        sebelum semuanya", dan menaruh keduanya di satu daftar membuat yang
-        kedua terbaca sebagai format keenam. Tidak punya pilihan apa pun, jadi
-        tidak perlu menu. -#}
-    <button class="chip" id="unduh-asli" type="button"
-            title="Unduh dataset apa adanya: satu ZIP berisi images/ dan labels/ bersebelahan, tanpa split train/valid/test dan tanpa salinan hasil augmentasi. Bentuk ini bisa diunggah kembali ke HIGOLAB.">Unduh dataset</button>
-    {#- Hanya untuk dataset yang dibuka lewat path server: di sana sidebar
-        projek tidak dirender sama sekali, dan tanpa tautan ini grid jadi
-        halaman tanpa jalan pulang. Untuk projek, panah "← Semua projek" di
-        sidebar sudah melakukannya. -#}
-    {% if not pr %}<a class="chip" href="/pilih">Ganti dataset</a>{% endif %}
-    {#- Ekspor tinggal di halaman Versi sekarang. Yang tertinggal di sini hanya
-        untuk dataset yang TIDAK punya halaman itu: dataset yang dibuka lewat
-        path server bukan projek di ruang kerja siapa pun, dan /versi
-        mengalihkannya ke daftar projek. -#}
-    {% if not pr %}{% include "_ekspor.html" %}{% endif %}
-  </div>{# /.ds-alat #}
 
   {#- Satu baris saringan, urutannya mengikuti Roboflow: nama berkas dulu,
       lalu saringan yang menyempitkan, lalu urutan. Sebelumnya isinya tersebar
@@ -448,7 +423,50 @@
        href="{{ tautan(val_f='all', val_c=[], val_x=[], val_m='atau', val_q='', val_tg=[], val_bt='', val_sp=[], val_tu=[]) }}"
        >&times; Bersihkan saringan <b>{{ saring_aktif | length }}</b></a>
     {%- endif %}
+
+    {#- Tindakan atas dataset, didorong ke ujung KANAN baris yang sama.
+
+        Sebaris dengan saringan, bukan di baris sendiri di atasnya: keduanya
+        sama-sama kontrol atas daftar yang ada di bawahnya, dan satu tombol
+        yang berdiri sendirian di baris kosong terbaca lebih penting daripada
+        yang sebenarnya. Dipisahkan pendorong, jadi ia tetap di kanan berapa
+        pun jumlah saringan yang muncul di kiri. -#}
+    <span class="saring-dorong"></span>
+    {#- Unduhan dataset ASLI, dan sengaja berdiri sendiri — bukan satu baris
+        lagi di dalam menu Ekspor. Menu itu menjawab "dalam format apa dataset
+        ini mau dilatih"; tombol ini menjawab "kembalikan dataset saya seperti
+        sebelum semuanya", dan menaruh keduanya di satu daftar membuat yang
+        kedua terbaca sebagai format keenam. Tidak punya pilihan apa pun, jadi
+        tidak perlu menu. -#}
+    <button class="chip" id="unduh-asli" type="button"
+            title="Unduh dataset apa adanya: satu ZIP berisi images/ dan labels/ bersebelahan, tanpa split train/valid/test dan tanpa salinan hasil augmentasi. Bentuk ini bisa diunggah kembali ke HIGOLAB.">Unduh dataset</button>
   </div>
+
+  {#- Kontrol yang HANYA ada pada dataset yang dibuka lewat path server, dan
+      karena itu diberi barisnya sendiri, bukan dijejalkan ke baris saringan.
+
+      Terukur: menaruh ketiganya di baris saringan membuatnya membungkus jadi
+      tiga baris pada layar 1500 px (tinggi 127 px), dan menu Ekspor yang
+      terdorong ke baris ketiga membuka ke kiri sampai keluar layar
+      (left=-155). Baris ini tidak pernah muncul di projek — di sana sidebar
+      dan halaman Versi sudah membawa keduanya — jadi tampilan projek tetap
+      satu baris saringan yang bersih.
+
+      Tanpa "Ganti dataset" grid jadi halaman tanpa jalan pulang: sidebar
+      projek tidak dirender sama sekali di sini. Tanpa menu Ekspor, dataset ini
+      tidak bisa diekspor sama sekali, karena /versi mengalihkannya ke daftar
+      projek. -#}
+  {%- if not pr %}
+  <div class="bar ds-luar">
+    {%- if tolak_tambah %}
+    <span class="path mono" title="{{ tolak_tambah }}">Tidak bisa ditambahi:
+      {{ tolak_tambah }}</span>
+    {%- endif %}
+    <span class="saring-dorong"></span>
+    <a class="chip" href="/pilih">Ganti dataset</a>
+    {% include "_ekspor.html" %}
+  </div>
+  {%- endif %}
 </div>
 </div>{# /.grid-atas #}
 
@@ -531,8 +549,14 @@
               title="Buka berkas ini di AnyLabeling desktop">{{ ikon('desktop', 15) }}</button>
       {%- endif %}
       {%- if sev == 'bg' %}
+      {#- "Batal", bukan "Batal latar". Sejak ketiga tombol teks dibagi rata,
+          jatahnya 53 px di kartu selebar 212 px, dan "Batal latar" butuh 62 --
+          ia terpotong elipsis di SETIAP kartu berlatar. Kata keduanya memang
+          yang paling boleh hilang: tombol ini hanya muncul di kartu yang sudah
+          ditandai latar, jadi "latar" mengulang apa yang sudah dinyatakan
+          kartunya sendiri. Kalimat utuhnya tetap di title. -#}
       <button class="btn" onclick="markbg('{{ p }}',false)"
-              title="Batal tanda latar">Batal latar</button>
+              title="Batal tanda latar">Batal</button>
       {%- elif not it.shapes %}
       <button class="btn" onclick="markbg('{{ p }}',true)"
               title="Tandai sebagai latar (tanpa objek)">Latar</button>
@@ -607,8 +631,13 @@
     </select>
   </form>
 
+  {#- Jumlah objek berdiri di sini, bukan di atas grid. Ia menghitung ISI
+      dataset, sama seperti "1-38 dari 38" di sebelahnya, jadi keduanya terbaca
+      sekali pandang sebagai satu keterangan. Di pojok kiri atas ia justru
+      berdiri sendirian sebagai satu baris utuh untuk dua kata. -#}
   <span class="hal-info">{{ mulai }}&ndash;{{ akhir }} dari <b>{{ n_tampil }}</b>
-    {%- if n_tampil != total %} cocok <em>&middot; dari {{ total }} gambar</em>{% endif %}</span>
+    {%- if n_tampil != total %} cocok <em>&middot; dari {{ total }} gambar</em>{% endif %}
+    <span class="hal-objek">&middot; {{ n_obj }} objek</span></span>
 
   {%- if n_hal > 1 %}
   {#- Jendela nomor: selalu halaman 1, selalu halaman terakhir, dan tetangga

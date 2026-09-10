@@ -144,19 +144,16 @@ async function markbg(p, on) {
   if (j.ok) setTimeout(() => location.reload(), 450);
 }
 
-async function rescan() {
-  // Terukur 5,9 detik pada dataset 11.319 gambar. Toast hilang jauh sebelum
-  // itu, jadi sisa waktunya berlalu tanpa tanda apa pun.
-  const pr = Progres.mulai('Memindai ulang dataset');
-  pr.taktentu('membaca berkas anotasi…');
-  try {
-    const j = await post('/rescan');
-    if (j.ok) { pr.selesai(); location.reload(); }
-    else { pr.gagal(j.error); toast('Gagal: ' + j.error); }
-  } catch (e) {
-    pr.gagal('Gagal menghubungi server');
-  }
-}
+// rescan() dibuang bersama tombol "Pindai ulang" di atas grid. Menekan sebuah
+// tombol supaya halaman menampilkan keadaan yang sebenarnya adalah pekerjaan
+// yang tidak perlu diminta ke orang, dan memuat ulang halaman sekarang benar-
+// benar menggantikannya: rute grid memanggil Session.periksa_disk, yang juga
+// menangkap berkas yang disunting DI LUAR aplikasi (AnyLabeling desktop,
+// salin-tempel, rsync) — persis kasus yang dulu jadi alasan tombol itu ada.
+//
+// Rute POST /rescan sendiri TETAP: unggah.js memakainya sesudah unggahan
+// selesai, dan di sana pemindaiannya memang dipicu satu tindakan, bukan oleh
+// orang yang menebak-nebak kapan perlu menekannya.
 
 // Unduh dataset ASLI: satu ZIP datar images/ + labels/, tanpa split dan tanpa
 // salinan hasil augmentasi.
