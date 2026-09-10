@@ -2347,3 +2347,60 @@ def test_data_yaml_rusak_dibedakan_dari_data_yaml_yang_tidak_ada(tmp_path):
     (d / "data.yaml").write_text("names: [botol, kaleng]\nnc: 2\n")
     assert not scanner.periksa_kelengkapan(d)
     assert scanner.baca_nama_kelas(d) == {0: "botol", 1: "kaleng"}
+
+
+# ------------------------------------------- tata letak grid & pilih borongan
+def test_grid_punya_wadah_gulir_sendiri(klien, lingkungan):
+    """
+    Sidebar dan bilah saringan tidak boleh ikut tergulir bersama foto.
+
+    Dulu seluruh halaman yang menggulir: tinggi .sisi terukur 3.870px pada 50
+    kartu, jadi menu projek hilang ke atas dan kotak cari berada puluhan layar
+    dari kartu yang sedang dilihat. Yang menjaganya sekarang adalah dua wadah
+    -- .grid-atas yang diam dan .grid-gulung yang menggulir -- plus kelas body
+    yang membatasi aturannya ke halaman ini saja.
+    """
+    import pathlib
+
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    _projek(ruang, "tatak", n=3)
+    h = klien.get("/?ds=tatak").text
+    assert 'class="grid-atas"' in h, "bilah atas tidak punya wadah tetap"
+    assert 'id="grid-gulung"' in h, "kisi tidak punya wadah bergulir"
+    assert "grid-tetap" in h, "kelas body pembatas aturannya hilang"
+    # Urutannya penting: yang diam di ATAS yang bergulir.
+    assert h.index('class="grid-atas"') < h.index('id="grid-gulung"')
+
+
+def test_grid_punya_pilih_borongan_dan_tombol_kembalikan(klien, lingkungan):
+    """
+    Validasi menyeluruh butuh jalan keluar: gambar yang ternyata salah label
+    harus bisa dikembalikan ke antrean tanpa membuka satu per satu.
+    """
+    import pathlib
+
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    _projek(ruang, "pilihk", n=3)
+    h = klien.get("/?ds=pilihk").text
+    assert h.count('class="kp-in"') == 3, "kotak centang tidak satu per kartu"
+    assert 'id="pilih-bar"' in h and "hidden" in h
+    assert 'id="pb-kembalikan"' in h, "tombol kembalikan tidak ada"
+    assert 'id="pb-semua"' in h and 'id="pb-bersih"' in h
+
+
+def test_pilih_borongan_tidak_muncul_tanpa_projek(klien, lingkungan):
+    """
+    Folder dataset bersama tidak punya alur dataset sama sekali, jadi
+    "kembalikan ke Anotasi" di sana adalah tombol yang tidak bisa berbuat apa
+    pun. Lebih baik tidak ada daripada ada dan menolak.
+    """
+    masuk(klien, "paul", PW_PAUL)
+    h = klien.get("/").text
+    assert 'id="pilih-bar"' not in h
+    assert 'class="kp-in"' not in h

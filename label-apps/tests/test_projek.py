@@ -484,8 +484,16 @@ def test_grid_projek_memakai_sidebar_yang_sama(klien, lingkungan):
     _projek(ruang, "punyaku", n=3)
 
     h = klien.get("/?ds=punyaku").text
+    import re
+
     assert 'id="sisi"' in h, "grid projek tanpa sidebar"
-    assert 'class="berprojek"' in h
+    # Yang dijaga: kelas `berprojek` DIPAKAI, bukan bahwa ia satu-satunya.
+    # Halaman grid menambahkan `grid-tetap` supaya hanya kisi fotonya yang
+    # menggulir, dan asersi yang menuntut atribut persis membuat penambahan
+    # kelas mana pun tampak seperti kerusakan.
+    kelas = re.search(r'<body class="([^"]*)"', h)
+    assert kelas, "body tanpa atribut class"
+    assert "berprojek" in kelas.group(1).split(), kelas.group(1)
     for bagian in ("/unggah?ds=punyaku", "/anotasi?ds=punyaku",
                    "/versi?ds=punyaku"):
         assert bagian in h, bagian

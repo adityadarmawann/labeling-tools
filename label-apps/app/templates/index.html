@@ -4,7 +4,7 @@
    path server tidak punya bagian-bagian itu. Kelas bodinya ikut bersyarat:
    tanpa sidebar, tata letak berprojek menghapus padding main dan grid-nya
    menempel ke tepi layar. #}
-{% block bodyclass %}{% if pr %}berprojek{% endif %}{% endblock %}
+{% block bodyclass %}{% if pr %}berprojek grid-tetap{% endif %}{% endblock %}
 
 {# Setiap tautan saringan membawa urutan dan pencarian yang sedang aktif.
    Tanpa itu, mengklik satu chip diam-diam mengembalikan urutan ke bawaan —
@@ -117,6 +117,7 @@
       jumlah objeknya, dan tombol pindai ulang. Ketiganya menjawab pertanyaan
       yang sama, dan tak satu pun cukup penting untuk punya barisnya sendiri.
       Sebelum ini mereka tersebar di dua baris berbeda. -#}
+<div class="grid-atas">
   <div class="kemajuan">
     <div class="lajur" role="img"
          aria-label="{{ selesai }} dari {{ total }} gambar selesai">
@@ -389,12 +390,22 @@
     {%- endif %}
   </div>
 </div>
+</div>{# /.grid-atas #}
 
+<div class="grid-gulung" id="grid-gulung">
 <div class="grid" id="grid">
   {%- for it in items %}
   {%- set p = it | imgpath %}
   {%- set sev = severity(it) %}
   <div class="card" data-s="{{ sev }}"><span class="rail"></span>
+    {%- if pr %}
+    {#- Kotak centang untuk tindakan borongan. Di dalam kartu, BUKAN menimpa
+        tautannya: menaruhnya di atas gambar membuat klik untuk membuka dan
+        klik untuk memilih berebut area yang sama. -#}
+    <label class="kartu-pilih">
+      <input type="checkbox" class="kp-in" data-path="{{ p }}"
+             aria-label="Pilih {{ p.split('/')[-1] }}"></label>
+    {%- endif %}
     <a href="/view?path={{ p }}" aria-label="Lihat {{ p.split('/')[-1] }}"><img loading="lazy" src="/thumb?path={{ p }}&s=320" alt="{{ p.split('/')[-1] }}"></a>
     <div class="meta">
       <div class="fn mono">{%- if it.split %}<span class="split">{{ it.split }}</span>{% endif %}{{ it.img.name }}</div>
@@ -468,6 +479,24 @@
   </div>
   {%- endfor %}
 </div>
+</div>{# /.grid-gulung #}
+
+{%- if pr %}
+{#- Bilah tindakan borongan. Mengambang di atas kisi, muncul hanya saat ada
+    yang terpilih: bilah yang selalu ada memakan ruang kartu tanpa pernah
+    dipakai, dan bilah yang muncul mendadak di tengah layar lebih mudah
+    ditemukan daripada tombol yang tersembunyi di kepala halaman. -#}
+<div class="pilih-bar" id="pilih-bar" hidden role="region"
+     aria-label="Tindakan untuk gambar terpilih">
+  <span class="pb-n"><b id="pb-n">0</b> terpilih</span>
+  <button class="chip" type="button" id="pb-semua">Pilih semua di halaman ini</button>
+  <button class="chip" type="button" id="pb-bersih">Bersihkan</button>
+  <span class="spacer"></span>
+  <button class="chip aksi" type="button" id="pb-kembalikan"
+          title="Keluarkan dari dataset dan kembalikan ke kolom Belum ditugaskan di halaman Anotasi">
+    Kembalikan ke Anotasi</button>
+</div>
+{%- endif %}
 
 {#- Bar paginasi. Sebelum ini seluruh hasil saringan dirender sekali jalan:
     projek produksi terbesar 11.319 gambar berarti 11.319 kartu dalam satu

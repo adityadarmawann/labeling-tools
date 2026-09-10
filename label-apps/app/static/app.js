@@ -1741,3 +1741,97 @@ const Progres = (() => {
   }, true);
 })();
 
+
+/* ==================================================== pilih borongan di grid
+ * Memilih beberapa gambar lalu mengembalikannya ke antrean kerja. Gunanya
+ * validasi menyeluruh: kalau saat memeriksa dataset ternyata ada yang salah
+ * label, gambarnya dikeluarkan dari dataset dan kembali ke kolom "Belum
+ * ditugaskan" supaya ada yang membetulkannya.
+ *
+ * Anotasinya TIDAK dihapus. Yang berubah cuma keanggotaan dataset, dan itu
+ * bisa dibatalkan dengan memasukkannya kembali.
+ */
+(() => {
+  const bar = document.getElementById('pilih-bar');
+  const grid = document.getElementById('grid');
+  if (!bar || !grid) return;
+
+  const kotak = () => [...grid.querySelectorAll('.kp-in')];
+  const dipilih = () => kotak().filter((k) => k.checked);
+  let terakhir = null;                 // untuk pilih rentang dengan Shift
+
+  function segarkan() {
+    const n = dipilih().length;
+    document.getElementById('pb-n').textContent = n;
+    bar.hidden = n === 0;
+    // Kartu terpilih ditandai supaya terlihat saat digulir jauh dari bilahnya.
+    kotak().forEach((k) => k.closest('.card')
+      .classList.toggle('kartu-terpilih', k.checked));
+  }
+
+  grid.addEventListener('change', (ev) => {
+    const k = ev.target;
+    if (!k.classList || !k.classList.contains('kp-in')) return;
+    // Shift+klik memilih seluruh rentang, seperti daftar berkas mana pun.
+    // Tanpa ini, memilih 50 kartu berarti lima puluh klik.
+    if (ev.shiftKey && terakhir && terakhir !== k) {
+      const semua = kotak();
+      const a = semua.indexOf(terakhir);
+      const b = semua.indexOf(k);
+      if (a >= 0 && b >= 0) {
+        for (let i = Math.min(a, b); i <= Math.max(a, b); i++) {
+          semua[i].checked = k.checked;
+        }
+      }
+    }
+    terakhir = k;
+    segarkan();
+  });
+
+  document.getElementById('pb-semua').onclick = () => {
+    kotak().forEach((k) => { k.checked = true; });
+    segarkan();
+  };
+  document.getElementById('pb-bersih').onclick = () => {
+    kotak().forEach((k) => { k.checked = false; });
+    terakhir = null;
+    segarkan();
+  };
+
+  document.getElementById('pb-kembalikan').onclick = async (ev) => {
+    const pilih = dipilih();
+    if (!pilih.length) return;
+    const tombol = ev.currentTarget;
+    if (!confirm(
+        `${pilih.length} gambar dikeluarkan dari dataset dan kembali ke kolom `
+        + '"Belum ditugaskan" di halaman Anotasi.\n\n'
+        + 'Anotasinya TIDAK dihapus — yang berubah hanya keanggotaan dataset, '
+        + 'dan gambarnya bisa dimasukkan lagi kapan saja.')) return;
+    tombol.disabled = true;
+    const pr = Progres.mulai(
+      `Mengembalikan ${pilih.length} gambar ke Anotasi`, { di: grid })
+      .taktentu('menyimpan');
+    let j;
+    try {
+      j = await fetch('/api/tugas/dataset', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gambar: pilih.map((k) => k.dataset.path),
+                               keluarkan: true }),
+      }).then((r) => r.json());
+    } catch (e) {
+      pr.gagal('Gagal menghubungi server');
+      tombol.disabled = false;
+      return;
+    }
+    if (!j || !j.ok) {
+      pr.gagal((j && j.error) || 'gagal');
+      tombol.disabled = false;
+      return;
+    }
+    pr.selesai(`${j.dikeluarkan} gambar kembali ke Anotasi`
+               + (j.ditolak ? ` · ${j.ditolak} bukan tugasmu` : ''));
+    setTimeout(() => location.reload(), 900);
+  };
+
+  segarkan();
+})();
