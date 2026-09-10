@@ -64,8 +64,9 @@
 
       Bawaannya "otomatis": ditebak dari bentuk TERBANYAK, dan tebakannya
       disebutkan apa adanya supaya tidak ada yang mengira sudah memilih. -#}
+  <div class="an-kendali">
   {% if boleh_kelola %}
-  <div class="an-jenis">
+  <div class="an-jenis an-kendali-baris">
     <label class="halus" for="an-jenis">Format anotasi</label>
     <select class="chip" id="an-jenis" data-ds="{{ pr.ds }}">
       <option value=""{% if not jenis %} selected{% endif %}>Otomatis
@@ -89,7 +90,7 @@
   {% endif %}
 
   {# ---------------------------------------------------- urutan #}
-  <form class="an-urut" method="get" action="/anotasi">
+  <form class="an-urut an-kendali-baris" method="get" action="/anotasi">
     <input type="hidden" name="ds" value="{{ pr.ds }}">
     <label class="halus" for="an-urut">Urutkan</label>
     <select class="chip" id="an-urut" name="urut" onchange="this.form.submit()">
@@ -99,6 +100,7 @@
     </select>
     <noscript><button class="chip" type="submit">Terapkan</button></noscript>
   </form>
+  </div>
 
   {# ---------------------------------------------------- tiga kolom #}
   <section class="an-papan">

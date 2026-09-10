@@ -1926,10 +1926,8 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
   font-weight:600;padding:0 2px 2px}
 .an-lihat-semua:hover{text-decoration:underline}
 
-/* Baris urutkan dan menu kelola di papan anotasi. */
-.an-urut{display:flex;gap:8px;align-items:center;margin-bottom:12px}
-.an-urut .halus{margin:0}
-.an-urut select{padding:5px 9px;font-size:12.5px}
+/* Menu kelola di papan anotasi. Tata letak baris "Urutkan" sendiri ada di
+   blok .an-kendali, sebaris dengan "Format anotasi". */
 .an-menu{position:relative;flex:0 0 auto}
 .an-titik{background:transparent;border:0;cursor:pointer;color:var(--ink-faint);
   font-size:16px;line-height:1;padding:2px 6px;border-radius:6px}
@@ -2385,14 +2383,41 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
 /* Kenapa jumlah gambar versi ini lebih sedikit daripada yang diperkirakan.
    Tanpa kalimat ini, selisihnya cuma terlihat sebagai angka yang tidak cocok
    dan tidak ada yang bisa menjelaskannya besok. */
-/* Setelan format anotasi di papan Anotasi. Sebaris dengan Urutkan supaya
-   terbaca sebagai kendali papan, bukan saringan tampilan. */
-.an-jenis{display:flex;align-items:center;flex-wrap:wrap;gap:8px 10px;
-  margin:14px 0 0}
-.an-jenis select{max-width:280px}
-.an-jenis .halus{font-size:11.5px}
-#an-jenis-pesan{flex:1 1 240px;min-width:0;color:var(--ink-faint);
-  line-height:1.45}
+/* Kendali papan Anotasi: "Format anotasi" dan "Urutkan". Keduanya setelan
+   papan, bukan saringan tampilan, jadi mereka dikelompokkan.
+
+   Dulu tiap baris adalah flex-nya sendiri. Akibatnya label yang panjangnya
+   berbeda ("Format anotasi" 77px, "Urutkan" 37px) mendorong dropdown-nya ke
+   posisi x yang berbeda, lebar dropdown mengikuti isi masing-masing (274px
+   lawan 144px), dan kalimat penjelas yang panjang menempel di kanan baris
+   pertama sehingga baris itu jauh lebih berat daripada baris kedua. Tiga
+   ketidakrataan itu membuat sepasang kendali terbaca sebagai dua serpihan.
+
+   Sekarang tiap baris memakai grid dengan lebar kolom yang SAMA, diambil dari
+   satu tempat (--an-label dan --an-pilih di induknya), jadi kedua dropdown
+   mulai dan berakhir di titik yang sama. Kalimat penjelasnya turun ke bawah
+   dropdown-nya sebagai baris bantuan, tetap sejajar kolom kendali. */
+.an-kendali{--an-label:96px;--an-pilih:300px;margin:14px 0 12px}
+.an-kendali-baris{display:grid;align-items:center;gap:6px 10px;margin:0;
+  grid-template-columns:var(--an-label) minmax(0,var(--an-pilih))
+    minmax(0,1fr)}
+/* Jarak antarbaris dibuat lebih besar daripada jarak kendali ke baris
+   bantuannya, supaya jelas kalimat bantuan itu milik kendali di ATASnya. */
+.an-kendali-baris + .an-kendali-baris{margin-top:12px}
+.an-kendali-baris > .halus{margin:0;font-size:11.5px;color:var(--ink-dim)}
+/* Lebar dropdown ditentukan kolomnya, bukan isinya: itu satu-satunya cara
+   "Terbaru dibagi" yang pendek berakhir di garis yang sama dengan
+   "Otomatis (poligon, dari bentuk terbanyak)" yang panjang. */
+.an-kendali-baris > select.chip{width:100%;padding:5px 9px;font-size:12.5px}
+#an-jenis-pesan{grid-column:2 / -1;max-width:62ch;color:var(--ink-faint);
+  line-height:1.5}
+/* Layar sempit: kolom label 96px + dropdown 300px tidak lagi muat berdampingan,
+   jadi labelnya naik ke atas kendalinya. */
+@media (max-width:560px){
+  .an-kendali-baris{grid-template-columns:minmax(0,1fr);gap:4px}
+  .an-kendali-baris > select.chip{max-width:var(--an-pilih)}
+  #an-jenis-pesan{grid-column:1}
+}
 
 .vs-pulang{margin:10px 0 0;padding:10px 12px;border-radius:8px;
   background:var(--bahaya-lembut);color:var(--ink-dim);font-size:11.5px;
