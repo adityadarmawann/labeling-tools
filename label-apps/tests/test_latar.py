@@ -410,3 +410,45 @@ def test_tanpa_pelat_atau_tanpa_label_jatuh_ke_acak():
     assert p._pelat_giliran([(0, KOTAK)]) is None
     p2 = _pekerjaan(18)
     assert p2._pelat_giliran([]) is None
+
+
+def test_pelat_projek_diselang_seling_dengan_bawaan(tmp_path):
+    """Bukan disambung di belakang, dan ini bukan soal rapi-rapian.
+
+    Pemerataan per kelas berjalan BERURUTAN dari satu titik mulai, jadi kelas
+    yang sampelnya sedikit hanya menyentuh sepotong daftar pelat. Kalau seluruh
+    pelat bawaan berbaris di depan, potongan itu isinya bawaan semua.
+
+    Terukur pada versi sungguhan berisi 100 gambar dan 5 kelas: dengan daftar
+    bersambung, kelas paling minoritas mendapat 0 dari 9 tempelannya di pelat
+    projek -- foto ruang yang baru saja diunggah orang tidak pernah dipakai
+    untuk kelas yang justru paling butuh variasi latar. Sesudah diselang-seling
+    ia mendapat 3 dari 9, setara kelas lain.
+    """
+    d = tmp_path / "projek"
+    d.mkdir()
+    n_bawaan = len(olah.muat_pelat())
+    latar.tambah(d, "ruang.png", _foto_ruang())
+    campur = olah.pelat_projek(d)
+    assert len(campur) == n_bawaan + 9
+
+    # Ditandai lewat isinya: pelat projek berasal dari foto uji yang jauh lebih
+    # gelap/terang daripada bawaan, jadi dibandingkan lewat identitas objek.
+    bawaan = {id(p) for p in olah.muat_pelat()}
+    pola = ["b" if id(p) in bawaan else "p" for p in campur]
+    # Tidak boleh ada deretan panjang sejenis: sembilan pertama harus sudah
+    # memuat kedua jenis.
+    assert "p" in pola[:9] and "b" in pola[:9], "".join(pola)
+    # Dan tidak ada tiga berturut-turut yang sejenis.
+    for i in range(len(pola) - 2):
+        assert len(set(pola[i:i + 3])) > 1, ("".join(pola), i)
+
+
+def test_tanpa_pelat_projek_daftarnya_tetap_bawaan_apa_adanya(tmp_path):
+    """Penyelang-selingan tidak boleh mengubah apa pun saat tidak ada pelat
+    projek: dataset yang belum mengunggah foto latar harus berperilaku persis
+    seperti sebelum fitur ini ada."""
+    d = tmp_path / "projek"
+    d.mkdir()
+    assert [id(p) for p in olah.pelat_projek(d)] == \
+        [id(p) for p in olah.muat_pelat()]

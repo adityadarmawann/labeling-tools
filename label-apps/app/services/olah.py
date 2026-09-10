@@ -238,14 +238,32 @@ def pelat_projek(ds) -> list[np.ndarray]:
     """
     from . import latar as svc_latar
 
-    kumpul = list(muat_pelat())
+    bawaan = list(muat_pelat())
     if ds is None:
-        return kumpul
+        return bawaan
+    projek = []
     for p in svc_latar.daftar_pelat(Path(ds)):
         im = cv2.imread(str(p))
         if im is not None:
-            kumpul.append(im)
-    return kumpul
+            projek.append(im)
+    if not projek:
+        return bawaan
+    # DISELANG-SELING, bukan disambung di belakang. Pemerataan per kelas di
+    # buatversi berjalan berurutan dari satu titik mulai, jadi kelas yang
+    # sampelnya sedikit hanya menyentuh sepotong daftar ini. Kalau seluruh
+    # pelat bawaan berbaris di depan, potongan itu isinya bawaan semua.
+    #
+    # Terukur pada 9 bawaan + 9 projek: dengan daftar bersambung, kelas
+    # bersampel paling sedikit mendapat 0 dari 9 tempelannya di pelat projek —
+    # foto ruang yang baru saja diunggah orang tidak pernah dipakai untuk kelas
+    # yang justru paling butuh variasi latar.
+    campur = []
+    for i in range(max(len(bawaan), len(projek))):
+        if i < len(bawaan):
+            campur.append(bawaan[i])
+        if i < len(projek):
+            campur.append(projek[i])
+    return campur
 
 
 def kanvas_latar(w: int, h: int, rng: random.Random,
