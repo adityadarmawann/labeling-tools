@@ -617,7 +617,11 @@ def test_grid_menyaring_tugasku_dan_menandai_pemiliknya(klien, aplikasi,
     klien.post("/api/tugas/bagi", json={"pelabel": "paul", "gambar": gambar[2:]})
 
     h = klien.get("/").text
-    assert chip_tugasku(h) and h.count("tugas-cap") == 4
+    # Cap pelabel tidak lagi dicetak di kartu grid; ia pindah ke halaman Lihat.
+    # Yang dijaga tetap sama seperti dulu: begitu ada yang dibagi, saringan
+    # "Tugasku" muncul dan benar-benar memilih jatah orang yang membukanya.
+    assert chip_tugasku(h)
+    assert "tugas-cap" not in h, "cap pelabel seharusnya tidak lagi di kartu"
     assert klien.get("/?f=tugasku").text.count('class="card"') == 2
 
     lain = klien_baru(aplikasi, "anggi", PW_ANGGI)

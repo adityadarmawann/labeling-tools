@@ -378,7 +378,9 @@ async def index(request: Request, f: str = "all",
         "tag_hitung": svc_tag.hitung(tdata_tag),
         "tag_pilih": tag_pilih,
         "batch_pilih": batch_q,
-        "pelabel_dari": pelabel_dari,
+        # `pelabel_dari` sendiri tidak lagi diserahkan: kartu tidak mencetak
+        # cap pelabel lagi. Perhitungannya TETAP dipakai di bawah untuk
+        # `ada_tugas`, yang menentukan muncul tidaknya saringan "Tugasku".
         "n_tugasku": len(tugasku_id),
         "n_jatah_projek": n_jatah_projek,
         "ada_tugas": bool(pelabel_dari) or bool(n_jatah_projek),
@@ -397,7 +399,8 @@ async def index(request: Request, f: str = "all",
 
 @router.get("/view", response_class=HTMLResponse)
 async def view(request: Request, path: str = "",
-               sess: Session = Depends(current_session)):
+               sess: Session = Depends(current_session),
+               settings: Settings = Depends(get_settings)):
     # Sama alasannya dengan halaman kanvas: yang ditampilkan harus keadaan
     # sekarang, bukan keadaan saat projek ini pertama dibuka sesi ini.
     await asyncio.to_thread(sess.segarkan)
@@ -423,11 +426,18 @@ async def view(request: Request, path: str = "",
 
     tdata = svc_tag.baca(sess.src)
     kunci = svc_tag.kunci_gambar(sess.src, it["img"])
+    # Siapa yang ditugaskan melabeli gambar ini. Dulu ini dicetak sebagai cap
+    # di sudut gambar tiap kartu grid, dan di sana ia mengganggu: kartu jadi
+    # ramai justru di bagian yang dipakai orang memeriksa fotonya. Tempatnya
+    # di sini, sebaris dengan keterangan lain tentang satu gambar.
+    tugas_data = svc_tugas.baca_projek(sess.src, settings.uploads_root)
     return templates.TemplateResponse(request, "view.html", {
         "sess": sess, "local": is_local(request), "it": it,
         "sev": scanner.severity(it), "prev_it": prev_it, "next_it": next_it,
         "posisi": posisi, "hitung": dict(sorted(hitung.items())),
         "tag": svc_tag.untuk(tdata, kunci),
+        "pelabel": ("" if tugas_data["warisan"]
+                    else svc_tugas.pelabel_gambar(tugas_data, kunci)),
         # Menandai gambar itu MENULIS keterangan tentangnya, jadi ia tunduk
         # pada aturan yang sama dengan menyunting labelnya.
         "boleh_tag": not svc_tugas.tolak_tulis(sess.src, sess.user, it["img"]),

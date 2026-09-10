@@ -221,28 +221,35 @@ main{padding:20px 22px 60px}
    berbeda-beda 314/336/358 px pada jendela 1400px. Dengan tinggi tetap, setiap
    kartu 310,5 px berapa pun jumlah kelasnya.
    48 = 9 (padding atas) + 19 (satu baris chip) + 5 + 15 (satu baris temuan). */
-.meta{height:48px;padding:9px 11px 0;overflow:hidden}
+/* Tinggi kotak keterangan DIHITUNG dari bagiannya, bukan diketik sebagai satu
+   angka. Saat jalur label dinaikkan dari satu baris ke dua, angka tetapnya
+   tertinggal dua kali berturut-turut (52px lalu 58px) dan baris temuan
+   terpotong separuh di bawah tanpa ada yang menyadarinya sampai diukur.
+   Dengan token ini, mengubah tinggi jalur label otomatis membawa serta tinggi
+   kotaknya. */
+.card{--pad-meta:7px;--h-labs:34px;--h-iss:20px}
+.meta{height:calc(var(--pad-meta) + var(--h-labs) + var(--h-iss));
+  padding:var(--pad-meta) 11px 0;overflow:hidden}
 /* direction:rtl sengaja tidak dipakai: ia memindahkan titik ke depan sehingga
    "000036.jpg" terbaca "jpg.000036". */
-/* Jalur chip: TEPAT satu baris, tidak pernah membungkus. Yang tidak muat
-   disembunyikan oleh app.js dan dihitung oleh pil "+N" di sebelah chip
-   terakhir yang masih terbaca. Nama yang lebih panjang dari kartunya
-   (paragon-kahf memakai nama 31 karakter) dipotong dengan elipsis, dan nama
-   utuhnya tetap bisa dibaca lewat title di tiap chip maupun di jalurnya. */
-.labs{margin-top:0;height:19px;display:flex;gap:4px;flex-wrap:nowrap;
-  align-items:center;overflow:hidden}
+/* DUA baris, satu nama kelas per baris. Tingginya dikunci 2 x 17px dan
+   dicadangkan SELALU, juga untuk gambar berkelas satu: kalau tingginya ikut
+   jumlah kelas, kartu di baris yang sama jadi tidak sama tinggi lagi, dan itu
+   persis keluhan yang membuat jalur ini dirombak. */
+.labs{margin-top:0;height:var(--h-labs);display:flex;flex-direction:column;
+  gap:0;align-items:flex-start;overflow:hidden}
+.lab-baris{display:flex;align-items:center;gap:4px;height:17px;
+  max-width:100%;min-width:0}
 /* Dibatasi ke dalam .labs. Tanpa pembatasan itu selektornya juga mengenai
-   <body class="lab"> di halaman anotasi — badan halaman mewarisi latar dan
+   <body class="lab"> di halaman anotasi: badan halaman mewarisi latar dan
    warna teks pil kecil ini, dan itu sudah terjadi diam-diam sejak awal. */
-.labs .lab{font-size:10.5px;line-height:1.55;padding:1px 6px;border-radius:3px;
+.labs .lab{font-size:9.5px;line-height:1.5;padding:0 5px;border-radius:3px;
   background:var(--lab-bg);color:var(--lab-ink);
-  flex:0 0 auto;max-width:100%;white-space:nowrap;overflow:hidden;
+  flex:0 1 auto;min-width:0;white-space:nowrap;overflow:hidden;
   text-overflow:ellipsis}
-/* Saat pil penghitung ikut tampil, chip pertama harus menyisakan tempat
-   untuknya; kalau tidak, satu nama panjang mendorong penghitungnya keluar
-   layar dan orang tidak pernah tahu masih ada kelas lain. */
-.labs.ada-sisa .lab{max-width:calc(100% - 34px)}
-.lab-sisa{flex:0 0 auto;font-size:10.5px;line-height:1.55;padding:1px 5px;
+/* Pil penghitung tidak boleh ikut menyusut: kalau ia yang dipotong, orang
+   tidak pernah tahu masih ada kelas lain. Yang mengalah nama kelasnya. */
+.lab-sisa{flex:0 0 auto;font-size:9.5px;line-height:1.5;padding:0 4px;
   border-radius:3px;background:var(--sunk);color:var(--ink-dim);
   font-variant-numeric:tabular-nums;cursor:default}
 /* Asal split pada ekspor bersplit. Perlu terlihat karena memperbaiki anotasi
@@ -251,6 +258,8 @@ main{padding:20px 22px 60px}
   padding:1px 5px;margin-right:5px;border-radius:3px;background:var(--split-bg);color:var(--split-ink)}
 /* Satu baris juga, dengan alasan yang sama. Dua temuan yang digabung titik
    tengah gampang melewati lebar kartu; teks penuhnya ada di title. */
+/* margin + height = --h-iss. Keduanya disebut di sini supaya jumlahnya bisa
+   ditelusuri dari satu tempat kalau salah satunya diubah. */
 .iss{margin-top:5px;height:15px;font-size:10.5px;color:var(--warn);
   line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .iss.stop{color:var(--stop)}
@@ -1907,16 +1916,12 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
 .bg-menunggu{cursor:default;opacity:.85}
 .bg-menunggu:hover{background:transparent}
 
-/* Penanda siapa yang ditugaskan pada sebuah gambar, di kartu grid. */
-/* Di sudut kanan atas gambar, sejajar kotak centang di sudut kiri, supaya ia
-   tidak lagi memakai satu baris di dalam .meta dan membuat kartu yang sudah
-   dibagi lebih tinggi daripada yang belum. */
-.tugas-cap{position:absolute;top:6px;right:6px;z-index:2;
-  display:inline-block;font-size:10px;padding:1px 7px;
-  border-radius:999px;background:var(--sunk);color:var(--ink-dim);
-  max-width:calc(100% - 46px);overflow:hidden;text-overflow:ellipsis;
-  white-space:nowrap}
-.tugas-cap.tugas-aku{background:var(--ok-lembut);color:var(--aksi);font-weight:600}
+/* Pelabel di halaman Lihat. Sebelumnya ia cap di sudut gambar tiap kartu
+   grid; di sana ia menutupi bagian foto yang justru sedang diperiksa orang,
+   dan kartu jadi ramai. Satu gambar satu halaman rinci, dan di situ ia punya
+   ruang untuk disebut utuh tanpa dipotong. */
+.lh-pelabel{margin-top:4px;font-size:13px;color:var(--ink)}
+.lh-pelabel-aku{color:var(--aksi);font-weight:600}
 
 /* ==================================================== halaman versi */
 .vs-buat{background:var(--panel);border:1px solid var(--line);border-radius:10px;

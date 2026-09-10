@@ -74,6 +74,18 @@
       {%- endif %}
     </section>
 
+    {#- Pelabel. Dulu dicetak sebagai cap di sudut gambar tiap kartu grid, dan
+        di sana ia mengganggu justru bagian yang dipakai orang memeriksa
+        fotonya. Tempatnya di sini, sebaris dengan keterangan lain tentang
+        satu gambar. Hanya muncul kalau gambarnya memang sudah dibagi. -#}
+    {%- if pelabel %}
+    <section class="lh-kotak">
+      <h3>Pelabel</h3>
+      <p class="lh-pelabel{% if pelabel == sess.user %} lh-pelabel-aku{% endif %}">
+        {{ pelabel }}{% if pelabel == sess.user %} <span class="halus">(kamu)</span>{% endif %}</p>
+    </section>
+    {%- endif %}
+
     <section class="lh-kotak">
       <h3>Objek per kelas <span>{{ n_obj }} objek</span></h3>
       {%- if hitung %}
