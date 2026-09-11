@@ -53,9 +53,21 @@ PORT=$(grep -oP '^LABELAPP_PORT=\K.*' env/prod.env)
 # start.sh. Dulu langkah 2 dipaku ke '.venv'; begitu prod berjalan
 # LABELAPP_OLAH=gpu dari .venv-gpu, deploy menguji interpreter yang bukan yang
 # dijalankan — suite hijau di venv yang salah tidak membuktikan apa pun.
-OLAH=$(grep -oP '^LABELAPP_OLAH=\K.*' env/prod.env || echo cpu)
-VENV=".venv"
-[[ "${OLAH:-cpu}" == "gpu" && -x ".venv-gpu/bin/python" ]] && VENV=".venv-gpu"
+#
+# SEBUAH FUNGSI, dan dipanggil SESUDAH langkah 0, bukan di sini. Versi
+# pertamanya membacanya di baris ini — sebelum `git merge dev` — sehingga pada
+# deploy yang justru menyalakan mode gpu, nilainya masih yang LAMA. Akibatnya
+# tepat kebalikan dari maksudnya: pemeriksaan kesiapan di langkah 1 dilewati
+# karena mengira modenya cpu, merge membawa masuk LABELAPP_OLAH=gpu, langkah 4
+# membunuh prod, lalu start.sh di langkah 5 berhenti karena torch belum ada —
+# dan prod sudah telanjur mati.
+baca_olah() {
+  OLAH=$(grep -oP '^LABELAPP_OLAH=\K.*' env/prod.env || echo cpu)
+  OLAH="${OLAH:-cpu}"
+  VENV=".venv"
+  [[ "$OLAH" == "gpu" && -x ".venv-gpu/bin/python" ]] && VENV=".venv-gpu"
+  return 0
+}
 LOG=logs/prod.log
 CAP=run/prod.commit
 mkdir -p logs run
@@ -97,6 +109,10 @@ elif git rev-parse --verify --quiet dev >/dev/null; then
   [[ "$N" != 0 ]] && kuning "     Ada $N commit di cabang dev yang belum digabung " \
                             "(pakai --dari-dev)."
 fi
+
+# Dibaca SESUDAH langkah 0: env/prod.env yang menentukan adalah yang sudah
+# tergabung, bukan yang ada sebelum merge.
+baca_olah
 
 # ---------------------------------------------------------------- 1. periksa
 echo "1/5  Memeriksa keadaan repo"
