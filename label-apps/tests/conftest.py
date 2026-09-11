@@ -26,6 +26,27 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+# Paket `tests` DIDAFTARKAN KE FOLDER INI sebelum satu pun modul tes dimuat.
+#
+# Tanpa ini, `from tests.test_data import ...` — dipakai belasan berkas di sini
+# — bisa mendarat di paket ORANG LAIN. ultralytics mengapalkan paket bernama
+# `tests` ke site-packages (berisi test suite-nya sendiri, terbawa tidak
+# sengaja), dan paket biasa selalu menang atas namespace package seperti folder
+# ini, berapa pun urutan sys.path-nya. Akibatnya seluruh suite di venv GPU
+# gagal dikumpulkan dengan pesan "No module named 'tests.test_data'" — pesan
+# yang tidak menunjuk ke mana pun.
+#
+# conftest.py dimuat pytest paling awal, jadi di sinilah tempatnya. Mendaftar
+# sendiri jauh lebih baik daripada menghapus folder di site-packages: yang
+# dihapus akan kembali pada pemasangan ulang berikutnya, dan tidak ada yang
+# akan ingat kenapa.
+if "tests" not in sys.modules:
+    import types
+
+    _paket = types.ModuleType("tests")
+    _paket.__path__ = [str(Path(__file__).resolve().parent)]
+    sys.modules["tests"] = _paket
+
 # Tidak diperiksa saat memotret folder aplikasi: besar, berubah sendiri, dan
 # bukan milik aplikasi.
 #
