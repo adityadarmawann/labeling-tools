@@ -34,11 +34,6 @@ merah()  { printf '\033[31m%s\033[0m\n' "$1"; }
 kuning() { printf '\033[33m%s\033[0m\n' "$1"; }
 
 [[ -f "$BERKAS" ]] || { merah "  $BERKAS tidak ada."; exit 1; }
-[[ -x .venv/bin/python ]] || {
-  merah "  Virtualenv belum ada."
-  echo  "    python3 -m venv .venv && .venv/bin/pip install -r requirements.txt"
-  exit 1
-}
 
 # Muat setelan mode ini. Nilai yang sudah ada di environment TIDAK ditimpa,
 # supaya LABELAPP_PORT=9000 ./start.sh dev tetap berlaku (awalan LABELAPP_ wajib).
@@ -61,6 +56,43 @@ if [[ -f env/rahasia.env ]]; then
 fi
 set +a
 
+# ---------------------------------------------------------------- CPU / GPU
+#
+# Dua virtualenv TERPISAH, bukan satu yang berisi keduanya. torch membawa
+# pustaka CUDA sekitar 4 GB beserta versi numpy dan setuptools-nya sendiri;
+# menaruhnya di venv yang sama dengan jalur CPU berarti satu pemasangan yang
+# gagal atau satu bentrok versi menjatuhkan KEDUANYA sekaligus. Dipisah, jalur
+# CPU tidak pernah bisa dirusak oleh percobaan di jalur GPU.
+#
+#   LABELAPP_OLAH=cpu   .venv       (bawaan — selalu ada, tidak butuh GPU)
+#   LABELAPP_OLAH=gpu   .venv-gpu   (torch + CUDA)
+#
+# Yang dipilih di sini cuma VENV-nya. Kode aplikasinya satu dan sama; jalur
+# mana yang dipakai augmentasi ditentukan services/olah_gpu.py, yang membaca
+# saklar yang sama.
+OLAH="${LABELAPP_OLAH:-cpu}"
+case "$OLAH" in
+  cpu) VENV=".venv" ;;
+  gpu) VENV=".venv-gpu" ;;
+  *)   merah "  LABELAPP_OLAH='$OLAH' tidak dikenal — isinya 'cpu' atau 'gpu'."
+       exit 1 ;;
+esac
+
+# Tidak ada jatuh diam-diam ke CPU kalau venv GPU belum ada. Orang yang minta
+# GPU lalu mendapat kecepatan CPU tanpa satu pun pesan akan mengira GPU-nya
+# yang lambat, dan mencari masalah di tempat yang salah.
+[[ -x "$VENV/bin/python" ]] || {
+  merah "  Virtualenv '$VENV' belum ada (LABELAPP_OLAH=$OLAH)."
+  if [[ "$OLAH" == "gpu" ]]; then
+    echo  "    python3 -m venv .venv-gpu"
+    echo  "    .venv-gpu/bin/python -m pip install -r requirements.txt -r requirements-gpu.txt"
+  else
+    echo  "    python3 -m venv .venv"
+    echo  "    .venv/bin/python -m pip install -r requirements.txt"
+  fi
+  exit 1
+}
+
 PORT="${LABELAPP_PORT:-8042}"
 HOST="${LABELAPP_HOST:-127.0.0.1}"
 USERS="${LABELAPP_USERS_FILE:-users.json}"
@@ -68,7 +100,7 @@ USERS="${LABELAPP_USERS_FILE:-users.json}"
 if [[ ! -s "$USERS" ]]; then
   merah "  Belum ada akun di $USERS (mode $MODE)."
   echo  "  Buat dulu:"
-  echo  "    LABELAPP_USERS_FILE=$USERS .venv/bin/python run.py --users $USERS --adduser <nama>"
+  echo  "    LABELAPP_USERS_FILE=$USERS $VENV/bin/python run.py --users $USERS --adduser <nama>"
   exit 1
 fi
 
@@ -80,7 +112,7 @@ if [[ ! -d "${LABELAPP_DATASETS_ROOT:-}" ]]; then
   fi
 fi
 
-AKUN=$(.venv/bin/python run.py --users "$USERS" --list-users 2>/dev/null \
+AKUN=$("$VENV"/bin/python run.py --users "$USERS" --list-users 2>/dev/null \
        | tail -n +2 | awk '{print $1}' | paste -sd' ')
 IP=$(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -1)
 
@@ -110,4 +142,4 @@ if [[ "$MODE" == "dev" ]]; then
   ARGS+=(--reload)
 fi
 
-exec .venv/bin/python run.py "${ARGS[@]}" ${PASS[@]+"${PASS[@]}"}
+exec "$VENV"/bin/python run.py "${ARGS[@]}" ${PASS[@]+"${PASS[@]}"}

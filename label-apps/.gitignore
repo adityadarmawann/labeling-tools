@@ -5,6 +5,9 @@ users.json
 # Virtualenv (312 MB, dibuat ulang dari requirements.txt)
 .venv/
 venv/
+# Virtualenv jalur GPU — 6 GB, isinya pustaka CUDA. Dibuat ulang dari
+# requirements.txt + requirements-gpu.txt; lihat start.sh.
+.venv-gpu/
 
 # Python
 __pycache__/

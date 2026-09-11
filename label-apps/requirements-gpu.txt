@@ -1,0 +1,18 @@
+# Tambahan untuk jalur GPU. Dipasang ke .venv-gpu, TERPISAH dari .venv.
+#
+#   python3 -m venv .venv-gpu
+#   .venv-gpu/bin/python -m pip install -r requirements.txt -r requirements-gpu.txt
+#   LABELAPP_OLAH=gpu ./start.sh dev
+#
+# Kenapa venv sendiri: torch membawa pustaka CUDA ~4 GB beserta versi numpy dan
+# setuptools-nya sendiri. Di venv yang sama dengan jalur CPU, satu pemasangan
+# gagal atau satu bentrok versi menjatuhkan KEDUANYA. Dipisah, jalur CPU tidak
+# pernah bisa dirusak percobaan di jalur GPU — dan .venv boleh dihapus-pasang
+# ulang tanpa menyentuh yang satunya.
+#
+# Versinya SENGAJA tidak dipatok. Roda torch terikat ke versi driver CUDA
+# mesinnya, dan mematoknya di sini membuat berkas ini salah di mesin lain.
+# Yang dijamin aplikasi: kalau torch tidak ada atau GPU tidak terbaca, jalur
+# CPU tetap dipakai dan alasannya dicatat di log.
+torch
+torchvision

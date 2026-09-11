@@ -35,8 +35,13 @@ sys.path.insert(0, str(ROOT))
 # tes, jadi memindainya membuat satu suite yang tadinya puluhan detik menjadi
 # beberapa menit. Lebih buruk lagi, server dev yang menyala menulis thumbnail ke
 # situ selagi tes berjalan, dan tes yang tidak bersalah pun gagal.
-ABAIKAN = {".venv", "__pycache__", ".pytest_cache", ".git", ".ruff_cache",
-           "dev-data", "logs", "run"}
+# .venv-gpu ikut diabaikan, dan itu BUKAN sekadar kerapian: penjaga di bawah
+# memotret folder aplikasi untuk SETIAP tes, dan .venv-gpu berisi 6 GB pustaka
+# CUDA. Tanpa baris ini satu jalannya suite melar dari 2 menit jadi lebih dari
+# 7 -- terukur, dan penyebabnya tidak kelihatan sama sekali dari hasil tesnya:
+# tesnya tetap lolos, cuma lambat luar biasa.
+ABAIKAN = {".venv", ".venv-gpu", "__pycache__", ".pytest_cache", ".git",
+           ".ruff_cache", "dev-data", "logs", "run"}
 
 
 def _potret_folder_aplikasi() -> dict[str, tuple[int, int]]:

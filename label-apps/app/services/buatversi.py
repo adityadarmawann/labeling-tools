@@ -34,7 +34,7 @@ import cv2
 import numpy as np
 
 from ..log import catat
-from . import export, olah, scanner, tag, tugas, scanner
+from . import export, olah, olah_gpu, scanner, tag, tugas, scanner
 
 log = catat("labelapp.buatversi")
 
@@ -109,7 +109,11 @@ def buang_hasil(ds: Path, nomor: int) -> None:
 def _tulis(dirv: Path, split: str, nama: str, img, label, segmentasi: bool) -> None:
     ip = dirv / split / "images" / f"{nama}.jpg"
     ip.parent.mkdir(parents=True, exist_ok=True)
-    cv2.imwrite(str(ip), img, [int(cv2.IMWRITE_JPEG_QUALITY), MUTU_JPEG])
+    # Encode kena SETIAP gambar keluaran, jadi untung 8,3x di sini terkali
+    # jumlah berkas -- termasuk berkas yang tidak diaugmentasi sama sekali.
+    # Kalau GPU tidak tersedia atau gagal, cv2 mengambil alih tanpa suara.
+    if not olah_gpu.simpan_jpeg(ip, img, MUTU_JPEG):
+        cv2.imwrite(str(ip), img, [int(cv2.IMWRITE_JPEG_QUALITY), MUTU_JPEG])
     olah.tulis_label(dirv / split / "labels" / f"{nama}.txt", label, segmentasi)
 
 
@@ -197,6 +201,17 @@ class Pekerjaan:
         # kalau semuanya mulai dari 0, kelas A dan kelas B selalu berbagi pelat
         # yang sama pada langkah yang sama, dan pemerataannya jadi semu.
         self._giliran: dict[int, int] = {}
+        # Jalur augmentasi. Diperiksa SUNGGUHAN, bukan disimpulkan dari
+        # saklarnya: saklar gpu di venv tanpa torch harus jatuh ke CPU dengan
+        # alasan yang tercatat, bukan menjatuhkan versi yang sudah setengah
+        # jalan. Diputuskan sekali di sini supaya satu versi tidak pernah
+        # separuh dibuat di CPU dan separuhnya di GPU.
+        self.pakai_gpu = olah_gpu.tersedia()
+        self._par_gpu = (olah_gpu.par_gpu(self.resep, olah.katalog_json()["aug"])
+                         if self.pakai_gpu else {})
+        if self.pakai_gpu:
+            log.info("augmentasi memakai GPU (%s), %s operasi",
+                     olah_gpu.alasan(), len(self._par_gpu))
         self._batal = batal or (lambda: False)
         self.dirv = dir_versi(ds, nomor)
         # Format keluaran ditentukan SETELAN PROJEK (dengan tebakan mayoritas
@@ -291,8 +306,29 @@ class Pekerjaan:
         """
         sisi = self._sisi or img.shape[:2]
         if sisi not in self._pipa_cache:
-            self._pipa_cache[sisi] = olah.bangun_pipeline(self.resep, sisi=sisi)
+            # Saat jalur GPU hidup, operasi fotometrik DIMATIKAN di pipeline
+            # CPU ini dan dikerjakan olah_gpu sesudahnya. Tanpa mematikannya,
+            # keduanya berjalan dan gambarnya diaugmentasi dua kali.
+            resep = (olah_gpu.resep_cpu_saja(self.resep) if self.pakai_gpu
+                     else self.resep)
+            self._pipa_cache[sisi] = olah.bangun_pipeline(resep, sisi=sisi)
         return self._pipa_cache[sisi]
+
+    def _augmentasi(self, img, label):
+        """Satu percobaan augmentasi, lewat jalur yang berlaku.
+
+        Urutannya sama dengan jalur CPU: geometri dulu (albumentations, yang
+        juga memindahkan labelnya), baru fotometrik. Membaliknya mengubah
+        artinya -- derau yang ditambahkan sebelum diputar ikut diinterpolasi,
+        butirannya melunak, dan ia berhenti meniru derau sensor.
+        """
+        hasil = olah.augmentasi_sekali(img, label, self._pipa(img), self.rng)
+        if hasil is None or not self.pakai_gpu:
+            return hasil
+        g, l = hasil
+        # Label tidak diserahkan: tidak satu pun operasi GPU menggeser piksel,
+        # jadi label dari tahap geometri di atas tetap berlaku apa adanya.
+        return olah_gpu.jalankan_gpu(g, self._par_gpu, self.rng), l
 
     # ---------------------------------------------------------- pembantu
     def cek(self):
@@ -431,7 +467,7 @@ class Pekerjaan:
         """Augmentasi dengan percobaan ulang, persis MAKS_ULANG_AUG v14."""
         for _ in range(olah.MAKS_ULANG_AUG):
             self.cek()
-            hasil = olah.augmentasi_sekali(img, label, pipeline)
+            hasil = self._augmentasi(img, label)
             if hasil is None:
                 continue
             g, l = hasil
@@ -995,7 +1031,7 @@ class Pekerjaan:
             if img is None:
                 jaga += 1
                 continue
-            hasil = olah.augmentasi_sekali(img, [], self._pipa(img))
+            hasil = self._augmentasi(img, [])
             if hasil is None:
                 jaga += 1
                 continue
