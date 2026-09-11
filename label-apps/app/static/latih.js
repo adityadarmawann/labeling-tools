@@ -57,41 +57,58 @@
   /* Setelan dibagi dua: yang hampir selalu disentuh orang, dan sisanya di
      balik "Setelan lanjutan". Menampilkan tiga puluh kotak angka sekaligus
      bukan memberi kendali — ia membuat yang penting tenggelam. */
+  /* Keterangan dipindah ke tooltip (title), tidak lagi dicetak di bawah tiap
+     kotak. Empat baris penjelasan di bawah empat kotak yang berjajar membuat
+     formnya terbaca seperti dokumen, bukan seperti form — dan yang paling
+     sering dibaca orang justru cuma angkanya. Yang benar-benar perlu
+     peringatan tetap punya satu baris pendek. */
   const PAR_UTAMA = [
-    ['epochs', 'Epoch', 'Berapa kali seluruh dataset dilewati. v14 memakai 250.'],
-    ['batch', 'Batch', 'Gambar per langkah. Terlalu besar = VRAM habis.'],
-    ['imgsz', 'Ukuran gambar', 'Sisi gambar saat dilatih, piksel.'],
-    ['patience', 'Sabar', 'Berhenti kalau tidak membaik sekian epoch. 0 = tidak pernah.'],
+    ['epochs', 'Epoch', '', 'Berapa kali seluruh data dilewati saat melatih'],
+    ['batch', 'Batch', 'terlalu besar = VRAM habis',
+     'Berapa gambar diproses sekaligus tiap langkah'],
+    ['imgsz', 'Ukuran gambar', 'piksel',
+     'Gambar diperkecil ke ukuran ini sebelum dilatih'],
+    ['patience', 'Berhenti otomatis', 'epoch · 0 = tidak pernah',
+     'Berhenti kalau hasilnya tidak membaik selama sekian epoch'],
   ];
   const PAR_LANJUT = [
-    ['lr0', 'Laju belajar awal', ''],
-    ['lrf', 'Laju belajar akhir', 'Pecahan dari lr0.'],
-    ['warmup_epochs', 'Pemanasan', ''],
-    ['workers', 'Worker', 'Utas pembaca data.'],
-    ['box', 'Bobot loss kotak', ''],
-    ['cls', 'Bobot loss kelas', 'v14 memakai 2.0. Bukan obat untuk pintasan warna.'],
-    ['dfl', 'Bobot loss DFL', ''],
-    ['scale', 'Skala', 'v14 menahannya di 0.3 — variasi ukuran sudah diurus versinya.'],
-    ['degrees', 'Rotasi (derajat)', ''],
-    ['translate', 'Geser', ''],
-    ['fliplr', 'Balik kiri-kanan', ''],
-    ['flipud', 'Balik atas-bawah', ''],
-    ['mosaic', 'Mosaic', 'v14 menurunkannya ke 0.3; 0.6 membuat objek terlalu kecil.'],
-    ['close_mosaic', 'Tutup mosaic', 'Epoch terakhir tanpa mosaic.'],
-    ['copy_paste', 'Copy-paste', 'v14 mematikannya — merusak konteks RVM.'],
-    ['mask_ratio', 'Rasio mask', 'Khusus segmentasi.'],
+    ['lr0', 'Laju belajar awal', '', 'Seberapa besar langkah perbaikan tiap kali'],
+    ['lrf', 'Laju belajar akhir', '', 'Pecahan dari laju belajar awal'],
+    ['warmup_epochs', 'Pemanasan', 'epoch', 'Epoch awal dengan laju belajar dinaikkan pelan'],
+    ['workers', 'Pembaca data', 'utas', 'Berapa utas dipakai membaca gambar dari disk'],
+    ['box', 'Bobot kotak', '', 'Seberapa penting ketepatan letak kotak'],
+    ['cls', 'Bobot kelas', '', 'Seberapa penting ketepatan nama kelas'],
+    ['dfl', 'Bobot tepi', '', 'Seberapa penting ketepatan tepi kotak'],
+    ['scale', 'Variasi ukuran', '', 'Objek diperbesar-perkecil acak sebanyak ini'],
+    ['degrees', 'Variasi putaran', 'derajat', 'Gambar diputar acak sampai sekian derajat'],
+    ['translate', 'Variasi geser', '', 'Gambar digeser acak sebanyak ini'],
+    ['fliplr', 'Balik kiri-kanan', 'peluang', 'Peluang gambar dicerminkan mendatar'],
+    ['flipud', 'Balik atas-bawah', 'peluang', 'Peluang gambar dicerminkan tegak'],
+    ['mosaic', 'Gabung 4 gambar', 'peluang',
+     'Empat gambar ditempel jadi satu. Terlalu tinggi membuat objek jadi kecil sekali'],
+    ['close_mosaic', 'Matikan gabung di akhir', 'epoch',
+     'Sekian epoch terakhir dilatih tanpa penggabungan'],
+    ['copy_paste', 'Tempel objek antar-gambar', 'peluang',
+     'Objek dari gambar lain ditempelkan. Merusak konteks ruangan'],
+    ['mask_ratio', 'Kehalusan mask', '', 'Khusus segmentasi'],
   ];
-  const PAR_WARNA = ['hsv_h', 'hsv_s', 'hsv_v', 'bgr'];
+  /* hsv_h / hsv_s / hsv_v / bgr SENGAJA TIDAK ADA DI SINI.
+     Keempatnya ditentukan sepenuhnya oleh mode warna versinya, di server
+     (mode_warna.par_latih). Menampilkannya sebagai kotak isian berarti
+     membuka jalan untuk memasang kombinasi yang tidak sejalan dengan cara
+     versinya diaugmentasi — dan kombinasi seperti itu menghasilkan model yang
+     angkanya bagus lalu gagal di ruang detektor. Yang ditampilkan cukup
+     AKIBATNYA, dalam kalimat biasa, di panel mode di sebelah kiri. */
 
-  function kotakPar(kunci, label, bantu) {
+  function kotakPar(kunci, label, satuan, jelas) {
     const p = BAHAN.preset[kunci];
     const b = BAHAN.batas[kunci];
     const langkah = Number.isInteger(p) ? 1 : (p < 0.01 ? 0.0001 : 0.01);
-    return `<label class="lt-p">
+    return `<label class="lt-p" title="${esc(jelas || label)}">
       <span class="lt-p-nama">${esc(label)}</span>
       <input type="number" data-par="${esc(kunci)}" value="${p}"
              ${b ? `min="${b[0]}" max="${b[1]}"` : ''} step="${langkah}">
-      ${bantu ? `<span class="lt-bantu">${esc(bantu)}</span>` : ''}
+      ${satuan ? `<span class="lt-p-satuan">${esc(satuan)}</span>` : ''}
     </label>`;
   }
 
@@ -144,43 +161,82 @@
       $('lt-tugas-ket').textContent = '';
     }
 
+    // Bawaannya mengikuti cara versinya dibuat — itu yang hampir selalu
+    // benar. Orang tetap boleh menggantinya, dan kalau berbeda, peringatannya
+    // menyebutkan akibatnya.
     const w = v.warna || {};
+    const asal = w.mode || 'bentuk';
     const box = $('lt-warna');
     box.hidden = false;
-    box.dataset.tingkat = w.tingkat || 'ok';
-    $('lt-warna-ikon').textContent = w.tingkat === 'awas' ? '!' : '✓';
-    $('lt-warna-judul').textContent = w.dibuka
-      ? 'Warna dibuka di versinya' : 'Warna terkunci di versinya';
-    $('lt-warna-pesan').textContent = w.pesan || '';
-    const s = w.saran || {};
-    $('lt-warna-nilai').textContent =
-      `hsv_h ${s.hsv_h} · hsv_s ${s.hsv_s} · hsv_v ${s.hsv_v} · bgr ${s.bgr}`;
-    terapkanWarna();
+    const r = box.querySelector(`input[name="lt-mode"][value="${asal}"]`);
+    if (r && !box.dataset.disentuh) r.checked = true;
+    gambarMode();
   }
 
-  /* Saat "ikuti warna versinya" dicentang, keempat angka warna dikunci ke
-     saran dan kotaknya dinonaktifkan — bukan sekadar diisi. Kotak yang
-     terisi tapi bisa diubah mengundang orang mengubahnya tanpa tahu bahwa
-     yang ia ubah adalah separuh dari pasangan yang harus sejalan. */
-  function terapkanWarna() {
+  const modeDipilih = () => {
+    const r = document.querySelector('input[name="lt-mode"]:checked');
+    return r ? r.value : 'bentuk';
+  };
+
+  /* Satu tempat yang menggambar seluruh panel warna, dipanggil ulang tiap
+     kali versinya atau modenya berganti. Isinya ditulis dari sudut pandang
+     HASILNYA — apa yang akan dipelajari model — bukan dari sudut pandang
+     setelannya. "Warna dibuka di versinya" itu benar tetapi hanya berarti
+     bagi yang sudah tahu apa yang dibuka dan kenapa. */
+  function gambarMode() {
     const n = Number($('lt-versi').value || 0);
-    const v = BAHAN.versi.find((x) => x.nomor === n);
-    const ikut = $('lt-warna-ikut').checked;
-    const s = (v && v.warna && v.warna.saran) || {};
-    let kotak = document.querySelector('#lt-par-warna');
-    if (!kotak) {
-      kotak = document.createElement('div');
-      kotak.id = 'lt-par-warna';
-      kotak.className = 'lt-par lt-par-warna';
-      $('lt-par').after(kotak);
+    const v = BAHAN.versi.find((x) => x.nomor === n) || {};
+    const w = v.warna || {};
+    const asal = w.mode || 'bentuk';
+    const m = modeDipilih();
+    const box = $('lt-warna');
+    const beda = m !== asal;
+
+    // Satu arah yang MUSTAHIL, dan itu bukan soal selera: versi yang dibangun
+    // dengan ronanya diacak ~50 derajat sudah kehilangan informasi warnanya
+    // di dalam datanya sendiri. Tidak ada setelan waktu-latih yang bisa
+    // mengembalikannya.
+    const mustahil = (m === 'warna' && asal === 'bentuk');
+    box.dataset.tingkat = mustahil ? 'awas' : (beda ? 'beda' : 'ok');
+    $('lt-warna-ikon').textContent = mustahil ? '!' : (beda ? '~' : '✓');
+    $('lt-warna-judul').textContent = m === 'warna'
+      ? 'Model akan mengenali dari WARNA dan bentuk'
+      : 'Model akan mengenali dari BENTUK, bukan warna';
+
+    let pesan;
+    if (mustahil) {
+      pesan = `Versi v${n} dibuat dengan warnanya diacak lebar, jadi warna asli `
+        + 'sudah hilang dari datanya. Melatih model yang bergantung warna dari '
+        + 'versi ini tidak akan berhasil — buat versi baru dengan pilihan '
+        + '"Warna ikut menentukan" di langkah Augmentasi.';
+    } else if (beda) {
+      pesan = `Versi v${n} dibuat dengan warna dipertahankan, tetapi model ini `
+        + 'akan dilatih untuk mengabaikan warna. Itu boleh, hanya kurang kuat '
+        + 'daripada mengacak warnanya sejak versinya dibuat.';
+    } else if (m === 'warna') {
+      pesan = 'Versi ini dibuat dengan warna dipertahankan, jadi warna kemasan '
+        + 'boleh jadi penanda kelas. Cocok untuk membedakan produk yang '
+        + 'bentuknya mirip tapi kemasannya beda warna.';
+    } else {
+      pesan = 'Versi ini dibuat dengan warnanya sengaja diacak, jadi model '
+        + 'tidak bisa menebak hanya dari warna dan terpaksa belajar bentuknya. '
+        + 'Cocok untuk botol / kaleng / tetra.';
     }
-    kotak.innerHTML = PAR_WARNA.map((k) => kotakPar(k, k, '')).join('');
-    PAR_WARNA.forEach((k) => {
-      const el = kotak.querySelector(`[data-par="${k}"]`);
-      if (!el) return;
-      if (ikut) { el.value = s[k] ?? BAHAN.preset[k]; el.disabled = true; }
-      else el.disabled = false;
-    });
+    $('lt-warna-pesan').textContent = pesan;
+
+    /* Angkanya TERUKUR pada pipeline yang sebenarnya, bukan taksiran dari
+       nilai setelannya. Rona digeser jauh lebih lebar oleh augmentasi versi
+       (~50 derajat) daripada oleh setelan waktu-latih (~5 derajat), jadi
+       kalimat yang cuma menyebut "saat melatih" akan menyesatkan. Dijaga
+       test_klaim_layar_sesuai_kenyataan di tests/test_evaluasi.py. */
+    $('lt-warna-nilai').textContent = m === 'warna'
+      ? 'Warna asli dipertahankan — ronanya praktis tidak digeser. Yang '
+        + 'divariasikan gelap-terangnya (0,5x sampai 1,2x) dan sedikit '
+        + 'kepekatan warnanya, supaya model tetap tahan saat lampu berubah.'
+      : 'Objek yang sama akan dilihat model dalam banyak warna berbeda — '
+        + 'ronanya digeser rata-rata sekitar 50 derajat dari 360, dan pada 1 '
+        + 'dari 10 gambar merah dan biru ditukar. Warna jadi tidak bisa '
+        + 'diandalkan, sehingga model terpaksa belajar bentuknya.';
   }
 
   function bacaPar() {
@@ -198,6 +254,7 @@
       catatan: $('lt-catatan').value.trim(),
       tugas: $('lt-tugas').value,
       bobot: $('lt-bobot').value,
+      mode_warna: modeDipilih(),
       par: bacaPar(),
     };
   }
@@ -419,12 +476,21 @@
           <b>${esc((pu.tingkat || '').toUpperCase())}</b>
           <span>${esc(pu.pesan || '')}</span>
         </div>
+        ${e.mode_ket ? `<p class="lt-bantu lt-mode-baris">
+          <b>Mode ${esc(e.mode)}</b> — ${esc(e.mode_ket.nilai)}</p>` : ''}
         <div class="lt-uji-angka">
-          <span data-tingkat="${esc(w.tingkat)}">
-            <i>Ketergantungan warna</i>
-            <b>${w.tingkat === 'tak-terukur' ? '—' : angka(w.skor, 0) + '%'}</b>
-            <u>${angka(w.berubah)} dari ${angka(w.total)} berubah kelas${
-              w.kosong ? ` · ${angka(w.kosong)} tidak terdeteksi` : ''}</u></span>
+          <span data-tingkat="${e.mode === 'warna' ? 'netral' : esc(w.tingkat)}">
+            <i>Berubah karena RONA</i>
+            <b>${w.tingkat === 'tak-terukur' ? '—' : angka(w.skor_rona, 0) + '%'}</b>
+            <u>${e.mode === 'warna'
+                 ? 'wajar di mode ini — rona memang penentu kelas'
+                 : angka(w.berubah_rona) + ' dari ' + angka(w.total) + ' berubah'}</u></span>
+          <span data-tingkat="${w.skor_terang >= 50 ? 'buruk'
+                              : (w.skor_terang >= 20 ? 'sedang' : 'baik')}">
+            <i>Berubah karena TERANG</i>
+            <b>${w.tingkat === 'tak-terukur' ? '—' : angka(w.skor_terang, 0) + '%'}</b>
+            <u>buruk di mode mana pun${w.kosong
+                 ? ' · ' + angka(w.kosong) + ' tidak terdeteksi' : ''}</u></span>
           ${a.n ? `<span><i>Akurasi di test</i><b>${angka(a.persen, 0)}%</b>
             <u>${angka(a.benar)} dari ${angka(a.n)}</u></span>` : ''}
           <span data-tingkat="${esc(d.tingkat)}">
@@ -442,7 +508,9 @@
           <summary>${baris.length} gambar yang jawabannya goyah</summary>
           <table class="lt-tabel">
             <thead><tr><th>berkas</th><th>sebenarnya</th>
-              ${(e.perlakuan || []).map((n) => `<th>${esc(n)}</th>`).join('')}</tr></thead>
+              ${(e.perlakuan || []).map((n) => `<th class="${
+                (e.terang || []).includes(n) ? 'lt-kol-terang' : ''}">${esc(n)}</th>`
+              ).join('')}</tr></thead>
             <tbody>${baris.map((x) => `<tr>
               <td>${esc(x.berkas)}</td><td>${esc(x.sebenarnya || '-')}</td>
               ${x.jawaban.map((c) => `<td class="${c === x.jawaban[0] ? '' : 'lt-beda'}">`
@@ -507,13 +575,18 @@
       if (!$('lt-form').hidden) $('lt-nama').focus();
     };
     $('lt-tutup').onclick = () => { $('lt-form').hidden = true; };
-    $('lt-warna-ikut').onchange = terapkanWarna;
+    document.querySelectorAll('input[name="lt-mode"]').forEach((r) => {
+      r.onchange = () => {
+        // Ditandai supaya pilihan orang tidak ditimpa bawaan versi saat ia
+        // berpindah versi — yang sudah diputuskan orang harus bertahan.
+        $('lt-warna').dataset.disentuh = '1';
+        gambarMode();
+      };
+    });
     $('lt-reset').onclick = () => {
       document.querySelectorAll('#lt-form [data-par]').forEach((el) => {
         el.value = BAHAN.preset[el.dataset.par];
       });
-      $('lt-warna-ikut').checked = true;
-      terapkanWarna();
     };
     $('lt-tambah').onclick = () => {
       if (!$('lt-versi').value) { galat('pilih versi lebih dulu'); return; }

@@ -2660,7 +2660,7 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
 .lt-bantu{font-size:11.5px; font-weight:400; color:var(--ink-dim); line-height:1.45}
 
 .lt-par-atas{display:flex; align-items:center; gap:8px}
-.lt-tandav14{
+.lt-tandabawaan{
   font-size:10.5px; font-weight:700; letter-spacing:.04em; padding:2px 6px;
   border-radius:4px; background:var(--lab-bg); color:var(--lab-ink);
 }
@@ -2832,3 +2832,63 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
    yang baru diperbaiki. */
 .lt-uji-angka>span[data-tingkat="tak-terukur"] b{color:var(--ink-faint)}
 .lt-putusan[data-tingkat="tak-terukur"]{background:var(--warn-bg); border-color:var(--warn)}
+
+/* -- pilihan mode warna di wizard versi ---------------------------------- */
+/* Dua pilihan berdampingan, bukan satu checkbox: "bergantung warna" dan
+   "tidak bergantung warna" bukan hidup-mati sebuah fitur melainkan dua
+   pertanyaan berbeda yang dijawab projeknya, dan keduanya harus terbaca
+   sebelum dipilih. */
+.wz-mode{
+  border:1px solid var(--line); border-radius:9px; padding:10px 12px;
+  margin:0 0 12px; background:var(--raised);
+}
+.wz-mode-p{display:flex; gap:9px; align-items:flex-start; padding:7px 0; cursor:pointer}
+.wz-mode-p+.wz-mode-p{border-top:1px solid var(--line)}
+.wz-mode-p input{margin-top:3px; flex:none}
+.wz-mode-p b{display:block; font-size:13px}
+.wz-mode-p em{
+  display:block; font-style:normal; font-size:11.5px; color:var(--ink-dim);
+  line-height:1.5; margin-top:2px;
+}
+.wz-mode-ket{
+  margin:8px 0 0; font-size:11.5px; color:var(--ink-dim);
+  padding-top:8px; border-top:1px dashed var(--line);
+}
+/* Operasi yang dimatikan oleh mode warna: tetap terlihat, jelas tidak aktif.
+   Menyembunyikannya akan membuat orang mengira saklarnya hilang. */
+[data-mode-mati]{opacity:.45}
+[data-mode-mati]::after{
+  content:"dimatikan mode warna"; display:inline-block; margin-left:8px;
+  font-size:10px; padding:1px 6px; border-radius:4px;
+  background:var(--lab-bg); color:var(--lab-ink);
+}
+.lt-mode-baris{margin:0 0 10px; padding:6px 9px; border-radius:6px;
+               background:var(--sunk)}
+.lt-uji-angka>span[data-tingkat="netral"] b{color:var(--ink)}
+/* Kolom perlakuan TERANG dibedakan: di tabel yang lebar, mata perlu tahu
+   kolom mana yang "tidak boleh berubah di mode mana pun". */
+.lt-tabel th.lt-kol-terang{border-bottom:2px solid var(--warn)}
+/* Satuan ditaruh DI DALAM barisnya, kecil dan redup — bukan sebagai kalimat
+   penjelasan di bawah kotak. Empat kalimat di bawah empat kotak yang berjajar
+   membuat form terbaca seperti dokumen; yang dicari mata cuma angkanya. */
+.lt-p-satuan{font-size:10.5px; color:var(--ink-faint); margin-top:1px}
+.lt-p{cursor:help}
+.lt-warna-nilai{
+  margin:6px 0 0; font-size:12px; line-height:1.55; color:var(--ink-dim);
+  padding-top:7px; border-top:1px dashed var(--ok-pudar);
+}
+.lt-warna[data-tingkat="awas"] .lt-warna-nilai{border-top-color:var(--warn)}
+.lt-mode-pilih{
+  display:flex; flex-direction:column; gap:0; margin:8px 0 10px;
+  background:var(--panel); border:1px solid var(--line); border-radius:8px;
+}
+.lt-mode-pilih .lt-mode-p{
+  display:flex; gap:9px; align-items:flex-start; padding:9px 11px; cursor:pointer;
+}
+.lt-mode-pilih .lt-mode-p+.lt-mode-p{border-top:1px solid var(--line)}
+.lt-mode-pilih input{margin-top:3px; flex:none}
+.lt-mode-pilih b{display:block; font-size:12.5px}
+.lt-mode-pilih em{
+  display:block; font-style:normal; font-size:11.5px; color:var(--ink-dim);
+  line-height:1.5; margin-top:2px;
+}

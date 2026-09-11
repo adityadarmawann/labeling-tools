@@ -29,7 +29,7 @@
     <div>
       <h2 class="lt-h2">Training</h2>
       <p class="halus lt-sub">Melatih model dari sebuah <b>versi</b> yang sudah
-        dibekukan. Setelan bawaannya mengikuti pipeline v14.</p>
+        dibekukan. Setelan bawaannya sudah disiapkan dan bisa diubah.</p>
     </div>
     <button class="cta" type="button" id="lt-mulai">+ Training baru</button>
   </div>
@@ -49,8 +49,7 @@
       <div class="lt-kolom">
         <label class="lt-label">Nama training
           <input type="text" id="lt-nama" maxlength="60"
-                 placeholder="mis. v14 baseline, epoch 250">
-          <span class="lt-bantu">Dipakai membedakan hasil di daftar bawah.</span>
+                 placeholder="mis. percobaan pertama, 250 epoch">
         </label>
 
         <label class="lt-label">Sumber dataset
@@ -63,17 +62,39 @@
             dilewatkan begitu saja: v13 melaporkan mAP 0,9499 lalu benar 0
             dari 7 karena setelan warna dataset dan waktu-latih tidak
             sejalan. -#}
+        {#- Pilihan ini ADA DI SINI, bukan cuma di wizard versi, karena
+            inilah keputusan yang sedang diambil orang: model seperti apa yang
+            mau dilatih. Bawaannya mengikuti cara versinya dibuat, karena itu
+            yang hampir selalu benar — tetapi kalau berbeda, peringatannya
+            menyebutkan akibatnya, bukan cuma "tidak cocok". -#}
         <div class="lt-warna" id="lt-warna" hidden>
           <div class="lt-warna-atas">
             <span class="lt-warna-ikon" id="lt-warna-ikon" aria-hidden="true"></span>
             <b id="lt-warna-judul"></b>
           </div>
+
+          <div class="lt-mode-pilih">
+            <label class="lt-mode-p">
+              <input type="radio" name="lt-mode" value="bentuk" checked>
+              <span><b>Bentuk &amp; struktur yang utama</b>
+                <em>Model dipaksa mengabaikan warna. Untuk botol / kaleng /
+                  tetra — bendanya tetap sama apa pun warnanya.</em></span>
+            </label>
+            <label class="lt-mode-p">
+              <input type="radio" name="lt-mode" value="warna">
+              <span><b>Warna ikut menentukan</b>
+                <em>Warna kemasan boleh jadi penanda. Untuk membedakan produk
+                  yang bentuknya mirip tapi kemasannya beda warna.</em></span>
+            </label>
+          </div>
+
           <p class="lt-warna-pesan" id="lt-warna-pesan"></p>
-          <label class="lt-cek">
-            <input type="checkbox" id="lt-warna-ikut" checked>
-            <span><b>Ikuti warna versinya</b>
-              <span class="lt-bantu" id="lt-warna-nilai"></span></span>
-          </label>
+          {#- Tidak ada centang di sini, dan itu disengaja. Setelan warna
+              waktu-latih ditentukan sepenuhnya oleh cara versinya dibuat;
+              tidak ada kombinasi lain yang masuk akal, jadi menawarkannya
+              sebagai pilihan hanya membuka jalan untuk salah. Yang perlu
+              diketahui orang cuma AKIBATNYA, dan itu ada di baris ini. -#}
+          <p class="lt-warna-nilai" id="lt-warna-nilai"></p>
         </div>
 
         <label class="lt-label">Jenis tugas
@@ -99,9 +120,9 @@
       <div class="lt-kolom">
         <div class="lt-par-atas">
           <b>Setelan</b>
-          <span class="lt-tandav14">bawaan v14</span>
+          <span class="lt-tandabawaan">bawaan</span>
           <span class="spacer"></span>
-          <button class="chip" type="button" id="lt-reset">Kembalikan ke v14</button>
+          <button class="chip" type="button" id="lt-reset">Kembalikan ke bawaan</button>
         </div>
         <div class="lt-par" id="lt-par"></div>
 
