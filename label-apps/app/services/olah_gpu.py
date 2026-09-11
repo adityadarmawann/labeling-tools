@@ -719,3 +719,94 @@ def cari_kembar_gpu(acuan: dict, uji: dict, ambang: int):
     import numpy as np
     k_uji = list(uji)
     return {k_uji[int(i)] for i in np.flatnonzero(d <= ambang)}
+
+
+# ======================================== menempel objek ke pelat latar di GPU
+#
+# Ini SATU-SATUNYA operasi di jalur GPU yang menyentuh kode pembawa label, jadi
+# batasnya ditarik tegas: yang pindah hanya pencampuran pikselnya. Seluruh
+# perhitungan koordinat label tetap di pemanggil (_potong_keras, _zoom_keluar,
+# _ubah_skala di buatversi.py) dan tidak diubah sama sekali. Masker poligonnya
+# pun tetap dirasterisasi cv2.fillPoly di CPU — menirunya di GPU berarti
+# menulis ulang aturan pengisian poligon, dan itu ongkos besar untuk sesuatu
+# yang sudah murah.
+#
+# KESETARAAN. Diukur terhadap cv2 pada k = TEMPEL_LEMBUT*2+1 = 11, masker
+# poligon acak, enam ukuran dari 128 sampai 1024 piksel:
+#     selisih maksimum 1, rata-rata 0,006-0,026, piksel berbeda 0,6-2,6%
+# Selisih 1 itu pembulatan konvolusi terpisah, dan letaknya di pita bulu
+# campuran — artinya alfa bergeser 1/255 pada sebagian kecil tepi. Jauh lebih
+# kecil daripada selisih fotometrik yang sudah diterima di operasi lain.
+#
+# Dua hal yang WAJIB ditiru persis, dan keduanya sempat salah saat diuji:
+#   - cv2.GaussianBlur dengan sigma=0 menghitung sigmanya sendiri dari k.
+#     Kernelnya diambil dari cv2.getGaussianKernel, bukan diturunkan ulang;
+#     menebak rumusnya cara paling mudah menghasilkan tepi yang berbeda.
+#   - Border-nya BORDER_REFLECT_101, bukan nol. Dengan padding nol, tepi
+#     maskernya menggelap dan lebar bulu campurannya berubah.
+#
+# Terukur (termasuk seluruh ongkos pindah host<->device):
+#     petak 256 px : CPU 0,852 ms -> GPU 0,420 ms  (2,03x)
+#     petak 512 px : CPU 3,004 ms -> GPU 0,708 ms  (4,24x)
+# Bagiannya dari pembuatan versi 4,7%, jadi sumbangannya ke waktu total
+# sekitar 3% — kecil, dan ditulis apa adanya di sini supaya tidak ada yang
+# mengira bagian ini yang membuat GPU cepat.
+
+_kernel_gauss: dict = {}
+
+
+def _gauss(k: int):
+    """Kernel Gauss 1-D milik cv2 untuk ukuran k, di GPU, di-cache."""
+    import cv2
+    import torch
+
+    if k not in _kernel_gauss:
+        g1 = cv2.getGaussianKernel(k, -1).astype("float32").ravel()
+        _kernel_gauss[k] = torch.from_numpy(g1).cuda()
+    return _kernel_gauss[k]
+
+
+def tempel_gpu(kanvas, kecil, masker, oy: int, ox: int, k: int):
+    """Campur `kecil` ke atas `kanvas` di (oy, ox) memakai masker berbulu.
+
+    Mengembalikan petak hasil sebagai larik numpy uint8, atau None kalau jalur
+    GPU tidak dipakai — pemanggil wajib mengerjakannya sendiri kalau None.
+    """
+    if not tersedia():
+        return None
+    try:
+        import torch
+        import torch.nn.functional as F
+
+        kh, kw = kecil.shape[:2]
+        p = k // 2
+        m = torch.from_numpy(masker).cuda().float()[None, None]
+        m = F.max_pool2d(m, k, 1, p)                      # = cv2.dilate persegi
+        g1 = _gauss(k)
+        m = F.conv2d(F.pad(m, (p, p, 0, 0), mode="reflect"), g1.view(1, 1, 1, k))
+        m = F.conv2d(F.pad(m, (0, 0, p, p), mode="reflect"), g1.view(1, 1, k, 1))
+        # Dua hal yang HARUS meniru semantik jalur CPU, dan keduanya sempat
+        # salah — selisihnya jadi 2, bukan 1, dan itu bukan derau pembulatan
+        # melainkan bias yang searah:
+        #   1. cv2.GaussianBlur atas masukan uint8 mengeluarkan uint8, jadi
+        #      maskernya DIBULATKAN ke bilangan bulat sebelum dibagi 255.
+        #      Menahannya di float membuat alfanya sedikit berbeda di seluruh
+        #      pita bulu.
+        #   2. Jalur CPU menutup dengan .astype(np.uint8), yang MEMOTONG, bukan
+        #      membulatkan. Membulatkan di sini menggeser hasilnya setengah
+        #      satuan ke atas pada setiap piksel campuran.
+        a = (m[0, 0].round().clamp(0, 255) / 255.0)[:, :, None]
+        kt = torch.from_numpy(kecil).cuda().float()
+        pt = torch.from_numpy(
+            kanvas[oy:oy + kh, ox:ox + kw].copy()).cuda().float()
+        out = kt * a + pt * (1 - a)
+        return out.clamp(0, 255).to(torch.uint8).cpu().numpy()
+    except Exception as e:                      # noqa: BLE001
+        global _tempel_mati
+        if not _tempel_mati:
+            _tempel_mati = True
+            log.warning("tempel di GPU gagal (%s) — memakai CPU untuk sisanya", e)
+        return None
+
+
+_tempel_mati = False

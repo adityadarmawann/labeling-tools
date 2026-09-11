@@ -299,3 +299,80 @@ def test_jalankan_gpu_dengan_semua_operasi_dinyalakan_eksplisit():
         out = olah_gpu.jalankan_gpu(img, par, rng)
         assert out.shape == img.shape
         assert out.dtype == np.uint8
+
+
+# ============================================================
+# MENEMPEL OBJEK KE PELAT LATAR
+# ============================================================
+#
+# tempel_gpu satu-satunya operasi GPU yang menyentuh kode pembawa label, jadi
+# yang diuji di sini bukan cuma kecepatannya melainkan bahwa hasilnya benar-
+# benar sama dengan cv2. Dua hal yang gampang salah dan keduanya mengubah
+# lebar bulu campuran di tepi objek: kernel Gauss cv2 dihitung dari k ketika
+# sigma=0 (jadi harus diambil dari cv2.getGaussianKernel, bukan diturunkan
+# ulang), dan border-nya BORDER_REFLECT_101, bukan nol.
+
+def _masker_acak(S, benih=3):
+    import cv2
+    rng = np.random.default_rng(benih)
+    m = np.zeros((S, S), np.uint8)
+    for _ in range(3):
+        cv2.fillPoly(m, [rng.integers(10, S - 10, (5, 2)).astype(np.int32)], 255)
+    return m
+
+
+def _tempel_cpu(kanvas, kecil, m, oy, ox, k):
+    """Cara CPU, ditulis polos — acuan yang harus ditiru tempel_gpu."""
+    import cv2
+    kh, kw = kecil.shape[:2]
+    m = cv2.dilate(m, np.ones((k, k), np.uint8))
+    m = cv2.GaussianBlur(m, (k, k), 0)
+    a = (m.astype(np.float32) / 255.0)[:, :, None]
+    petak = kanvas[oy:oy + kh, ox:ox + kw].astype(np.float32)
+    return (kecil.astype(np.float32) * a + petak * (1 - a)).astype(np.uint8)
+
+
+@pytest.mark.skipif(not olah_gpu.tersedia(), reason="GPU tidak tersedia")
+@pytest.mark.parametrize("S", [128, 256, 400, 512])
+def test_tempel_gpu_setara_cv2(S):
+    """Selisihnya harus tinggal pembulatan, bukan bentuk bulu yang berbeda."""
+    k = olah.TEMPEL_LEMBUT * 2 + 1
+    rng = np.random.default_rng(7)
+    kecil = rng.integers(0, 255, (S, S, 3), dtype=np.uint8)
+    kanvas = rng.integers(0, 255, (S + 40, S + 40, 3), dtype=np.uint8)
+    m = _masker_acak(S)
+    g = olah_gpu.tempel_gpu(kanvas, kecil, m, 20, 20, k)
+    assert g is not None, "jalur GPU menolak mengerjakannya"
+    c = _tempel_cpu(kanvas, kecil, m, 20, 20, k)
+    d = np.abs(c.astype(int) - g.astype(int))
+    # Batasnya 1: itu pembulatan konvolusi terpisah, dan letaknya di pita bulu
+    # campuran — artinya alfa bergeser 1/255 pada sebagian kecil tepi. Kalau
+    # suatu saat angkanya melonjak, yang berubah bentuk maskernya, bukan
+    # pembulatannya, dan itu memang harus menjatuhkan tes.
+    assert d.max() <= 1, f"selisih {d.max()} terlalu besar untuk pembulatan"
+    assert (d > 0).mean() < 0.05, f"{(d>0).mean():.1%} piksel berbeda"
+
+
+@pytest.mark.skipif(not olah_gpu.tersedia(), reason="GPU tidak tersedia")
+def test_tempel_gpu_masker_kosong_tidak_mengubah_kanvas():
+    """Masker nol berarti objeknya tidak ditempel sama sekali."""
+    k = olah.TEMPEL_LEMBUT * 2 + 1
+    rng = np.random.default_rng(2)
+    kecil = rng.integers(0, 255, (64, 64, 3), dtype=np.uint8)
+    kanvas = rng.integers(0, 255, (100, 100, 3), dtype=np.uint8)
+    g = olah_gpu.tempel_gpu(kanvas, kecil, np.zeros((64, 64), np.uint8), 10, 10, k)
+    assert np.array_equal(g, kanvas[10:74, 10:74])
+
+
+@pytest.mark.skipif(not olah_gpu.tersedia(), reason="GPU tidak tersedia")
+def test_tempel_gpu_masker_penuh_menimpa_seluruhnya():
+    """Masker penuh berarti petaknya jadi objek itu, tanpa sisa kanvas."""
+    k = olah.TEMPEL_LEMBUT * 2 + 1
+    rng = np.random.default_rng(2)
+    kecil = rng.integers(0, 255, (64, 64, 3), dtype=np.uint8)
+    kanvas = rng.integers(0, 255, (100, 100, 3), dtype=np.uint8)
+    g = olah_gpu.tempel_gpu(kanvas, kecil, np.full((64, 64), 255, np.uint8),
+                            10, 10, k)
+    # Tepinya tetap berbulu karena blur menariknya ke bawah 255; yang diperiksa
+    # bagian tengahnya, yang alfanya pasti penuh.
+    assert np.array_equal(g[16:48, 16:48], kecil[16:48, 16:48])

@@ -532,6 +532,11 @@ class Pekerjaan:
             if len(titik) >= 3:
                 cv2.fillPoly(m, [titik], 255)
         k = olah.TEMPEL_LEMBUT * 2 + 1
+        if self.pakai_gpu:
+            petak = olah_gpu.tempel_gpu(kanvas, kecil, m, oy, ox, k)
+            if petak is not None:
+                kanvas[oy:oy + kh, ox:ox + kw] = petak
+                return kanvas
         m = cv2.dilate(m, np.ones((k, k), np.uint8))
         m = cv2.GaussianBlur(m, (k, k), 0)
         a = (m.astype(np.float32) / 255.0)[:, :, None]
