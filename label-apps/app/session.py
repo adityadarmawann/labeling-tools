@@ -314,11 +314,27 @@ class Session:
     # -- berkas milik akun --
 
     def reset_thumbs(self) -> None:
+        """Kosongkan berkas milik akun ini.
+
+        Thumbnail SENDIRI tidak lagi di sini — ia dipakai bersama semua akun
+        (lihat render.dir_bersama) dan tidak boleh dihapus hanya karena satu
+        orang berpindah dataset. Yang tinggal di folder akun cuma labels.txt.
+        """
         shutil.rmtree(self.thumbdir, ignore_errors=True)
         self.thumbdir.mkdir(parents=True, exist_ok=True)
 
     def drop_thumbs_for(self, item: dict) -> None:
-        for f in self.thumbdir.glob(f"{scanner.item_key(item)}_*.jpg"):
+        """Sapu thumbnail lama sebuah gambar dari cache bersama.
+
+        Ini BUKAN lagi yang membuat cache-nya benar: kunci thumbnail
+        diturunkan dari waktu-ubah dan ukuran berkasnya, jadi anotasi yang
+        berubah sudah otomatis menghasilkan nama baru dan yang lama tidak
+        akan pernah terbaca lagi. Yang dikerjakan di sini cuma membereskan
+        berkas yatimnya, supaya ia tidak menumpuk selama server hidup.
+        """
+        from .services import render
+
+        for f in render.dir_bersama().glob(f"{scanner.item_key(item)}_*.jpg"):
             f.unlink(missing_ok=True)
 
     def upload_dir(self, ds: str) -> Path:

@@ -7,12 +7,15 @@ kelas yang sama selalu berwarna sama tanpa perlu tabel warna.
 from __future__ import annotations
 
 import colorsys
+import os
+import threading
 from pathlib import Path
 
 import cv2
 import numpy as np
 
-from .scanner import item_key
+from ..config import get_settings
+from .scanner import item_key, kunci_isi
 
 JPEG_QUALITY = 86
 OVERLAY_ALPHA = 0.34
@@ -75,13 +78,65 @@ def render(item: dict, side: int):
                       interpolation=cv2.INTER_AREA)
 
 
+# Thumbnail dipakai BERSAMA semua akun, tidak lagi satu salinan per akun.
+#
+# Pikselnya memang sama untuk siapa pun — ia diturunkan dari gambar, anotasi,
+# dan ukurannya saja, tidak ada satu pun bagian yang bergantung pada siapa
+# yang melihat. Menghitungnya ulang per akun berarti mengerjakan pekerjaan
+# yang sama berkali-kali: terukur 10,89 ms CPU per thumbnail, jadi sepuluh
+# orang membuka grid 120 gambar yang sama menghabiskan 13,06 detik-CPU untuk
+# hasil yang identik, padahal cukup 1,31.
+#
+# Ia sekaligus memperbaiki kesalahan yang selama ini tidak kelihatan: dengan
+# cache per akun, drop_thumbs_for hanya pernah dipanggil pada sesi orang yang
+# MENGEDIT. Kalau A memperbaiki anotasi, salinan milik B tidak pernah
+# dibatalkan dan B terus melihat mask yang lama. Kunci yang diturunkan dari
+# isi berkasnya membuat itu tidak bisa terjadi lagi — berkasnya berubah,
+# kuncinya berubah, dan yang lama tidak pernah terbaca siapa pun.
+#
+# Berbagi folder tidak membuka akses apa pun: rute /thumb memanggil
+# sess.find(path) lebih dulu, jadi orang hanya bisa meminta thumbnail gambar
+# yang memang sudah terlihat olehnya. Yang dibagi hasil perhitungannya, bukan
+# haknya.
+FOLDER_BERSAMA = "_bersama"
+
+
+def dir_bersama() -> Path:
+    d = get_settings().thumb_root / FOLDER_BERSAMA
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def nama_thumb(item: dict, side: int) -> str:
+    """`<kunci path>_<kunci isi>_<sisi>.jpg`.
+
+    Kunci path ditaruh di depan supaya berkas lama sebuah gambar masih bisa
+    disapu dengan satu glob saat anotasinya berubah — tanpa itu, tiap suntingan
+    meninggalkan thumbnail yatim yang menumpuk selama server hidup.
+    """
+    return f"{item_key(item)}_{kunci_isi(item)}_{side}.jpg"
+
+
 def thumb_path(sess, item: dict, side: int) -> Path | None:
-    """Path thumbnail milik akun ini, dibuat kalau belum ada."""
-    p = sess.thumbdir / f"{item_key(item)}_{side}.jpg"
+    """Path thumbnail, dibuat kalau belum ada. Dipakai bersama semua akun."""
+    p = dir_bersama() / nama_thumb(item, side)
     if not p.exists():
         im = render(item, side)
         if im is None:
             return None
-        p.parent.mkdir(parents=True, exist_ok=True)
-        cv2.imwrite(str(p), im, [int(cv2.IMWRITE_JPEG_QUALITY), JPEG_QUALITY])
+        # Ditulis ke nama sementara lalu dipindahkan: dua akun bisa meminta
+        # thumbnail yang sama pada saat yang sama, dan yang kedua tidak boleh
+        # membaca berkas yang baru separuh tertulis. os.replace atomik di
+        # dalam satu filesystem.
+        # Ekstensi .jpg DIPERTAHANKAN di nama sementara: cv2.imwrite memilih
+        # formatnya dari ekstensi, dan ".tmp" membuatnya melempar cv2.error
+        # alih-alih menulis apa pun.
+        tmp = p.with_name(
+            f"{p.stem}.{os.getpid()}.{threading.get_ident()}.tmp.jpg")
+        cv2.imwrite(str(tmp), im, [int(cv2.IMWRITE_JPEG_QUALITY), JPEG_QUALITY])
+        try:
+            os.replace(tmp, p)
+        except OSError:
+            tmp.unlink(missing_ok=True)
+            return None
     return p

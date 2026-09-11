@@ -81,19 +81,85 @@ def test_berkas_di_luar_dataset_tidak_bisa_dibaca(klien, lingkungan):
         assert klien.get(f"/thumb?path={jahat}").status_code == 404, jahat
 
 
-def test_thumbnail_dipisah_per_akun(aplikasi, lingkungan):
+def test_thumbnail_dipakai_bersama_bukan_disalin_per_akun(aplikasi, lingkungan):
+    """Satu gambar = satu thumbnail, berapa pun yang melihatnya.
+
+    Dulu tiap akun menyimpan salinannya sendiri. Pikselnya memang sama untuk
+    siapa pun — diturunkan dari gambar, anotasi, dan ukurannya saja — jadi
+    menyalinnya per akun berarti mengerjakan ulang pekerjaan yang sama:
+    terukur 10,89 ms CPU tiap thumbnail, dan sepuluh orang membuka grid 120
+    gambar yang sama menghabiskan 13,06 detik-CPU untuk hasil identik.
+    """
     roots, thumb = lingkungan["roots"], lingkungan["tmp"] / "thumb"
+    gambar = roots / "ds-alpha" / "ds-alpha-00.jpg"
+    a = klien_baru(aplikasi, "paul", PW_PAUL)
+    b = klien_baru(aplikasi, "anggi", PW_ANGGI)
+    for k in (a, b):
+        k.post(f"/setsrc?path={roots / 'ds-alpha'}")
+        assert k.get(f"/thumb?path={gambar}").status_code == 200
+
+    bersama = list((thumb / "_bersama").glob("*_*.jpg"))
+    assert len(bersama) == 1, f"seharusnya satu berkas dipakai berdua: {bersama}"
+    # Folder akun boleh ada — labels.txt tinggal di sana — tapi tidak boleh
+    # lagi menyimpan thumbnail.
+    for akun in ("paul", "anggi"):
+        d = thumb / akun
+        assert not (d.exists() and list(d.glob("*.jpg"))), (
+            f"{akun} masih menyimpan salinan thumbnail sendiri")
+
+
+def test_cache_bersama_tidak_membuka_gambar_akun_lain(aplikasi, lingkungan):
+    """Yang dibagi hasil perhitungannya, BUKAN haknya.
+
+    Ini yang harus dijaga setelah cache-nya disatukan: paul boleh saja sudah
+    membuat thumbnail ds-alpha, tetapi anggi yang sedang membuka ds-beta
+    tetap tidak boleh bisa memintanya. Penjagaannya ada di sess.find(), yang
+    berjalan SEBELUM thumbnail disentuh — berbagi folder tidak melewatinya.
+    """
+    roots = lingkungan["roots"]
+    milik_paul = roots / "ds-alpha" / "ds-alpha-00.jpg"
     a = klien_baru(aplikasi, "paul", PW_PAUL)
     b = klien_baru(aplikasi, "anggi", PW_ANGGI)
     a.post(f"/setsrc?path={roots / 'ds-alpha'}")
     b.post(f"/setsrc?path={roots / 'ds-beta'}")
-    a.get(f"/thumb?path={roots / 'ds-alpha' / 'ds-alpha-00.jpg'}")
-    b.get(f"/thumb?path={roots / 'ds-beta' / 'ds-beta-00.jpg'}")
+    assert a.get(f"/thumb?path={milik_paul}").status_code == 200   # cache terisi
+    assert b.get(f"/thumb?path={milik_paul}").status_code == 404, (
+        "anggi mendapat thumbnail gambar yang tidak ada di datasetnya")
 
-    assert (thumb / "paul").is_dir()
-    assert (thumb / "anggi").is_dir()
-    assert list((thumb / "paul").glob("*.jpg"))
-    assert list((thumb / "anggi").glob("*.jpg"))
+
+def test_anotasi_berubah_membatalkan_thumbnail_untuk_SEMUA_akun(aplikasi, lingkungan):
+    """Kesalahan yang diperbaiki cache bersama, bukan yang ditimbulkannya.
+
+    Dengan cache per akun, drop_thumbs_for hanya pernah dipanggil pada sesi
+    orang yang MENGEDIT — kalau paul memperbaiki anotasi, salinan milik anggi
+    tidak pernah dibatalkan dan anggi terus melihat mask yang lama. Kunci yang
+    diturunkan dari isi berkasnya membuat itu tidak bisa terjadi: berkasnya
+    berubah, namanya berubah, dan yang lama tidak terbaca siapa pun lagi.
+    """
+    import json
+    import os
+    import time
+
+    from app.services import render, scanner
+
+    ds = lingkungan["roots"] / "ds-alpha"
+    ip = ds / "ds-alpha-00.jpg"
+    items, _ = scanner.scan(ds)
+    it = next(i for i in items if i["img"].name == ip.name)
+    sebelum = render.nama_thumb(it, 320)
+
+    jp = ip.with_suffix(".json")
+    d = json.loads(jp.read_text())
+    d["shapes"][0]["label"] = "kaleng"        # anotasinya diperbaiki
+    jp.write_text(json.dumps(d))
+    # Waktu-ubah pada beberapa filesystem berbutir kasar; ukurannya juga ikut
+    # dipakai, tapi di sini panjangnya kebetulan sama.
+    os.utime(jp, (time.time() + 2, time.time() + 2))
+
+    sesudah = render.nama_thumb(it, 320)
+    assert sebelum != sesudah, (
+        "nama thumbnail tidak berubah walau anotasinya berubah — akun lain "
+        "akan terus melihat mask yang lama")
 
 
 def test_logout_hanya_memutus_akun_itu(aplikasi, lingkungan):

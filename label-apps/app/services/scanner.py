@@ -14,6 +14,7 @@ mempercayai papan periksa.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -37,8 +38,42 @@ SPLIT_DIKENAL = ("train", "valid", "val", "test")
 
 
 def item_key(item: dict) -> str:
-    """Kunci stabil per gambar untuk penamaan berkas thumbnail."""
-    return str(abs(hash(str(item["img"].resolve()))))
+    """Kunci per gambar untuk penamaan berkas thumbnail.
+
+    Memakai sha1, BUKAN hash() bawaan. hash() untuk string diacak ulang setiap
+    proses (PYTHONHASHSEED), jadi kunci yang dihasilkannya cuma berlaku selama
+    proses itu hidup — persis jebakan yang sudah dicatat di render.hash_kelas.
+    Selama thumbnail dihapus tiap kali server mati itu tidak pernah
+    kelihatan, tetapi ia menutup pintu untuk cache yang dipakai bersama
+    maupun yang bertahan melewati nyala-ulang.
+    """
+    return hashlib.sha1(
+        str(item["img"].resolve()).encode()).hexdigest()[:16]
+
+
+def kunci_isi(item: dict) -> str:
+    """Kunci yang ikut berubah begitu gambar atau anotasinya berubah.
+
+    Dipakai supaya thumbnail bisa dipakai BERSAMA semua akun. Dengan cache
+    per akun, anotasi yang diperbaiki satu orang tidak pernah membatalkan
+    salinan milik orang lain — drop_thumbs_for cuma dipanggil pada sesi yang
+    mengedit — sehingga yang lain terus melihat mask yang sudah usang.
+    Kunci yang diturunkan dari ISI berkasnya membuat persoalan itu tidak bisa
+    muncul: begitu berkasnya berubah, kuncinya berubah, dan yang lama tidak
+    akan pernah terbaca lagi oleh siapa pun.
+
+    Yang dipakai waktu-ubah dan ukuran, bukan isi berkasnya: membaca ulang
+    tiap berkas untuk menghitung sidik justru mengembalikan ongkos yang
+    hendak dihemat.
+    """
+    bagian = []
+    for p in (item["img"], item["img"].with_suffix(".json")):
+        try:
+            st = p.stat()
+            bagian.append(f"{st.st_mtime_ns}:{st.st_size}")
+        except OSError:
+            bagian.append("-")                  # anotasinya memang boleh tidak ada
+    return hashlib.sha1("|".join(bagian).encode()).hexdigest()[:12]
 
 
 def dimensi(ip: Path) -> tuple[int, int] | None:
