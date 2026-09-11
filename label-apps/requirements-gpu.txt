@@ -1,14 +1,27 @@
-# Tambahan untuk jalur GPU. Dipasang ke .venv-gpu, TERPISAH dari .venv.
+# Tambahan untuk jalur GPU. DUA tata letak yang sama-sama sah; start.sh
+# memilih venv dari ISINYA, bukan dari namanya.
 #
+# Mesin pengembangan — venv sendiri, di samping .venv yang tetap tanpa torch:
 #   python3 -m venv .venv-gpu
 #   .venv-gpu/bin/python -m pip install -r requirements.txt -r requirements-gpu.txt
 #   LABELAPP_OLAH=gpu ./start.sh dev
 #
-# Kenapa venv sendiri: torch membawa pustaka CUDA ~4 GB beserta versi numpy dan
-# setuptools-nya sendiri. Di venv yang sama dengan jalur CPU, satu pemasangan
-# gagal atau satu bentrok versi menjatuhkan KEDUANYA. Dipisah, jalur CPU tidak
-# pernah bisa dirusak percobaan di jalur GPU — dan .venv boleh dihapus-pasang
-# ulang tanpa menyentuh yang satunya.
+# Server yang harus melatih — satu venv saja, tumpukan GPU dipasang ke .venv:
+#   .venv/bin/python -m pip install -r requirements.txt -r requirements-gpu.txt
+#
+# Kenapa dipisah di mesin pengembangan: bukan soal kerapian, melainkan BUKTI.
+# Suite yang dijalankan di .venv tanpa torch membuktikan aplikasi ini benar-
+# benar hidup tanpa torch; digabung, jaminan itu hilang diam-diam — cukup satu
+# `import torch` di tingkat atas modul dan tidak ada yang tahu sampai ada
+# pemasangan tanpa torch. Bonusnya .venv boleh dihapus-pasang ulang tanpa
+# menyentuh yang satunya.
+#
+# Kenapa DIGABUNG di server: deploy.sh menguji venv yang dipakai prod. Dengan
+# dua venv, ia menguji .venv sementara prod berjalan dari .venv-gpu — suite
+# hijau di interpreter yang bukan yang dijalankan tidak membuktikan apa pun.
+# Terukur bahwa satu venv GPU sanggup kedua mode: 863 tes lolos dengan
+# LABELAPP_OLAH=cpu di dalam .venv-gpu (torch+cu130 jatuh ke CPU sendiri, dan
+# onnxruntime-gpu membawa CPUExecutionProvider).
 #
 # Versinya SENGAJA tidak dipatok. Roda torch terikat ke versi driver CUDA
 # mesinnya, dan mematoknya di sini membuat berkas ini salah di mesin lain.

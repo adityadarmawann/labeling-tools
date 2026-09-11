@@ -48,6 +48,14 @@ kuning() { printf '\033[33m%s\033[0m\n' "$1"; }
 redup()  { printf '\033[2m%s\033[0m\n' "$1"; }
 
 PORT=$(grep -oP '^LABELAPP_PORT=\K.*' env/prod.env)
+
+# Venv yang akan dipakai prod, diturunkan dengan aturan yang SAMA seperti
+# start.sh. Dulu langkah 2 dipaku ke '.venv'; begitu prod berjalan
+# LABELAPP_OLAH=gpu dari .venv-gpu, deploy menguji interpreter yang bukan yang
+# dijalankan — suite hijau di venv yang salah tidak membuktikan apa pun.
+OLAH=$(grep -oP '^LABELAPP_OLAH=\K.*' env/prod.env || echo cpu)
+VENV=".venv"
+[[ "${OLAH:-cpu}" == "gpu" && -x ".venv-gpu/bin/python" ]] && VENV=".venv-gpu"
 LOG=logs/prod.log
 CAP=run/prod.commit
 mkdir -p logs run
@@ -98,6 +106,27 @@ if [[ -n "$(git status --porcelain -- . )" ]]; then
   echo   "     Commit dulu; prod harus selalu bisa ditunjuk ke satu commit."
   exit 1
 fi
+# Venv harus sanggup menjalankan mode yang diminta prod.env, dan itu diperiksa
+# DI SINI -- sebelum satu pun hal destruktif terjadi. Langkah 4 membunuh prod
+# lebih dulu lalu langkah 5 baru menyalakan yang baru; kalau start.sh berhenti
+# di sana karena torch belum terpasang, prod sudah telanjur MATI dan yang
+# tersisa cuma pesan "kembalikan dengan...". Ditolak di langkah 1, prod yang
+# lama tidak pernah disentuh dan tetap melayani.
+if [[ "${OLAH:-cpu}" == "gpu" ]]; then
+  KURANG=()
+  for paket in torch ultralytics; do
+    compgen -G "$VENV/lib/python*/site-packages/$paket" >/dev/null || KURANG+=("$paket")
+  done
+  if (( ${#KURANG[@]} )); then
+    merah "     env/prod.env meminta LABELAPP_OLAH=gpu, tetapi '$VENV' belum berisi ${KURANG[*]}."
+    echo  "     Lengkapi dulu -- prod yang lama TIDAK disentuh dan tetap jalan:"
+    echo  "       $VENV/bin/python -m pip install -r requirements.txt -r requirements-gpu.txt"
+    echo  "       $VENV/bin/python -m pip uninstall -y onnxruntime"
+    echo  "       $VENV/bin/python -m pip install --force-reinstall --no-deps onnxruntime-gpu"
+    exit 1
+  fi
+fi
+
 CABANG=$(git rev-parse --abbrev-ref HEAD)
 [[ "$CABANG" == "main" ]] || kuning "     Cabangnya '$CABANG', bukan main."
 KINI=$(git rev-parse --short HEAD)
@@ -123,8 +152,12 @@ fi
 
 # ---------------------------------------------------------------- 2. uji
 if [[ "$UJI" == 1 ]]; then
-  echo "2/5  Menjalankan pytest"
-  if ! .venv/bin/python -m pytest -q 2>&1 | tail -5 | sed 's/^/       /'; then
+  echo "2/5  Menjalankan pytest ($VENV, LABELAPP_OLAH=${OLAH:-cpu})"
+  # TANPA -q tambahan: pytest.ini sudah memasang -q di addopts, dan yang kedua
+  # menjadikannya -qq -- yang justru MENELAN baris "N passed", sehingga deploy
+  # selesai tanpa pernah menyebut berapa tes yang lolos.
+  if ! LABELAPP_OLAH="${OLAH:-cpu}" "$VENV/bin/python" -m pytest 2>&1 \
+       | tail -5 | sed 's/^/       /'; then
     merah "     Uji GAGAL — prod tidak disentuh."
     exit 1
   fi

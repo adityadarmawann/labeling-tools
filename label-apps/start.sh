@@ -58,40 +58,69 @@ set +a
 
 # ---------------------------------------------------------------- CPU / GPU
 #
-# Dua virtualenv TERPISAH, bukan satu yang berisi keduanya. torch membawa
-# pustaka CUDA sekitar 4 GB beserta versi numpy dan setuptools-nya sendiri;
-# menaruhnya di venv yang sama dengan jalur CPU berarti satu pemasangan yang
-# gagal atau satu bentrok versi menjatuhkan KEDUANYA sekaligus. Dipisah, jalur
-# CPU tidak pernah bisa dirusak oleh percobaan di jalur GPU.
+# DUA TATA LETAK yang sama-sama sah, dan yang menentukan ISI venv-nya, bukan
+# namanya:
 #
-#   LABELAPP_OLAH=cpu   .venv       (bawaan — selalu ada, tidak butuh GPU)
-#   LABELAPP_OLAH=gpu   .venv-gpu   (torch + CUDA)
+#   dua venv   .venv (tanpa torch) + .venv-gpu (torch + CUDA)
+#              Dipakai di mesin pengembangan. Nilainya bukan kerapian
+#              melainkan BUKTI: suite yang dijalankan di .venv membuktikan
+#              aplikasi ini benar-benar hidup tanpa torch. Digabung, jaminan
+#              itu hilang diam-diam — cukup satu `import torch` di tingkat
+#              atas modul dan tidak ada yang tahu sampai ada pemasangan
+#              tanpa torch.
 #
-# Yang dipilih di sini cuma VENV-nya. Kode aplikasinya satu dan sama; jalur
-# mana yang dipakai augmentasi ditentukan services/olah_gpu.py, yang membaca
-# saklar yang sama.
+#   satu venv  .venv berisi tumpukan GPU sekalian
+#              Dipakai di server yang memang harus melatih. Terukur: satu
+#              venv GPU menjalankan 863 tes dalam mode CPU tanpa satu pun
+#              gagal — torch+cu130 jatuh ke CPU sendiri, dan onnxruntime-gpu
+#              membawa CPUExecutionProvider. Ia juga membuat deploy.sh
+#              menguji interpreter yang PERSIS dijalankan prod.
+#
+# Karena itu 'gpu' memilih .venv-gpu kalau ada, dan kalau tidak memakai .venv
+# — lalu memeriksa venv itu benar-benar berisi torch. Kode aplikasinya satu
+# dan sama; jalur mana yang dipakai augmentasi ditentukan services/olah_gpu.py
+# yang membaca saklar yang sama.
 OLAH="${LABELAPP_OLAH:-cpu}"
 case "$OLAH" in
   cpu) VENV=".venv" ;;
-  gpu) VENV=".venv-gpu" ;;
+  gpu) VENV=".venv-gpu"
+       [[ -x ".venv-gpu/bin/python" ]] || VENV=".venv" ;;
   *)   merah "  LABELAPP_OLAH='$OLAH' tidak dikenal — isinya 'cpu' atau 'gpu'."
        exit 1 ;;
 esac
 
-# Tidak ada jatuh diam-diam ke CPU kalau venv GPU belum ada. Orang yang minta
-# GPU lalu mendapat kecepatan CPU tanpa satu pun pesan akan mengira GPU-nya
-# yang lambat, dan mencari masalah di tempat yang salah.
+pasang_gpu() {
+  echo "    $1/bin/python -m pip install -r requirements.txt -r requirements-gpu.txt"
+  echo "    $1/bin/python -m pip uninstall -y onnxruntime"
+  echo "    $1/bin/python -m pip install --force-reinstall --no-deps onnxruntime-gpu"
+}
+
 [[ -x "$VENV/bin/python" ]] || {
   merah "  Virtualenv '$VENV' belum ada (LABELAPP_OLAH=$OLAH)."
-  if [[ "$OLAH" == "gpu" ]]; then
-    echo  "    python3 -m venv .venv-gpu"
-    echo  "    .venv-gpu/bin/python -m pip install -r requirements.txt -r requirements-gpu.txt"
-  else
-    echo  "    python3 -m venv .venv"
-    echo  "    .venv/bin/python -m pip install -r requirements.txt"
-  fi
+  echo  "    python3 -m venv $VENV"
+  if [[ "$OLAH" == "gpu" ]]; then pasang_gpu "$VENV"
+  else echo "    $VENV/bin/python -m pip install -r requirements.txt"; fi
   exit 1
 }
+
+# Yang diperiksa KEMAMPUANNYA, bukan nama foldernya. Tidak ada jatuh diam-diam
+# ke CPU: orang yang minta GPU lalu mendapat kecepatan CPU tanpa satu pun
+# pesan akan mengira GPU-nya yang lambat, dan mencari masalah di tempat yang
+# salah. Dulu yang dipakai keberadaan folder '.venv-gpu' — itu menjawab
+# pertanyaan yang salah, karena folder bisa ada tetapi isinya belum lengkap.
+if [[ "$OLAH" == "gpu" ]]; then
+  KURANG=()
+  for paket in torch ultralytics; do
+    compgen -G "$VENV/lib/python*/site-packages/$paket" >/dev/null || KURANG+=("$paket")
+  done
+  if (( ${#KURANG[@]} )); then
+    merah "  '$VENV' belum berisi ${KURANG[*]} (LABELAPP_OLAH=gpu)."
+    echo  "  Lengkapi venv ini:"
+    pasang_gpu "$VENV"
+    echo  "  Atau jalankan mode CPU: LABELAPP_OLAH=cpu"
+    exit 1
+  fi
+fi
 
 PORT="${LABELAPP_PORT:-8042}"
 HOST="${LABELAPP_HOST:-127.0.0.1}"
