@@ -35,3 +35,11 @@ torchvision
 # `import onnxruntime` berhasil tetapi modulnya kosong —
 # "module 'onnxruntime' has no attribute 'SessionOptions'".
 onnxruntime-gpu
+
+# Training YOLO. Dipasang hanya di .venv-gpu: melatih di CPU bisa saja
+# berjalan tetapi memakan berhari-hari, jadi tidak ditawarkan.
+#
+# Diperiksa tidak menyentuh opencv 5.0.0 maupun numpy 2.5.2 yang dipakai
+# jalur lain. Ia membawa nvidia-ml-py dan psutil, yang justru dipakai halaman
+# training untuk melaporkan VRAM, suhu, dan RAM selagi training berjalan.
+ultralytics
