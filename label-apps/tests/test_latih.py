@@ -253,3 +253,92 @@ def test_bobot_tersedia_selalu_menawarkan_sesuatu():
 def test_statistik_tidak_meledak_tanpa_pustakanya():
     s = latih.statistik()
     assert isinstance(s, dict)
+
+
+# ============================================================
+# RUTE
+# ============================================================
+#
+# Yang diuji di sini penjagaannya, bukan trainingnya: melatih sungguhan
+# memakan menit dan menuntut GPU, jadi ia diuji terpisah lewat server
+# sungguhan. Yang TIDAK boleh lolos ke sini adalah rute yang bisa dipakai
+# membaca berkas di luar folder training, dan rute kelola yang terbuka untuk
+# orang yang bukan pemilik projek.
+
+from conftest import PW_PAUL, buat_dataset, masuk
+
+
+def _projek(klien, lingkungan):
+    d = lingkungan["ruang"] / "pl"
+    d.mkdir(parents=True, exist_ok=True)
+    buat_dataset(d, 3, 2)
+    klien.post(f"/setsrc?path={d}")
+    return d
+
+
+def test_halaman_latih_butuh_sesi(klien):
+    r = klien.get("/latih?ds=apa-saja", follow_redirects=False)
+    assert r.status_code in (303, 307), r.status_code
+
+
+def test_daftar_kosong_untuk_projek_baru(klien, lingkungan):
+    masuk(klien, "paul", PW_PAUL)
+    _projek(klien, lingkungan)
+    r = klien.get("/api/latih/daftar").json()
+    assert r["ok"] is True
+    assert r["daftar"] == []
+    assert "statistik" in r
+
+
+def test_bahan_form_membawa_preset_dan_batas(klien, lingkungan):
+    masuk(klien, "paul", PW_PAUL)
+    _projek(klien, lingkungan)
+    r = klien.get("/api/latih/bahan").json()
+    assert r["ok"] is True
+    # Formnya tidak boleh digambar setengah: semua bahannya datang sekaligus.
+    assert r["preset"]["hsv_h"] == 0.030
+    assert r["batas"]["epochs"] == [1, 1000]
+    assert r["bobot"], "harus selalu ada pilihan bobot"
+    assert r["tugas"] == ["segment", "detect"]
+
+
+def test_mulai_menolak_versi_yang_tidak_ada(klien, lingkungan):
+    masuk(klien, "paul", PW_PAUL)
+    _projek(klien, lingkungan)
+    r = klien.post("/api/latih/mulai", json={"versi": 99}).json()
+    assert r["ok"] is False
+    assert "99" in r["error"]
+
+
+def test_mulai_menolak_batch_terlalu_panjang(klien, lingkungan):
+    masuk(klien, "paul", PW_PAUL)
+    _projek(klien, lingkungan)
+    r = klien.post("/api/latih/mulai",
+                   json={"versi": 1, "batch": [{} for _ in range(20)]}).json()
+    assert r["ok"] is False
+
+
+@pytest.mark.parametrize("nama", [
+    "../../../../etc/passwd", ".ssh", "a/b.png", "..\\windows\\win.ini",
+])
+def test_rute_grafik_menolak_keluar_dari_foldernya(klien, lingkungan, nama):
+    """Tanpa penjagaan ini, parameter `nama` membuat rute ini bisa membaca
+    berkas apa pun yang bisa dijangkau proses server."""
+    masuk(klien, "paul", PW_PAUL)
+    _projek(klien, lingkungan)
+    assert klien.get(f"/latih/grafik?nomor=1&nama={nama}").status_code == 404
+
+
+def test_rute_bobot_hanya_menerima_best_atau_last(klien, lingkungan):
+    masuk(klien, "paul", PW_PAUL)
+    _projek(klien, lingkungan)
+    assert klien.get("/latih/bobot?nomor=1&jenis=ngawur").status_code == 400
+    # best/last yang belum ada tetap 404, bukan 500.
+    assert klien.get("/latih/bobot?nomor=1&jenis=best").status_code == 404
+
+
+def test_rincian_training_yang_tidak_ada(klien, lingkungan):
+    masuk(klien, "paul", PW_PAUL)
+    _projek(klien, lingkungan)
+    r = klien.get("/api/latih/rincian?nomor=404").json()
+    assert r["ok"] is False

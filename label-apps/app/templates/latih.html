@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% block bodyclass %}berprojek{% endblock %}
+
+{% block body %}
+<header>
+  <div class="top">
+    <h1>{{ nama_app() }}</h1>
+    {% include "_header.html" %}
+  </div>
+</header>
+
+<main>
+{% include "_sisi.html" %}
+<div class="sisi-isi" id="lt-isi" data-ds="{{ pr.ds }}"
+     data-kelola="{{ 1 if boleh_kelola else 0 }}">
+
+  {#- Bilah mesin. Ia di ATAS, bukan di dalam kartu training, karena yang
+      ditanyakan orang saat membuka halaman ini bukan "training nomor berapa
+      yang memakai GPU" melainkan "kartunya sedang sibuk atau tidak" —
+      pertanyaan tentang mesinnya, bukan tentang satu pekerjaan. -#}
+  <section class="lt-mesin" id="lt-mesin" aria-label="Keadaan mesin">
+    <div class="lt-mesin-isi" id="lt-mesin-isi">
+      <span class="lt-diam">membaca keadaan mesin…</span>
+    </div>
+  </section>
+
+  {% if boleh_kelola %}
+  <div class="lt-kepala">
+    <div>
+      <h2 class="lt-h2">Training</h2>
+      <p class="halus lt-sub">Melatih model dari sebuah <b>versi</b> yang sudah
+        dibekukan. Setelan bawaannya mengikuti pipeline v14.</p>
+    </div>
+    <button class="cta" type="button" id="lt-mulai">+ Training baru</button>
+  </div>
+
+  {#- Form disembunyikan, bukan dibangun dari JS: dengan begitu isian tidak
+      hilang saat ditutup lalu dibuka lagi, dan orang bisa mundur. Pola yang
+      sama dipakai wizard di halaman Versi. -#}
+  <section class="lt-form" id="lt-form" hidden>
+    <div class="lt-form-atas">
+      <b>Training baru</b>
+      <span class="spacer"></span>
+      <button class="chip" type="button" id="lt-tutup">Batal</button>
+    </div>
+
+    <div class="lt-grid">
+      {# ---------------- kiri: yang wajib diisi ---------------- #}
+      <div class="lt-kolom">
+        <label class="lt-label">Nama training
+          <input type="text" id="lt-nama" maxlength="60"
+                 placeholder="mis. v14 baseline, epoch 250">
+          <span class="lt-bantu">Dipakai membedakan hasil di daftar bawah.</span>
+        </label>
+
+        <label class="lt-label">Sumber dataset
+          <select id="lt-versi"></select>
+          <span class="lt-bantu" id="lt-versi-ket">memuat daftar versi…</span>
+        </label>
+
+        {#- Panel sinkronisasi warna. Inilah bagian yang paling menentukan
+            di halaman ini, jadi ia diberi ruang sendiri dan tidak bisa
+            dilewatkan begitu saja: v13 melaporkan mAP 0,9499 lalu benar 0
+            dari 7 karena setelan warna dataset dan waktu-latih tidak
+            sejalan. -#}
+        <div class="lt-warna" id="lt-warna" hidden>
+          <div class="lt-warna-atas">
+            <span class="lt-warna-ikon" id="lt-warna-ikon" aria-hidden="true"></span>
+            <b id="lt-warna-judul"></b>
+          </div>
+          <p class="lt-warna-pesan" id="lt-warna-pesan"></p>
+          <label class="lt-cek">
+            <input type="checkbox" id="lt-warna-ikut" checked>
+            <span><b>Ikuti warna versinya</b>
+              <span class="lt-bantu" id="lt-warna-nilai"></span></span>
+          </label>
+        </div>
+
+        <label class="lt-label">Jenis tugas
+          <select id="lt-tugas">
+            <option value="segment">Segmentasi (poligon)</option>
+            <option value="detect">Deteksi (kotak)</option>
+          </select>
+          <span class="lt-bantu" id="lt-tugas-ket"></span>
+        </label>
+
+        <label class="lt-label">Bobot awal
+          <select id="lt-bobot"></select>
+          <span class="lt-bantu" id="lt-bobot-ket"></span>
+        </label>
+
+        <label class="lt-label">Catatan
+          <input type="text" id="lt-catatan" maxlength="300"
+                 placeholder="apa yang sedang diuji di percobaan ini">
+        </label>
+      </div>
+
+      {# ---------------- kanan: setelan ---------------- #}
+      <div class="lt-kolom">
+        <div class="lt-par-atas">
+          <b>Setelan</b>
+          <span class="lt-tandav14">bawaan v14</span>
+          <span class="spacer"></span>
+          <button class="chip" type="button" id="lt-reset">Kembalikan ke v14</button>
+        </div>
+        <div class="lt-par" id="lt-par"></div>
+
+        <details class="lt-lanjut">
+          <summary>Setelan lanjutan</summary>
+          <div class="lt-par" id="lt-par-lanjut"></div>
+        </details>
+      </div>
+    </div>
+
+    {#- BATCH. Ditaruh di bawah setelan, bukan di atas: orang menyusun satu
+        setelan dulu, baru memutuskan mau menumpuknya jadi beberapa
+        percobaan. -#}
+    <div class="lt-batch">
+      <div class="lt-batch-atas">
+        <b>Antrean percobaan</b>
+        <span class="lt-bantu">Tambahkan beberapa setelan sekaligus, lalu
+          tinggalkan. Satu berjalan pada satu waktu; sisanya menunggu giliran.</span>
+      </div>
+      <div class="lt-batch-daftar" id="lt-batch-daftar">
+        <span class="lt-diam">belum ada yang diantrekan</span>
+      </div>
+      <div class="lt-batch-aksi">
+        <button class="wz-tbl" type="button" id="lt-tambah">+ Tambahkan ke antrean</button>
+        <span class="spacer"></span>
+        <button class="wz-tbl wz-tbl-pri" type="button" id="lt-jalankan">Jalankan</button>
+      </div>
+      <p class="lt-galat" id="lt-galat" hidden></p>
+    </div>
+  </section>
+  {% endif %}
+
+  {#- Yang sedang berjalan, lalu hasilnya. Urutannya begitu karena yang
+      sedang berjalan adalah alasan orang membuka halaman ini berulang kali;
+      hasil lama tidak ke mana-mana. -#}
+  <section class="lt-bagian" id="lt-jalan-bagian" hidden>
+    <h3 class="lt-h3">Sedang berjalan</h3>
+    <div id="lt-jalan"></div>
+  </section>
+
+  <section class="lt-bagian">
+    <h3 class="lt-h3">Hasil</h3>
+    <div id="lt-hasil"><span class="lt-diam">memuat…</span></div>
+  </section>
+
+  {#- Panel rincian satu training, dibuka dari kartunya. -#}
+  <div class="lt-tirai" id="lt-tirai" hidden>
+    <div class="lt-panel" role="dialog" aria-label="Rincian training">
+      <div class="lt-panel-atas">
+        <b id="lt-panel-judul">Rincian</b>
+        <span class="spacer"></span>
+        <button class="chip" type="button" id="lt-panel-tutup">Tutup</button>
+      </div>
+      <div class="lt-panel-isi" id="lt-panel-isi"></div>
+    </div>
+  </div>
+
+</div>
+</main>
+{% endblock %}
+
+{% block skrip %}<script src="{{ statik('latih.js') }}"></script>{% endblock %}

@@ -554,7 +554,28 @@ def konteks(d: Path, uploads_root: Path, aku: str) -> dict:
             "n_dataset": n_dataset,
             # Yang dikelola halaman Anotasi: gambar yang belum masuk dataset.
             "belum": max(s["jumlah"] - n_dataset, 0),
-            "versi": len(svc_versi.daftar(d))}
+            "versi": len(svc_versi.daftar(d)),
+            # Lencana Training. Yang sedang BERJALAN dihitung terpisah supaya
+            # lencananya bisa berkata "ada yang jalan" dari halaman mana pun —
+            # training memakan berjam-jam, dan orang yang sedang melabeli di
+            # halaman lain tetap perlu tahu tanpa membuka tabnya.
+            **_hitung_latih(d)}
+
+
+def _hitung_latih(d: Path) -> dict:
+    """Jumlah training dan berapa yang sedang berjalan.
+
+    Dibungkus try: halaman projek tidak boleh gagal dimuat hanya karena
+    folder .latih rusak atau pustakanya belum ada.
+    """
+    try:
+        from . import latih as svc_latih
+
+        semua = svc_latih.daftar(d)
+        jalan = sum(1 for x in semua if x.get("keadaan") in svc_latih.BERJALAN)
+        return {"latih": len(semua), "latih_jalan": jalan}
+    except Exception:                            # noqa: BLE001
+        return {"latih": 0, "latih_jalan": 0}
 
 
 def daftar(root: Path | None) -> list[dict]:

@@ -41,5 +41,19 @@
        {% if aktif == 'versi' %}data-on aria-current="page"{% endif %}>
       <span class="sisi-ikon" aria-hidden="true">&#9707;</span>Versi
       {%- if pr.versi %}<b class="sisi-angka">{{ pr.versi }}</b>{% endif %}</a>
+
+    {#- Bagian kedua, bukan item kelima di bagian DATA. Training bukan
+        pekerjaan data: ia MEMAKAI data yang sudah dibekukan jadi versi, dan
+        hasilnya bukan dataset melainkan model. Memisahkannya membuat urutan
+        pekerjaannya terbaca dari sidebar saja — kumpulkan, labeli, bekukan,
+        baru latih. -#}
+    <span class="sisi-judul">MODEL</span>
+
+    <a class="sisi-item" href="/latih?ds={{ pr.ds | urlquote }}"
+       {% if aktif == 'latih' %}data-on aria-current="page"{% endif %}>
+      <span class="sisi-ikon" aria-hidden="true">&#9670;</span>Training
+      {%- if pr.latih_jalan %}<b class="sisi-angka sisi-angka-jalan"
+        title="sedang berjalan">{{ pr.latih_jalan }}</b>
+      {%- elif pr.latih %}<b class="sisi-angka">{{ pr.latih }}</b>{% endif %}</a>
   </nav>
 </aside>
