@@ -18,7 +18,7 @@
  */
 (() => {
   const $ = (id) => document.getElementById(id);
-  const isi = $('lt-isi');
+  const isi = $('tr-isi');
   if (!isi) return;
   const bolehKelola = isi.dataset.kelola === '1';
 
@@ -104,23 +104,23 @@
     const p = BAHAN.preset[kunci];
     const b = BAHAN.batas[kunci];
     const langkah = Number.isInteger(p) ? 1 : (p < 0.01 ? 0.0001 : 0.01);
-    return `<label class="lt-p" title="${esc(jelas || label)}">
-      <span class="lt-p-nama">${esc(label)}</span>
+    return `<label class="tr-p" title="${esc(jelas || label)}">
+      <span class="tr-p-nama">${esc(label)}</span>
       <input type="number" data-par="${esc(kunci)}" value="${p}"
              ${b ? `min="${b[0]}" max="${b[1]}"` : ''} step="${langkah}">
-      ${satuan ? `<span class="lt-p-satuan">${esc(satuan)}</span>` : ''}
+      ${satuan ? `<span class="tr-p-satuan">${esc(satuan)}</span>` : ''}
     </label>`;
   }
 
   function gambarForm() {
-    $('lt-par').innerHTML = PAR_UTAMA.map((x) => kotakPar(...x)).join('');
-    $('lt-par-lanjut').innerHTML = PAR_LANJUT.map((x) => kotakPar(...x)).join('');
+    $('tr-par').innerHTML = PAR_UTAMA.map((x) => kotakPar(...x)).join('');
+    $('tr-par-lanjut').innerHTML = PAR_LANJUT.map((x) => kotakPar(...x)).join('');
 
-    const sel = $('lt-versi');
+    const sel = $('tr-versi');
     const siap = BAHAN.versi.filter((v) => v.siap);
     if (!siap.length) {
       sel.innerHTML = '<option value="">— belum ada versi yang bisa dilatih —</option>';
-      $('lt-versi-ket').textContent =
+      $('tr-versi-ket').textContent =
         'Buat versi lebih dulu di halaman Versi. Training memakai pembagian '
         + 'train/valid/test yang sudah dibekukan di sana, bukan isi dataset mentah.';
       return;
@@ -139,13 +139,13 @@
      Inilah sinkronisasi yang diminta, dan ia berjalan otomatis supaya tidak
      bergantung pada orang mengingat untuk menyetelnya. */
   function pilihVersi() {
-    const n = Number($('lt-versi').value || 0);
+    const n = Number($('tr-versi').value || 0);
     const v = BAHAN.versi.find((x) => x.nomor === n);
     if (!v) return;
 
     const j = v.jumlah || {};
     const kelas = Object.keys(v.kelas || {}).length;
-    $('lt-versi-ket').innerHTML =
+    $('tr-versi-ket').innerHTML =
       `train <b>${angka(j.train || 0)}</b> · valid <b>${angka(j.valid || 0)}</b>`
       + ` · test <b>${angka(j.test || 0)}</b>`
       + (kelas ? ` · ${kelas} kelas` : '')
@@ -154,11 +154,11 @@
 
     // Bentuk anotasi versinya menentukan tugas yang masuk akal.
     if (v.jenis && v.jenis.toLowerCase().includes('kotak')) {
-      $('lt-tugas').value = 'detect';
-      $('lt-tugas-ket').textContent =
+      $('tr-tugas').value = 'detect';
+      $('tr-tugas-ket').textContent =
         'Versi ini beranotasi kotak, jadi segmentasi tidak bisa dilatih darinya.';
     } else {
-      $('lt-tugas-ket').textContent = '';
+      $('tr-tugas-ket').textContent = '';
     }
 
     // Bawaannya mengikuti cara versinya dibuat — itu yang hampir selalu
@@ -166,15 +166,15 @@
     // menyebutkan akibatnya.
     const w = v.warna || {};
     const asal = w.mode || 'bentuk';
-    const box = $('lt-warna');
+    const box = $('tr-warna');
     box.hidden = false;
-    const r = box.querySelector(`input[name="lt-mode"][value="${asal}"]`);
+    const r = box.querySelector(`input[name="tr-mode"][value="${asal}"]`);
     if (r && !box.dataset.disentuh) r.checked = true;
     gambarMode();
   }
 
   const modeDipilih = () => {
-    const r = document.querySelector('input[name="lt-mode"]:checked');
+    const r = document.querySelector('input[name="tr-mode"]:checked');
     return r ? r.value : 'bentuk';
   };
 
@@ -184,12 +184,12 @@
      setelannya. "Warna dibuka di versinya" itu benar tetapi hanya berarti
      bagi yang sudah tahu apa yang dibuka dan kenapa. */
   function gambarMode() {
-    const n = Number($('lt-versi').value || 0);
+    const n = Number($('tr-versi').value || 0);
     const v = BAHAN.versi.find((x) => x.nomor === n) || {};
     const w = v.warna || {};
     const asal = w.mode || 'bentuk';
     const m = modeDipilih();
-    const box = $('lt-warna');
+    const box = $('tr-warna');
     const beda = m !== asal;
 
     // Satu arah yang MUSTAHIL, dan itu bukan soal selera: versi yang dibangun
@@ -198,8 +198,8 @@
     // mengembalikannya.
     const mustahil = (m === 'warna' && asal === 'bentuk');
     box.dataset.tingkat = mustahil ? 'awas' : (beda ? 'beda' : 'ok');
-    $('lt-warna-ikon').textContent = mustahil ? '!' : (beda ? '~' : '✓');
-    $('lt-warna-judul').textContent = m === 'warna'
+    $('tr-warna-ikon').textContent = mustahil ? '!' : (beda ? '~' : '✓');
+    $('tr-warna-judul').textContent = m === 'warna'
       ? 'Model akan mengenali dari WARNA dan bentuk'
       : 'Model akan mengenali dari BENTUK, bukan warna';
 
@@ -222,14 +222,14 @@
         + 'tidak bisa menebak hanya dari warna dan terpaksa belajar bentuknya. '
         + 'Cocok untuk botol / kaleng / tetra.';
     }
-    $('lt-warna-pesan').textContent = pesan;
+    $('tr-warna-pesan').textContent = pesan;
 
     /* Angkanya TERUKUR pada pipeline yang sebenarnya, bukan taksiran dari
        nilai setelannya. Rona digeser jauh lebih lebar oleh augmentasi versi
        (~50 derajat) daripada oleh setelan waktu-latih (~5 derajat), jadi
        kalimat yang cuma menyebut "saat melatih" akan menyesatkan. Dijaga
        test_klaim_layar_sesuai_kenyataan di tests/test_evaluasi.py. */
-    $('lt-warna-nilai').textContent = m === 'warna'
+    $('tr-warna-nilai').textContent = m === 'warna'
       ? 'Warna asli dipertahankan — ronanya praktis tidak digeser. Yang '
         + 'divariasikan gelap-terangnya (0,5x sampai 1,2x) dan sedikit '
         + 'kepekatan warnanya, supaya model tetap tahan saat lampu berubah.'
@@ -241,7 +241,7 @@
 
   function bacaPar() {
     const out = {};
-    document.querySelectorAll('#lt-form [data-par]').forEach((el) => {
+    document.querySelectorAll('#tr-form [data-par]').forEach((el) => {
       const v = Number(el.value);
       if (Number.isFinite(v)) out[el.dataset.par] = v;
     });
@@ -250,10 +250,10 @@
 
   function bacaSatu() {
     return {
-      nama: $('lt-nama').value.trim(),
-      catatan: $('lt-catatan').value.trim(),
-      tugas: $('lt-tugas').value,
-      bobot: $('lt-bobot').value,
+      nama: $('tr-nama').value.trim(),
+      catatan: $('tr-catatan').value.trim(),
+      tugas: $('tr-tugas').value,
+      bobot: $('tr-bobot').value,
       mode_warna: modeDipilih(),
       par: bacaPar(),
     };
@@ -264,17 +264,17 @@
   // ============================================================
 
   function gambarAntrean() {
-    const d = $('lt-batch-daftar');
+    const d = $('tr-batch-daftar');
     if (!ANTREAN.length) {
-      d.innerHTML = '<span class="lt-diam">belum ada yang diantrekan — '
+      d.innerHTML = '<span class="tr-diam">belum ada yang diantrekan — '
         + '"Jalankan" akan memakai setelan di atas apa adanya</span>';
       return;
     }
     d.innerHTML = ANTREAN.map((x, i) => `
-      <div class="lt-antre">
-        <span class="lt-antre-no">${i + 1}</span>
-        <span class="lt-antre-nama">${esc(x.nama || '(tanpa nama)')}</span>
-        <span class="lt-antre-par">${x.par.epochs} epoch · batch ${x.par.batch}
+      <div class="tr-antre">
+        <span class="tr-antre-no">${i + 1}</span>
+        <span class="tr-antre-nama">${esc(x.nama || '(tanpa nama)')}</span>
+        <span class="tr-antre-par">${x.par.epochs} epoch · batch ${x.par.batch}
           · ${x.par.imgsz}px · ${esc(x.tugas)}</span>
         <span class="spacer"></span>
         <button class="chip" type="button" data-buang="${i}">Buang</button>
@@ -285,7 +285,7 @@
   }
 
   function galat(pesan) {
-    const g = $('lt-galat');
+    const g = $('tr-galat');
     g.hidden = !pesan;
     g.textContent = pesan || '';
   }
@@ -301,30 +301,30 @@
 
   function barisMetrik(m) {
     const k = Object.keys(m || {});
-    if (!k.length) return '<span class="lt-diam">belum ada metrik</span>';
+    if (!k.length) return '<span class="tr-diam">belum ada metrik</span>';
     return k.slice(0, 4).map((n) =>
-      `<span class="lt-metrik"><i>${esc(n)}</i><b>${angka(m[n] * 100, 1)}%</b></span>`
+      `<span class="tr-metrik"><i>${esc(n)}</i><b>${angka(m[n] * 100, 1)}%</b></span>`
     ).join('');
   }
 
   function kartuJalan(t) {
     const pj = Math.max(0, Math.min(100, t.persen || 0));
-    return `<article class="lt-kartu lt-kartu-jalan" data-nomor="${t.nomor}">
-      <div class="lt-kartu-atas">
-        <b class="lt-kartu-nama">${esc(t.nama)}</b>
-        <span class="lt-pil lt-pil-${esc(t.keadaan)}">${LABEL_KEADAAN[t.keadaan] || t.keadaan}</span>
+    return `<article class="tr-kartu tr-kartu-jalan" data-nomor="${t.nomor}">
+      <div class="tr-kartu-atas">
+        <b class="tr-kartu-nama">${esc(t.nama)}</b>
+        <span class="tr-pil tr-pil-${esc(t.keadaan)}">${LABEL_KEADAAN[t.keadaan] || t.keadaan}</span>
         <span class="spacer"></span>
-        <span class="lt-kartu-sub">dari v${t.versi} · ${esc(t.tugas)}</span>
+        <span class="tr-kartu-sub">dari v${t.versi} · ${esc(t.tugas)}</span>
       </div>
-      <div class="lt-bar"><i style="width:${pj}%"></i></div>
-      <div class="lt-kartu-angka">
+      <div class="tr-bar"><i style="width:${pj}%"></i></div>
+      <div class="tr-kartu-angka">
         <span><i>Epoch</i><b>${angka(t.epoch)} / ${angka(t.epochs)}</b></span>
         <span><i>Terpakai</i><b>${durasi(t.detik)}</b></span>
         <span><i>Perkiraan sisa</i><b>${t.sisa ? durasi(t.sisa) : '—'}</b></span>
         <span><i>Kemajuan</i><b>${angka(pj, 1)}%</b></span>
       </div>
-      <div class="lt-kartu-metrik">${barisMetrik(t.metrik)}</div>
-      <div class="lt-kartu-aksi">
+      <div class="tr-kartu-metrik">${barisMetrik(t.metrik)}</div>
+      <div class="tr-kartu-aksi">
         <button class="chip" type="button" data-rinci="${t.nomor}">Rincian</button>
         ${bolehKelola ? `<button class="chip chip-bahaya" type="button"
             data-batal="${t.nomor}">Hentikan</button>` : ''}
@@ -335,32 +335,34 @@
   function kartuHasil(t) {
     const terbaik = t.terbaik || {};
     const utama = t.utama && terbaik[t.utama] !== undefined
-      ? `<span class="lt-skor"><i>${esc(t.utama)}</i>
+      ? `<span class="tr-skor"><i>${esc(t.utama)}</i>
            <b>${angka(terbaik[t.utama] * 100, 1)}%</b></span>` : '';
     const rusak = ['gagal', 'hilang'].includes(t.keadaan);
-    return `<article class="lt-kartu" data-nomor="${t.nomor}">
-      <div class="lt-kartu-atas">
-        <b class="lt-kartu-nama">${esc(t.nama)}</b>
-        <span class="lt-pil lt-pil-${esc(t.keadaan)}">${LABEL_KEADAAN[t.keadaan] || t.keadaan}</span>
+    return `<article class="tr-kartu" data-nomor="${t.nomor}">
+      <div class="tr-kartu-atas">
+        <b class="tr-kartu-nama">${esc(t.nama)}</b>
+        <span class="tr-pil tr-pil-${esc(t.keadaan)}">${LABEL_KEADAAN[t.keadaan] || t.keadaan}</span>
         <span class="spacer"></span>
-        <span class="lt-kartu-sub">L${t.nomor} · dari v${t.versi} ·
+        <span class="tr-kartu-sub">L${t.nomor} · dari v${t.versi} ·
           ${esc(t.dibuat || '')}</span>
       </div>
       ${utama}
-      <div class="lt-kartu-metrik">${rusak
-        ? `<span class="lt-galat-kecil">${esc(t.galat || 'berhenti tanpa keterangan')}</span>`
+      <div class="tr-kartu-metrik">${rusak
+        ? `<span class="tr-galat-kecil">${esc(t.galat || 'berhenti tanpa keterangan')}</span>`
         : barisMetrik(terbaik)}</div>
-      <div class="lt-kartu-angka">
+      <div class="tr-kartu-angka">
         <span><i>Epoch</i><b>${angka(t.epoch)} / ${angka(t.epochs)}</b></span>
         <span><i>Lama</i><b>${durasi(t.detik)}</b></span>
         <span><i>Oleh</i><b>${esc(t.oleh || '—')}</b></span>
       </div>
-      <div class="lt-kartu-aksi">
+      <div class="tr-kartu-aksi">
         <button class="chip" type="button" data-rinci="${t.nomor}">Rincian</button>
         ${t.punya_bobot && bolehKelola ? `<button class="chip chip-uji" type="button"
             data-uji="${t.nomor}">Uji produksi</button>` : ''}
         ${t.punya_bobot ? `<a class="chip" href="/latih/bobot?nomor=${t.nomor}&jenis=best"
-            download>Unduh best.pt</a>` : ''}
+            download title="Bobot dengan metrik terbaik selama training">Unduh best.pt</a>
+          <a class="chip" href="/latih/bobot?nomor=${t.nomor}&jenis=last"
+            download title="Bobot dari epoch terakhir — dipakai kalau mau melanjutkan training">Unduh last.pt</a>` : ''}
         ${bolehKelola ? `<button class="chip chip-bahaya" type="button"
             data-hapus="${t.nomor}">Hapus</button>` : ''}
       </div>
@@ -369,24 +371,24 @@
 
   function gambarMesin(s) {
     const g = s.gpu, r = s.ram;
-    if (!g && !r) { $('lt-mesin-isi').innerHTML =
-      '<span class="lt-diam">keadaan mesin tidak terbaca</span>'; return; }
+    if (!g && !r) { $('tr-mesin-isi').innerHTML =
+      '<span class="tr-diam">keadaan mesin tidak terbaca</span>'; return; }
     const vp = g ? Math.round(g.vram_pakai_mb / g.vram_total_mb * 100) : 0;
-    $('lt-mesin-isi').innerHTML = `
-      ${g ? `<div class="lt-m">
-        <span class="lt-m-nama">${esc(g.nama)}</span>
-        <div class="lt-m-bar"><i style="width:${g.util}%"></i></div>
-        <span class="lt-m-nilai">${g.util}% · ${g.suhu}&deg;C</span>
+    $('tr-mesin-isi').innerHTML = `
+      ${g ? `<div class="tr-m">
+        <span class="tr-m-nama">${esc(g.nama)}</span>
+        <div class="tr-m-bar"><i style="width:${g.util}%"></i></div>
+        <span class="tr-m-nilai">${g.util}% · ${g.suhu}&deg;C</span>
       </div>
-      <div class="lt-m">
-        <span class="lt-m-nama">VRAM</span>
-        <div class="lt-m-bar"><i style="width:${vp}%"></i></div>
-        <span class="lt-m-nilai">${angka(g.vram_pakai_mb)} / ${angka(g.vram_total_mb)} MB</span>
+      <div class="tr-m">
+        <span class="tr-m-nama">VRAM</span>
+        <div class="tr-m-bar"><i style="width:${vp}%"></i></div>
+        <span class="tr-m-nilai">${angka(g.vram_pakai_mb)} / ${angka(g.vram_total_mb)} MB</span>
       </div>` : ''}
-      ${r ? `<div class="lt-m">
-        <span class="lt-m-nama">RAM</span>
-        <div class="lt-m-bar"><i style="width:${r.persen}%"></i></div>
-        <span class="lt-m-nilai">${angka(r.pakai_gb, 1)} / ${angka(r.total_gb, 1)} GB</span>
+      ${r ? `<div class="tr-m">
+        <span class="tr-m-nama">RAM</span>
+        <div class="tr-m-bar"><i style="width:${r.persen}%"></i></div>
+        <span class="tr-m-nilai">${angka(r.pakai_gb, 1)} / ${angka(r.total_gb, 1)} GB</span>
       </div>` : ''}`;
   }
 
@@ -400,10 +402,10 @@
     const jalan = semua.filter((t) => ['antre', 'jalan'].includes(t.keadaan));
     const usai = semua.filter((t) => !['antre', 'jalan'].includes(t.keadaan));
 
-    $('lt-jalan-bagian').hidden = !jalan.length;
-    $('lt-jalan').innerHTML = jalan.map(kartuJalan).join('');
-    $('lt-hasil').innerHTML = usai.length ? usai.map(kartuHasil).join('')
-      : '<span class="lt-diam">belum ada hasil training di projek ini</span>';
+    $('tr-jalan-bagian').hidden = !jalan.length;
+    $('tr-jalan').innerHTML = jalan.map(kartuJalan).join('');
+    $('tr-hasil').innerHTML = usai.length ? usai.map(kartuHasil).join('')
+      : '<span class="tr-diam">belum ada hasil training di projek ini</span>';
 
     document.querySelectorAll('[data-rinci]').forEach((b) => {
       b.onclick = () => bukaRincian(Number(b.dataset.rinci));
@@ -451,34 +453,34 @@
    */
   function blokEvaluasi(e) {
     if (!e) {
-      return `<div class="lt-p-blok">
+      return `<div class="tr-p-blok">
         <h4>Uji produksi</h4>
-        <p class="lt-bantu">Belum diuji. Tekan <b>Uji produksi</b> di kartunya.
+        <p class="tr-bantu">Belum diuji. Tekan <b>Uji produksi</b> di kartunya.
           mAP saja tidak cukup: ia diukur pada data yang sedomain dengan data
           latih, sedangkan yang menentukan adalah foto dari ruang detektor.</p>
       </div>`;
     }
     if (e.keadaan === 'jalan') {
-      return `<div class="lt-p-blok"><h4>Uji produksi</h4>
-        <p class="lt-diam">sedang berjalan…</p></div>`;
+      return `<div class="tr-p-blok"><h4>Uji produksi</h4>
+        <p class="tr-diam">sedang berjalan…</p></div>`;
     }
     if (e.keadaan !== 'selesai') {
-      return `<div class="lt-p-blok"><h4>Uji produksi</h4>
-        <p class="lt-galat">${esc(e.galat || 'gagal tanpa keterangan')}</p></div>`;
+      return `<div class="tr-p-blok"><h4>Uji produksi</h4>
+        <p class="tr-galat">${esc(e.galat || 'gagal tanpa keterangan')}</p></div>`;
     }
     const w = e.warna || {}, a = e.akurasi || {}, d = e.default || {},
           pu = e.putusan || {};
     const baris = (e.rinci || []).filter((x) => new Set(x.jawaban).size > 1);
     return `
-      <div class="lt-p-blok">
+      <div class="tr-p-blok">
         <h4>Uji produksi</h4>
-        <div class="lt-putusan" data-tingkat="${esc(pu.tingkat)}">
+        <div class="tr-putusan" data-tingkat="${esc(pu.tingkat)}">
           <b>${esc((pu.tingkat || '').toUpperCase())}</b>
           <span>${esc(pu.pesan || '')}</span>
         </div>
-        ${e.mode_ket ? `<p class="lt-bantu lt-mode-baris">
+        ${e.mode_ket ? `<p class="tr-bantu tr-mode-baris">
           <b>Mode ${esc(e.mode)}</b> — ${esc(e.mode_ket.nilai)}</p>` : ''}
-        <div class="lt-uji-angka">
+        <div class="tr-uji-angka">
           <span data-tingkat="${e.mode === 'warna' ? 'netral' : esc(w.tingkat)}">
             <i>Berubah karena RONA</i>
             <b>${w.tingkat === 'tak-terukur' ? '—' : angka(w.skor_rona, 0) + '%'}</b>
@@ -499,69 +501,178 @@
             <u>${d.teratas ? angka(d.porsi, 0) + '% dari ' + angka(d.n) + ' latar'
                            : angka(d.n) + ' latar kosong bersih'}</u></span>
         </div>
-        <p class="lt-bantu">${esc(w.pesan || '')}</p>
-        <p class="lt-bantu">Latar kosong diambil dari ${esc(e.sumber_latar || '-')}.
+        ${blokPerKelas(a)}
+        <p class="tr-bantu">${esc(w.pesan || '')}</p>
+        <p class="tr-bantu">Latar kosong diambil dari ${esc(e.sumber_latar || '-')}.
           Diuji pada ${angka(e.n_foto)} foto dari split test v${e.versi},
           ${e.perlakuan ? e.perlakuan.length : 0} perlakuan warna
           (${esc((e.perlakuan || []).join(', '))}).</p>
-        ${baris.length ? `<details class="lt-lanjut">
+        ${baris.length ? `<details class="tr-lanjut">
           <summary>${baris.length} gambar yang jawabannya goyah</summary>
-          <table class="lt-tabel">
+          <table class="tr-tabel">
             <thead><tr><th>berkas</th><th>sebenarnya</th>
               ${(e.perlakuan || []).map((n) => `<th class="${
-                (e.terang || []).includes(n) ? 'lt-kol-terang' : ''}">${esc(n)}</th>`
+                (e.terang || []).includes(n) ? 'tr-kol-terang' : ''}">${esc(n)}</th>`
               ).join('')}</tr></thead>
             <tbody>${baris.map((x) => `<tr>
               <td>${esc(x.berkas)}</td><td>${esc(x.sebenarnya || '-')}</td>
-              ${x.jawaban.map((c) => `<td class="${c === x.jawaban[0] ? '' : 'lt-beda'}">`
+              ${x.jawaban.map((c) => `<td class="${c === x.jawaban[0] ? '' : 'tr-beda'}">`
                 + `${esc(c || 'none')}</td>`).join('')}</tr>`).join('')}</tbody>
           </table></details>` : ''}
       </div>`;
   }
 
+  /* Kurva metrik per epoch, digambar sendiri sebagai SVG.
+   *
+   * Bukan memakai results.png buatan Ultralytics: gambar itu memuat sembilan
+   * petak sekaligus (loss box, loss seg, loss cls, precision, recall, dan
+   * seterusnya) dalam ukuran yang menuntut diperbesar untuk bisa dibaca.
+   * Yang dicari orang saat membuka panel ini cuma dua hal — metriknya naik
+   * atau mendatar, dan loss-nya turun atau tidak — jadi keduanya yang
+   * digambar, sebesar mungkin.
+   *
+   * SVG, bukan canvas: ia ikut tajam di layar beresolusi tinggi tanpa perlu
+   * mengurus devicePixelRatio, dan ikut berubah warna mengikuti tema.
+   */
+  /* Akurasi PER KELAS, dari matriks kebingungan hasil uji produksi.
+   *
+   * Angka gabungan menyembunyikan kelas yang gagal: 84,6% bisa berarti kedua
+   * kelas sama-sama 85%, atau satu kelas 100% dan satunya 60%. Yang kedua
+   * jauh lebih penting diketahui, dan cuma terlihat kalau dipisah.
+   *
+   * Yang ditampilkan juga KE MANA salahnya lari — "tetra sering dijawab
+   * kaleng" bisa ditindak; "tetra 60%" tidak.
+   */
+  function blokPerKelas(a) {
+    const b = (a && a.bingung) || {};
+    const kelas = Object.keys(b);
+    if (!kelas.length) return '';
+    return `<div class="tr-kelas">
+      <h5>Akurasi per kelas</h5>
+      ${kelas.sort().map((nama) => {
+        const baris = b[nama];
+        const total = Object.values(baris).reduce((x, y) => x + y, 0);
+        const benar = baris[nama] || 0;
+        const pj = total ? benar / total * 100 : 0;
+        const salah = Object.entries(baris)
+          .filter(([k]) => k !== nama)
+          .sort((x, y) => y[1] - x[1]);
+        return `<div class="tr-kelas-baris">
+          <span class="tr-kelas-nama" title="${esc(nama)}">${esc(nama)}</span>
+          <span class="tr-kelas-bar"><i style="width:${pj.toFixed(1)}%"
+            data-tingkat="${pj >= 90 ? 'baik' : (pj >= 70 ? 'sedang' : 'buruk')}"></i></span>
+          <span class="tr-kelas-nilai">${angka(pj, 0)}%
+            <u>${benar}/${total}</u></span>
+          <span class="tr-kelas-salah">${salah.length
+            ? 'sering jadi ' + salah.slice(0, 2).map(([k, n]) =>
+                `${esc(k)} (${n})`).join(', ')
+            : ''}</span>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }
+
+  function blokKurva(kurva, t) {
+    const titik = kurva.filter((k) => k.nilai !== null && k.nilai !== undefined);
+    if (titik.length < 2) {
+      return `<div class="tr-p-blok"><h4>Kemajuan per epoch</h4>
+        <p class="tr-bantu">Grafik muncul setelah dua epoch selesai.</p></div>`;
+    }
+    const W = 640, H = 190, PL = 44, PB = 26, PT = 10, PR = 10;
+    const ex = titik.map((k) => k.epoch);
+    const eMin = Math.min(...ex), eMax = Math.max(...ex);
+    const sx = (e) => PL + (eMax === eMin ? 0 : (e - eMin) / (eMax - eMin)) * (W - PL - PR);
+
+    const nilai = titik.map((k) => k.nilai);
+    const nMaks = Math.max(...nilai, 0.01);
+    const sy = (v) => PT + (1 - v / nMaks) * (H - PT - PB);
+
+    const box = titik.map((k) => k.box).filter((v) => v !== null && v !== undefined);
+    const bMaks = box.length ? Math.max(...box) : 0;
+    const syB = (v) => PT + (1 - v / (bMaks || 1)) * (H - PT - PB);
+
+    const garis = (f, key) => titik.map((k, i) =>
+      `${i ? 'L' : 'M'}${sx(k.epoch).toFixed(1)},${f(k[key] ?? 0).toFixed(1)}`).join('');
+
+    // Garis bantu mendatar: tanpa skala, naik-turunnya tidak bisa dinilai
+    // besarnya — cuma bentuknya.
+    const kisi = [0, 0.25, 0.5, 0.75, 1].map((f) => {
+      const v = nMaks * f, y = sy(v);
+      return `<line x1="${PL}" y1="${y.toFixed(1)}" x2="${W - PR}" y2="${y.toFixed(1)}"
+                class="tr-kisi"/><text x="${PL - 6}" y="${(y + 3).toFixed(1)}"
+                class="tr-sumbu" text-anchor="end">${(v * 100).toFixed(0)}%</text>`;
+    }).join('');
+
+    const tandaX = [eMin, Math.round((eMin + eMax) / 2), eMax].map((e) =>
+      `<text x="${sx(e).toFixed(1)}" y="${H - 8}" class="tr-sumbu"
+         text-anchor="middle">${e}</text>`).join('');
+
+    const akhir = titik[titik.length - 1];
+    return `<div class="tr-p-blok">
+      <h4>Kemajuan per epoch</h4>
+      <svg class="tr-kurva" viewBox="0 0 ${W} ${H}" role="img"
+           aria-label="Kurva ${esc(t.utama || 'metrik')} per epoch">
+        ${kisi}
+        ${bMaks ? `<path d="${garis(syB, 'box')}" class="tr-garis-loss"/>` : ''}
+        <path d="${garis(sy, 'nilai')}" class="tr-garis-map"/>
+        <circle cx="${sx(akhir.epoch).toFixed(1)}" cy="${sy(akhir.nilai).toFixed(1)}"
+                r="3.5" class="tr-titik"/>
+        ${tandaX}
+      </svg>
+      <div class="tr-legenda">
+        <span class="tr-lg tr-lg-map">${esc(t.utama || 'metrik')} —
+          terakhir <b>${angka(akhir.nilai * 100, 1)}%</b></span>
+        ${bMaks ? `<span class="tr-lg tr-lg-loss">loss kotak —
+          terakhir <b>${angka(akhir.box, 3)}</b></span>` : ''}
+        <span class="tr-bantu">epoch ${eMin}–${eMax}</span>
+      </div>
+    </div>`;
+  }
+
   async function bukaRincian(nomor) {
-    $('lt-tirai').hidden = false;
-    $('lt-panel-isi').innerHTML = '<span class="lt-diam">memuat…</span>';
+    $('tr-tirai').hidden = false;
+    $('tr-panel-isi').innerHTML = '<span class="tr-diam">memuat…</span>';
     let r;
     try { r = await ambil(`/api/latih/rincian?nomor=${nomor}`); }
-    catch (e) { $('lt-panel-isi').innerHTML = `<p class="lt-galat">gagal memuat: ${esc(e)}</p>`; return; }
-    if (!r.ok) { $('lt-panel-isi').innerHTML = `<p class="lt-galat">${esc(r.error)}</p>`; return; }
+    catch (e) { $('tr-panel-isi').innerHTML = `<p class="tr-galat">gagal memuat: ${esc(e)}</p>`; return; }
+    if (!r.ok) { $('tr-panel-isi').innerHTML = `<p class="tr-galat">${esc(r.error)}</p>`; return; }
     const t = r.latih, w = t.warna || {}, par = t.par || {};
-    $('lt-panel-judul').textContent = `L${t.nomor} — ${t.nama}`;
+    $('tr-panel-judul').textContent = `L${t.nomor} — ${t.nama}`;
     const parBaris = Object.keys(par).sort().map((k) =>
-      `<span class="lt-kv"><i>${esc(k)}</i><b>${esc(par[k])}</b></span>`).join('');
-    $('lt-panel-isi').innerHTML = `
-      <div class="lt-p-blok">
+      `<span class="tr-kv"><i>${esc(k)}</i><b>${esc(par[k])}</b></span>`).join('');
+    $('tr-panel-isi').innerHTML = `
+      <div class="tr-p-blok">
         <h4>Keadaan</h4>
-        <div class="lt-kartu-angka">
+        <div class="tr-kartu-angka">
           <span><i>Status</i><b>${LABEL_KEADAAN[t.keadaan] || t.keadaan}</b></span>
           <span><i>Epoch</i><b>${angka(t.epoch)} / ${angka(t.epochs)}</b></span>
           <span><i>Lama</i><b>${durasi(t.detik)}</b></span>
           <span><i>Sumber</i><b>v${t.versi}</b></span>
         </div>
       </div>
-      ${w.pesan ? `<div class="lt-p-blok lt-warna" data-tingkat="${esc(w.tingkat)}">
+      ${w.pesan ? `<div class="tr-p-blok tr-warna" data-tingkat="${esc(w.tingkat)}">
         <h4>Sinkronisasi warna dengan versinya</h4>
-        <p class="lt-warna-pesan">${esc(w.pesan)}</p></div>` : ''}
+        <p class="tr-warna-pesan">${esc(w.pesan)}</p></div>` : ''}
+      ${blokKurva(r.kurva || [], t)}
       ${blokEvaluasi(r.evaluasi)}
-      <div class="lt-p-blok">
+      <div class="tr-p-blok">
         <h4>Metrik terbaik</h4>
-        <div class="lt-kartu-metrik">${barisMetrik(t.terbaik)}</div>
+        <div class="tr-kartu-metrik">${barisMetrik(t.terbaik)}</div>
       </div>
-      ${t.punya_bobot ? `<div class="lt-p-blok">
+      ${t.punya_bobot ? `<div class="tr-p-blok">
         <h4>Grafik</h4>
-        <img class="lt-grafik" alt="kurva hasil training"
+        <img class="tr-grafik" alt="kurva hasil training"
              src="/latih/grafik?nomor=${t.nomor}&nama=results.png"
              onerror="this.replaceWith(Object.assign(document.createElement('span'),
-                      {className:'lt-diam',textContent:'grafik belum ada'}))">
+                      {className:'tr-diam',textContent:'grafik belum ada'}))">
       </div>` : ''}
-      <div class="lt-p-blok">
+      <div class="tr-p-blok">
         <h4>Setelan yang dipakai</h4>
-        <div class="lt-kv-grid">${parBaris}</div>
+        <div class="tr-kv-grid">${parBaris}</div>
       </div>
-      <div class="lt-p-blok">
+      <div class="tr-p-blok">
         <h4>Log</h4>
-        <pre class="lt-log">${esc(r.log || '(kosong)')}</pre>
+        <pre class="tr-log">${esc(r.log || '(kosong)')}</pre>
       </div>`;
   }
 
@@ -570,37 +681,37 @@
   // ============================================================
 
   if (bolehKelola) {
-    $('lt-mulai').onclick = () => {
-      $('lt-form').hidden = !$('lt-form').hidden;
-      if (!$('lt-form').hidden) $('lt-nama').focus();
+    $('tr-mulai').onclick = () => {
+      $('tr-form').hidden = !$('tr-form').hidden;
+      if (!$('tr-form').hidden) $('tr-nama').focus();
     };
-    $('lt-tutup').onclick = () => { $('lt-form').hidden = true; };
-    document.querySelectorAll('input[name="lt-mode"]').forEach((r) => {
+    $('tr-tutup').onclick = () => { $('tr-form').hidden = true; };
+    document.querySelectorAll('input[name="tr-mode"]').forEach((r) => {
       r.onchange = () => {
         // Ditandai supaya pilihan orang tidak ditimpa bawaan versi saat ia
         // berpindah versi — yang sudah diputuskan orang harus bertahan.
-        $('lt-warna').dataset.disentuh = '1';
+        $('tr-warna').dataset.disentuh = '1';
         gambarMode();
       };
     });
-    $('lt-reset').onclick = () => {
-      document.querySelectorAll('#lt-form [data-par]').forEach((el) => {
+    $('tr-reset').onclick = () => {
+      document.querySelectorAll('#tr-form [data-par]').forEach((el) => {
         el.value = BAHAN.preset[el.dataset.par];
       });
     };
-    $('lt-tambah').onclick = () => {
-      if (!$('lt-versi').value) { galat('pilih versi lebih dulu'); return; }
+    $('tr-tambah').onclick = () => {
+      if (!$('tr-versi').value) { galat('pilih versi lebih dulu'); return; }
       const s = bacaSatu();
       if (!s.nama) s.nama = `Percobaan ${ANTREAN.length + 1}`;
       ANTREAN.push(s);
       galat('');
       gambarAntrean();
     };
-    $('lt-jalankan').onclick = async () => {
-      const versi = Number($('lt-versi').value || 0);
+    $('tr-jalankan').onclick = async () => {
+      const versi = Number($('tr-versi').value || 0);
       if (!versi) { galat('pilih versi lebih dulu'); return; }
       const batch = ANTREAN.length ? ANTREAN : [bacaSatu()];
-      $('lt-jalankan').disabled = true;
+      $('tr-jalankan').disabled = true;
       try {
         const j = await ambil('/api/latih/mulai', {
           method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -610,19 +721,19 @@
         ANTREAN = [];
         gambarAntrean();
         galat('');
-        $('lt-form').hidden = true;
+        $('tr-form').hidden = true;
         muatDaftar();
       } catch (e) {
         galat(String(e));
       } finally {
-        $('lt-jalankan').disabled = false;
+        $('tr-jalankan').disabled = false;
       }
     };
   }
 
-  $('lt-panel-tutup').onclick = () => { $('lt-tirai').hidden = true; };
-  $('lt-tirai').onclick = (e) => {
-    if (e.target === $('lt-tirai')) $('lt-tirai').hidden = true;
+  $('tr-panel-tutup').onclick = () => { $('tr-tirai').hidden = true; };
+  $('tr-tirai').onclick = (e) => {
+    if (e.target === $('tr-tirai')) $('tr-tirai').hidden = true;
   };
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) muatDaftar();
@@ -633,17 +744,17 @@
       try {
         BAHAN = await ambil('/api/latih/bahan');
         if (BAHAN.ok) {
-          $('lt-bobot').innerHTML = BAHAN.bobot.map((b) =>
+          $('tr-bobot').innerHTML = BAHAN.bobot.map((b) =>
             `<option value="${esc(b.path)}" data-tugas="${esc(b.tugas)}">`
             + `${esc(b.nama)}${b.lokal ? '' : ' (unduh)'}</option>`).join('');
-          $('lt-bobot').onchange = () => {
-            const o = $('lt-bobot').selectedOptions[0];
-            $('lt-bobot-ket').textContent =
-              (BAHAN.bobot.find((b) => b.path === $('lt-bobot').value) || {}).ket || '';
-            if (o) $('lt-tugas').value = o.dataset.tugas || 'segment';
+          $('tr-bobot').onchange = () => {
+            const o = $('tr-bobot').selectedOptions[0];
+            $('tr-bobot-ket').textContent =
+              (BAHAN.bobot.find((b) => b.path === $('tr-bobot').value) || {}).ket || '';
+            if (o) $('tr-tugas').value = o.dataset.tugas || 'segment';
           };
           gambarForm();
-          $('lt-bobot').onchange();
+          $('tr-bobot').onchange();
           gambarAntrean();
         }
       } catch (e) {

@@ -11,50 +11,50 @@
 
 <main>
 {% include "_sisi.html" %}
-<div class="sisi-isi" id="lt-isi" data-ds="{{ pr.ds }}"
+<div class="sisi-isi" id="tr-isi" data-ds="{{ pr.ds }}"
      data-kelola="{{ 1 if boleh_kelola else 0 }}">
 
   {#- Bilah mesin. Ia di ATAS, bukan di dalam kartu training, karena yang
       ditanyakan orang saat membuka halaman ini bukan "training nomor berapa
       yang memakai GPU" melainkan "kartunya sedang sibuk atau tidak" —
       pertanyaan tentang mesinnya, bukan tentang satu pekerjaan. -#}
-  <section class="lt-mesin" id="lt-mesin" aria-label="Keadaan mesin">
-    <div class="lt-mesin-isi" id="lt-mesin-isi">
-      <span class="lt-diam">membaca keadaan mesin…</span>
+  <section class="tr-mesin" id="tr-mesin" aria-label="Keadaan mesin">
+    <div class="tr-mesin-isi" id="tr-mesin-isi">
+      <span class="tr-diam">membaca keadaan mesin…</span>
     </div>
   </section>
 
   {% if boleh_kelola %}
-  <div class="lt-kepala">
+  <div class="tr-kepala">
     <div>
-      <h2 class="lt-h2">Training</h2>
-      <p class="halus lt-sub">Melatih model dari sebuah <b>versi</b> yang sudah
+      <h2 class="tr-h2">Training</h2>
+      <p class="halus tr-sub">Melatih model dari sebuah <b>versi</b> yang sudah
         dibekukan. Setelan bawaannya sudah disiapkan dan bisa diubah.</p>
     </div>
-    <button class="cta" type="button" id="lt-mulai">+ Training baru</button>
+    <button class="cta" type="button" id="tr-mulai">+ Training baru</button>
   </div>
 
   {#- Form disembunyikan, bukan dibangun dari JS: dengan begitu isian tidak
       hilang saat ditutup lalu dibuka lagi, dan orang bisa mundur. Pola yang
       sama dipakai wizard di halaman Versi. -#}
-  <section class="lt-form" id="lt-form" hidden>
-    <div class="lt-form-atas">
+  <section class="tr-form" id="tr-form" hidden>
+    <div class="tr-form-atas">
       <b>Training baru</b>
       <span class="spacer"></span>
-      <button class="chip" type="button" id="lt-tutup">Batal</button>
+      <button class="chip" type="button" id="tr-tutup">Batal</button>
     </div>
 
-    <div class="lt-grid">
+    <div class="tr-grid">
       {# ---------------- kiri: yang wajib diisi ---------------- #}
-      <div class="lt-kolom">
-        <label class="lt-label">Nama training
-          <input type="text" id="lt-nama" maxlength="60"
+      <div class="tr-kolom">
+        <label class="tr-label">Nama training
+          <input type="text" id="tr-nama" maxlength="60"
                  placeholder="mis. percobaan pertama, 250 epoch">
         </label>
 
-        <label class="lt-label">Sumber dataset
-          <select id="lt-versi"></select>
-          <span class="lt-bantu" id="lt-versi-ket">memuat daftar versi…</span>
+        <label class="tr-label">Sumber dataset
+          <select id="tr-versi"></select>
+          <span class="tr-bantu" id="tr-versi-ket">memuat daftar versi…</span>
         </label>
 
         {#- Panel sinkronisasi warna. Inilah bagian yang paling menentukan
@@ -67,68 +67,68 @@
             mau dilatih. Bawaannya mengikuti cara versinya dibuat, karena itu
             yang hampir selalu benar — tetapi kalau berbeda, peringatannya
             menyebutkan akibatnya, bukan cuma "tidak cocok". -#}
-        <div class="lt-warna" id="lt-warna" hidden>
-          <div class="lt-warna-atas">
-            <span class="lt-warna-ikon" id="lt-warna-ikon" aria-hidden="true"></span>
-            <b id="lt-warna-judul"></b>
+        <div class="tr-warna" id="tr-warna" hidden>
+          <div class="tr-warna-atas">
+            <span class="tr-warna-ikon" id="tr-warna-ikon" aria-hidden="true"></span>
+            <b id="tr-warna-judul"></b>
           </div>
 
-          <div class="lt-mode-pilih">
-            <label class="lt-mode-p">
-              <input type="radio" name="lt-mode" value="bentuk" checked>
+          <div class="tr-mode-pilih">
+            <label class="tr-mode-p">
+              <input type="radio" name="tr-mode" value="bentuk" checked>
               <span><b>Bentuk &amp; struktur yang utama</b>
                 <em>Model dipaksa mengabaikan warna. Untuk botol / kaleng /
                   tetra — bendanya tetap sama apa pun warnanya.</em></span>
             </label>
-            <label class="lt-mode-p">
-              <input type="radio" name="lt-mode" value="warna">
+            <label class="tr-mode-p">
+              <input type="radio" name="tr-mode" value="warna">
               <span><b>Warna ikut menentukan</b>
                 <em>Warna kemasan boleh jadi penanda. Untuk membedakan produk
                   yang bentuknya mirip tapi kemasannya beda warna.</em></span>
             </label>
           </div>
 
-          <p class="lt-warna-pesan" id="lt-warna-pesan"></p>
+          <p class="tr-warna-pesan" id="tr-warna-pesan"></p>
           {#- Tidak ada centang di sini, dan itu disengaja. Setelan warna
               waktu-latih ditentukan sepenuhnya oleh cara versinya dibuat;
               tidak ada kombinasi lain yang masuk akal, jadi menawarkannya
               sebagai pilihan hanya membuka jalan untuk salah. Yang perlu
               diketahui orang cuma AKIBATNYA, dan itu ada di baris ini. -#}
-          <p class="lt-warna-nilai" id="lt-warna-nilai"></p>
+          <p class="tr-warna-nilai" id="tr-warna-nilai"></p>
         </div>
 
-        <label class="lt-label">Jenis tugas
-          <select id="lt-tugas">
+        <label class="tr-label">Jenis tugas
+          <select id="tr-tugas">
             <option value="segment">Segmentasi (poligon)</option>
             <option value="detect">Deteksi (kotak)</option>
           </select>
-          <span class="lt-bantu" id="lt-tugas-ket"></span>
+          <span class="tr-bantu" id="tr-tugas-ket"></span>
         </label>
 
-        <label class="lt-label">Bobot awal
-          <select id="lt-bobot"></select>
-          <span class="lt-bantu" id="lt-bobot-ket"></span>
+        <label class="tr-label">Bobot awal
+          <select id="tr-bobot"></select>
+          <span class="tr-bantu" id="tr-bobot-ket"></span>
         </label>
 
-        <label class="lt-label">Catatan
-          <input type="text" id="lt-catatan" maxlength="300"
+        <label class="tr-label">Catatan
+          <input type="text" id="tr-catatan" maxlength="300"
                  placeholder="apa yang sedang diuji di percobaan ini">
         </label>
       </div>
 
       {# ---------------- kanan: setelan ---------------- #}
-      <div class="lt-kolom">
-        <div class="lt-par-atas">
+      <div class="tr-kolom">
+        <div class="tr-par-atas">
           <b>Setelan</b>
-          <span class="lt-tandabawaan">bawaan</span>
+          <span class="tr-tandabawaan">bawaan</span>
           <span class="spacer"></span>
-          <button class="chip" type="button" id="lt-reset">Kembalikan ke bawaan</button>
+          <button class="chip" type="button" id="tr-reset">Kembalikan ke bawaan</button>
         </div>
-        <div class="lt-par" id="lt-par"></div>
+        <div class="tr-par" id="tr-par"></div>
 
-        <details class="lt-lanjut">
+        <details class="tr-lanjut">
           <summary>Setelan lanjutan</summary>
-          <div class="lt-par" id="lt-par-lanjut"></div>
+          <div class="tr-par" id="tr-par-lanjut"></div>
         </details>
       </div>
     </div>
@@ -136,21 +136,21 @@
     {#- BATCH. Ditaruh di bawah setelan, bukan di atas: orang menyusun satu
         setelan dulu, baru memutuskan mau menumpuknya jadi beberapa
         percobaan. -#}
-    <div class="lt-batch">
-      <div class="lt-batch-atas">
+    <div class="tr-batch">
+      <div class="tr-batch-atas">
         <b>Antrean percobaan</b>
-        <span class="lt-bantu">Tambahkan beberapa setelan sekaligus, lalu
+        <span class="tr-bantu">Tambahkan beberapa setelan sekaligus, lalu
           tinggalkan. Satu berjalan pada satu waktu; sisanya menunggu giliran.</span>
       </div>
-      <div class="lt-batch-daftar" id="lt-batch-daftar">
-        <span class="lt-diam">belum ada yang diantrekan</span>
+      <div class="tr-batch-daftar" id="tr-batch-daftar">
+        <span class="tr-diam">belum ada yang diantrekan</span>
       </div>
-      <div class="lt-batch-aksi">
-        <button class="wz-tbl" type="button" id="lt-tambah">+ Tambahkan ke antrean</button>
+      <div class="tr-batch-aksi">
+        <button class="wz-tbl" type="button" id="tr-tambah">+ Tambahkan ke antrean</button>
         <span class="spacer"></span>
-        <button class="wz-tbl wz-tbl-pri" type="button" id="lt-jalankan">Jalankan</button>
+        <button class="wz-tbl wz-tbl-pri" type="button" id="tr-jalankan">Jalankan</button>
       </div>
-      <p class="lt-galat" id="lt-galat" hidden></p>
+      <p class="tr-galat" id="tr-galat" hidden></p>
     </div>
   </section>
   {% endif %}
@@ -158,25 +158,25 @@
   {#- Yang sedang berjalan, lalu hasilnya. Urutannya begitu karena yang
       sedang berjalan adalah alasan orang membuka halaman ini berulang kali;
       hasil lama tidak ke mana-mana. -#}
-  <section class="lt-bagian" id="lt-jalan-bagian" hidden>
-    <h3 class="lt-h3">Sedang berjalan</h3>
-    <div id="lt-jalan"></div>
+  <section class="tr-bagian" id="tr-jalan-bagian" hidden>
+    <h3 class="tr-h3">Sedang berjalan</h3>
+    <div id="tr-jalan"></div>
   </section>
 
-  <section class="lt-bagian">
-    <h3 class="lt-h3">Hasil</h3>
-    <div id="lt-hasil"><span class="lt-diam">memuat…</span></div>
+  <section class="tr-bagian">
+    <h3 class="tr-h3">Hasil</h3>
+    <div id="tr-hasil"><span class="tr-diam">memuat…</span></div>
   </section>
 
   {#- Panel rincian satu training, dibuka dari kartunya. -#}
-  <div class="lt-tirai" id="lt-tirai" hidden>
-    <div class="lt-panel" role="dialog" aria-label="Rincian training">
-      <div class="lt-panel-atas">
-        <b id="lt-panel-judul">Rincian</b>
+  <div class="tr-tirai" id="tr-tirai" hidden>
+    <div class="tr-panel" role="dialog" aria-label="Rincian training">
+      <div class="tr-panel-atas">
+        <b id="tr-panel-judul">Rincian</b>
         <span class="spacer"></span>
-        <button class="chip" type="button" id="lt-panel-tutup">Tutup</button>
+        <button class="chip" type="button" id="tr-panel-tutup">Tutup</button>
       </div>
-      <div class="lt-panel-isi" id="lt-panel-isi"></div>
+      <div class="tr-panel-isi" id="tr-panel-isi"></div>
     </div>
   </div>
 

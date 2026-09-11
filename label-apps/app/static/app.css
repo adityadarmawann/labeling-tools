@@ -2618,174 +2618,174 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
    halaman tertinggal sendirian saat temanya diganti. */
 
 /* -- bilah mesin -------------------------------------------------------- */
-.lt-mesin{
+.tr-mesin{
   background:var(--panel); border:1px solid var(--line); border-radius:10px;
   padding:10px 14px; margin:0 0 16px;
 }
-.lt-mesin-isi{display:flex; gap:22px; flex-wrap:wrap; align-items:center}
-.lt-m{display:flex; align-items:center; gap:8px; min-width:210px; flex:1 1 210px}
-.lt-m-nama{font-size:12px; color:var(--ink-dim); min-width:52px}
-.lt-m-bar{
+.tr-mesin-isi{display:flex; gap:22px; flex-wrap:wrap; align-items:center}
+.tr-m{display:flex; align-items:center; gap:8px; min-width:210px; flex:1 1 210px}
+.tr-m-nama{font-size:12px; color:var(--ink-dim); min-width:52px}
+.tr-m-bar{
   flex:1; height:6px; border-radius:3px; background:var(--sunk); overflow:hidden;
 }
-.lt-m-bar>i{display:block; height:100%; background:var(--aksi); transition:width .4s}
-.lt-m-nilai{font-size:12px; color:var(--ink-dim); font-variant-numeric:tabular-nums}
+.tr-m-bar>i{display:block; height:100%; background:var(--aksi); transition:width .4s}
+.tr-m-nilai{font-size:12px; color:var(--ink-dim); font-variant-numeric:tabular-nums}
 
 /* -- kepala ------------------------------------------------------------- */
-.lt-kepala{display:flex; align-items:flex-start; gap:16px; margin:0 0 14px}
-.lt-h2{margin:0; font-size:19px}
-.lt-h3{margin:22px 0 10px; font-size:15px; color:var(--ink-dim);
+.tr-kepala{display:flex; align-items:flex-start; gap:16px; margin:0 0 14px}
+.tr-h2{margin:0; font-size:19px}
+.tr-h3{margin:22px 0 10px; font-size:15px; color:var(--ink-dim);
        text-transform:uppercase; letter-spacing:.05em}
-.lt-sub{margin:3px 0 0; max-width:60ch}
-.lt-kepala .cta{margin-left:auto; flex:none}
-.lt-diam{color:var(--ink-faint); font-size:13px}
+.tr-sub{margin:3px 0 0; max-width:60ch}
+.tr-kepala .cta{margin-left:auto; flex:none}
+.tr-diam{color:var(--ink-faint); font-size:13px}
 
 /* -- form --------------------------------------------------------------- */
-.lt-form{
+.tr-form{
   background:var(--panel); border:1px solid var(--line); border-radius:12px;
   padding:16px; margin:0 0 20px;
 }
-.lt-form-atas{display:flex; align-items:center; gap:10px; margin:0 0 14px}
+.tr-form-atas{display:flex; align-items:center; gap:10px; margin:0 0 14px}
 /* Dua kolom di layar lebar, satu di sempit. Yang wajib diisi di kiri, setelan
    di kanan: orang mengisi dari kiri ke kanan, dan setelan tidak boleh berdiri
    sebelum sumber datanya dipilih. */
-.lt-grid{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:20px}
-@media (max-width:900px){ .lt-grid{grid-template-columns:1fr} }
-.lt-kolom{display:flex; flex-direction:column; gap:12px; min-width:0}
-.lt-label{display:flex; flex-direction:column; gap:4px; font-size:13px; font-weight:600}
-.lt-label input,.lt-label select{
+.tr-grid{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:20px}
+@media (max-width:900px){ .tr-grid{grid-template-columns:1fr} }
+.tr-kolom{display:flex; flex-direction:column; gap:12px; min-width:0}
+.tr-label{display:flex; flex-direction:column; gap:4px; font-size:13px; font-weight:600}
+.tr-label input,.tr-label select{
   font:inherit; font-weight:400; padding:7px 9px; border-radius:7px;
   border:1px solid var(--line2); background:var(--raised); color:var(--ink);
 }
-.lt-bantu{font-size:11.5px; font-weight:400; color:var(--ink-dim); line-height:1.45}
+.tr-bantu{font-size:11.5px; font-weight:400; color:var(--ink-dim); line-height:1.45}
 
-.lt-par-atas{display:flex; align-items:center; gap:8px}
-.lt-tandabawaan{
+.tr-par-atas{display:flex; align-items:center; gap:8px}
+.tr-tandabawaan{
   font-size:10.5px; font-weight:700; letter-spacing:.04em; padding:2px 6px;
   border-radius:4px; background:var(--lab-bg); color:var(--lab-ink);
 }
-.lt-par{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px}
-.lt-p{display:flex; flex-direction:column; gap:3px; font-size:12px}
-.lt-p-nama{font-weight:600}
-.lt-p input{
+.tr-par{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px}
+.tr-p{display:flex; flex-direction:column; gap:3px; font-size:12px}
+.tr-p-nama{font-weight:600}
+.tr-p input{
   font:inherit; padding:6px 8px; border-radius:6px; border:1px solid var(--line2);
   background:var(--raised); color:var(--ink); font-variant-numeric:tabular-nums;
 }
-.lt-p input:disabled{background:var(--sunk); color:var(--ink-dim); cursor:not-allowed}
-.lt-par-warna{
+.tr-p input:disabled{background:var(--sunk); color:var(--ink-dim); cursor:not-allowed}
+.tr-par-warna{
   margin-top:10px; padding:10px; border-radius:8px;
   background:var(--ok-lembut); border:1px solid var(--ok-pudar);
 }
-.lt-lanjut{margin-top:6px}
-.lt-lanjut>summary{cursor:pointer; font-size:13px; color:var(--ink-dim); padding:4px 0}
+.tr-lanjut{margin-top:6px}
+.tr-lanjut>summary{cursor:pointer; font-size:13px; color:var(--ink-dim); padding:4px 0}
 
 /* -- panel sinkronisasi warna ------------------------------------------- */
 /* Diberi warna sendiri karena inilah satu-satunya bagian halaman ini yang
    kalau diabaikan menghasilkan model dengan mAP tinggi yang gagal di ruang
    detektor sungguhan. Ia harus terbaca sebelum orang menggulir melewatinya. */
-.lt-warna{
+.tr-warna{
   border-radius:9px; padding:11px 13px; border:1px solid var(--ok-pudar);
   background:var(--ok-lembut);
 }
-.lt-warna[data-tingkat="awas"]{border-color:var(--warn); background:var(--warn-bg)}
-.lt-warna-atas{display:flex; align-items:center; gap:8px; margin:0 0 5px}
-.lt-warna-ikon{
+.tr-warna[data-tingkat="awas"]{border-color:var(--warn); background:var(--warn-bg)}
+.tr-warna-atas{display:flex; align-items:center; gap:8px; margin:0 0 5px}
+.tr-warna-ikon{
   width:18px; height:18px; border-radius:50%; display:grid; place-items:center;
   font-size:12px; font-weight:800; background:var(--ok); color:var(--on-ink);
 }
-.lt-warna[data-tingkat="awas"] .lt-warna-ikon{background:var(--warn)}
-.lt-warna-pesan{margin:0 0 8px; font-size:12.5px; line-height:1.55; color:var(--ink-dim)}
-.lt-cek{display:flex; gap:8px; align-items:flex-start; font-size:12.5px; cursor:pointer}
-.lt-cek input{margin-top:2px; flex:none}
-.lt-cek b{display:block}
+.tr-warna[data-tingkat="awas"] .tr-warna-ikon{background:var(--warn)}
+.tr-warna-pesan{margin:0 0 8px; font-size:12.5px; line-height:1.55; color:var(--ink-dim)}
+.tr-cek{display:flex; gap:8px; align-items:flex-start; font-size:12.5px; cursor:pointer}
+.tr-cek input{margin-top:2px; flex:none}
+.tr-cek b{display:block}
 
 /* -- antrean percobaan --------------------------------------------------- */
-.lt-batch{margin-top:18px; padding-top:14px; border-top:1px solid var(--line)}
-.lt-batch-atas{display:flex; flex-direction:column; gap:2px; margin:0 0 10px}
-.lt-batch-daftar{display:flex; flex-direction:column; gap:6px; min-height:26px}
-.lt-antre{
+.tr-batch{margin-top:18px; padding-top:14px; border-top:1px solid var(--line)}
+.tr-batch-atas{display:flex; flex-direction:column; gap:2px; margin:0 0 10px}
+.tr-batch-daftar{display:flex; flex-direction:column; gap:6px; min-height:26px}
+.tr-antre{
   display:flex; align-items:center; gap:10px; padding:7px 10px;
   background:var(--sunk); border-radius:7px; font-size:12.5px;
 }
-.lt-antre-no{
+.tr-antre-no{
   width:20px; height:20px; border-radius:50%; display:grid; place-items:center;
   background:var(--panel); border:1px solid var(--line2); font-size:11px; font-weight:700;
 }
-.lt-antre-nama{font-weight:600}
-.lt-antre-par{color:var(--ink-dim); font-variant-numeric:tabular-nums}
-.lt-batch-aksi{display:flex; align-items:center; gap:10px; margin-top:12px}
-.lt-galat{
+.tr-antre-nama{font-weight:600}
+.tr-antre-par{color:var(--ink-dim); font-variant-numeric:tabular-nums}
+.tr-batch-aksi{display:flex; align-items:center; gap:10px; margin-top:12px}
+.tr-galat{
   margin:10px 0 0; padding:8px 10px; border-radius:7px; font-size:12.5px;
   background:var(--bahaya-lembut); color:var(--stop);
 }
-.lt-galat-kecil{font-size:12px; color:var(--stop)}
+.tr-galat-kecil{font-size:12px; color:var(--stop)}
 
 /* -- kartu training ------------------------------------------------------ */
-.lt-bagian{margin:0 0 8px}
-.lt-kartu{
+.tr-bagian{margin:0 0 8px}
+.tr-kartu{
   background:var(--panel); border:1px solid var(--line); border-radius:11px;
   padding:13px 15px; margin:0 0 10px;
 }
-.lt-kartu-jalan{border-color:var(--aksi)}
-.lt-kartu-atas{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
-.lt-kartu-nama{font-size:14.5px}
-.lt-kartu-sub{font-size:11.5px; color:var(--ink-faint)}
-.lt-pil{
+.tr-kartu-jalan{border-color:var(--aksi)}
+.tr-kartu-atas{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
+.tr-kartu-nama{font-size:14.5px}
+.tr-kartu-sub{font-size:11.5px; color:var(--ink-faint)}
+.tr-pil{
   font-size:10.5px; font-weight:700; letter-spacing:.03em; padding:2px 8px;
   border-radius:99px; background:var(--lab-bg); color:var(--lab-ink);
 }
-.lt-pil-jalan{background:var(--aksi); color:var(--aksi-ink)}
-.lt-pil-antre{background:var(--split-bg); color:var(--split-ink)}
-.lt-pil-selesai{background:var(--ok); color:var(--on-ink)}
-.lt-pil-gagal,.lt-pil-hilang{background:var(--stop); color:var(--on-ink)}
+.tr-pil-jalan{background:var(--aksi); color:var(--aksi-ink)}
+.tr-pil-antre{background:var(--split-bg); color:var(--split-ink)}
+.tr-pil-selesai{background:var(--ok); color:var(--on-ink)}
+.tr-pil-gagal,.tr-pil-hilang{background:var(--stop); color:var(--on-ink)}
 
-.lt-bar{height:7px; border-radius:4px; background:var(--sunk); overflow:hidden; margin:10px 0 9px}
-.lt-bar>i{display:block; height:100%; background:var(--aksi); transition:width .6s}
+.tr-bar{height:7px; border-radius:4px; background:var(--sunk); overflow:hidden; margin:10px 0 9px}
+.tr-bar>i{display:block; height:100%; background:var(--aksi); transition:width .6s}
 
 /* Angka disejajarkan dengan tabular-nums supaya digitnya tidak bergoyang
    tiap kali diperbarui — halaman ini menyegarkan dirinya tiap 4 detik, dan
    angka yang melompat-lompat membuatnya terasa gelisah. */
-.lt-kartu-angka{display:flex; gap:26px; flex-wrap:wrap; margin:0 0 8px}
-.lt-kartu-angka>span{display:flex; flex-direction:column; gap:1px}
-.lt-kartu-angka i{font-style:normal; font-size:11px; color:var(--ink-faint)}
-.lt-kartu-angka b{font-size:14px; font-variant-numeric:tabular-nums}
-.lt-kartu-metrik{display:flex; gap:18px; flex-wrap:wrap; margin:0 0 10px}
-.lt-metrik{display:flex; flex-direction:column; gap:1px}
-.lt-metrik i{font-style:normal; font-size:10.5px; color:var(--ink-faint)}
-.lt-metrik b{font-size:13px; font-variant-numeric:tabular-nums}
-.lt-skor{display:flex; align-items:baseline; gap:8px; margin:8px 0}
-.lt-skor i{font-style:normal; font-size:11.5px; color:var(--ink-faint)}
-.lt-skor b{font-size:24px; font-variant-numeric:tabular-nums; color:var(--ok)}
-.lt-kartu-aksi{display:flex; gap:8px; flex-wrap:wrap}
+.tr-kartu-angka{display:flex; gap:26px; flex-wrap:wrap; margin:0 0 8px}
+.tr-kartu-angka>span{display:flex; flex-direction:column; gap:1px}
+.tr-kartu-angka i{font-style:normal; font-size:11px; color:var(--ink-faint)}
+.tr-kartu-angka b{font-size:14px; font-variant-numeric:tabular-nums}
+.tr-kartu-metrik{display:flex; gap:18px; flex-wrap:wrap; margin:0 0 10px}
+.tr-metrik{display:flex; flex-direction:column; gap:1px}
+.tr-metrik i{font-style:normal; font-size:10.5px; color:var(--ink-faint)}
+.tr-metrik b{font-size:13px; font-variant-numeric:tabular-nums}
+.tr-skor{display:flex; align-items:baseline; gap:8px; margin:8px 0}
+.tr-skor i{font-style:normal; font-size:11.5px; color:var(--ink-faint)}
+.tr-skor b{font-size:24px; font-variant-numeric:tabular-nums; color:var(--ok)}
+.tr-kartu-aksi{display:flex; gap:8px; flex-wrap:wrap}
 .chip-bahaya{color:var(--stop)}
 
 /* -- panel rincian ------------------------------------------------------- */
-.lt-tirai{
+.tr-tirai{
   position:fixed; inset:0; background:rgba(var(--tirai),.55); z-index:60;
   display:grid; place-items:center; padding:20px;
 }
-.lt-panel{
+.tr-panel{
   background:var(--panel); border-radius:12px; width:min(860px,100%);
   max-height:88vh; display:flex; flex-direction:column;
   box-shadow:0 18px 50px rgba(var(--bayang),.35);
 }
-.lt-panel-atas{
+.tr-panel-atas{
   display:flex; align-items:center; gap:10px; padding:13px 16px;
   border-bottom:1px solid var(--line);
 }
-.lt-panel-isi{padding:14px 16px; overflow:auto}
-.lt-p-blok{margin:0 0 18px}
-.lt-p-blok h4{margin:0 0 8px; font-size:12px; text-transform:uppercase;
+.tr-panel-isi{padding:14px 16px; overflow:auto}
+.tr-p-blok{margin:0 0 18px}
+.tr-p-blok h4{margin:0 0 8px; font-size:12px; text-transform:uppercase;
               letter-spacing:.05em; color:var(--ink-faint)}
-.lt-kv-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:6px}
-.lt-kv{display:flex; justify-content:space-between; gap:8px; font-size:12px;
+.tr-kv-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:6px}
+.tr-kv{display:flex; justify-content:space-between; gap:8px; font-size:12px;
        padding:3px 7px; background:var(--sunk); border-radius:5px}
-.lt-kv i{font-style:normal; color:var(--ink-dim)}
-.lt-kv b{font-variant-numeric:tabular-nums}
-.lt-grafik{width:100%; border-radius:8px; border:1px solid var(--line)}
+.tr-kv i{font-style:normal; color:var(--ink-dim)}
+.tr-kv b{font-variant-numeric:tabular-nums}
+.tr-grafik{width:100%; border-radius:8px; border:1px solid var(--line)}
 /* Log dibuat menggulir sendiri, bukan memanjangkan panelnya: yang dicari
    orang di log hampir selalu baris terakhir. */
-.lt-log{
+.tr-log{
   margin:0; padding:10px; border-radius:7px; background:var(--sunk);
   font-size:11.5px; line-height:1.5; max-height:230px; overflow:auto;
   white-space:pre-wrap; word-break:break-word;
@@ -2796,42 +2796,42 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
 /* Putusannya diberi warna penuh, bukan sekadar teks: inilah satu-satunya
    tempat di sistem ini yang berkata "jangan dikirim ke produksi", dan
    peringatan yang terlihat seperti keterangan biasa akan dilewati. */
-.lt-putusan{
+.tr-putusan{
   display:flex; gap:10px; align-items:baseline; padding:10px 12px;
   border-radius:8px; margin:0 0 12px; background:var(--ok-lembut);
   border:1px solid var(--ok-pudar);
 }
-.lt-putusan>b{font-size:11px; letter-spacing:.06em; color:var(--ok)}
-.lt-putusan>span{font-size:12.5px; line-height:1.55; color:var(--ink-dim)}
-.lt-putusan[data-tingkat="sedang"]{background:var(--warn-bg); border-color:var(--warn)}
-.lt-putusan[data-tingkat="sedang"]>b{color:var(--warn)}
-.lt-putusan[data-tingkat="buruk"]{background:var(--bahaya-lembut); border-color:var(--stop)}
-.lt-putusan[data-tingkat="buruk"]>b{color:var(--stop)}
+.tr-putusan>b{font-size:11px; letter-spacing:.06em; color:var(--ok)}
+.tr-putusan>span{font-size:12.5px; line-height:1.55; color:var(--ink-dim)}
+.tr-putusan[data-tingkat="sedang"]{background:var(--warn-bg); border-color:var(--warn)}
+.tr-putusan[data-tingkat="sedang"]>b{color:var(--warn)}
+.tr-putusan[data-tingkat="buruk"]{background:var(--bahaya-lembut); border-color:var(--stop)}
+.tr-putusan[data-tingkat="buruk"]>b{color:var(--stop)}
 
-.lt-uji-angka{display:flex; gap:24px; flex-wrap:wrap; margin:0 0 10px}
-.lt-uji-angka>span{display:flex; flex-direction:column; gap:2px; min-width:130px}
-.lt-uji-angka i{font-style:normal; font-size:11px; color:var(--ink-faint)}
-.lt-uji-angka b{font-size:21px; font-variant-numeric:tabular-nums}
-.lt-uji-angka u{text-decoration:none; font-size:11px; color:var(--ink-dim)}
-.lt-uji-angka>span[data-tingkat="baik"] b{color:var(--ok)}
-.lt-uji-angka>span[data-tingkat="sedang"] b{color:var(--warn)}
-.lt-uji-angka>span[data-tingkat="buruk"] b{color:var(--stop)}
+.tr-uji-angka{display:flex; gap:24px; flex-wrap:wrap; margin:0 0 10px}
+.tr-uji-angka>span{display:flex; flex-direction:column; gap:2px; min-width:130px}
+.tr-uji-angka i{font-style:normal; font-size:11px; color:var(--ink-faint)}
+.tr-uji-angka b{font-size:21px; font-variant-numeric:tabular-nums}
+.tr-uji-angka u{text-decoration:none; font-size:11px; color:var(--ink-dim)}
+.tr-uji-angka>span[data-tingkat="baik"] b{color:var(--ok)}
+.tr-uji-angka>span[data-tingkat="sedang"] b{color:var(--warn)}
+.tr-uji-angka>span[data-tingkat="buruk"] b{color:var(--stop)}
 
 /* Tabel gambar yang goyah. Sel yang BERBEDA dari jawaban aslinya ditandai —
    itu satu-satunya hal yang perlu dicari mata di tabel ini. */
-.lt-tabel{width:100%; border-collapse:collapse; font-size:11.5px; margin-top:8px}
-.lt-tabel th,.lt-tabel td{
+.tr-tabel{width:100%; border-collapse:collapse; font-size:11.5px; margin-top:8px}
+.tr-tabel th,.tr-tabel td{
   padding:4px 7px; text-align:left; border-bottom:1px solid var(--line);
   white-space:nowrap;
 }
-.lt-tabel th{color:var(--ink-faint); font-weight:600}
-.lt-tabel .lt-beda{color:var(--stop); font-weight:700}
+.tr-tabel th{color:var(--ink-faint); font-weight:600}
+.tr-tabel .tr-beda{color:var(--stop); font-weight:700}
 .chip-uji{border-color:var(--aksi); color:var(--aksi)}
 /* "tak-terukur" bukan hijau dan bukan merah: ia berarti angkanya TIDAK ADA,
    bukan bagus dan bukan buruk. Mewarnainya hijau akan mengulang persis cacat
    yang baru diperbaiki. */
-.lt-uji-angka>span[data-tingkat="tak-terukur"] b{color:var(--ink-faint)}
-.lt-putusan[data-tingkat="tak-terukur"]{background:var(--warn-bg); border-color:var(--warn)}
+.tr-uji-angka>span[data-tingkat="tak-terukur"] b{color:var(--ink-faint)}
+.tr-putusan[data-tingkat="tak-terukur"]{background:var(--warn-bg); border-color:var(--warn)}
 
 /* -- pilihan mode warna di wizard versi ---------------------------------- */
 /* Dua pilihan berdampingan, bukan satu checkbox: "bergantung warna" dan
@@ -2854,33 +2854,76 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
   margin:8px 0 0; font-size:11.5px; color:var(--ink-dim);
   padding-top:8px; border-top:1px dashed var(--line);
 }
-.lt-mode-baris{margin:0 0 10px; padding:6px 9px; border-radius:6px;
+.tr-mode-baris{margin:0 0 10px; padding:6px 9px; border-radius:6px;
                background:var(--sunk)}
-.lt-uji-angka>span[data-tingkat="netral"] b{color:var(--ink)}
+.tr-uji-angka>span[data-tingkat="netral"] b{color:var(--ink)}
 /* Kolom perlakuan TERANG dibedakan: di tabel yang lebar, mata perlu tahu
    kolom mana yang "tidak boleh berubah di mode mana pun". */
-.lt-tabel th.lt-kol-terang{border-bottom:2px solid var(--warn)}
+.tr-tabel th.tr-kol-terang{border-bottom:2px solid var(--warn)}
 /* Satuan ditaruh DI DALAM barisnya, kecil dan redup — bukan sebagai kalimat
    penjelasan di bawah kotak. Empat kalimat di bawah empat kotak yang berjajar
    membuat form terbaca seperti dokumen; yang dicari mata cuma angkanya. */
-.lt-p-satuan{font-size:10.5px; color:var(--ink-faint); margin-top:1px}
-.lt-p{cursor:help}
-.lt-warna-nilai{
+.tr-p-satuan{font-size:10.5px; color:var(--ink-faint); margin-top:1px}
+.tr-p{cursor:help}
+.tr-warna-nilai{
   margin:6px 0 0; font-size:12px; line-height:1.55; color:var(--ink-dim);
   padding-top:7px; border-top:1px dashed var(--ok-pudar);
 }
-.lt-warna[data-tingkat="awas"] .lt-warna-nilai{border-top-color:var(--warn)}
-.lt-mode-pilih{
+.tr-warna[data-tingkat="awas"] .tr-warna-nilai{border-top-color:var(--warn)}
+.tr-mode-pilih{
   display:flex; flex-direction:column; gap:0; margin:8px 0 10px;
   background:var(--panel); border:1px solid var(--line); border-radius:8px;
 }
-.lt-mode-pilih .lt-mode-p{
+.tr-mode-pilih .tr-mode-p{
   display:flex; gap:9px; align-items:flex-start; padding:9px 11px; cursor:pointer;
 }
-.lt-mode-pilih .lt-mode-p+.lt-mode-p{border-top:1px solid var(--line)}
-.lt-mode-pilih input{margin-top:3px; flex:none}
-.lt-mode-pilih b{display:block; font-size:12.5px}
-.lt-mode-pilih em{
+.tr-mode-pilih .tr-mode-p+.tr-mode-p{border-top:1px solid var(--line)}
+.tr-mode-pilih input{margin-top:3px; flex:none}
+.tr-mode-pilih b{display:block; font-size:12.5px}
+.tr-mode-pilih em{
   display:block; font-style:normal; font-size:11.5px; color:var(--ink-dim);
   line-height:1.5; margin-top:2px;
 }
+
+/* -- kurva per epoch ----------------------------------------------------- */
+.tr-kurva{width:100%; height:auto; display:block; background:var(--sunk);
+          border-radius:8px; border:1px solid var(--line)}
+.tr-kisi{stroke:var(--line); stroke-width:1}
+.tr-sumbu{fill:var(--ink-faint); font-size:10px}
+.tr-garis-map{fill:none; stroke:var(--aksi); stroke-width:2.2;
+              stroke-linejoin:round; stroke-linecap:round}
+.tr-garis-loss{fill:none; stroke:var(--warn); stroke-width:1.4;
+               stroke-dasharray:4 3; opacity:.75}
+.tr-titik{fill:var(--aksi)}
+.tr-legenda{display:flex; gap:18px; flex-wrap:wrap; margin-top:7px; font-size:11.5px}
+.tr-lg{display:flex; align-items:center; gap:5px; color:var(--ink-dim)}
+.tr-lg::before{content:""; width:14px; height:2.5px; border-radius:2px}
+.tr-lg-map::before{background:var(--aksi)}
+.tr-lg-loss::before{background:var(--warn)}
+
+/* -- akurasi per kelas --------------------------------------------------- */
+/* Angka gabungan menyembunyikan kelas yang gagal. Yang ditampilkan juga KE
+   MANA salahnya lari: "tetra sering jadi kaleng" bisa ditindak, "tetra 60%"
+   tidak. */
+.tr-kelas{margin:10px 0 12px}
+.tr-kelas h5{margin:0 0 7px; font-size:11px; text-transform:uppercase;
+             letter-spacing:.05em; color:var(--ink-faint); font-weight:600}
+.tr-kelas-baris{
+  display:grid; grid-template-columns:minmax(90px,1.4fr) minmax(60px,2fr) auto minmax(0,1.6fr);
+  gap:10px; align-items:center; padding:4px 0; font-size:12px;
+}
+@media (max-width:760px){
+  .tr-kelas-baris{grid-template-columns:1fr auto; row-gap:3px}
+  .tr-kelas-bar,.tr-kelas-salah{grid-column:1 / -1}
+}
+.tr-kelas-nama{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+               font-weight:600}
+.tr-kelas-bar{height:7px; border-radius:4px; background:var(--sunk); overflow:hidden}
+.tr-kelas-bar>i{display:block; height:100%; background:var(--ok)}
+.tr-kelas-bar>i[data-tingkat="sedang"]{background:var(--warn)}
+.tr-kelas-bar>i[data-tingkat="buruk"]{background:var(--stop)}
+.tr-kelas-nilai{font-variant-numeric:tabular-nums; white-space:nowrap}
+.tr-kelas-nilai u{text-decoration:none; color:var(--ink-faint); font-size:11px;
+                  margin-left:4px}
+.tr-kelas-salah{color:var(--ink-dim); font-size:11px; overflow:hidden;
+                text-overflow:ellipsis; white-space:nowrap}
