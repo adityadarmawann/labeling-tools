@@ -304,7 +304,55 @@ def _segment_mobilesam(img: Path, points, labels, eps) -> Usulan:
     return Usulan(poly.tolist(), _bbox(poly), "mobilesam", dari_cache)
 
 
+# ------------------------------------------------- model osam dan VRAM
+#
+# Model lewat osam (SAM 3, YOLO-World, EfficientSAM, SAM 2) DIPAKSA berjalan
+# di CPU, bahkan ketika saklar LABELAPP_OLAH bernilai gpu. Itu bukan
+# kehati-hatian berlebih — tanpa ini, prompt teks GAGAL TOTAL di mode GPU:
+#
+#   Failed to allocate memory for requested buffer of size 1719926784
+#   (Softmax node_Softmax_968)
+#
+# Sebabnya muat atau tidaknya di kartu ini, bukan setelan: SAM 3 membawa
+# 3,4 GB bobot (image encoder 1,8 GB + language encoder 1,6 GB) dan menuntut
+# satu buffer 1,64 GB di tengah jalan. Di RTX 3060 Ti yang 8 GB, dan yang
+# dipakai bersama pembuatan versi, itu tidak cukup. Diuji: gagal pada gambar
+# 480x640 MAUPUN 720x1280 dengan permintaan alokasi yang sama persis — model
+# ini menormalkan masukannya, jadi mengecilkan foto tidak menolong sama
+# sekali. Di CPU ia berjalan sampai selesai.
+#
+# osam punya fallback ke CPU sendiri, tetapi hanya kalau PEMBUATAN SESI yang
+# gagal. Di sini sesinya terbentuk dengan mulus dan yang gagal inferensinya,
+# jadi fallback itu tidak pernah terpicu.
+#
+# Yang dipaksa penyedianya, bukan CUDA_VISIBLE_DEVICES: mengosongkan variabel
+# itu berlaku untuk seluruh proses dan ikut mematikan torch, sehingga
+# pembuatan versi kehilangan GPU-nya juga.
+#
+# LABELAPP_OSAM_GPU=1 membuka paksaan ini untuk kartu yang memang cukup besar.
+OSAM_GPU = (os.environ.get("LABELAPP_OSAM_GPU") or "").strip().lower() in (
+    "1", "true", "ya")
+_osam_dipaksa = False
+
+
+def _siapkan_osam():
+    """Pasang paksaan CPU pada osam. Aman dipanggil berkali-kali."""
+    global _osam_dipaksa
+    if _osam_dipaksa or OSAM_GPU:
+        return
+    import osam.types._model as _m
+
+    asli = _m._load_inference_session
+
+    def hanya_cpu(blob, providers=None):
+        return asli(blob, providers=["CPUExecutionProvider"])
+
+    _m._load_inference_session = hanya_cpu
+    _osam_dipaksa = True
+
+
 def _segment_osam(img: Path, points, labels, model: str, eps) -> Usulan:
+    _siapkan_osam()
     import osam.apis
     import osam.types
 
@@ -404,6 +452,7 @@ def dari_teks(img: Path, teks: list[str], model: str = "yoloworld:latest",
     if not teks:
         raise TidakAdaObjek("belum ada nama kelas yang dicari")
 
+    _siapkan_osam()
     import osam.apis
     import osam.types
 

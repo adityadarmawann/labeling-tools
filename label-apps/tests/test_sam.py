@@ -96,3 +96,68 @@ def test_titik_negatif_memangkas_mask(lingkaran):
     b = al.dari_titik(lingkaran, [[430, 150], [430, 205]], [1, 0], model="mobilesam")
     luas = lambda u: (u.bbox[2] - u.bbox[0]) * (u.bbox[3] - u.bbox[1])
     assert luas(b) <= luas(a)
+
+
+# ============================================================
+# MODEL osam DIPAKSA DI CPU
+# ============================================================
+#
+# SAM 3, YOLO-World, EfficientSAM dan SAM 2 berjalan lewat osam, yang memilih
+# CUDA sendiri begitu onnxruntime-gpu terpasang. Di kartu 8 GB itu MENJATUHKAN
+# prompt teks sama sekali:
+#
+#   Failed to allocate memory for requested buffer of size 1719926784
+#
+# SAM 3 membawa 3,4 GB bobot dan menuntut satu buffer 1,64 GB di tengah jalan.
+# Diuji pada gambar 480x640 maupun 720x1280 dengan permintaan alokasi yang
+# sama persis — model ini menormalkan masukannya, jadi mengecilkan foto tidak
+# menolong. Di CPU ia berjalan sampai selesai.
+#
+# Fallback bawaan osam tidak menolong: ia hanya menangkap kegagalan PEMBUATAN
+# SESI, sedangkan di sini sesinya terbentuk mulus dan yang gagal inferensinya.
+
+def test_osam_dipaksa_memakai_cpu():
+    """Penyedia osam harus CPU, berapa pun saklar olahnya."""
+    from app.services import autolabel as al
+
+    if al.OSAM_GPU:
+        pytest.skip("LABELAPP_OSAM_GPU sengaja dinyalakan")
+    pytest.importorskip("osam")
+    import osam.types._model as m
+
+    al._siapkan_osam()
+    dipakai = {}
+
+    def palsu(path, providers=None):
+        dipakai["providers"] = providers
+        raise RuntimeError("tidak perlu benar-benar memuat model")
+
+    asli_ort = m.onnxruntime.InferenceSession
+    m.onnxruntime.InferenceSession = palsu
+    try:
+        with pytest.raises(Exception):
+            m._load_inference_session(type("B", (), {"path": "x.onnx"})())
+    finally:
+        m.onnxruntime.InferenceSession = asli_ort
+    assert dipakai.get("providers") == ["CPUExecutionProvider"], dipakai
+
+
+def test_paksaan_osam_tidak_menyentuh_mobilesam():
+    """MobileSAM punya sesinya sendiri dan TETAP boleh memakai GPU.
+
+    Keduanya sama-sama onnxruntime, jadi perbaikan yang dipasang terlalu lebar
+    — mematikan CUDA untuk seluruh proses, misalnya lewat CUDA_VISIBLE_DEVICES
+    — akan ikut menyeret MobileSAM (dan torch) ke CPU tanpa ada yang sadar.
+    """
+    from app.services import autolabel as al, olah_gpu
+
+    al._siapkan_osam()
+    if olah_gpu.MODE != "gpu":
+        pytest.skip("jalur CPU, tidak ada yang perlu dijaga")
+    import onnxruntime as ort
+
+    if "CUDAExecutionProvider" not in ort.get_available_providers():
+        pytest.skip("onnxruntime tanpa CUDA")
+    sam = al._mobilesam()
+    assert sam.provider == "CUDAExecutionProvider", (
+        f"MobileSAM ikut terseret ke {sam.provider}")
