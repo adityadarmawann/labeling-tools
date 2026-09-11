@@ -774,8 +774,20 @@ def buang(ds, nomor: int) -> bool:
     if isi.get("keadaan") in BERJALAN and hidup(isi.get("pid")):
         raise ValueError("training itu masih berjalan — hentikan dulu")
     shutil.rmtree(dir_latih(ds, nomor), ignore_errors=True)
-    berkas_latih(ds, nomor).unlink(missing_ok=True)
-    (_dir(ds) / f"L{nomor}.log").unlink(missing_ok=True)
+    # SELURUH berkas milik nomor ini disapu dengan pola, bukan disebut satu per
+    # satu. Versi sebelumnya menyebut L<n>.json dan L<n>.log saja, dan ketika
+    # evaluasi produksi ditambahkan belakangan, L<n>.eval.json dan
+    # L<n>.eval.log tertinggal sebagai berkas yatim — tidak terlihat di layar,
+    # tidak bisa dihapus dari mana pun, dan menumpuk diam-diam.
+    #
+    # Pola ini ikut menyapu berkas sementara (.tmp) yang tertinggal kalau
+    # penulisan manifes terputus di tengah.
+    #
+    # Nomor tidak pernah dipakai ulang (nomor_berikut selalu dari yang
+    # TERBESAR), jadi pola ini tidak mungkin mengenai training lain.
+    for x in _dir(ds).glob(f"L{int(nomor)}.*"):
+        if x.is_file():
+            x.unlink(missing_ok=True)
     return True
 
 

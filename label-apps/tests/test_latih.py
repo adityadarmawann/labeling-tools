@@ -441,3 +441,64 @@ def test_mode_boleh_dipilih_per_percobaan(klien, lingkungan, monkeypatch):
     # nanti masih bisa diketahui bahwa keduanya berbeda dan kenapa.
     assert b["warna"]["mode"] == "warna"
     assert b["warna"].get("asal_versi") == "bentuk"
+
+
+# ============================================================
+# HAPUS HARUS BENAR-BENAR MENGHAPUS
+# ============================================================
+#
+# Bobot YOLO sekitar 6,5 MB per training, dan satu projek bisa punya belasan
+# percobaan. Tombol Hapus yang cuma menghilangkan kartunya dari layar berarti
+# disk terus terisi oleh berkas yang tidak bisa ditemukan lagi dari mana pun.
+#
+# Versi sebelumnya menyebut berkas yang dihapus satu per satu, dan ketika
+# evaluasi produksi ditambahkan belakangan, L<n>.eval.json serta L<n>.eval.log
+# tertinggal sebagai berkas yatim.
+
+def test_hapus_menyapu_seluruh_berkas_training(tmp_path):
+    n = 3
+    d = latih.dir_latih(tmp_path, n)
+    (d / "weights").mkdir(parents=True)
+    (d / "weights" / "best.pt").write_bytes(b"x" * 4096)
+    (d / "weights" / "last.pt").write_bytes(b"x" * 4096)
+    (d / "results.csv").write_text("epoch\n1\n")
+    (d / "results.png").write_bytes(b"png")
+    latih._tulis(tmp_path, n, {"nomor": n, "keadaan": "selesai", "pid": 0})
+    akar = latih._dir(tmp_path)
+    for nama in (f"L{n}.log", f"L{n}.eval.json", f"L{n}.eval.log",
+                 f"L{n}.json.tmp"):
+        (akar / nama).write_text("x")
+
+    sebelum = sum(p.stat().st_size for p in akar.rglob("*") if p.is_file())
+    assert sebelum > 8000, "berkas ujinya sendiri tidak terbentuk"
+
+    assert latih.buang(tmp_path, n) is True
+
+    sisa = sorted(p.name for p in akar.rglob("*") if p.is_file())
+    assert sisa == [], f"berkas tertinggal setelah dihapus: {sisa}"
+    assert not d.exists(), "folder trainingnya masih ada"
+
+
+def test_hapus_tidak_menyentuh_training_lain(tmp_path):
+    """Pola L<n>.* tidak boleh mengenai L1 saat menghapus L11."""
+    for n in (1, 11):
+        d = latih.dir_latih(tmp_path, n)
+        (d / "weights").mkdir(parents=True)
+        (d / "weights" / "best.pt").write_bytes(b"x")
+        latih._tulis(tmp_path, n, {"nomor": n, "keadaan": "selesai", "pid": 0})
+        (latih._dir(tmp_path) / f"L{n}.eval.json").write_text("{}")
+
+    latih.buang(tmp_path, 1)
+    assert latih.baca(tmp_path, 11) is not None, "L11 ikut terhapus saat L1 dihapus"
+    assert (latih.dir_latih(tmp_path, 11) / "weights" / "best.pt").exists()
+    assert (latih._dir(tmp_path) / "L11.eval.json").exists()
+    assert latih.baca(tmp_path, 1) is None
+
+
+def test_training_yang_masih_berjalan_tidak_bisa_dihapus(tmp_path, monkeypatch):
+    """Menghapus bobot di bawah proses yang sedang menulisnya."""
+    latih._tulis(tmp_path, 5, {"nomor": 5, "keadaan": "jalan", "pid": 424242})
+    monkeypatch.setattr(latih, "hidup", lambda pid: True)
+    with pytest.raises(ValueError, match="masih berjalan"):
+        latih.buang(tmp_path, 5)
+    assert latih.baca(tmp_path, 5) is not None
