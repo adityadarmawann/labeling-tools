@@ -33,6 +33,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from . import olah_gpu
+
 # ---------------------------------------------------------------- setelan
 
 MODEL_DEFAULT = "mobilesam"
@@ -136,9 +138,17 @@ class MobileSam:
 
         opsi = ort.SessionOptions()
         opsi.log_severity_level = 3          # sembunyikan peringatan bentuk
+        # Penyedia ditentukan SAKLAR LABELAPP_OLAH, bukan sekadar "CUDA ada
+        # atau tidak". Kedua venv memang sudah dipisah, jadi dalam pemakaian
+        # biasa hasilnya sama — tetapi mengandalkan kebetulan itu berarti
+        # memasang onnxruntime-gpu ke .venv diam-diam mengubah jalur yang
+        # dipakai, padahal saklarnya jelas-jelas berkata cpu. Saklar yang
+        # menentukan; ketersediaan paket cuma syarat tambahan.
         penyedia = ort.get_available_providers()
+        pakai_gpu = (olah_gpu.MODE == "gpu"
+                     and "CUDAExecutionProvider" in penyedia)
         pilih = (["CUDAExecutionProvider", "CPUExecutionProvider"]
-                 if "CUDAExecutionProvider" in penyedia else ["CPUExecutionProvider"])
+                 if pakai_gpu else ["CPUExecutionProvider"])
         self.encoder = ort.InferenceSession(str(encoder), opsi, providers=pilih)
         self.decoder = ort.InferenceSession(str(decoder), opsi, providers=pilih)
         self.provider = self.encoder.get_providers()[0]

@@ -16,3 +16,22 @@
 # CPU tetap dipakai dan alasannya dicatat di log.
 torch
 torchvision
+
+# MobileSAM (pelabelan otomatis) lewat CUDA. Terukur di mesin ini, klik
+# pertama pada gambar baru: 428,6 ms -> 48,1 ms (8,9x); encoder-nya sendiri
+# 465 -> 37,3 ms (12,5x). Ini latensi yang benar-benar ditunggu orang saat
+# melabeli, bukan pekerjaan latar.
+#
+# PENTING: onnxruntime-gpu dan onnxruntime menyediakan modul `onnxruntime`
+# yang sama dan TIDAK boleh terpasang berdua — ketika keduanya ada, yang
+# terpakai bergantung urutan pemasangan. requirements.txt memasang
+# onnxruntime (jalur CPU), jadi di .venv-gpu ia harus dibuang lebih dulu:
+#
+#   .venv-gpu/bin/python -m pip uninstall -y onnxruntime
+#   .venv-gpu/bin/python -m pip install --force-reinstall --no-deps onnxruntime-gpu
+#
+# --force-reinstall itu bukan kehati-hatian berlebih: uninstall onnxruntime
+# ikut menghapus berkas yang dipakai bersama onnxruntime-gpu, dan sesudahnya
+# `import onnxruntime` berhasil tetapi modulnya kosong —
+# "module 'onnxruntime' has no attribute 'SessionOptions'".
+onnxruntime-gpu
