@@ -342,3 +342,102 @@ def test_rincian_training_yang_tidak_ada(klien, lingkungan):
     _projek(klien, lingkungan)
     r = klien.get("/api/latih/rincian?nomor=404").json()
     assert r["ok"] is False
+
+
+# ============================================================
+# SETELAN WARNA TIDAK BISA DISETEL DARI LUAR
+# ============================================================
+#
+# Keempat angka warna (hsv_h, hsv_s, hsv_v, bgr) ditentukan SEPENUHNYA oleh
+# mode warna versinya, dan tidak lagi ditawarkan sebagai kotak isian. Bukan
+# kerapian: keempatnya harus sejalan dengan cara versinya diaugmentasi, dan
+# kombinasi yang tidak sejalan menghasilkan model yang angkanya bagus lalu
+# gagal di ruang detektor — persis kegagalan v13 (mAP50-95 0,9499, benar 0
+# dari 7).
+#
+# Selama masih ada jalan menyetelnya dari luar — permintaan buatan sendiri,
+# batch yang disalin dari percobaan lain, satu angka yang diubah tanpa tahu
+# pasangannya — jalan itu cepat atau lambat akan dipakai.
+
+@pytest.mark.parametrize("mode,hsv_h,bgr", [
+    ("bentuk", 0.030, 0.10),
+    ("warna", 0.0, 0.0),
+])
+def test_setelan_warna_ditentukan_mode_bukan_pemanggil(tmp_path, mode, hsv_h, bgr):
+    isi = latih.siapkan(
+        tmp_path, nama="x", versi_nomor=1, tugas="segment", bobot="y.pt",
+        # Angka warna yang dikirim sengaja NGAWUR — harus diabaikan seluruhnya.
+        par={"epochs": 7, "hsv_h": 0.4, "hsv_s": 0.01, "hsv_v": 0.02, "bgr": 0.9},
+        oleh="uji", warna={"mode": mode})
+    par = isi["par"]
+    assert par["hsv_h"] == hsv_h, "hsv_h dari pemanggil tidak boleh dipakai"
+    assert par["bgr"] == bgr, "bgr dari pemanggil tidak boleh dipakai"
+    assert par["hsv_s"] != 0.01 and par["hsv_v"] != 0.02
+    # Yang BUKAN setelan warna tetap boleh diatur orang.
+    assert par["epochs"] == 7
+
+
+def test_dua_mode_menghasilkan_setelan_yang_berlawanan(tmp_path):
+    a = latih.siapkan(tmp_path, nama="a", versi_nomor=1, tugas="segment",
+                      bobot="y.pt", par={}, oleh="uji",
+                      warna={"mode": "bentuk"})["par"]
+    b = latih.siapkan(tmp_path, nama="b", versi_nomor=1, tugas="segment",
+                      bobot="y.pt", par={}, oleh="uji",
+                      warna={"mode": "warna"})["par"]
+    assert a["hsv_h"] > 0 and b["hsv_h"] == 0
+    assert a["bgr"] > 0 and b["bgr"] == 0
+    # hsv_v sama di kedua mode: terang harus selalu jadi petunjuk yang tidak
+    # bisa diandalkan, ruang detektor kadang terang kadang remang.
+    assert a["hsv_v"] == b["hsv_v"]
+
+
+def test_mode_tidak_disebut_memakai_bawaan(tmp_path):
+    isi = latih.siapkan(tmp_path, nama="x", versi_nomor=1, tugas="segment",
+                        bobot="y.pt", par={}, oleh="uji")
+    from app.services import mode_warna as mw
+    assert isi["par"]["hsv_h"] == mw.par_latih(mw.BAWAAN)["hsv_h"]
+
+
+def test_mode_boleh_dipilih_per_percobaan(klien, lingkungan, monkeypatch):
+    """Satu antrean bisa membandingkan dua mode dari versi yang SAMA.
+
+    Itu alasan pilihannya ada di halaman Training, bukan hanya di wizard
+    versi: yang sedang diputuskan orang di sini adalah model seperti apa yang
+    mau dilatih, dan membandingkan dua jawaban atas pertanyaan itu tidak boleh
+    menuntut membangun ulang datasetnya.
+    """
+    from app.services import mode_warna as mw
+
+    masuk(klien, "paul", PW_PAUL)
+    d = _projek(klien, lingkungan)
+
+    # Versi tiruan yang cukup untuk rutenya: data.yaml ada, mode `bentuk`.
+    from app.services import buatversi, versi as svc_versi
+    dv = buatversi.dir_versi(d, 1)
+    dv.mkdir(parents=True, exist_ok=True)
+    (dv / "data.yaml").write_text("nc: 1\nnames: ['a']\n")
+    svc_versi.buat(d, "paul", "8:1:1", [], {}, {"split": {}, "kelas": 1},
+                   "", resep=mw.tulis_ke_resep({}, mw.BENTUK), nomor=1)
+
+    # Diluncurkan dengan mode yang BERBEDA dari versinya.
+    dijalankan = []
+    monkeypatch.setattr(latih, "jalankan",
+                        lambda ds, n: dijalankan.append(n) or {})
+    r = klien.post("/api/latih/mulai", json={
+        "versi": 1,
+        "batch": [{"nama": "A", "bobot": "x.pt", "mode_warna": "bentuk",
+                   "par": {"epochs": 2}},
+                  {"nama": "B", "bobot": "x.pt", "mode_warna": "warna",
+                   "par": {"epochs": 2}}],
+    }).json()
+    assert r["ok"] is True, r
+    assert len(r["dibuat"]) == 2
+
+    a = latih.baca(d, r["dibuat"][0])
+    b = latih.baca(d, r["dibuat"][1])
+    assert a["par"]["hsv_h"] == 0.030 and a["par"]["bgr"] == 0.10
+    assert b["par"]["hsv_h"] == 0.0 and b["par"]["bgr"] == 0.0
+    # Mode yang dipilih ikut dibekukan, beserta mode ASAL versinya — supaya
+    # nanti masih bisa diketahui bahwa keduanya berbeda dan kenapa.
+    assert b["warna"]["mode"] == "warna"
+    assert b["warna"].get("asal_versi") == "bentuk"

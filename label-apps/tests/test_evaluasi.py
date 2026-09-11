@@ -306,3 +306,259 @@ def test_deteksi_cukup_banyak_tetap_dinilai_seperti_biasa():
     h = ev.nilai_warna(j)
     assert h["tingkat"] == "baik", h
     assert h["total"] == 7 and h["kosong"] == 3
+
+
+# ============================================================
+# MODE WARNA — SATU ALAT UKUR, DUA PERTANYAAN BERBEDA
+# ============================================================
+#
+# Rancangan awal berkas ini menganggap "warna menentukan kelas" SELALU buruk.
+# Itu kesimpulan v14, dan v14 mengklasifikasi MATERIAL: botol tetap botol apa
+# pun warnanya, jadi warna memang petunjuk palsu di sana.
+#
+# Untuk pengenalan produk kesimpulannya terbalik. Dataset paragon-kahf punya
+# dua kelas — kahf_extradry_deodorant_45ml dan kahf_skinergizing_facewash_50ml
+# — dan yang membedakan keduanya sebagian besar justru warna kemasannya.
+# Memvonis "BURUK, model memutuskan lewat warna" di sana adalah vonis yang
+# terbalik, dan eval-produksi-paragon.py (salinan skrip v14) memang
+# melakukannya.
+#
+# Yang membuat satu alat ukur bisa melayani keduanya: perlakuan RONA dan
+# perlakuan TERANG dinilai terpisah.
+
+from app.services import mode_warna as mw
+
+
+def _jawaban(asli, rona, terang):
+    """Susun satu baris jawaban sesuai urutan PERLAKUAN."""
+    return [asli] + [rona] * len(ev.NAMA_RONA) + [terang] * len(ev.NAMA_TERANG)
+
+
+def test_mode_bentuk_menghukum_ketergantungan_rona():
+    """Kasus v14: rona tidak boleh menentukan apa pun."""
+    j = [_jawaban("botol", "kaleng", "botol")] * 6
+    h = ev.nilai_warna(j, mw.BENTUK)
+    assert h["skor_rona"] == 100.0
+    assert h["skor_terang"] == 0.0
+    assert h["tingkat"] == "buruk"
+
+
+def test_mode_warna_TIDAK_menghukum_ketergantungan_rona():
+    """Jawaban yang sama, mode berbeda, vonis berbeda.
+
+    Inilah seluruh alasan mode ini ada. Untuk pengenal produk, jawaban yang
+    berubah saat rona diputar bukan kegagalan — itu yang diminta.
+    """
+    j = [_jawaban("kahf_deo", "kahf_facewash", "kahf_deo")] * 6
+    h = ev.nilai_warna(j, mw.WARNA)
+    assert h["skor_rona"] == 100.0, "angkanya tetap dilaporkan"
+    assert h["tingkat"] == "baik", "tetapi TIDAK dijadikan vonis"
+    assert "memang itu yang diminta" in h["pesan"]
+
+
+def test_kerapuhan_terhadap_terang_buruk_di_KEDUA_mode():
+    """Ruang detektor kadang terang kadang remang.
+
+    Model yang kelasnya berganti hanya karena lampunya diredupkan tidak bisa
+    dipakai di mana pun, mode apa pun.
+    """
+    j = [_jawaban("a", "a", "b")] * 6
+    for m in (mw.BENTUK, mw.WARNA):
+        h = ev.nilai_warna(j, m)
+        assert h["skor_terang"] == 100.0
+        assert h["tingkat"] == "buruk", f"mode {m} meloloskan kerapuhan terang"
+        assert "TERANG" in h["pesan"]
+
+
+def test_terang_diperiksa_lebih_dulu_daripada_rona():
+    """Model yang rapuh terhadap keduanya divonis atas yang lebih menentukan."""
+    j = [_jawaban("a", "b", "c")] * 6
+    h = ev.nilai_warna(j, mw.BENTUK)
+    assert h["tingkat"] == "buruk"
+    assert "TERANG" in h["pesan"], h["pesan"]
+
+
+def test_mode_warna_yang_sehat_dinilai_baik():
+    j = ([_jawaban("deo", "facewash", "deo")] * 5
+         + [_jawaban("fw", "deo", "fw")] * 5)
+    h = ev.nilai_warna(j, mw.WARNA)
+    assert h["tingkat"] == "baik"
+    assert h["skor_terang"] == 0.0
+
+
+def test_mode_tidak_dikenal_jatuh_ke_bawaan():
+    j = [_jawaban("a", "b", "a")] * 6
+    assert ev.nilai_warna(j, "ngawur")["tingkat"] == \
+           ev.nilai_warna(j, mw.BENTUK)["tingkat"]
+
+
+def test_perlakuan_terang_tidak_menyentuh_rona():
+    """Kalau perlakuan TERANG diam-diam menggeser rona, seluruh pemisahan
+    rona/terang runtuh dan mode `warna` jadi tidak bisa dinilai."""
+    im = _gambar()
+    h0 = cv2.cvtColor(im, cv2.COLOR_BGR2HSV)[..., 0].astype(int)
+    for nama, fn in ev.TERANG:
+        out = fn(im, np.random.default_rng(0))
+        h1 = cv2.cvtColor(out, cv2.COLOR_BGR2HSV)[..., 0].astype(int)
+        beda = np.abs((h1 - h0 + 90) % 180 - 90)
+        # Iluminan acak mengalikan tiap kanal berbeda, jadi ronanya bergeser
+        # sedikit; yang dilarang pergeseran BESAR seperti putaran hue.
+        assert np.median(beda) < 12, f"{nama} menggeser rona {np.median(beda)}"
+
+
+def test_perlakuan_rona_benar_benar_menggeser_rona():
+    im = _gambar()
+    h0 = cv2.cvtColor(im, cv2.COLOR_BGR2HSV)[..., 0].astype(int)
+    banyak = 0
+    for nama, fn in ev.RONA:
+        out = fn(im, np.random.default_rng(0))
+        h1 = cv2.cvtColor(out, cv2.COLOR_BGR2HSV)[..., 0].astype(int)
+        if np.median(np.abs((h1 - h0 + 90) % 180 - 90)) > 15:
+            banyak += 1
+    assert banyak >= 2, "kelompok RONA harus benar-benar memutar rona"
+
+
+# ============================================================
+# MODE DI RESEP DAN DI AUGMENTASI
+# ============================================================
+
+def test_mode_warna_mematikan_operasi_penggeser_rona():
+    """Dipaksa di satu tempat, bukan diserahkan ke orang yang mengisi form.
+
+    Mode `warna` dengan hue_sat yang tertinggal menyala adalah dataset yang
+    labelnya diam-diam salah: objek berwarna biru diberi label produk yang
+    kemasannya hijau.
+    """
+    r = mw.terap_ke_aug({"aug": {}}, mw.WARNA)
+    for oid in mw.OP_GESER_RONA:
+        assert r["aug"][oid]["aktif"] is False, oid
+
+
+def test_mode_warna_TIDAK_mematikan_operasi_terang():
+    """Ruang detektor tetap kadang terang kadang remang."""
+    r = mw.terap_ke_aug({"aug": {}}, mw.WARNA)
+    for oid in mw.OP_TERANG:
+        assert r["aug"].get(oid, {}).get("aktif") is not False, oid
+
+
+def test_mode_bentuk_tidak_mengubah_resep():
+    asal = {"aug": {"hue_sat": {"aktif": True}}, "volume": {"per_gambar": 3}}
+    assert mw.terap_ke_aug(asal, mw.BENTUK) == asal
+
+
+def test_mode_tersimpan_dan_terbaca_dari_resep():
+    r = mw.tulis_ke_resep({"volume": {"per_gambar": 2}}, mw.WARNA)
+    assert mw.dari_resep(r) == mw.WARNA
+    assert r["volume"] == {"per_gambar": 2}, "bagian lain resep tidak boleh hilang"
+    assert mw.dari_resep({}) == mw.BAWAAN
+
+
+def test_par_latih_berlawanan_antar_mode():
+    b, w = mw.par_latih(mw.BENTUK), mw.par_latih(mw.WARNA)
+    assert b["hsv_h"] == 0.030 and b["bgr"] == 0.10      # angka v14
+    assert w["hsv_h"] == 0.0 and w["bgr"] == 0.0         # rona dikunci
+    # hsv_v dibuka lebar di KEDUA mode: terang harus selalu jadi petunjuk
+    # yang tidak bisa diandalkan.
+    assert b["hsv_v"] == w["hsv_v"] == 0.50
+
+
+# ============================================================
+# KALIMAT DI LAYAR HARUS SESUAI KENYATAAN
+# ============================================================
+#
+# Halaman Training tidak lagi menampilkan hsv_h / hsv_s / hsv_v / bgr sebagai
+# angka; yang tersisa satu kalimat yang menjelaskan AKIBATNYA. Kalimat seperti
+# itu hanya berguna kalau benar, dan kalimat yang salah lebih buruk daripada
+# angka mentah — orang tidak bisa memeriksanya sendiri.
+#
+# Versi pertama kalimat itu SALAH, dan salahnya baru ketahuan setelah diukur:
+#   "saat melatih ... dalam warna-warna berbeda" -> padahal hsv_h 0,030 cuma
+#   menggeser rona 5,5 derajat rata-rata (terburuk 12 dari 360). Merah tetap
+#   merah. Yang benar-benar menggeser warna lebar adalah augmentasi VERSINYA,
+#   bukan setelan waktu-latih.
+#   "warnanya dibiarkan apa adanya" -> padahal kepekatan warnanya tetap
+#   berubah sekitar 20%.
+#
+# Tes ini mengukur pipeline yang sebenarnya dan menjatuhkan diri kalau
+# klaimnya berhenti benar.
+
+def _geser_rona(mode, bgr, n=60):
+    """Rata-rata pergeseran rona (derajat, dari 360) oleh augmentasi versi.
+
+    Gambarnya berwarna RATA satu bidang penuh. Itu bukan kemalasan: augmentasi
+    memutar, menggeser, dan memotong, jadi pada gambar berpetak-petak yang
+    terukur adalah perpindahan piksel, bukan perubahan warna. Dengan warna
+    rata, geometri tidak bisa mencemari pengukurannya.
+    """
+    import random
+
+    from app.services import olah, mode_warna as mw
+
+    im = np.full((192, 192, 3), bgr, np.uint8)
+    h0 = float(cv2.cvtColor(im, cv2.COLOR_BGR2HSV)[0, 0, 0])
+    pipa = olah.bangun_pipeline(mw.tulis_ke_resep({"volume": {"per_gambar": 1}},
+                                                  mode))
+    rng = random.Random(2)
+    kumpul = []
+    for _ in range(n):
+        hasil = olah.augmentasi_sekali(im, [], pipa, rng)
+        if hasil is None:
+            continue
+        hsv = cv2.cvtColor(hasil[0], cv2.COLOR_BGR2HSV)
+        # Piksel yang jadi nyaris kelabu atau gelap tidak punya rona yang
+        # bermakna; memasukkannya membuat angkanya jadi derau.
+        m = (hsv[..., 1] > 40) & (hsv[..., 2] > 40)
+        if m.sum() < 100:
+            continue
+        h1 = hsv[..., 0][m].astype(float)
+        kumpul.append(float(np.abs((h1 - h0 + 90) % 180 - 90).mean() * 2))
+    assert kumpul, "tidak ada satu pun hasil augmentasi yang terukur"
+    return float(np.mean(kumpul))
+
+
+@pytest.mark.parametrize("bgr", [(40, 40, 220), (60, 180, 60), (220, 80, 40)])
+def test_klaim_layar_sesuai_kenyataan_mode_bentuk(bgr):
+    """Layar berkata "digeser rata-rata sekitar 50 derajat". Buktikan."""
+    g = _geser_rona(mw.BENTUK, bgr)
+    assert 30 <= g <= 80, (
+        f"rona bergeser {g:.1f} derajat — kalimat di layar menyebut sekitar 50. "
+        "Perbarui kalimatnya atau setelannya, jangan biarkan berselisih.")
+
+
+@pytest.mark.parametrize("bgr", [(40, 40, 220), (60, 180, 60), (220, 80, 40)])
+def test_klaim_layar_sesuai_kenyataan_mode_warna(bgr):
+    """Layar berkata "ronanya praktis tidak digeser". Buktikan."""
+    g = _geser_rona(mw.WARNA, bgr)
+    assert g <= 12, (
+        f"rona bergeser {g:.1f} derajat di mode warna — layar menjanjikan "
+        "warna asli dipertahankan. Ada operasi penggeser rona yang lolos.")
+
+
+def test_selisih_kedua_mode_besar_dan_jelas():
+    """Kalau keduanya hampir sama, salah satu modenya tidak berfungsi.
+
+    Pernah terjadi saat mengukur pertama kali: keduanya terbaca ~80 derajat,
+    dan sempat terlihat seperti mode `warna` yang gagal. Yang keliru ternyata
+    pengukurannya — gambar ujinya berpetak-petak, jadi yang terukur
+    perpindahan piksel oleh rotasi dan crop, bukan perubahan warna.
+    """
+    b = _geser_rona(mw.BENTUK, (40, 40, 220))
+    w = _geser_rona(mw.WARNA, (40, 40, 220))
+    assert b > w * 4, f"bentuk {b:.1f} vs warna {w:.1f} — terlalu mirip"
+
+
+def test_setelan_waktu_latih_TIDAK_menggeser_rona_selebar_versinya():
+    """Penjaga bagi kesalahan kalimat yang pertama.
+
+    hsv_h 0,030 hanya menggeser rona ~5 derajat. Kalimat yang menyebut
+    "warna-warna berbeda" sambil menunjuk setelan WAKTU-LATIH akan salah,
+    berapa pun lebar augmentasi versinya.
+    """
+    from app.services import mode_warna as mw2
+
+    hg = mw2.par_latih(mw2.BENTUK)["hsv_h"]
+    # rumus Ultralytics: pergeseran = uniform(-1,1) * hgain * 180 (skala 0..180)
+    maks_derajat = hg * 180 * 2          # -> skala 0..360
+    assert maks_derajat < 15, (
+        f"hsv_h {hg} menggeser rona sampai {maks_derajat:.1f} derajat; "
+        "kalau ini dinaikkan, kalimat di layar harus ikut diperbarui")

@@ -121,6 +121,30 @@
           <p class="halus">Hanya pada data <b>train</b>, dan hanya menambah.
             Gambar aslinya tidak pernah diganti. Valid dan test tidak pernah
             diaugmentasi; kalau diaugmentasi, ia mengukur dirinya sendiri.</p>
+          {#- Mode warna ditaruh PALING ATAS di langkah ini, sebelum salinan
+              dan sebelum daftar operasi, karena ia menentukan mana dari
+              operasi di bawahnya yang boleh menyala sama sekali. Menaruhnya
+              di bawah akan membuat orang menyetel belasan saklar lebih dulu
+              lalu menemukan separuhnya dimatikan oleh pilihan ini. -#}
+          <div class="wz-mode" id="wz-mode">
+            <span class="menu-judul">Peran warna di projek ini</span>
+            <label class="wz-mode-p">
+              <input type="radio" name="wz-warna" value="bentuk" checked>
+              <span><b>Bentuk yang menentukan kelas</b>
+                <em>Warna sengaja dirusak supaya model belajar bentuk. Untuk
+                  botol / kaleng / tetra — sebuah botol tetap botol apa pun
+                  warnanya. Rona digeser lebar di augmentasi.</em></span>
+            </label>
+            <label class="wz-mode-p">
+              <input type="radio" name="wz-warna" value="warna">
+              <span><b>Warna bagian dari kelas</b>
+                <em>Rona dipertahankan; hanya terang yang divariasikan. Untuk
+                  pengenalan produk — warna kemasan yang membedakan satu SKU
+                  dari yang lain. Operasi penggeser rona dimatikan.</em></span>
+            </label>
+            <p class="wz-mode-ket" id="wz-mode-ket"></p>
+          </div>
+
           <label class="wz-salin">Salinan per gambar
             <input type="number" id="wz-salin" min="0" max="10" value="1"></label>
           <div class="op-daftar" id="wz-aug"></div>

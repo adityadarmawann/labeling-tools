@@ -274,6 +274,48 @@ def _aug_aktif(resep: dict, oid: str, bawaan: bool = True) -> bool:
 
 
 def periksa_warna(versi: dict, katalog_aug: dict | None = None) -> dict:
+    """Lihat _periksa_warna_bentuk / _periksa_warna_warna."""
+    from . import mode_warna as mw
+
+    resep = (versi or {}).get("resep") or {}
+    m = mw.dari_resep(resep)
+    if m == mw.WARNA:
+        return _periksa_warna_warna(resep, m)
+    return _periksa_warna_bentuk(versi, katalog_aug, m)
+
+
+def _periksa_warna_warna(resep: dict, m: str) -> dict:
+    """Mode `warna`: yang diperiksa justru KEBALIKANNYA.
+
+    Di sini rona adalah identitas kelasnya, jadi yang harus dipastikan bukan
+    "apakah warna sudah dibuka" melainkan "apakah warna sudah benar-benar
+    DIKUNCI". Operasi penggeser rona yang tertinggal menyala menghasilkan
+    dataset yang labelnya diam-diam salah.
+    """
+    from . import mode_warna as mw
+
+    aug = resep.get("aug") or {}
+    bocor = [o for o in mw.OP_GESER_RONA
+             if (aug.get(o) or {}).get("aktif") is not False]
+    saran = mw.par_latih(m)
+    if bocor:
+        # bangun_pipeline memaksanya mati, jadi ini tidak pernah sampai ke
+        # datasetnya — tetapi tetap dilaporkan supaya resepnya bisa dirapikan.
+        return {"dibuka": False, "mode": m, "tingkat": "ok", "saran": saran,
+                "op_nyala": bocor, "pelat": "",
+                "pesan": ("Mode warna: rona dipertahankan, jadi setelan "
+                          "waktu-latih mengunci hsv_h dan bgr. Operasi "
+                          "penggeser rona di resep (%s) diabaikan saat "
+                          "augmentasi." % ", ".join(bocor))}
+    return {"dibuka": False, "mode": m, "tingkat": "ok", "saran": saran,
+            "op_nyala": [], "pelat": "",
+            "pesan": ("Mode warna: warna kemasan adalah bagian dari kelasnya, "
+                      "jadi rona tidak digeser di augmentasi dan dikunci di "
+                      "waktu-latih (hsv_h 0, bgr 0). Yang tetap divariasikan "
+                      "hanya terang.")}
+
+
+def _periksa_warna_bentuk(versi: dict, katalog_aug: dict | None, m: str) -> dict:
     """Apakah setelan warna waktu-latih akan sejalan dengan versinya.
 
     Mengembalikan keterangan siap-tampil, bukan sekadar bool: yang perlu
@@ -292,8 +334,10 @@ def periksa_warna(versi: dict, katalog_aug: dict | None = None) -> dict:
     pelat = ((resep or {}).get("latar") or {}).get("mode") or ""
 
     dibuka = len(nyala) >= 2
+    from . import mode_warna as mw
+
     if dibuka:
-        saran = {k: PRESET_V14[k] for k in ("hsv_h", "hsv_s", "hsv_v", "bgr")}
+        saran = mw.par_latih(m)
         pesan = ("Versi ini dibuat dengan warna dibuka (%s). Setelan "
                  "waktu-latih di bawah mengikutinya." % ", ".join(nyala))
         tingkat = "ok"
@@ -301,7 +345,7 @@ def periksa_warna(versi: dict, katalog_aug: dict | None = None) -> dict:
         # Warna terkunci di sisi dataset. Membukanya di sini saja TIDAK
         # memperbaiki apa pun — v14 menyatakan keduanya harus sejalan — tetapi
         # menguncinya di kedua sisi persis keadaan v13 yang gagal 0 dari 7.
-        saran = {k: PRESET_V14[k] for k in ("hsv_h", "hsv_s", "hsv_v", "bgr")}
+        saran = mw.par_latih(m)
         pesan = ("Versi ini dibuat dengan augmentasi warna nyaris mati (%s). "
                  "Itu keadaan v13, yang melaporkan mAP50-95 0,9499 lalu gagal "
                  "0 dari 7 pada foto RVM sungguhan karena model memutuskan "
@@ -311,7 +355,7 @@ def periksa_warna(versi: dict, katalog_aug: dict | None = None) -> dict:
                  % (", ".join(nyala) if nyala else "tidak ada satu pun"))
         tingkat = "awas"
 
-    return {"dibuka": dibuka, "tingkat": tingkat, "pesan": pesan,
+    return {"dibuka": dibuka, "tingkat": tingkat, "pesan": pesan, "mode": m,
             "op_nyala": nyala, "pelat": pelat, "saran": saran}
 
 
@@ -631,6 +675,24 @@ def siapkan(ds, *, nama: str, versi_nomor: int, tugas: str, bobot: str,
     par_bersih, galat = _saring_par(par)
     if galat:
         raise ValueError("; ".join(galat))
+
+    # SETELAN WARNA DIPAKSA DARI MODENYA, apa pun yang dikirim pemanggil.
+    #
+    # Keempat angka ini (hsv_h, hsv_s, hsv_v, bgr) tidak lagi ditawarkan di
+    # form, dan tidak boleh bisa disetel dari luar sama sekali. Alasannya bukan
+    # kerapian: keempatnya harus SEJALAN dengan cara versinya diaugmentasi, dan
+    # kombinasi yang tidak sejalan menghasilkan model yang angkanya bagus lalu
+    # gagal di ruang detektor — itu persis kegagalan v13 (mAP50-95 0,9499, lalu
+    # benar 0 dari 7).
+    #
+    # Selama keempatnya jadi kotak isian, selalu ada jalan untuk memasang
+    # kombinasi yang salah: lewat permintaan yang dibuat sendiri, lewat batch
+    # yang disalin dari percobaan lain, atau lewat orang yang mengubah satu
+    # angka tanpa tahu pasangannya. Dipaksa di sini, jalan itu tertutup.
+    from . import mode_warna as mw
+
+    mode = mw.sah((warna or {}).get("mode"))
+    par_bersih.update(mw.par_latih(mode))
     if tugas not in TUGAS:
         raise ValueError(f"tugas harus salah satu dari {TUGAS}")
     isi = {

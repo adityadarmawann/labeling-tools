@@ -138,9 +138,21 @@ async def mulai(request: Request,
     if len(antrian) > 12:
         return {"ok": False, "error": "maksimal 12 training sekali kirim"}
 
-    warna = svc.periksa_warna(v, olah.katalog_json()["aug"])
+    kat = olah.katalog_json()["aug"]
     dibuat = []
     for satu in antrian:
+        # Mode boleh ditentukan per percobaan — itu yang membuat satu antrean
+        # bisa membandingkan "bergantung warna" lawan "tidak" dari versi yang
+        # sama. Kalau tidak disebut, dipakai mode versinya.
+        from ..services import mode_warna as mw
+
+        minta_mode = (satu.get("mode_warna") or "").strip().lower()
+        warna = svc.periksa_warna(v, kat)
+        if minta_mode in mw.MODE and minta_mode != warna.get("mode"):
+            warna = {**warna, "mode": minta_mode,
+                     "saran": mw.par_latih(minta_mode),
+                     "asal_versi": warna.get("mode"),
+                     "pesan": warna.get("pesan", "")}
         try:
             isi = await asyncio.to_thread(
                 svc.siapkan, d,

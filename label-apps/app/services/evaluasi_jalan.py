@@ -132,7 +132,14 @@ def main() -> int:
                 if c:
                     tally[c] = tally.get(c, 0) + 1
 
-        w = ev.nilai_warna(jawaban)
+        # Mode dibaca dari MANIFES TRAININGNYA, bukan dari versinya sekarang:
+        # versinya bisa saja sudah dibuat ulang dengan mode berbeda, dan yang
+        # menentukan cara model ini dinilai adalah mode yang berlaku saat ia
+        # dilatih.
+        from . import mode_warna as mw
+
+        mode = mw.sah((isi.get("warna") or {}).get("mode"))
+        w = ev.nilai_warna(jawaban, mode)
         a = ev.nilai_akurasi(pasangan)
         d = ev.nilai_default(tally, n_latar)
         hasil = {
@@ -141,6 +148,8 @@ def main() -> int:
             "detik": round(time.time() - t0, 1),
             "versi": versi, "n_foto": len(jawaban),
             "perlakuan": [n for n, _ in ev.PERLAKUAN],
+            "rona": list(ev.NAMA_RONA), "terang": list(ev.NAMA_TERANG),
+            "mode": mode, "mode_ket": mw.KETERANGAN[mode],
             "warna": w, "akurasi": a, "default": d,
             "sumber_latar": sumber_latar,
             "putusan": ev.putusan(w, a, d),
@@ -149,7 +158,9 @@ def main() -> int:
             "rinci": rinci[:60],
         }
         _tulis(ds, nomor, hasil)
-        print(f"\n  ketergantungan warna : {w['skor']}% ({w['tingkat']})")
+        print(f"\n  mode                 : {mode}")
+        print(f"  berubah karena rona  : {w['skor_rona']}%")
+        print(f"  berubah karena terang: {w['skor_terang']}%  ({w['tingkat']})")
         if a["n"]:
             print(f"  akurasi              : {a['benar']}/{a['n']} ({a['persen']}%)")
         print(f"  kelas default        : {d['tingkat']}")

@@ -928,6 +928,14 @@ def bangun_pipeline(resep: dict, sisi: tuple[int, int] | None = None):
     tidak disebut, diambil dari langkah Resize di resepnya.
     """
     A = _A()
+    # Mode warna diterapkan DI SINI, di pintu masuknya, bukan di tempat resep
+    # disusun. Dengan begitu tidak ada jalur mana pun yang bisa melewatinya:
+    # mode `warna` dengan hue_sat tertinggal menyala menghasilkan dataset yang
+    # labelnya diam-diam salah — objek biru diberi label produk berkemasan
+    # hijau — dan tidak ada yang menyadarinya sampai modelnya gagal.
+    from . import mode_warna as _mw
+
+    resep = _mw.terap_ke_aug(resep or {})
     aug = (resep or {}).get("aug") or {}
     if sisi is None:
         sisi = ukuran_keluaran(resep)

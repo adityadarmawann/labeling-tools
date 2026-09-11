@@ -255,7 +255,8 @@
   if (!wz) return;                       // bukan pemilik projek
 
   // ------------------------------------------------------------- keadaan
-  const resep = { pra: {}, aug: {}, fase: {}, volume: { per_gambar: 1 } };
+  const resep = { pra: {}, aug: {}, fase: {}, volume: { per_gambar: 1 },
+                  warna: { mode: 'bentuk' } };
   let katalog = null;
   let sumber = null;                     // hasil /api/versi/estimasi terakhir
 
@@ -267,6 +268,34 @@
     });
     if (n === 5) hitungPerkiraan();
   }
+  /* Mode warna. Begitu dipilih, operasi penggeser rona di daftar augmentasi
+     ditandai mati — bukan sekadar diabaikan diam-diam di server. Orang harus
+     melihat apa yang berubah karena pilihannya, bukan menemukannya nanti di
+     dataset yang sudah jadi. */
+  const OP_RONA = ['hue_sat', 'blackbody', 'iluminan', 'color_jitter',
+                   'grayscale', 'saturasi'];
+  function terapkanModeWarna() {
+    const dipilih = wz.querySelector('input[name="wz-warna"]:checked');
+    const m = dipilih ? dipilih.value : 'bentuk';
+    resep.warna = { mode: m };
+    const ket = document.getElementById('wz-mode-ket');
+    if (ket) {
+      ket.textContent = m === 'warna'
+        ? OP_RONA.length + ' operasi pengubah warna di bawah akan dimatikan. '
+          + 'Saat melatih nanti, warna asli juga dipertahankan.'
+        : 'Warna akan diacak lebar di sini dan juga saat melatih nanti, '
+          + 'supaya model tidak bisa menebak dari warna saja.';
+    }
+    // Tandai operasi yang dimatikan mode ini, supaya akibatnya terlihat.
+    wz.querySelectorAll('#wz-aug [data-op]').forEach((el) => {
+      const mati = (m === 'warna') && OP_RONA.includes(el.dataset.op);
+      el.toggleAttribute('data-mode-mati', mati);
+    });
+  }
+  wz.querySelectorAll('input[name="wz-warna"]').forEach((r) => {
+    r.addEventListener('change', terapkanModeWarna);
+  });
+
   wz.querySelectorAll('[data-lanjut]').forEach((b) => {
     b.onclick = () => buka(Number(b.closest('.wz-item').dataset.langkah) + 1);
   });
@@ -913,6 +942,11 @@
 
   // ------------------------------------------------------- langkah 5: buat
   function kumpulkanResep() {
+    // Dibaca ulang di sini, bukan cuma mengandalkan handler change: kalau
+    // radionya dipulihkan browser (muat ulang, kembali dari tab lain) tanpa
+    // memicu change, resep akan terkirim dengan mode yang sudah tidak sesuai
+    // dengan yang terlihat di layar.
+    terapkanModeWarna();
     resep.volume.per_gambar = Number(el('wz-salin').value) || 0;
     resep.fase = {
       crop_zoom: { aktif: el('wz-f-crop').checked },

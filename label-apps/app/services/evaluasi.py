@@ -105,33 +105,98 @@ def t_desat(im, rng):
     return cv2.cvtColor(h.astype(np.uint8), cv2.COLOR_HSV2BGR)
 
 
-PERLAKUAN = (
-    ("asli", t_asli),
+def t_redup(im, rng):
+    """Seluruh gambar diredupkan. Rona TIDAK berubah sama sekali."""
+    return np.clip(im.astype(np.float32) * 0.55, 0, 255).astype(np.uint8)
+
+
+def t_terang(im, rng):
+    """Kebalikannya. Juga tanpa menyentuh rona."""
+    return np.clip(im.astype(np.float32) * 1.45 + 12, 0, 255).astype(np.uint8)
+
+
+# Perlakuan dikelompokkan, dan pengelompokan inilah yang membuat satu alat
+# ukur bisa menilai DUA MODE dengan adil:
+#
+#   RONA     menggeser warnanya. Di mode `bentuk` jawaban yang berubah di sini
+#            BURUK — model memakai warna sebagai pintasan. Di mode `warna`
+#            justru WAJAR: rona memang identitas kelasnya, dan memutar rona
+#            sama saja dengan mengganti produknya.
+#
+#   TERANG   mengubah gelap-terang tanpa menyentuh rona. Jawaban yang berubah
+#            di sini BURUK di KEDUA MODE, tanpa kecuali. Ruang detektor kadang
+#            terang kadang remang, dan model yang kelasnya ikut berganti karena
+#            lampunya diredupkan tidak bisa dipakai di mana pun.
+#
+# Tanpa pemisahan ini, mode `warna` tidak bisa dinilai sama sekali: seluruh
+# skornya akan tinggi karena rona memang sengaja jadi petunjuk, dan kerapuhan
+# yang sesungguhnya — terhadap terang — tenggelam di dalamnya.
+RONA = (
     ("grayscale", t_grayscale),
-    ("iluminan acak", t_iluminan),
     ("hue +40", t_hue40),
     ("hue +90", t_hue90),
     ("saturasi x0.3", t_desat),
 )
+TERANG = (
+    ("iluminan acak", t_iluminan),
+    ("diredupkan", t_redup),
+    ("diterangkan", t_terang),
+)
+PERLAKUAN = (("asli", t_asli),) + RONA + TERANG
+
+NAMA_RONA = tuple(n for n, _ in RONA)
+NAMA_TERANG = tuple(n for n, _ in TERANG)
 
 
 # ============================================================
 # PENILAIAN
 # ============================================================
 
-def nilai_warna(jawaban_per_gambar: list[list[str]]) -> dict:
-    """Berapa persen gambar yang kelasnya BERUBAH hanya karena warna.
+def _goyah(vals, indeks) -> bool:
+    """Jawabannya berbeda-beda di antara perlakuan yang dipilih?
 
-    `jawaban_per_gambar` satu daftar per gambar, berisi kelas yang diprediksi
-    untuk tiap perlakuan, urutannya sama dengan PERLAKUAN.
+    `asli` SELALU ikut dibandingkan: yang ditanyakan bukan "apakah keempat
+    perlakuan ini saling setuju" melainkan "apakah perlakuan ini mengubah
+    jawaban model dari jawaban aslinya".
+    """
+    dipakai = [vals[0]] + [vals[i] for i in indeks if i < len(vals)]
+    ada = [v for v in dipakai if v is not None]
+    if not ada:
+        return False
+    return len(set(dipakai)) > 1
+
+
+def nilai_warna(jawaban_per_gambar: list[list[str]], mode: str = None) -> dict:
+    """Seberapa jauh jawaban model bergantung pada warna — dinilai per MODE.
+
+    `jawaban_per_gambar` satu daftar per gambar, urutannya sama dengan
+    PERLAKUAN (asli, lalu RONA, lalu TERANG).
+
+    Dua angka dihitung terpisah, dan itu inti rancangannya:
+
+      skor_rona     berapa persen gambar yang jawabannya berubah ketika
+                    RONANYA digeser. Di mode `bentuk` ini yang dinilai; di
+                    mode `warna` ia dilaporkan tetapi TIDAK dijadikan vonis.
+
+      skor_terang   berapa persen yang berubah ketika hanya TERANGNYA yang
+                    berubah. Dinilai di KEDUA mode, tanpa kecuali.
 
     Yang dihitung PERUBAHAN, bukan kebenaran — sengaja. Model yang konsisten
     salah tetap lebih bisa dipercaya daripada model yang jawabannya berganti
     mengikuti lampu: yang pertama bisa diperbaiki dengan data, yang kedua
     akan terus berganti-ganti di produksi tanpa pola.
     """
-    total = berubah = kosong = 0
-    goyah: list[int] = []
+    from . import mode_warna as mw
+
+    m = mw.sah(mode)
+    nama = [n for n, _ in PERLAKUAN]
+    i_rona = [nama.index(n) for n in NAMA_RONA if n in nama]
+    i_terang = [nama.index(n) for n in NAMA_TERANG if n in nama]
+
+    total = kosong = 0
+    b_rona = b_terang = 0
+    goyah_rona: list[int] = []
+    goyah_terang: list[int] = []
     for i, vals in enumerate(jawaban_per_gambar):
         if not vals:
             continue
@@ -142,47 +207,88 @@ def nilai_warna(jawaban_per_gambar: list[list[str]]) -> dict:
         if all(v is None for v in vals):
             kosong += 1
             continue
-        # Sebaliknya, gambar yang jawaban ASLINYA kosong tetapi terdeteksi di
-        # perlakuan warna lain IKUT DIHITUNG. Itu justru bentuk ketergantungan
-        # warna yang paling telanjang: model hanya melihat objeknya di bawah
-        # warna tertentu. eval-produksi-v14.py melewatkannya (`if vals[0] ==
-        # "-": continue`), dan pada model yang belum terlatih hal itu membuat
-        # skornya jadi 0/0 lalu dilaporkan "baik" — jaminan yang palsu.
         total += 1
-        if len(set(vals)) > 1:
-            berubah += 1
-            goyah.append(i)
+        # Gambar yang jawaban ASLINYA kosong tetapi terdeteksi di perlakuan
+        # lain IKUT DIHITUNG. Itu bentuk ketergantungan warna yang paling
+        # telanjang: model hanya melihat objeknya di bawah warna tertentu.
+        # eval-produksi-v14.py melewatkannya (`if vals[0] == "-": continue`),
+        # dan pada model yang belum terlatih hal itu membuat skornya 0/0 lalu
+        # dilaporkan "baik" — jaminan yang palsu.
+        if _goyah(vals, i_rona):
+            b_rona += 1
+            goyah_rona.append(i)
+        if _goyah(vals, i_terang):
+            b_terang += 1
+            goyah_terang.append(i)
+
     n_semua = total + kosong
-    skor = 100.0 * berubah / total if total else 0.0
+    s_rona = 100.0 * b_rona / total if total else 0.0
+    s_terang = 100.0 * b_terang / total if total else 0.0
+
+    dasar = {"total": total, "kosong": kosong,
+             "skor_rona": round(s_rona, 1), "skor_terang": round(s_terang, 1),
+             "berubah_rona": b_rona, "berubah_terang": b_terang,
+             "goyah": sorted(set(goyah_rona) | set(goyah_terang)),
+             "goyah_rona": goyah_rona, "goyah_terang": goyah_terang,
+             "mode": m}
 
     # Terlalu sedikit deteksi berarti skornya tidak bermakna, berapa pun
     # angkanya. Dikatakan apa adanya, karena lencana hijau "baik" pada model
     # yang tidak mendeteksi apa pun jauh lebih berbahaya daripada tidak ada
     # angka sama sekali.
     if n_semua and total < max(3, n_semua * 0.3):
-        return {"total": total, "berubah": berubah, "kosong": kosong,
-                "skor": round(skor, 1), "tingkat": "tak-terukur",
-                "goyah": goyah,
+        return {**dasar, "skor": round(s_rona, 1), "berubah": b_rona,
+                "tingkat": "tak-terukur",
                 "pesan": (f"Model tidak mendeteksi apa pun pada {kosong} dari "
                           f"{n_semua} foto uji, jadi ketergantungan warnanya "
                           "tidak bisa diukur. Yang perlu diperbaiki lebih dulu "
                           "kemampuan mendeteksinya — latih lebih lama atau "
                           "periksa apakah versinya cocok dengan tugasnya.")}
-    if skor >= AMBANG_BURUK:
+
+    # Kerapuhan terhadap TERANG selalu buruk, mode apa pun. Diperiksa lebih
+    # dulu karena ia lebih menentukan: model yang berganti kelas saat lampunya
+    # diredupkan tidak bisa dipakai di ruang detektor mana pun.
+    if s_terang >= AMBANG_BURUK:
+        return {**dasar, "skor": round(s_terang, 1), "berubah": b_terang,
+                "tingkat": "buruk",
+                "pesan": (f"{b_terang} dari {total} gambar berganti kelas "
+                          "hanya karena TERANGNYA diubah — rona tidak "
+                          "disentuh sama sekali. Ini rapuh di mode mana pun: "
+                          "ruang detektor kadang terang kadang remang.")}
+
+    if m == mw.WARNA:
+        # Mode `warna`: rona memang identitas kelasnya. Jawaban yang berubah
+        # saat rona diputar bukan kegagalan — itu justru yang diminta.
+        if s_terang >= AMBANG_SEDANG:
+            tingkat, pesan = "sedang", (
+                f"Rona boleh menentukan kelas di mode ini, dan memang begitu "
+                f"({s_rona:.0f}%). Tetapi {b_terang} dari {total} gambar juga "
+                "berganti kelas hanya karena terangnya berubah, dan itu tetap "
+                "harus diperbaiki.")
+        else:
+            tingkat, pesan = "baik", (
+                f"Model memakai rona sebagai petunjuk ({s_rona:.0f}% berubah "
+                "saat rona diputar) — memang itu yang diminta di mode ini — "
+                "dan tetap stabil ketika hanya terangnya yang berubah "
+                f"({s_terang:.0f}%).")
+        return {**dasar, "skor": round(s_rona, 1), "berubah": b_rona,
+                "tingkat": tingkat, "pesan": pesan}
+
+    # Mode `bentuk`: ini kasus v14, dan rona TIDAK boleh menentukan apa pun.
+    if s_rona >= AMBANG_BURUK:
         tingkat, pesan = "buruk", (
             "Model memutuskan lewat warna, bukan bentuk. Ia akan gagal begitu "
             "lampu ruang detektor berbeda dari lampu saat pemotretan — persis "
             "yang terjadi pada v13.")
-    elif skor >= AMBANG_SEDANG:
+    elif s_rona >= AMBANG_SEDANG:
         tingkat, pesan = "sedang", (
             "Masih ada sisa ketergantungan warna. Periksa apakah augmentasi "
             "warna benar-benar menyala di versinya DAN di setelan trainingnya.")
     else:
         tingkat, pesan = "baik", (
             "Keputusan model stabil terhadap perubahan warna.")
-    return {"total": total, "berubah": berubah, "kosong": kosong,
-            "skor": round(skor, 1), "tingkat": tingkat, "pesan": pesan,
-            "goyah": goyah}
+    return {**dasar, "skor": round(s_rona, 1), "berubah": b_rona,
+            "tingkat": tingkat, "pesan": pesan}
 
 
 def nilai_default(tally: dict[str, int], n_latar: int) -> dict:
@@ -226,17 +332,20 @@ def putusan(warna: dict, akurasi: dict | None, default: dict) -> dict:
     Dasarnya kalimat penutup eval-produksi-v14.py sendiri: "v14 berhasil kalau
     AKURASI naik DAN ketergantungan warna turun. Kalau akurasi naik tapi
     ketergantungan warna tetap tinggi, perbaikannya rapuh dan akan gagal lagi
-    saat lampu berubah."
+    saat lampu berubah." — dengan satu tambahan yang tidak ada di v14: apa
+    yang dianggap "ketergantungan warna yang buruk" bergantung pada MODE
+    projeknya.
     """
+    # .get, bukan [] : fungsi kesimpulan tidak boleh jatuh karena satu medan
+    # keterangan tidak ada. Yang menentukan `tingkat`, dan itu selalu ada.
+    ket = warna.get("pesan") or ""
     if warna["tingkat"] == "tak-terukur":
         return {"tingkat": "buruk", "pesan":
-                "Belum bisa dinilai: model ini nyaris tidak mendeteksi apa pun "
-                "pada foto uji. " + warna["pesan"]}
+                ("Belum bisa dinilai: model ini nyaris tidak mendeteksi apa "
+                 "pun pada foto uji. " + ket).strip()}
     if warna["tingkat"] == "buruk":
-        return {"tingkat": "buruk", "pesan":
-                "JANGAN dikirim ke produksi. Ketergantungan warna "
-                f"{warna['skor']:.0f}% — model ini memutuskan lewat warna, dan "
-                "angka akurasinya tidak bermakna di ruang berlampu lain."}
+        return {"tingkat": "buruk",
+                "pesan": ("JANGAN dikirim ke produksi. " + ket).strip()}
     if default["tingkat"] == "buruk":
         return {"tingkat": "buruk", "pesan":
                 f"Hati-hati. `{default.get('teratas')}` jadi jawaban default "
@@ -244,16 +353,15 @@ def putusan(warna: dict, akurasi: dict | None, default: dict) -> dict:
                 "fiturnya ambigu."}
     if warna["tingkat"] == "sedang" or default["tingkat"] == "sedang":
         return {"tingkat": "sedang", "pesan":
-                "Layak diuji lebih lanjut, tetapi belum bersih. Perbaiki sisa "
-                "ketergantungan warnanya sebelum dipakai di produksi."}
+                ("Layak diuji lebih lanjut, tetapi belum bersih. " + ket).strip()}
     if akurasi and akurasi["n"] and akurasi["persen"] < 70:
         return {"tingkat": "sedang", "pesan":
-                f"Keputusannya stabil terhadap warna, tetapi akurasinya baru "
+                f"Keputusannya stabil, tetapi akurasinya baru "
                 f"{akurasi['persen']:.0f}%. Yang kurang datanya, bukan "
                 "setelannya."}
     return {"tingkat": "baik", "pesan":
-            "Keputusan model stabil terhadap warna dan tidak punya kelas "
-            "pelarian. Ini yang dituju v14."}
+            "Model stabil terhadap perubahan yang seharusnya tidak mengubah "
+            "jawabannya, dan tidak punya kelas pelarian."}
 
 
 # ============================================================
