@@ -562,3 +562,83 @@ def test_setelan_waktu_latih_TIDAK_menggeser_rona_selebar_versinya():
     assert maks_derajat < 15, (
         f"hsv_h {hg} menggeser rona sampai {maks_derajat:.1f} derajat; "
         "kalau ini dinaikkan, kalimat di layar harus ikut diperbarui")
+
+
+# ============================================================
+# SAKLAR AUGMENTASI BENAR-BENAR MENGIKUTI MODENYA
+# ============================================================
+#
+# Pilihan mode di wizard versi harus MENYETEL saklar augmentasinya, bukan
+# sekadar menandainya. Versi pertama hanya menambahkan penanda visual, dan
+# penanda itu tidak pernah mengenai apa pun: operasi yang mati memang tidak
+# dirender sama sekali di daftar. Akibatnya pilihan mode terlihat sudah jalan
+# padahal resep yang terkirim tetap membawa keenam operasi penggeser rona
+# dalam keadaan menyala.
+#
+# Di sisi server, bangun_pipeline tetap memaksanya mati — jadi datasetnya
+# tidak pernah salah. Yang salah adalah APA YANG DILIHAT ORANG: daftar
+# langkah yang berselisih dengan pilihannya sendiri.
+
+def test_resep_mode_warna_mematikan_enam_langkah_rona():
+    from app.services import olah
+
+    kat = olah.katalog_json()["aug"]
+    r = mw.terap_ke_aug({"aug": {}}, mw.WARNA)
+    mati = [o for o in mw.OP_GESER_RONA if r["aug"][o]["aktif"] is False]
+    assert len(mati) == 6, f"cuma {len(mati)} yang dimatikan: {mati}"
+    # Keenamnya memang ada di katalog — kalau ada yang berganti nama, daftarnya
+    # harus ikut diperbarui, dan di sinilah ketahuannya.
+    for o in mw.OP_GESER_RONA:
+        assert o in kat, f"{o} tidak ada di katalog augmentasi"
+
+
+def test_mode_bentuk_mengembalikan_bawaan_katalog():
+    """Berpindah mode harus bisa bolak-balik, bukan pintu satu arah.
+
+    Yang dituntut BUKAN "semuanya menyala": sebagian operasi memang
+    bawaan_aktif=False di katalog (saturasi, eksposur) dan harus tetap mati.
+    Yang dituntut adalah mode `bentuk` tidak meninggalkan satu pun paksaan
+    mati — bawaan katalog kembali berlaku sepenuhnya.
+    """
+    r = mw.terap_ke_aug({"aug": {}}, mw.WARNA)
+    for o in mw.OP_GESER_RONA:
+        assert r["aug"][o]["aktif"] is False
+
+    # Wizard membuang entri paksaannya saat kembali ke mode bentuk.
+    kembali = {"aug": {k: v for k, v in r["aug"].items()
+                       if k not in mw.OP_GESER_RONA}}
+    hasil = mw.terap_ke_aug(kembali, mw.BENTUK)
+    for o in mw.OP_GESER_RONA:
+        assert o not in hasil["aug"], (
+            f"{o} masih membawa paksaan dari mode warna — bawaan katalognya "
+            "tidak bisa berlaku lagi")
+
+
+def test_mode_warna_tidak_memaksa_mati_langkah_terang():
+    """Ruang detektor tetap kadang terang kadang remang, mode apa pun.
+
+    Yang diperiksa: mode ini tidak MENAMBAHKAN paksaan mati pada langkah
+    terang. Apakah sebuah langkah menyala atau tidak tetap ditentukan katalog
+    dan pilihan orang — eksposur misalnya memang bawaan_aktif=False dan itu
+    bukan urusan mode warna.
+    """
+    r = mw.terap_ke_aug({"aug": {}}, mw.WARNA)
+    for o in mw.OP_TERANG:
+        assert o not in r["aug"], (
+            f"{o} disentuh mode warna padahal ia cuma mengubah terang")
+
+
+def test_daftar_operasi_rona_cocok_dengan_katalog():
+    """Kalau ada operasi yang berganti nama, di sinilah ketahuannya.
+
+    Daftar OP_GESER_RONA ditulis tangan; nama yang meleset membuat operasi
+    penggeser rona lolos diam-diam di mode warna, dan datasetnya jadi salah
+    tanpa ada yang tahu.
+    """
+    from app.services import olah
+
+    kat = olah.katalog_json()["aug"]
+    for o in mw.OP_GESER_RONA:
+        assert o in kat, f"OP_GESER_RONA menyebut `{o}` yang tidak ada di katalog"
+    for o in mw.OP_TERANG:
+        assert o in kat, f"OP_TERANG menyebut `{o}` yang tidak ada di katalog"

@@ -274,23 +274,45 @@
      dataset yang sudah jadi. */
   const OP_RONA = ['hue_sat', 'blackbody', 'iluminan', 'color_jitter',
                    'grayscale', 'saturasi'];
-  function terapkanModeWarna() {
+  function terapkanModeWarna(gambarUlang = true) {
     const dipilih = wz.querySelector('input[name="wz-warna"]:checked');
     const m = dipilih ? dipilih.value : 'bentuk';
+    const berubah = (resep.warna || {}).mode !== m;
     resep.warna = { mode: m };
+
+    /* Saklarnya BENAR-BENAR disetel, bukan sekadar ditandai.
+       Versi pertama cuma menambahkan penanda visual pada barisnya, dan itu
+       tidak berpengaruh apa pun: operasi yang mati memang TIDAK dirender
+       sama sekali di daftar ini, jadi penandanya tidak pernah mengenai apa-
+       apa. Akibatnya pilihan mode terlihat "sudah jalan" padahal resep yang
+       dikirim tetap membawa keenam operasi penggeser rona dalam keadaan
+       menyala.
+
+       Keenamnya DIMILIKI mode ini: memilih "warna" mematikannya, memilih
+       "bentuk" mengembalikannya ke bawaan katalog. Menyerahkannya setengah-
+       setengah ke orang berarti membuka kombinasi yang tidak konsisten —
+       mode warna dengan hue_sat menyala menghasilkan dataset yang labelnya
+       diam-diam salah. */
+    if (berubah) {
+      OP_RONA.forEach((oid) => {
+        if (!katalog || !katalog.aug || !katalog.aug[oid]) return;
+        if (m === 'warna') {
+          resep.aug[oid] = { ...(resep.aug[oid] || {}), aktif: false };
+        } else {
+          delete resep.aug[oid];          // kembali ke bawaan katalog
+        }
+      });
+      if (gambarUlang && katalog) gambarOperasi();
+    }
+
     const ket = document.getElementById('wz-mode-ket');
     if (ket) {
       ket.textContent = m === 'warna'
-        ? OP_RONA.length + ' operasi pengubah warna di bawah akan dimatikan. '
+        ? OP_RONA.length + ' langkah pengubah warna dimatikan di daftar bawah. '
           + 'Saat melatih nanti, warna asli juga dipertahankan.'
-        : 'Warna akan diacak lebar di sini dan juga saat melatih nanti, '
-          + 'supaya model tidak bisa menebak dari warna saja.';
+        : OP_RONA.length + ' langkah pengubah warna dinyalakan di daftar bawah. '
+          + 'Warna diacak lebar di sini dan juga saat melatih nanti.';
     }
-    // Tandai operasi yang dimatikan mode ini, supaya akibatnya terlihat.
-    wz.querySelectorAll('#wz-aug [data-op]').forEach((el) => {
-      const mati = (m === 'warna') && OP_RONA.includes(el.dataset.op);
-      el.toggleAttribute('data-mode-mati', mati);
-    });
   }
   wz.querySelectorAll('input[name="wz-warna"]').forEach((r) => {
     r.addEventListener('change', terapkanModeWarna);
@@ -314,6 +336,12 @@
     wz.hidden = false;
     buka(1);
     if (!katalog) katalog = await fetch('/api/versi/katalog').then((r) => r.json());
+    // Modenya diterapkan SEBELUM daftar digambar: kalau tidak, wizard yang
+    // dibuka ulang dengan mode `warna` masih menampilkan keenam langkah
+    // penggeser rona menyala, dan orang melihat daftar yang berselisih
+    // dengan pilihannya sendiri.
+    resep.warna = { mode: 'tidak-ada' };      // paksa dianggap berubah
+    terapkanModeWarna(false);
     gambarOperasi();
     await muatSumber();
     window.scrollTo({ top: 0, behavior: 'smooth' });
