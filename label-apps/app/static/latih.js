@@ -119,7 +119,7 @@
     const sel = $('tr-versi');
     const siap = BAHAN.versi.filter((v) => v.siap);
     if (!siap.length) {
-      sel.innerHTML = '<option value="">— belum ada versi yang bisa dilatih —</option>';
+      sel.innerHTML = '<option value="">(belum ada versi yang bisa dilatih)</option>';
       $('tr-versi-ket').textContent =
         'Buat versi lebih dulu di halaman Versi. Training memakai pembagian '
         + 'train/valid/test yang sudah dibekukan di sana, bukan isi dataset mentah.';
@@ -128,7 +128,7 @@
     sel.innerHTML = siap.map((v) => {
       const j = v.jumlah || {};
       const n = (j.train || 0) + (j.valid || 0) + (j.test || 0);
-      return `<option value="${v.nomor}">v${v.nomor} — ${angka(n)} gambar`
+      return `<option value="${v.nomor}">v${v.nomor}, ${angka(n)} gambar`
            + `${v.catatan ? ' · ' + esc(v.catatan.slice(0, 40)) : ''}</option>`;
     }).join('');
     sel.onchange = pilihVersi;
@@ -207,7 +207,7 @@
     if (mustahil) {
       pesan = `Versi v${n} dibuat dengan warnanya diacak lebar, jadi warna asli `
         + 'sudah hilang dari datanya. Melatih model yang bergantung warna dari '
-        + 'versi ini tidak akan berhasil — buat versi baru dengan pilihan '
+        + 'versi ini tidak akan berhasil. Buat versi baru dengan pilihan '
         + '"Warna ikut menentukan" di langkah Augmentasi.';
     } else if (beda) {
       pesan = `Versi v${n} dibuat dengan warna dipertahankan, tetapi model ini `
@@ -230,11 +230,11 @@
        kalimat yang cuma menyebut "saat melatih" akan menyesatkan. Dijaga
        test_klaim_layar_sesuai_kenyataan di tests/test_evaluasi.py. */
     $('tr-warna-nilai').textContent = m === 'warna'
-      ? 'Warna asli dipertahankan — ronanya praktis tidak digeser. Yang '
+      ? 'Warna asli dipertahankan, ronanya praktis tidak digeser. Yang '
         + 'divariasikan gelap-terangnya (0,5x sampai 1,2x) dan sedikit '
         + 'kepekatan warnanya, supaya model tetap tahan saat lampu berubah.'
-      : 'Objek yang sama akan dilihat model dalam banyak warna berbeda — '
-        + 'ronanya digeser rata-rata sekitar 50 derajat dari 360, dan pada 1 '
+      : 'Objek yang sama akan dilihat model dalam banyak warna berbeda. '
+        + 'Ronanya digeser rata-rata sekitar 50 derajat dari 360, dan pada 1 '
         + 'dari 10 gambar merah dan biru ditukar. Warna jadi tidak bisa '
         + 'diandalkan, sehingga model terpaksa belajar bentuknya.';
   }
@@ -266,8 +266,8 @@
   function gambarAntrean() {
     const d = $('tr-batch-daftar');
     if (!ANTREAN.length) {
-      d.innerHTML = '<span class="tr-diam">belum ada yang diantrekan — '
-        + '"Jalankan" akan memakai setelan di atas apa adanya</span>';
+      d.innerHTML = '<span class="tr-diam">Belum ada yang diantrekan. '
+        + 'Tombol Jalankan akan memakai setelan di atas apa adanya.</span>';
       return;
     }
     d.innerHTML = ANTREAN.map((x, i) => `
@@ -307,65 +307,102 @@
     ).join('');
   }
 
+  /* Kartu yang SEDANG BERJALAN. Bahasa tata letaknya sengaja sama persis
+     dengan kartu hasil (tiga pita: identitas, angka, tindakan) supaya sebuah
+     training tidak berubah bentuk hanya karena ia selesai. Bedanya cuma dua:
+     ada bilah kemajuan, dan angka besarnya adalah PERSENNYA, bukan metrik.
+
+     Persen yang jadi angka besar, bukan mAP: selagi berjalan yang ditanyakan
+     orang "masih lama atau tidak", bukan "sudah sebagus apa". mAP-nya tetap
+     ada di deretan pendukung. */
   function kartuJalan(t) {
     const pj = Math.max(0, Math.min(100, t.persen || 0));
+    const m = t.metrik || {};
+    const mk = Object.keys(m).slice(0, 2);
     return `<article class="tr-kartu tr-kartu-jalan" data-nomor="${t.nomor}">
-      <div class="tr-kartu-atas">
-        <b class="tr-kartu-nama">${esc(t.nama)}</b>
+      <header class="tr-k-atas">
+        <b class="tr-k-nama">${esc(t.nama)}</b>
         <span class="tr-pil tr-pil-${esc(t.keadaan)}">${LABEL_KEADAAN[t.keadaan] || t.keadaan}</span>
         <span class="spacer"></span>
-        <span class="tr-kartu-sub">dari v${t.versi} · ${esc(t.tugas)}</span>
+        <span class="tr-k-meta">L${t.nomor}<i>dari</i>v${t.versi}<i>oleh</i>${esc(t.oleh || '?')}</span>
+      </header>
+
+      <div class="tr-bar" role="progressbar" aria-valuenow="${pj.toFixed(0)}"
+           aria-valuemin="0" aria-valuemax="100"><i style="width:${pj}%"></i></div>
+
+      <div class="tr-k-isi">
+        <div class="tr-skor">
+          <b>${angka(pj, 0)}<span>%</span></b>
+          <i>epoch ${angka(t.epoch)} dari ${angka(t.epochs)}</i>
+        </div>
+        <dl class="tr-k-angka">
+          <div><dt>Terpakai</dt><dd>${durasi(t.detik)}</dd></div>
+          <div><dt>Perkiraan sisa</dt><dd>${t.sisa ? durasi(t.sisa) : '&mdash;'}</dd></div>
+          ${mk.map((k) => `<div><dt>${esc(k)}</dt>
+            <dd>${angka(m[k] * 100, 1)}%</dd></div>`).join('')}
+        </dl>
       </div>
-      <div class="tr-bar"><i style="width:${pj}%"></i></div>
-      <div class="tr-kartu-angka">
-        <span><i>Epoch</i><b>${angka(t.epoch)} / ${angka(t.epochs)}</b></span>
-        <span><i>Terpakai</i><b>${durasi(t.detik)}</b></span>
-        <span><i>Perkiraan sisa</i><b>${t.sisa ? durasi(t.sisa) : '—'}</b></span>
-        <span><i>Kemajuan</i><b>${angka(pj, 1)}%</b></span>
-      </div>
-      <div class="tr-kartu-metrik">${barisMetrik(t.metrik)}</div>
-      <div class="tr-kartu-aksi">
-        <button class="chip" type="button" data-rinci="${t.nomor}">Rincian</button>
+
+      <footer class="tr-k-aksi">
+        <button class="chip chip-utama" type="button" data-rinci="${t.nomor}">Rincian</button>
+        <span class="spacer"></span>
         ${bolehKelola ? `<button class="chip chip-bahaya" type="button"
             data-batal="${t.nomor}">Hentikan</button>` : ''}
-      </div>
+      </footer>
     </article>`;
   }
 
+  /* Kartu hasil. Tata letaknya tiga pita mendatar, bukan tumpukan menurun:
+     kartunya selebar 1.300px dan versi sebelumnya memakai seperempatnya saja,
+     sehingga seluruh isinya menumpuk di kiri dan sisanya kosong melompong.
+
+     Satu angka besar saja yang jadi kepala berita, dan label angka itu TIDAK
+     diulang lagi di deretan bawahnya. Versi sebelumnya menampilkan
+     "mAP50-95 mask" dua kali, di dua ukuran berbeda, pada kartu yang sama. */
   function kartuHasil(t) {
     const terbaik = t.terbaik || {};
-    const utama = t.utama && terbaik[t.utama] !== undefined
-      ? `<span class="tr-skor"><i>${esc(t.utama)}</i>
-           <b>${angka(terbaik[t.utama] * 100, 1)}%</b></span>` : '';
+    const utama = t.utama && terbaik[t.utama] !== undefined ? t.utama : null;
     const rusak = ['gagal', 'hilang'].includes(t.keadaan);
+    // Metrik pendukung: yang utama dibuang supaya tidak muncul dua kali.
+    const lain = Object.keys(terbaik).filter((k) => k !== utama).slice(0, 3);
+
     return `<article class="tr-kartu" data-nomor="${t.nomor}">
-      <div class="tr-kartu-atas">
-        <b class="tr-kartu-nama">${esc(t.nama)}</b>
+      <header class="tr-k-atas">
+        <b class="tr-k-nama">${esc(t.nama)}</b>
         <span class="tr-pil tr-pil-${esc(t.keadaan)}">${LABEL_KEADAAN[t.keadaan] || t.keadaan}</span>
         <span class="spacer"></span>
-        <span class="tr-kartu-sub">L${t.nomor} · dari v${t.versi} ·
-          ${esc(t.dibuat || '')}</span>
-      </div>
-      ${utama}
-      <div class="tr-kartu-metrik">${rusak
-        ? `<span class="tr-galat-kecil">${esc(t.galat || 'berhenti tanpa keterangan')}</span>`
-        : barisMetrik(terbaik)}</div>
-      <div class="tr-kartu-angka">
-        <span><i>Epoch</i><b>${angka(t.epoch)} / ${angka(t.epochs)}</b></span>
-        <span><i>Lama</i><b>${durasi(t.detik)}</b></span>
-        <span><i>Oleh</i><b>${esc(t.oleh || '—')}</b></span>
-      </div>
-      <div class="tr-kartu-aksi">
-        <button class="chip" type="button" data-rinci="${t.nomor}">Rincian</button>
-        ${t.punya_bobot && bolehKelola ? `<button class="chip chip-uji" type="button"
+        <span class="tr-k-meta">L${t.nomor}<i>dari</i>v${t.versi}<i>oleh</i>${esc(t.oleh || '?')}
+          <i>pada</i>${esc(t.dibuat || '')}</span>
+      </header>
+
+      ${rusak ? `<p class="tr-k-galat">${esc(t.galat || 'berhenti tanpa keterangan')}</p>`
+        : `<div class="tr-k-isi">
+        ${utama ? `<div class="tr-skor">
+          <b>${angka(terbaik[utama] * 100, 1)}<span>%</span></b>
+          <i>${esc(utama)}</i>
+        </div>` : '<div class="tr-skor tr-skor-kosong"><b>&mdash;</b><i>belum ada metrik</i></div>'}
+        <dl class="tr-k-angka">
+          ${lain.map((k) => `<div><dt>${esc(k)}</dt>
+            <dd>${angka(terbaik[k] * 100, 1)}%</dd></div>`).join('')}
+          <div><dt>Epoch</dt><dd>${angka(t.epoch)} / ${angka(t.epochs)}</dd></div>
+          <div><dt>Lama</dt><dd>${durasi(t.detik)}</dd></div>
+        </dl>
+      </div>`}
+
+      <footer class="tr-k-aksi">
+        <button class="chip chip-utama" type="button" data-rinci="${t.nomor}">Rincian</button>
+        ${t.punya_bobot && bolehKelola ? `<button class="chip" type="button"
             data-uji="${t.nomor}">Uji produksi</button>` : ''}
-        ${t.punya_bobot ? `<a class="chip" href="/latih/bobot?nomor=${t.nomor}&jenis=best"
-            download title="Bobot dengan metrik terbaik selama training">Unduh best.pt</a>
-          <a class="chip" href="/latih/bobot?nomor=${t.nomor}&jenis=last"
-            download title="Bobot dari epoch terakhir — dipakai kalau mau melanjutkan training">Unduh last.pt</a>` : ''}
+        ${t.punya_bobot ? `<span class="tr-unduh">Unduh
+          <a class="chip" href="/latih/bobot?nomor=${t.nomor}&jenis=best" download
+             title="Bobot dengan metrik terbaik selama training">best.pt</a>
+          <a class="chip" href="/latih/bobot?nomor=${t.nomor}&jenis=last" download
+             title="Bobot epoch terakhir, untuk melanjutkan training">last.pt</a>
+        </span>` : ''}
+        <span class="spacer"></span>
         ${bolehKelola ? `<button class="chip chip-bahaya" type="button"
             data-hapus="${t.nomor}">Hapus</button>` : ''}
-      </div>
+      </footer>
     </article>`;
   }
 
@@ -479,13 +516,13 @@
           <span>${esc(pu.pesan || '')}</span>
         </div>
         ${e.mode_ket ? `<p class="tr-bantu tr-mode-baris">
-          <b>Mode ${esc(e.mode)}</b> — ${esc(e.mode_ket.nilai)}</p>` : ''}
+          <b>Mode ${esc(e.mode)}.</b> ${esc(e.mode_ket.nilai)}</p>` : ''}
         <div class="tr-uji-angka">
           <span data-tingkat="${e.mode === 'warna' ? 'netral' : esc(w.tingkat)}">
             <i>Berubah karena RONA</i>
             <b>${w.tingkat === 'tak-terukur' ? '—' : angka(w.skor_rona, 0) + '%'}</b>
             <u>${e.mode === 'warna'
-                 ? 'wajar di mode ini — rona memang penentu kelas'
+                 ? 'wajar di mode ini, rona memang penentu kelas'
                  : angka(w.berubah_rona) + ' dari ' + angka(w.total) + ' berubah'}</u></span>
           <span data-tingkat="${w.skor_terang >= 50 ? 'buruk'
                               : (w.skor_terang >= 20 ? 'sedang' : 'baik')}">
@@ -583,8 +620,12 @@
     const eMin = Math.min(...ex), eMax = Math.max(...ex);
     const sx = (e) => PL + (eMax === eMin ? 0 : (e - eMin) / (eMax - eMin)) * (W - PL - PR);
 
+    // Batas atas dibulatkan ke kelipatan 20%: sumbu yang berakhir di 90%, 68%,
+    // 45% menuntut orang membaca angka sebelum bisa menilai tingginya. Dengan
+    // kelipatan bulat, posisi garisnya sendiri sudah bercerita.
     const nilai = titik.map((k) => k.nilai);
-    const nMaks = Math.max(...nilai, 0.01);
+    const puncak = Math.max(...nilai, 0.01);
+    const nMaks = Math.min(1, Math.ceil(puncak * 5) / 5);
     const sy = (v) => PT + (1 - v / nMaks) * (H - PT - PB);
 
     const box = titik.map((k) => k.box).filter((v) => v !== null && v !== undefined);
@@ -596,7 +637,10 @@
 
     // Garis bantu mendatar: tanpa skala, naik-turunnya tidak bisa dinilai
     // besarnya — cuma bentuknya.
-    const kisi = [0, 0.25, 0.5, 0.75, 1].map((f) => {
+    const langkahKisi = nMaks <= 0.4 ? 0.1 : 0.2;
+    const kisi = [];
+    for (let v = 0; v <= nMaks + 1e-9; v += langkahKisi) kisi.push(v / nMaks);
+    const kisiSvg = kisi.map((f) => {
       const v = nMaks * f, y = sy(v);
       return `<line x1="${PL}" y1="${y.toFixed(1)}" x2="${W - PR}" y2="${y.toFixed(1)}"
                 class="tr-kisi"/><text x="${PL - 6}" y="${(y + 3).toFixed(1)}"
@@ -612,7 +656,7 @@
       <h4>Kemajuan per epoch</h4>
       <svg class="tr-kurva" viewBox="0 0 ${W} ${H}" role="img"
            aria-label="Kurva ${esc(t.utama || 'metrik')} per epoch">
-        ${kisi}
+        ${kisiSvg}
         ${bMaks ? `<path d="${garis(syB, 'box')}" class="tr-garis-loss"/>` : ''}
         <path d="${garis(sy, 'nilai')}" class="tr-garis-map"/>
         <circle cx="${sx(akhir.epoch).toFixed(1)}" cy="${sy(akhir.nilai).toFixed(1)}"
@@ -620,11 +664,11 @@
         ${tandaX}
       </svg>
       <div class="tr-legenda">
-        <span class="tr-lg tr-lg-map">${esc(t.utama || 'metrik')} —
-          terakhir <b>${angka(akhir.nilai * 100, 1)}%</b></span>
-        ${bMaks ? `<span class="tr-lg tr-lg-loss">loss kotak —
-          terakhir <b>${angka(akhir.box, 3)}</b></span>` : ''}
-        <span class="tr-bantu">epoch ${eMin}–${eMax}</span>
+        <span class="tr-lg tr-lg-map">${esc(t.utama || 'metrik')}
+          <b>${angka(akhir.nilai * 100, 1)}%</b></span>
+        ${bMaks ? `<span class="tr-lg tr-lg-loss">loss kotak
+          <b>${angka(akhir.box, 3)}</b></span>` : ''}
+        <span class="tr-bantu">nilai terakhir, epoch ${eMin} sampai ${eMax}</span>
       </div>
     </div>`;
   }
@@ -637,18 +681,25 @@
     catch (e) { $('tr-panel-isi').innerHTML = `<p class="tr-galat">gagal memuat: ${esc(e)}</p>`; return; }
     if (!r.ok) { $('tr-panel-isi').innerHTML = `<p class="tr-galat">${esc(r.error)}</p>`; return; }
     const t = r.latih, w = t.warna || {}, par = t.par || {};
-    $('tr-panel-judul').textContent = `L${t.nomor} — ${t.nama}`;
+    // "L1 — Paragon v2 — uji evaluasi": dua em-dash beruntun membuat judulnya
+    // terbaca seperti potongan yang disambung mesin. Nomornya jadi label
+    // terpisah, namanya berdiri sendiri.
+    $('tr-panel-judul').innerHTML =
+      `<span class="tr-panel-no">L${t.nomor}</span>${esc(t.nama)}`;
     const parBaris = Object.keys(par).sort().map((k) =>
       `<span class="tr-kv"><i>${esc(k)}</i><b>${esc(par[k])}</b></span>`).join('');
+    /* Keadaan naik jadi PITA di bawah judul, bukan bagian tersendiri.
+       Empat angka pendek tidak memerlukan judul bagian dan garis pemisahnya
+       sendiri; sebagai bagian ia memakan satu pita penuh untuk isi yang
+       muat dalam satu baris, dan menambah satu judul lagi ke tumpukan yang
+       sudah membuat panel ini terasa terpotong-potong. */
     $('tr-panel-isi').innerHTML = `
-      <div class="tr-p-blok">
-        <h4>Keadaan</h4>
-        <div class="tr-kartu-angka">
-          <span><i>Status</i><b>${LABEL_KEADAAN[t.keadaan] || t.keadaan}</b></span>
-          <span><i>Epoch</i><b>${angka(t.epoch)} / ${angka(t.epochs)}</b></span>
-          <span><i>Lama</i><b>${durasi(t.detik)}</b></span>
-          <span><i>Sumber</i><b>v${t.versi}</b></span>
-        </div>
+      <div class="tr-p-pita">
+        <div><dt>Status</dt><dd>${LABEL_KEADAAN[t.keadaan] || t.keadaan}</dd></div>
+        <div><dt>Epoch</dt><dd>${angka(t.epoch)} / ${angka(t.epochs)}</dd></div>
+        <div><dt>Lama</dt><dd>${durasi(t.detik)}</dd></div>
+        <div><dt>Sumber</dt><dd>v${t.versi}</dd></div>
+        <div><dt>Oleh</dt><dd>${esc(t.oleh || '?')}</dd></div>
       </div>
       ${w.pesan ? `<div class="tr-p-blok tr-warna" data-tingkat="${esc(w.tingkat)}">
         <h4>Sinkronisasi warna dengan versinya</h4>

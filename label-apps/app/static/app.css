@@ -2727,9 +2727,6 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
   padding:13px 15px; margin:0 0 10px;
 }
 .tr-kartu-jalan{border-color:var(--aksi)}
-.tr-kartu-atas{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
-.tr-kartu-nama{font-size:14.5px}
-.tr-kartu-sub{font-size:11.5px; color:var(--ink-faint)}
 .tr-pil{
   font-size:10.5px; font-weight:700; letter-spacing:.03em; padding:2px 8px;
   border-radius:99px; background:var(--lab-bg); color:var(--lab-ink);
@@ -2745,10 +2742,6 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
 /* Angka disejajarkan dengan tabular-nums supaya digitnya tidak bergoyang
    tiap kali diperbarui — halaman ini menyegarkan dirinya tiap 4 detik, dan
    angka yang melompat-lompat membuatnya terasa gelisah. */
-.tr-kartu-angka{display:flex; gap:26px; flex-wrap:wrap; margin:0 0 8px}
-.tr-kartu-angka>span{display:flex; flex-direction:column; gap:1px}
-.tr-kartu-angka i{font-style:normal; font-size:11px; color:var(--ink-faint)}
-.tr-kartu-angka b{font-size:14px; font-variant-numeric:tabular-nums}
 .tr-kartu-metrik{display:flex; gap:18px; flex-wrap:wrap; margin:0 0 10px}
 .tr-metrik{display:flex; flex-direction:column; gap:1px}
 .tr-metrik i{font-style:normal; font-size:10.5px; color:var(--ink-faint)}
@@ -2756,7 +2749,6 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
 .tr-skor{display:flex; align-items:baseline; gap:8px; margin:8px 0}
 .tr-skor i{font-style:normal; font-size:11.5px; color:var(--ink-faint)}
 .tr-skor b{font-size:24px; font-variant-numeric:tabular-nums; color:var(--ok)}
-.tr-kartu-aksi{display:flex; gap:8px; flex-wrap:wrap}
 .chip-bahaya{color:var(--stop)}
 
 /* -- panel rincian ------------------------------------------------------- */
@@ -2790,7 +2782,19 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
   font-size:11.5px; line-height:1.5; max-height:230px; overflow:auto;
   white-space:pre-wrap; word-break:break-word;
 }
-.sisi-angka-jalan{background:var(--aksi); color:var(--aksi-ink)}
+/* Lencana "sedang berjalan" di sidebar. .sisi-angka itu teks polos tanpa
+   padding, jadi memberinya latar saja menghasilkan strip hijau setipis satu
+   digit yang angkanya tidak terbaca. Ia harus jadi lencana utuh.
+
+   Sengaja dibuat berbeda bentuk dari lencana lain, bukan cuma berbeda warna:
+   angka di menu lain berarti "ada sekian", yang ini berarti "ada yang sedang
+   berjalan sekarang" dan itu satu-satunya lencana yang menuntut perhatian. */
+.sisi-angka-jalan{
+  min-width:17px; padding:1px 6px; border-radius:99px; text-align:center;
+  background:var(--aksi); color:var(--aksi-ink); font-weight:700;
+  font-size:10.5px; line-height:1.5;
+}
+.sisi-item[data-on] .sisi-angka-jalan{color:var(--aksi-ink)}
 
 /* -- hasil uji produksi -------------------------------------------------- */
 /* Putusannya diberi warna penuh, bukan sekadar teks: inilah satu-satunya
@@ -2927,3 +2931,67 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
                   margin-left:4px}
 .tr-kelas-salah{color:var(--ink-dim); font-size:11px; overflow:hidden;
                 text-overflow:ellipsis; white-space:nowrap}
+
+/* ============================================================
+   KARTU HASIL TRAINING — tata letak tiga pita
+   ============================================================
+   Kartunya selebar ~1.300px. Versi sebelumnya menumpuk seluruh isinya di
+   kiri dalam kolom sempit dan menyisakan tiga perempat kartu kosong; yang
+   di bawah ini memakai lebarnya: identitas di pita atas, angka di tengah,
+   tindakan di bawah. */
+.tr-k-atas{display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+           padding-bottom:11px; border-bottom:1px solid var(--line)}
+.tr-k-nama{font-size:15px}
+/* Metanya dirangkai dengan KATA, bukan deretan titik-tengah. "L1 · v2 ·
+   11 Sep" menuntut orang menebak arti tiap potongannya; "L1 dari v2 oleh
+   claude" langsung terbaca sebagai kalimat. */
+.tr-k-meta{font-size:11.5px; color:var(--ink-faint)}
+.tr-k-meta i{font-style:normal; margin:0 4px; opacity:.8}
+
+.tr-k-isi{display:flex; align-items:center; gap:34px; flex-wrap:wrap;
+          padding:14px 0 13px}
+.tr-skor{display:flex; flex-direction:column; gap:1px; min-width:150px}
+.tr-skor b{font-size:38px; line-height:1; font-weight:700; color:var(--ok);
+           font-variant-numeric:tabular-nums; letter-spacing:-.02em}
+.tr-skor b span{font-size:20px; font-weight:600; margin-left:1px}
+.tr-skor i{font-style:normal; font-size:11.5px; color:var(--ink-dim)}
+.tr-skor-kosong b{color:var(--ink-faint)}
+
+/* dl/dt/dd, bukan span berlapis: pasangan label-nilai memang itu artinya,
+   dan pembaca layar membacakannya sebagai pasangan. */
+.tr-k-angka{display:flex; gap:30px; flex-wrap:wrap; margin:0}
+.tr-k-angka>div{display:flex; flex-direction:column; gap:2px}
+.tr-k-angka dt{font-size:11px; color:var(--ink-faint)}
+.tr-k-angka dd{margin:0; font-size:15px; font-weight:600;
+               font-variant-numeric:tabular-nums}
+
+.tr-k-aksi{display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+           padding-top:11px; border-top:1px solid var(--line)}
+.chip-utama{border-color:var(--aksi); color:var(--aksi); font-weight:600}
+/* Kedua tombol unduh dikelompokkan di bawah satu kata, bukan berdiri sebagai
+   dua tombol setara bernama panjang. Yang membedakan keduanya cuma satu kata,
+   dan mengulang "Unduh" dua kali membuat barisnya penuh tanpa menambah arti. */
+.tr-unduh{display:inline-flex; align-items:center; gap:6px;
+          font-size:11.5px; color:var(--ink-faint); margin-left:6px}
+.tr-k-galat{margin:13px 0; padding:9px 11px; border-radius:7px; font-size:12.5px;
+            background:var(--bahaya-lembut); color:var(--stop)}
+/* Nomor training jadi label terpisah di judul panel, bukan disambung em-dash.
+   "L1 — Paragon v2 — uji evaluasi" terbaca seperti potongan yang disambung
+   mesin; nomornya memang identitas, bukan bagian dari namanya. */
+.tr-panel-no{
+  display:inline-block; margin-right:9px; padding:1px 7px; border-radius:5px;
+  background:var(--lab-bg); color:var(--lab-ink); font-size:11px;
+  font-weight:700; letter-spacing:.02em; vertical-align:1px;
+}
+/* Pita keadaan di bawah judul panel: cukup satu baris, tanpa judul bagian
+   sendiri. */
+.tr-p-pita{
+  display:flex; gap:28px; flex-wrap:wrap; padding:11px 0 14px;
+  margin:0 0 16px; border-bottom:1px solid var(--line);
+}
+.tr-p-pita>div{display:flex; flex-direction:column; gap:2px}
+.tr-p-pita dt{font-size:11px; color:var(--ink-faint)}
+.tr-p-pita dd{margin:0; font-size:14px; font-weight:600;
+              font-variant-numeric:tabular-nums}
+/* Panel diperlebar: grafiknya yang menentukan, dan pada 860px ia terjepit. */
+.tr-panel{width:min(1020px,100%)}
