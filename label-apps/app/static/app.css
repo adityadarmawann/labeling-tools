@@ -2263,14 +2263,40 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
 .vs-strip img{flex:0 0 auto;width:96px;height:96px;object-fit:cover;
   border-radius:7px;background:var(--sunk)}
 
-.vs-kelas{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
-  gap:7px}
-.vs-kelas div{display:flex;justify-content:space-between;gap:10px;
-  background:var(--sunk);border-radius:7px;padding:7px 10px;font-size:12.5px}
-.vs-kelas span{color:var(--ink-dim);overflow:hidden;text-overflow:ellipsis;
-  white-space:nowrap}
-.vs-kelas b{color:var(--ink);font-variant-numeric:tabular-nums}
-.vs-neg span{color:var(--latar)}
+/* Objek per kelas: bagan batang, bukan deretan angka.
+   Yang ditanyakan orang saat melihatnya bukan "berapa botol" melainkan
+   "timpang tidak?", dan deretan angka diam soal itu — 12.031 lawan 1.204
+   harus dibagi di kepala dulu sebelum ketimpangannya terasa. */
+.vk-bagan{display:flex;flex-direction:column;gap:2px}
+.vk-baris{display:grid;grid-template-columns:minmax(88px,1.1fr) 3fr auto auto;
+  align-items:center;gap:10px;padding:5px 8px;border-radius:7px;
+  font-size:12.5px}
+.vk-baris:hover{background:var(--hover)}
+.vk-nama{display:flex;align-items:center;gap:7px;color:var(--ink-dim);
+  min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Titik warna memakai rumus yang sama dengan kanvas dan grid: satu kelas
+   berwarna sama di mana pun, jadi warnanya penanda, bukan hiasan. */
+.vk-nama i{width:9px;height:9px;flex:0 0 auto;border-radius:3px}
+.vk-nama i.vk-kosong{background:var(--latar);opacity:.55}
+/* Alur batangnya diberi latar samar supaya panjang nol tetap terbaca sebagai
+   "nol", bukan sebagai baris yang gagal digambar. */
+.vk-bar{height:9px;border-radius:99px;background:var(--sunk);overflow:hidden}
+.vk-bar i{display:block;height:100%;border-radius:99px;min-width:2px;
+  transition:width .18s ease-out}
+.vk-n{color:var(--ink);font-variant-numeric:tabular-nums;
+  min-width:52px;text-align:right}
+.vk-persen{font-style:normal;color:var(--ink-faint);font-size:11.5px;
+  font-variant-numeric:tabular-nums;min-width:44px;text-align:right}
+/* Sampel negatif dipisah garis: ia BUKAN kelas, dan menaruhnya dalam deret
+   yang sama membuat persentase seluruh kelas ikut salah. */
+.vk-negatif{margin-top:5px;padding-top:8px;border-top:1px solid var(--line)}
+.vk-negatif .vk-nama{font-style:italic}
+.vk-total{float:right;font-weight:400;font-size:11.5px;color:var(--ink-faint);
+  text-transform:none;letter-spacing:0}
+.vk-rasio{margin-top:9px;font-size:11.5px;line-height:1.5;color:var(--ink-faint)}
+.vk-rasio b{color:var(--ink-dim);font-weight:600}
+.vk-timpang{color:var(--warn)}
+.vk-timpang b{color:var(--warn)}
 
 @media (max-width:900px){
   .vs-tata{flex-direction:column}

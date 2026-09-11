@@ -147,6 +147,48 @@ def siapkan():
     # Sengaja berona ungu DAN berbantalan putih di atas-bawah, karena keduanya
     # yang harus diperbaiki pengolah pelat: bantalannya dibuang, ronanya
     # dinetralkan.
+    # Satu versi JADI di projek-satu, ditulis langsung supaya panel rinciannya
+    # bisa diperiksa tanpa menunggu pembuatan versi sungguhan. Bentuknya
+    # disalin dari v2.json nyata, TERMASUK blok "hasil" — di situlah dulu
+    # panelnya patah: JS membaca `hasil.jenis` alih-alih `v.hasil.jenis`.
+    pv = TMP / "unggahan" / "devuser" / "projek-satu" / ".versi"
+    (pv / "v1" / "train" / "images").mkdir(parents=True, exist_ok=True)
+    (pv / "v1" / "train" / "labels").mkdir(parents=True, exist_ok=True)
+    # per_kelas dihitung dari BERKAS LABEL yang benar-benar ada, bukan dari
+    # angka di v1.json -- panel harus memperlihatkan isi versinya, bukan
+    # ringkasan yang bisa saja sudah usang. Jadi jumlahnya dibuat di sini,
+    # dengan perbandingan timpang 13,7x: 1203/742/318/120/88.
+    BARIS = "%d 0.3 0.3 0.6 0.3 0.6 0.6 0.3 0.6\n"
+    porsi = [1203, 742, 318, 120, 88]
+    for i, n in enumerate(porsi):
+        cv2.imwrite(str(pv / "v1" / "train" / "images" / f"h{i}.jpg"),
+                    np.full((64, 64, 3), 70 + i * 30, np.uint8))
+        (pv / "v1" / "train" / "labels" / f"h{i}.txt").write_text(
+            (BARIS % i) * n)
+    # Sampel negatif: berkas label KOSONG, dan itu disengaja -- gambar yang
+    # memang tidak berisi objek apa pun.
+    for i in range(137):
+        cv2.imwrite(str(pv / "v1" / "train" / "images" / f"n{i:03d}.jpg"),
+                    np.full((32, 32, 3), 60, np.uint8))
+        (pv / "v1" / "train" / "labels" / f"n{i:03d}.txt").write_text("")
+    (pv / "v1" / "data.yaml").write_text(
+        "nc: 5\nnames: ['botol','kaleng','tetra','mlp-cup','gelas-kertas']\n")
+    (pv / "v1.json").write_text(json.dumps({
+        "nomor": 1, "dibuat": "2026-09-10 16:00", "oleh": "devuser",
+        "catatan": "", "rasio": "80,10,10", "n": 3, "berencana": False,
+        "jumlah": {"train": 3, "valid": 0, "test": 0},
+        "kelas": {"botol": 3}, "objek": 3, "gambar": [], "peta": {},
+        "resep": {"volume": {"per_gambar": 1}},
+        "hasil": {"n": 3, "jenis": "poligon", "dipulangkan": 2, "byte": 1024,
+                  "detik": 1.0, "jumlah": {"train": 3, "valid": 0, "test": 0},
+                  "kelas": {"botol": 3},
+                  # Lima kelas yang TIMPANG (13,7x): bagan batang harus
+                  # memperlihatkan ketimpangan itu tanpa orang perlu membagi
+                  # angka di kepala, dan menandainya kalau melewati ambang.
+                  "per_kelas": {"botol": 12031, "kaleng": 7420, "tetra": 3180,
+                                "mlp-cup": 1204, "gelas-kertas": 880},
+                  "negatif": 137, "objek": 24715}}))
+
     ruang = np.full((480, 640, 3), (150, 80, 130), np.uint8)
     ruang = np.clip(ruang.astype(int)
                     + np.random.default_rng(4).integers(-20, 20, ruang.shape),
@@ -2370,6 +2412,65 @@ def jalankan_latar(d):
     Berkasnya dipilih lewat DOM.setFileInputFiles — jalur yang sama dengan
     orang menekan tombol dan memilih berkas di jendela sistem.
     """
+    print("  -- panel rincian versi --")
+    d.js("location.href = '/versi?ds=projek-satu'")
+    time.sleep(2.8)
+    cek("kartu versi tergambar",
+        (d.js("document.querySelectorAll('.vs-ring').length") or 0) >= 1,
+        "n=%s" % d.js("document.querySelectorAll('.vs-ring').length"))
+    d.js("(document.querySelector('.vs-ring')||{click(){}}).click()")
+    time.sleep(2.5)
+    teks = d.js("(document.querySelector('.vs-detail')||{}).innerText") or ""
+    # Inilah gejala yang dilaporkan: panel menetap di "memuat…" selamanya
+    # karena satu ReferenceError di dalam template menghentikan penyusunannya
+    # sebelum innerHTML sempat diganti. Dari layar itu terbaca sebagai server
+    # yang lambat, padahal rutenya menjawab dalam 22 ms.
+    cek("panel TIDAK menggantung di 'memuat…'",
+        "memuat" not in teks[:40].lower(), teks[:60].replace("\n", " "))
+    # Dicocokkan tanpa peduli besar-kecil: judul bagian di-uppercase oleh CSS,
+    # dan innerText mengikuti text-transform.
+    for kunci in ("Unduh", "Pembagian", "TRAIN", "Resep"):
+        cek(f"panel memuat bagian {kunci}", kunci.lower() in teks.lower(),
+            teks[:80].replace("\n", " "))
+    # Dua medan yang dulu memakai `hasil` polos. Kalau salah satunya kembali
+    # tanpa awalan `v.`, panelnya patah lagi persis seperti semula.
+    cek("Format anotasi terbaca dari v.hasil.jenis",
+        "Format anotasi" in teks and "Poligon" in teks,
+        teks[-160:].replace("\n", " "))
+    cek("jumlah dipulangkan terbaca dari v.hasil.dipulangkan",
+        "2 gambar" in teks, teks[-160:].replace("\n", " "))
+
+    # --- bagan Objek per kelas ---
+    n_baris = d.js("document.querySelectorAll('.vk-bagan .vk-baris').length")
+    cek("bagan menggambar satu baris per kelas + sampel negatif",
+        n_baris == 6, "n=%s" % n_baris)
+    lebar = d.js("[...document.querySelectorAll('.vk-bar i')]"
+                 ".map(i => Math.round(i.getBoundingClientRect().width))")
+    cek("panjang batang menurun sesuai jumlahnya",
+        lebar and all(lebar[i] >= lebar[i+1] for i in range(len(lebar)-1)),
+        str(lebar))
+    cek("kelas terbanyak mengisi penuh, tersedikit jauh lebih pendek",
+        lebar and lebar[0] > lebar[-1] * 5, str(lebar))
+    # Warna titik harus SAMA dengan yang dipakai kanvas dan grid.
+    warna = d.js("[...document.querySelectorAll('.vk-baris:not(.vk-negatif)"
+                 " .vk-nama i')].map(i => i.style.background)")
+    cek("tiap kelas punya warnanya sendiri, bukan satu warna seragam",
+        warna and len(set(warna)) == len(warna), str(warna)[:120])
+    cek("ketimpangan disebutkan sebagai satu angka",
+        "13.7" in teks or "13,7" in teks, teks[-260:].replace("\n", " ")[:150])
+    cek("dan ditandai sebagai timpang",
+        bool(d.js("!!document.querySelector('.vk-timpang')")))
+    d.kirim("Emulation.setDeviceMetricsOverride", width=1500, height=1000,
+            deviceScaleFactor=1, mobile=False)
+    time.sleep(0.4)
+    import base64 as _b64
+    _r = d.kirim("Page.captureScreenshot", format="png")
+    Path("/tmp/tampilan-versi-bagan.png").write_bytes(_b64.b64decode(_r["data"]))
+    print("     /tmp/tampilan-versi-bagan.png")
+    cek("sampel negatif dipisah, tidak ikut dihitung sebagai kelas",
+        bool(d.js("!!document.querySelector('.vk-negatif')"))
+        and "137" in teks, teks[-200:].replace("\n", " ")[:120])
+
     print("  -- formulir foto latar --")
     d.js("location.href = '/versi?ds=projek-satu'")
     time.sleep(2.6)

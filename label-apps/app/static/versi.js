@@ -35,10 +35,105 @@
       detail.innerHTML = `<div class="vs-detail-muat">${(r && r.error) || 'gagal memuat'}</div>`;
       return;
     }
-    gambarDetail(r.versi, r.isi || {});
+    // Kegagalan menggambar TIDAK boleh menyisakan "memuat…" yang menetap.
+    // Itu yang terjadi selama ini: satu ReferenceError di dalam template
+    // membuat panelnya menggantung tanpa batas, dan dari layar ia terbaca
+    // sebagai server yang lambat — bukan sebagai kekeliruan yang harus
+    // diperbaiki. Kalau gagal, katakan gagal.
+    try {
+      gambarDetail(r.versi, r.isi || {});
+    } catch (e) {
+      detail.innerHTML = '<div class="vs-detail-muat">gagal menggambar '
+        + 'rincian versi ini. Muat ulang halaman; kalau tetap begini, '
+        + 'sebutkan pesan ini: ' + (e && e.message ? e.message : e) + '</div>';
+      throw e;          // tetap masuk konsol, supaya bisa dilacak
+    }
+  }
+
+  // Warna kelas: rumus yang SAMA dengan kanvas (label.js) dan thumbnail
+  // (render.py cls_color). Disalin, bukan diimpor, karena halaman ini tidak
+  // memuat label.js — dan yang penting bukan berbagi kode melainkan berbagi
+  // HASIL: satu kelas harus berwarna sama di kanvas, di grid, dan di sini.
+  // Kalau berbeda, warna berhenti jadi penanda dan jadi hiasan.
+  function hashKode(s) {
+    let h = 0;
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+    return Math.abs(h);
+  }
+  const warnaKelas = (label) =>
+    `hsl(${((hashKode(String(label)) % 997) / 997 * 360).toFixed(0)},62%,55%)`;
+
+  // Satu angka desimal, format Indonesia. Tanpa ini panelnya menulis "1.203"
+  // dan "48.7%" berdampingan: titik yang sama berarti ribuan di satu tempat
+  // dan desimal di sebelahnya.
+  const desimal = (x) => x.toLocaleString('id', {minimumFractionDigits: 1,
+                                                 maximumFractionDigits: 1});
+
+  /**
+   * Objek per kelas sebagai bagan batang.
+   *
+   * Yang benar-benar ditanyakan orang saat melihat daftar ini bukan "berapa
+   * botol", melainkan "dataset saya timpang tidak?" — karena itulah yang
+   * menentukan model belajar dengan adil atau tidak. Deretan angka menjawab
+   * pertanyaan pertama dan diam soal yang kedua: 12.031 lawan 1.204 harus
+   * dibaca dua kali dan dibagi di kepala sebelum ketimpangannya terasa.
+   *
+   * Karena itu ada tiga hal di sini, bukan cuma batang yang lebih cantik:
+   *   - panjang batang, supaya perbandingannya terbaca tanpa membaca angka;
+   *   - persentase di samping jumlah, karena "berapa bagian dari seluruhnya"
+   *     itulah yang menentukan;
+   *   - rasio timpang (terbanyak : tersedikit) sebagai satu angka ringkas.
+   *
+   * Sampel negatif dipisah di bawah garis: ia bukan kelas, dan menaruhnya
+   * dalam deret yang sama membuat persentase seluruh kelas ikut salah.
+   */
+  function baganKelas(kelas, negatif) {
+    const total = kelas.reduce((a, [, c]) => a + c, 0);
+    const maks = kelas[0][1];
+    const min = kelas[kelas.length - 1][1];
+    const rasio = min > 0 ? maks / min : 0;
+    // Ambangnya sengaja longgar. Yang mau ditandai ketimpangan yang benar-
+    // benar mengubah hasil latihan, bukan selisih wajar antarkelas.
+    const timpang = kelas.length > 1 && rasio >= 3;
+    const baris = kelas.map(([n, c]) => {
+      const persen = total ? (c / total * 100) : 0;
+      return `<div class="vk-baris" title="${n}: ${c.toLocaleString('id')} objek (${desimal(persen)}%)">
+        <span class="vk-nama"><i style="background:${warnaKelas(n)}"></i>${n}</span>
+        <span class="vk-bar"><i style="width:${(c / maks * 100).toFixed(1)}%;
+          background:${warnaKelas(n)}"></i></span>
+        <b class="vk-n">${c.toLocaleString('id')}</b>
+        <em class="vk-persen">${desimal(persen)}%</em>
+      </div>`;
+    }).join('');
+    const kaki = negatif
+      ? `<div class="vk-baris vk-negatif" title="Gambar tanpa objek — sampel negatif yang disengaja">
+           <span class="vk-nama"><i class="vk-kosong"></i>sampel negatif</span>
+           <span class="vk-bar"></span>
+           <b class="vk-n">${negatif.toLocaleString('id')}</b>
+           <em class="vk-persen">gambar</em>
+         </div>`
+      : '';
+    return `<div class="vs-bagian">
+      <h4>Objek per kelas
+        <span class="vk-total">${total.toLocaleString('id')} objek · ${kelas.length} kelas</span>
+      </h4>
+      <div class="vk-bagan">${baris}${kaki}</div>
+      ${kelas.length > 1 ? `<p class="vk-rasio${timpang ? ' vk-timpang' : ''}">
+        Terbanyak <b>${kelas[0][0]}</b> berbanding tersedikit
+        <b>${kelas[kelas.length - 1][0]}</b> =
+        <b>${desimal(rasio)}&times;</b>${timpang
+          ? ' — cukup timpang. "Seimbangkan jumlah kelas" di langkah 4 memperkecil selisih ini.'
+          : ' — cukup seimbang.'}</p>` : ''}
+    </div>`;
   }
 
   function gambarDetail(v, isi) {
+    // Ringkasan hasil pembuatan versi. HARUS lewat `v`: sebagai `hasil` polos
+    // ia bukan variabel yang ada di mana pun, dan JavaScript menjawab itu
+    // dengan ReferenceError di tengah menyusun template — sehingga baris
+    // `detail.innerHTML = ...` di bawah tidak pernah tercapai dan panelnya
+    // menetap di "memuat…" selamanya, tanpa satu pun pesan.
+    const hasil = v.hasil || {};
     const j = isi.jumlah || v.jumlah || {};
     const tot = (j.train || 0) + (j.valid || 0) + (j.test || 0);
     const resep = v.resep || {};
@@ -60,14 +155,7 @@
 
     const kelas = Object.entries(isi.per_kelas || {})
       .sort((a, b) => b[1] - a[1]);
-    const barisKelas = kelas.length
-      ? `<div class="vs-bagian"><h4>Objek per kelas</h4><div class="vs-kelas">` +
-        kelas.map(([n, c]) =>
-          `<div><span>${n}</span><b>${c.toLocaleString('id')}</b></div>`).join('') +
-        (isi.negatif ? `<div class="vs-neg"><span>sampel negatif</span>` +
-          `<b>${isi.negatif.toLocaleString('id')}</b></div>` : '') +
-        '</div></div>'
-      : '';
+    const barisKelas = kelas.length ? baganKelas(kelas, isi.negatif || 0) : '';
 
     // Resep yang disimpan hanya memuat yang DITIMPA pemakai; yang tidak
     // disebut memakai bawaan katalog dan tetap berjalan. Menampilkan isi
