@@ -716,6 +716,37 @@ def siapkan(ds, *, nama: str, versi_nomor: int, tugas: str, bobot: str,
     return isi
 
 
+def siap_latih() -> tuple[bool, str]:
+    """Server ini bisa menjalankan training atau tidak, beserta alasannya.
+
+    Diperiksa SEBELUM orang menekan Jalankan, bukan sesudah. ultralytics hanya
+    ada di .venv-gpu; di server yang berjalan mode CPU, tanpa pemeriksaan ini
+    trainingnya diluncurkan, subprosesnya jatuh pada baris import, lalu
+    kartunya muncul dengan status "gagal" beberapa detik kemudian. Orang yang
+    menunggu tidak punya cara tahu bahwa yang kurang sebuah paket, bukan
+    datanya atau setelannya.
+
+    Melatih di CPU sebenarnya bisa, tetapi memakan berhari-hari untuk pekerjaan
+    yang di GPU selesai dalam menit, jadi ultralytics sengaja TIDAK dipasang di
+    venv CPU. Yang benar bukan memasangnya di sana, melainkan mengatakan apa
+    adanya bahwa server ini perlu dijalankan dengan LABELAPP_OLAH=gpu.
+    """
+    try:
+        import importlib.util
+
+        if importlib.util.find_spec("ultralytics") is None:
+            raise ImportError("ultralytics")
+    except Exception:                            # noqa: BLE001
+        from . import mode_warna  # noqa: F401  (biar impor gagal kelihatan)
+
+        return False, (
+            "Server ini berjalan tanpa ultralytics, jadi training belum bisa "
+            "dijalankan dari sini. Nyalakan server dengan LABELAPP_OLAH=gpu "
+            "(lihat requirements-gpu.txt); melatih di CPU memakan berhari-hari "
+            "untuk pekerjaan yang di GPU selesai dalam menit.")
+    return True, ""
+
+
 def jalankan(ds, nomor: int) -> dict:
     """Luncurkan subproses training yang terlepas dari server."""
     isi = baca(ds, nomor)
@@ -789,6 +820,59 @@ def buang(ds, nomor: int) -> bool:
         if x.is_file():
             x.unlink(missing_ok=True)
     return True
+
+
+# Gambar yang digambar Ultralytics sendiri, dikelompokkan menurut pertanyaan
+# yang dijawabnya. Bukan sekadar daftar berkas: satu folder hasil training
+# berisi enam belas gambar dengan nama seperti BoxPR_curve.png dan
+# MaskF1_curve.png, dan menampilkannya sebagai daftar nama menuntut orang tahu
+# lebih dulu mana yang ingin ia lihat.
+#
+# Yang paling berguna justru pasangan val_batch*_labels dan val_batch*_pred:
+# keduanya petak gambar yang sama, satu dengan poligon sebenarnya dan satu
+# dengan poligon tebakan model. Berdampingan, keduanya menjawab "model ini
+# sebenarnya melihat apa" jauh lebih cepat daripada angka mana pun.
+KELOMPOK_GAMBAR = (
+    ("prediksi", "Prediksi pada data validasi",
+     "Petak yang sama, dua versi: poligon sebenarnya di kiri, tebakan model "
+     "di kanan. Klik untuk memperbesar, lalu panah kiri/kanan untuk "
+     "bergantian melihat keduanya.",
+     ("val_batch*_labels.jpg", "val_batch*_pred.jpg")),
+    ("bingung", "Matriks kebingungan",
+     "Kelas mana yang tertukar dengan kelas mana.",
+     ("confusion_matrix_normalized.png", "confusion_matrix.png")),
+    ("kurva", "Kurva lengkap",
+     "Seluruh loss dan metrik yang dicatat Ultralytics, plus kurva "
+     "presisi-recall per kelas.",
+     ("results.png", "BoxPR_curve.png", "MaskPR_curve.png",
+      "BoxF1_curve.png", "MaskF1_curve.png")),
+    ("contoh", "Contoh data latih",
+     "Sebagian gambar train setelah augmentasi, apa adanya seperti yang "
+     "dilihat model. Berguna untuk memeriksa augmentasinya tidak kebablasan.",
+     ("train_batch*.jpg", "labels.jpg")),
+)
+
+
+def gambar_hasil(ds, nomor: int) -> list[dict]:
+    """Gambar hasil training yang BENAR-BENAR ada, sudah dikelompokkan.
+
+    Yang tidak ada tidak disebut sama sekali: gambar rusak di layar jauh lebih
+    membingungkan daripada bagian yang memang tidak muncul, dan berkas mana
+    yang dihasilkan berbeda-beda menurut tugas (segment menghasilkan Mask*,
+    detect tidak) dan menurut setelan plots.
+    """
+    d = dir_latih(ds, nomor)
+    if not d.is_dir():
+        return []
+    keluar = []
+    for kunci, judul, ket, pola in KELOMPOK_GAMBAR:
+        nama = []
+        for po in pola:
+            nama += sorted(x.name for x in d.glob(po) if x.is_file())
+        if nama:
+            keluar.append({"kunci": kunci, "judul": judul, "ket": ket,
+                           "berkas": nama})
+    return keluar
 
 
 def ekor_log(ds, nomor: int, baris: int = 40) -> str:

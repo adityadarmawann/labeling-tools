@@ -302,7 +302,20 @@ def test_bahan_form_membawa_preset_dan_batas(klien, lingkungan):
     assert r["tugas"] == ["segment", "detect"]
 
 
-def test_mulai_menolak_versi_yang_tidak_ada(klien, lingkungan):
+@pytest.fixture
+def server_siap(monkeypatch):
+    """Anggap server ini bisa melatih.
+
+    Rute /api/latih/mulai memeriksa kesiapan LEBIH DULU — kalau ultralytics
+    tidak ada, ia menolak sebelum sempat memeriksa versinya, dan itu memang
+    perilaku yang benar. Tetapi tes di bawah menguji validasi VERSI, bukan
+    kesiapan server, dan harus memberi jawaban yang sama di venv CPU (yang
+    tidak punya ultralytics) maupun venv GPU.
+    """
+    monkeypatch.setattr(latih, "siap_latih", lambda: (True, ""))
+
+
+def test_mulai_menolak_versi_yang_tidak_ada(klien, lingkungan, server_siap):
     masuk(klien, "paul", PW_PAUL)
     _projek(klien, lingkungan)
     r = klien.post("/api/latih/mulai", json={"versi": 99}).json()
@@ -310,7 +323,7 @@ def test_mulai_menolak_versi_yang_tidak_ada(klien, lingkungan):
     assert "99" in r["error"]
 
 
-def test_mulai_menolak_batch_terlalu_panjang(klien, lingkungan):
+def test_mulai_menolak_batch_terlalu_panjang(klien, lingkungan, server_siap):
     masuk(klien, "paul", PW_PAUL)
     _projek(klien, lingkungan)
     r = klien.post("/api/latih/mulai",
@@ -398,7 +411,8 @@ def test_mode_tidak_disebut_memakai_bawaan(tmp_path):
     assert isi["par"]["hsv_h"] == mw.par_latih(mw.BAWAAN)["hsv_h"]
 
 
-def test_mode_boleh_dipilih_per_percobaan(klien, lingkungan, monkeypatch):
+def test_mode_boleh_dipilih_per_percobaan(klien, lingkungan, monkeypatch,
+                                         server_siap):
     """Satu antrean bisa membandingkan dua mode dari versi yang SAMA.
 
     Itu alasan pilihannya ada di halaman Training, bukan hanya di wizard
@@ -502,3 +516,49 @@ def test_training_yang_masih_berjalan_tidak_bisa_dihapus(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="masih berjalan"):
         latih.buang(tmp_path, 5)
     assert latih.baca(tmp_path, 5) is not None
+
+
+# ============================================================
+# SERVER YANG BELUM BISA MELATIH
+# ============================================================
+#
+# ultralytics hanya ada di .venv-gpu. Di server yang berjalan mode CPU —
+# produksi, sampai venv GPU-nya dibangun — tanpa pemeriksaan ini trainingnya
+# tetap diluncurkan, subprosesnya jatuh pada baris import, lalu kartunya
+# muncul berstatus "gagal" beberapa detik kemudian. Orang yang menunggu tidak
+# punya cara tahu bahwa yang kurang sebuah paket, bukan datanya.
+
+def test_siap_latih_menjawab_dengan_alasan():
+    siap, alasan = latih.siap_latih()
+    assert isinstance(siap, bool)
+    if siap:
+        assert alasan == ""
+    else:
+        # Alasan yang cuma berkata "tidak bisa" tidak menolong siapa pun; ia
+        # harus menyebut jalan keluarnya.
+        assert "LABELAPP_OLAH=gpu" in alasan, alasan
+
+
+def test_bahan_form_membawa_kesiapan(klien, lingkungan):
+    masuk(klien, "paul", PW_PAUL)
+    _projek(klien, lingkungan)
+    r = klien.get("/api/latih/bahan").json()
+    assert "siap" in r and "alasan" in r
+    assert isinstance(r["siap"], bool)
+
+
+def test_mulai_ditolak_lebih_dulu_kalau_server_belum_siap(
+        klien, lingkungan, monkeypatch):
+    """Ditolak SEBELUM manifes dibuat, bukan sesudah subprosesnya jatuh.
+
+    Kalau ditolak belakangan, folder .latih terisi training yang tidak pernah
+    bisa berjalan, dan orang harus menghapusnya satu per satu.
+    """
+    masuk(klien, "paul", PW_PAUL)
+    d = _projek(klien, lingkungan)
+    monkeypatch.setattr(latih, "siap_latih",
+                        lambda: (False, "uji: LABELAPP_OLAH=gpu"))
+    r = klien.post("/api/latih/mulai", json={"versi": 1}).json()
+    assert r["ok"] is False
+    assert "LABELAPP_OLAH=gpu" in r["error"]
+    assert latih.nomor_berikut(d) == 1, "manifes sempat dibuat padahal ditolak"

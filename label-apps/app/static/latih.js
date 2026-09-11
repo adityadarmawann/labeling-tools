@@ -609,6 +609,70 @@
     </div>`;
   }
 
+  /* Gambar yang digambar Ultralytics sendiri.
+   *
+   * Yang paling menjawab pertanyaan "model ini sebenarnya melihat apa" adalah
+   * pasangan val_batch*_labels dan val_batch*_pred: petak gambar yang SAMA,
+   * satu dengan poligon sebenarnya dan satu dengan poligon tebakan model.
+   * Karena itu pasangan itu ditaruh paling atas dan DIBERDAMPINGKAN, bukan
+   * ditumpuk: dua gambar yang harus dibandingkan tetapi berjauhan di layar
+   * menuntut orang mengingat yang pertama sambil melihat yang kedua.
+   *
+   * Kelompok lain ditutup secara bawaan. Satu folder hasil berisi enam belas
+   * gambar; membukanya semua sekaligus membuat panel ini panjang sekali dan
+   * menenggelamkan yang penting.
+   */
+  /* Dipanggil SEBELUM blokEvaluasi dan sebelum deretan angka di panel
+     rincian: satu petak berpoligon menjawab "model ini sebenarnya melihat
+     apa" lebih cepat daripada angka mana pun. Sebelumnya ia di paling bawah,
+     di balik empat bagian lain. */
+  function blokGambar(kelompok, nomor) {
+    if (!kelompok.length) return '';
+    const src = (n) => `/latih/grafik?nomor=${nomor}&nama=${encodeURIComponent(n)}`;
+    const label = (n) => n.includes('_labels') ? 'poligon sebenarnya'
+      : (n.includes('_pred') ? 'tebakan model' : n.replace(/\.(png|jpg)$/, ''));
+    const ubin = (n) => `<figure class="tr-gbr">
+      <img loading="lazy" src="${src(n)}" alt="${esc(label(n))}"
+           data-lup="${esc(src(n))}" data-cap="${esc(label(n))}">
+      <figcaption>${esc(label(n))}</figcaption>
+    </figure>`;
+
+    /* Server mengirim SEMUA *_labels dulu baru SEMUA *_pred (dua glob,
+       masing-masing di-sort). Dibiarkan begitu, tebakan petak 2 duduk jauh
+       dari poligon petak 2 dan tidak ada yang bisa dibandingkan. Di sini
+       keduanya dipasangkan ulang menurut nomor petaknya. */
+    const berpasangan = (berkas) => {
+      const petak = (n) => (n.match(/val_batch(\d+)/) || [, n])[1];
+      const urut = [], oleh = new Map();
+      berkas.forEach((n) => {
+        const k = petak(n);
+        if (!oleh.has(k)) { oleh.set(k, []); urut.push(k); }
+        oleh.get(k).push(n);
+      });
+      return urut.map((k) => {
+        const dua = oleh.get(k).sort((a, b) => a.includes('_labels') ? -1 : 1);
+        return dua.length > 1
+          ? `<div class="tr-pasang">${dua.map(ubin).join('')}</div>`
+          : ubin(dua[0]);
+      }).join('');
+    };
+
+    return kelompok.map((g, i) => {
+      const pasangan = g.kunci === 'prediksi';
+      const isi = `<div class="tr-galeri">
+        ${pasangan ? berpasangan(g.berkas) : g.berkas.map(ubin).join('')}
+      </div>`;
+      // Kelompok pertama (prediksi) terbuka; sisanya ditutup.
+      return i === 0
+        ? `<div class="tr-p-blok"><h4>${esc(g.judul)}</h4>
+             <p class="tr-bantu">${esc(g.ket)}</p>${isi}</div>`
+        : `<details class="tr-p-blok tr-lipat">
+             <summary><b>${esc(g.judul)}</b>
+               <span class="tr-bantu">${esc(g.ket)}</span></summary>
+             ${isi}</details>`;
+    }).join('');
+  }
+
   function blokKurva(kurva, t) {
     const titik = kurva.filter((k) => k.nilai !== null && k.nilai !== undefined);
     if (titik.length < 2) {
@@ -705,18 +769,12 @@
         <h4>Sinkronisasi warna dengan versinya</h4>
         <p class="tr-warna-pesan">${esc(w.pesan)}</p></div>` : ''}
       ${blokKurva(r.kurva || [], t)}
+      ${blokGambar(r.gambar || [], t.nomor)}
       ${blokEvaluasi(r.evaluasi)}
       <div class="tr-p-blok">
         <h4>Metrik terbaik</h4>
         <div class="tr-kartu-metrik">${barisMetrik(t.terbaik)}</div>
       </div>
-      ${t.punya_bobot ? `<div class="tr-p-blok">
-        <h4>Grafik</h4>
-        <img class="tr-grafik" alt="kurva hasil training"
-             src="/latih/grafik?nomor=${t.nomor}&nama=results.png"
-             onerror="this.replaceWith(Object.assign(document.createElement('span'),
-                      {className:'tr-diam',textContent:'grafik belum ada'}))">
-      </div>` : ''}
       <div class="tr-p-blok">
         <h4>Setelan yang dipakai</h4>
         <div class="tr-kv-grid">${parBaris}</div>
@@ -782,6 +840,64 @@
     };
   }
 
+  /* -- kaca pembesar galeri ------------------------------------------------
+   * Dipasang sekali lewat delegasi di seluruh dokumen, bukan per-gambar:
+   * isi panel rincian ditulis ulang tiap kali dibuka, jadi penangan yang
+   * ditempel ke <img> akan hilang bersama innerHTML-nya. */
+  let lupDaftar = [], lupKe = 0;
+
+  function lupGambar() {
+    const g = lupDaftar[lupKe];
+    if (!g) return;
+    $('tr-lup-gbr').src = g.src;
+    $('tr-lup-gbr').alt = g.cap;
+    $('tr-lup-cap').textContent = lupDaftar.length > 1
+      ? `${g.cap} · ${lupKe + 1}/${lupDaftar.length}` : g.cap;
+    $('tr-lup-mundur').disabled = lupKe === 0;
+    $('tr-lup-maju').disabled = lupKe === lupDaftar.length - 1;
+  }
+
+  function lupGeser(arah) {
+    const ke = lupKe + arah;
+    if (ke < 0 || ke >= lupDaftar.length) return;
+    lupKe = ke;
+    lupGambar();
+  }
+
+  function lupTutup() {
+    $('tr-lup').hidden = true;
+    $('tr-lup-gbr').src = '';
+    lupDaftar = [];
+  }
+
+  document.addEventListener('click', (e) => {
+    const img = e.target.closest('img[data-lup]');
+    if (!img) return;
+    // Semua gambar dalam SATU galeri jadi satu rangkaian, supaya panahnya
+    // melangkah dari poligon sebenarnya ke tebakan model tanpa menutup lup.
+    const galeri = img.closest('.tr-galeri');
+    const semua = Array.from((galeri || document).querySelectorAll('img[data-lup]'));
+    lupDaftar = semua.map((x) => ({ src: x.dataset.lup, cap: x.dataset.cap }));
+    lupKe = Math.max(0, semua.indexOf(img));
+    $('tr-lup').hidden = false;
+    lupGambar();
+  });
+
+  $('tr-lup-tutup').onclick = lupTutup;
+  $('tr-lup-mundur').onclick = () => lupGeser(-1);
+  $('tr-lup-maju').onclick = () => lupGeser(1);
+  $('tr-lup').onclick = (e) => { if (e.target === $('tr-lup')) lupTutup(); };
+  document.addEventListener('keydown', (e) => {
+    if ($('tr-lup').hidden) return;
+    if (e.key === 'Escape') { lupTutup(); }
+    else if (e.key === 'ArrowLeft') { lupGeser(-1); }
+    else if (e.key === 'ArrowRight') { lupGeser(1); }
+    else return;
+    // Esc juga menutup panel rincian di bawahnya; lup yang terbuka menang.
+    e.stopPropagation();
+    e.preventDefault();
+  }, true);
+
   $('tr-panel-tutup').onclick = () => { $('tr-tirai').hidden = true; };
   $('tr-tirai').onclick = (e) => {
     if (e.target === $('tr-tirai')) $('tr-tirai').hidden = true;
@@ -807,6 +923,13 @@
           gambarForm();
           $('tr-bobot').onchange();
           gambarAntrean();
+          // Dikatakan SEBELUM orang menyusun setelan, bukan sesudah ia
+          // menekan Jalankan dan menunggu kegagalan yang tidak dijelaskan.
+          if (BAHAN.siap === false) {
+            galat(BAHAN.alasan || 'server ini belum bisa menjalankan training');
+            $('tr-jalankan').disabled = true;
+            $('tr-tambah').disabled = true;
+          }
         }
       } catch (e) {
         galat('gagal memuat bahan form: ' + e);

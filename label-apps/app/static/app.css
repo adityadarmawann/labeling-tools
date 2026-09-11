@@ -2995,3 +2995,68 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
               font-variant-numeric:tabular-nums}
 /* Panel diperlebar: grafiknya yang menentukan, dan pada 860px ia terjepit. */
 .tr-panel{width:min(1020px,100%)}
+
+/* -- galeri gambar hasil training ---------------------------------------- */
+/* Deret mendatar yang digeser, bukan petak selebar panel: satu petak val
+   itu mozaik 640x640 dan kalau ditaruh selebar panel ia sendirian memakan
+   seluruh layar, sehingga angka-angka di bawahnya tidak pernah terlihat.
+   Ubinnya cuma INDEKS — poligonnya dibaca di kaca pembesar. Ukuran dan
+   bentuknya sengaja menyalin kartu foto latar di tab Versi. */
+.tr-galeri{
+  display:flex; gap:10px; margin-top:9px; padding-bottom:6px;
+  overflow-x:auto; scroll-snap-type:x proximity; scrollbar-width:thin;
+}
+.tr-galeri>*{flex:0 0 auto; scroll-snap-align:start}
+/* Label dan prediksi petak yang SAMA menempel jadi satu kartu: dipisah,
+   tidak ada yang tahu tebakan mana milik poligon mana. */
+.tr-pasang{
+  display:flex; gap:1px; padding:1px; border-radius:9px; overflow:hidden;
+  border:1px solid var(--line); background:var(--line);
+}
+.tr-pasang .tr-gbr{border:0; border-radius:0}
+.tr-gbr{
+  margin:0; width:132px; border:1px solid var(--line); border-radius:9px;
+  overflow:hidden; background:var(--sunk);
+}
+.tr-gbr img{
+  display:block; width:132px; height:132px; object-fit:cover;
+  cursor:zoom-in; background:var(--sunk);
+}
+.tr-gbr figcaption{
+  padding:4px 6px; font-size:11px; color:var(--ink-dim); text-align:center;
+  background:var(--panel); overflow:hidden; white-space:nowrap;
+  text-overflow:ellipsis;
+}
+
+/* -- kaca pembesar ------------------------------------------------------- */
+/* z-index di atas .tr-tirai (60): galerinya sendiri hidup DI DALAM panel
+   rincian, jadi lupanya harus menimpa panel itu, bukan terjepit di bawahnya. */
+.tr-lup{
+  position:fixed; inset:0; z-index:70; background:rgba(var(--tirai),.82);
+  display:flex; align-items:center; justify-content:center; gap:6px;
+  padding:18px;
+}
+.tr-lup-isi{margin:0; display:flex; flex-direction:column; gap:8px;
+            align-items:center; min-width:0}
+.tr-lup-isi img{
+  display:block; max-width:min(86vw,1280px); max-height:82vh;
+  width:auto; height:auto; object-fit:contain; border-radius:8px;
+  background:var(--sunk);
+}
+.tr-lup-isi figcaption{color:#fff; font-size:12.5px; text-align:center;
+                       font-variant-numeric:tabular-nums}
+.tr-lup-nav,.tr-lup-tutup{
+  border:1px solid rgba(255,255,255,.28); background:rgba(255,255,255,.10);
+  color:#fff; border-radius:8px; cursor:pointer; line-height:1;
+}
+.tr-lup-nav{flex:0 0 auto; width:38px; height:64px; font-size:26px}
+.tr-lup-nav[disabled]{opacity:.25; cursor:default}
+.tr-lup-tutup{position:absolute; top:14px; right:16px;
+              width:34px; height:34px; font-size:21px}
+.tr-lup-nav:hover:not([disabled]),.tr-lup-tutup:hover{
+  background:rgba(255,255,255,.20)}
+@media (max-width:620px){ .tr-lup-nav{width:30px; height:52px} }
+.tr-lipat{border:1px solid var(--line); border-radius:8px; padding:9px 11px}
+.tr-lipat>summary{cursor:pointer; display:flex; flex-direction:column; gap:2px}
+.tr-lipat>summary b{font-size:12.5px}
+.tr-lipat>summary::marker{color:var(--ink-faint)}

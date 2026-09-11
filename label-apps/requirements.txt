@@ -27,3 +27,10 @@ osam==0.5.0
 # ia hidup berdampingan dengan opencv-python selama versinya sama.
 albumentations==2.0.8
 shapely==2.1.2
+
+# Bilah keadaan mesin di halaman Training (RAM dan CPU). Dipakai lewat
+# try/except, jadi tanpa ini halamannya tetap jalan — cuma bilahnya berkata
+# "keadaan mesin tidak terbaca". Statistik GPU datang dari nvidia-ml-py yang
+# ikut terpasang bersama ultralytics di .venv-gpu, dan memang hanya berarti
+# di mesin ber-GPU.
+psutil

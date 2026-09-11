@@ -87,7 +87,8 @@ async def bahan(sess: Session = Depends(current_session_api),
             "jenis": h.get("jenis") or "",
             "warna": svc.periksa_warna(penuh, kat),
         })
-    return {"ok": True,
+    siap, alasan = svc.siap_latih()
+    return {"ok": True, "siap": siap, "alasan": alasan,
             "versi": versi_siap,
             "bobot": await asyncio.to_thread(svc.bobot_tersedia),
             "preset": svc.PRESET_V14,
@@ -115,6 +116,10 @@ async def mulai(request: Request,
     tdata = svc_tugas.baca_projek(d, settings.uploads_root)
     if not svc_tugas.boleh_kelola(tdata, sess.user):
         return {"ok": False, "error": "hanya pemilik projek yang boleh melatih"}
+
+    siap, alasan = svc.siap_latih()
+    if not siap:
+        return {"ok": False, "error": alasan}
 
     body = await bodi_json(request)
     nomor_versi = int(body.get("versi") or 0)
@@ -217,6 +222,7 @@ async def rincian(nomor: int = 0, sess: Session = Depends(current_session_api)):
     csv = await asyncio.to_thread(svc.baca_hasil_csv, svc.dir_latih(d, nomor))
     return {"ok": True, "latih": s, "kurva": csv.get("kurva") or [],
             "evaluasi": await asyncio.to_thread(svc.hasil_evaluasi, d, nomor),
+            "gambar": await asyncio.to_thread(svc.gambar_hasil, d, nomor),
             "log": await asyncio.to_thread(svc.ekor_log, d, nomor, 60)}
 
 

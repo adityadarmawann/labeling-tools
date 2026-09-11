@@ -180,6 +180,23 @@
     </div>
   </div>
 
+  {#- Kaca pembesar. Ubin galeri lebarnya 132px dan poligon val tidak terbaca
+      di sana; ubin itu memang cuma indeks. Panah kiri/kanan berpindah antar
+      gambar dalam kelompok yang sama, jadi poligon sebenarnya dan tebakan
+      model bisa ditumpuk-banding tanpa menutup apa pun. -#}
+  <div class="tr-lup" id="tr-lup" hidden>
+    <button class="tr-lup-tutup" type="button" id="tr-lup-tutup"
+            title="Tutup" aria-label="Tutup gambar">&times;</button>
+    <button class="tr-lup-nav" type="button" id="tr-lup-mundur"
+            title="Sebelumnya" aria-label="Gambar sebelumnya">&#8249;</button>
+    <figure class="tr-lup-isi">
+      <img id="tr-lup-gbr" alt="">
+      <figcaption id="tr-lup-cap"></figcaption>
+    </figure>
+    <button class="tr-lup-nav" type="button" id="tr-lup-maju"
+            title="Berikutnya" aria-label="Gambar berikutnya">&#8250;</button>
+  </div>
+
 </div>
 </main>
 {% endblock %}
