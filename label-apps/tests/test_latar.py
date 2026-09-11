@@ -588,3 +588,48 @@ def test_bisa_dimatikan_lewat_resep(klien, lingkungan):
                           "fase": {"latar_eval": {"aktif": False}}})["ok"]
     assert _tunggu(klien).get("selesai")
     assert [v for v in _manifes(d) if v["asal"] == "latar_eval"] == []
+
+
+def test_pelat_bawaan_ikut_terlacak_git():
+    """Ada di disk TIDAK cukup — ia harus ikut ke checkout yang lain.
+
+    Yang diperiksa di sini bukan `muat_pelat() > 0` (itu sudah dijaga
+    test_pelat_projek_ditambahkan_ke_bawaan_bukan_menggantikan), melainkan
+    hal yang berbeda dan tidak kelihatan dari dalam proses: apakah berkasnya
+    benar-benar ADA DI REPO.
+
+    Bedanya menentukan. .gitignore memasang `*.png` menyeluruh untuk menjaga
+    data pemakai tetap di luar repo, dan aturan itu ikut menelan pelat latar
+    RVM yang dibundel bersama aplikasi. Di mesin tempat pelatnya dibuat
+    semuanya tampak benar selamanya: berkasnya ada di working tree, tesnya
+    lolos, augmentasinya jalan. Yang rusak cuma terlihat di checkout lain —
+    di sana muat_pelat() mengembalikan daftar kosong dan augmentasi kehilangan
+    seluruh pelat bawaannya TANPA satu pun pesan.
+
+    Terjadi sungguhan: deploy prod pertama berhenti di langkah 2 dengan
+    "pelat bawaan harus ikut terbundel", sesudah pelatnya tidak pernah ikut
+    ter-commit selama berbulan-bulan.
+    """
+    import subprocess
+
+    from app.services.olah import LATAR_DIR
+
+    di_disk = sorted(p.name for p in LATAR_DIR.glob("*.png"))
+    assert di_disk, "tidak ada pelat bawaan sama sekali di LATAR_DIR"
+
+    try:
+        keluar = subprocess.run(
+            ["git", "ls-files", "--", str(LATAR_DIR)],
+            capture_output=True, text=True, timeout=30, cwd=LATAR_DIR.parents[2])
+    except (OSError, subprocess.SubprocessError) as e:  # noqa: BLE001
+        pytest.skip(f"git tidak bisa dijalankan: {e}")
+    if keluar.returncode != 0:
+        pytest.skip("bukan checkout git")
+
+    terlacak = sorted(Path(b).name for b in keluar.stdout.split())
+    hilang = [n for n in di_disk if n not in terlacak]
+    assert not hilang, (
+        f"{len(hilang)} pelat bawaan ada di disk tetapi TIDAK terlacak git: "
+        f"{hilang}. Di checkout lain augmentasi akan kehilangan pelat "
+        "bawaannya tanpa pesan. Tambahkan pengecualian di .gitignore "
+        "(!app/data/latar-rvm/*.png) lalu commit berkasnya.")

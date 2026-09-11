@@ -23,6 +23,13 @@ labelapp-unggahan/
 *.jpeg
 *.png
 !app/static/icons/*.png
+# Pelat latar ruang RVM yang DIBUNDEL bersama aplikasi — aset kode, bukan data
+# pemakai. Aturan *.png di atas menelannya diam-diam, dan akibatnya baru
+# terlihat di checkout yang lain: augmentasi di sana kehilangan seluruh pelat
+# bawaannya tanpa satu pun pesan, karena olah.muat_pelat() hanya mengembalikan
+# daftar kosong. Terjadi sungguhan — deploy prod pertama gagal di
+# tests/test_latar.py dengan "pelat bawaan harus ikut terbundel".
+!app/data/latar-rvm/*.png
 *.bmp
 *.webp
 *.tif
