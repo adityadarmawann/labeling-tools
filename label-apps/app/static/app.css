@@ -2679,21 +2679,30 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
 .tr-lanjut{margin-top:6px}
 .tr-lanjut>summary{cursor:pointer; font-size:13px; color:var(--ink-dim); padding:4px 0}
 
+/* Kepala halaman diredam selama form training terbuka: judul dan ajakannya
+   sudah tidak berlaku, dan tombolnya benar-benar dilepas dari alur tab, bukan
+   sekadar dipudarkan. */
+.tr-kepala-sunyi #tr-mulai{display:none}
+.tr-kepala-sunyi .tr-sub{display:none}
+
 /* -- panel sinkronisasi warna ------------------------------------------- */
-/* Diberi warna sendiri karena inilah satu-satunya bagian halaman ini yang
-   kalau diabaikan menghasilkan model dengan mAP tinggi yang gagal di ruang
-   detektor sungguhan. Ia harus terbaca sebelum orang menggulir melewatinya. */
+/* SENGAJA NETRAL, tanpa hijau-berceklis dan tanpa oranye-seru.
+ *
+ * Versi pertamanya memberi tanda centang hijau pada "bentuk" dan tanda seru
+ * oranye pada "warna". Secara logika itu cuma menandai kecocokan dengan cara
+ * versinya dibuat — tetapi karena versi hampir selalu dibuat dengan bawaan
+ * "bentuk", hasilnya: begitu orang memilih "Warna ikut menentukan", seluruh
+ * panel berubah oranye. Yang terbaca bukan "versi ini tidak menyimpan warna",
+ * melainkan "pilihanmu salah". Padahal di model industri keduanya sah — ada
+ * yang memang spesifik warna, ada yang general.
+ *
+ * Jadi panelnya selalu netral. Yang sungguh-sungguh tidak bisa dikerjakan
+ * disebut di .tr-warna-catat, sebagai fakta tentang DATANYA. */
 .tr-warna{
-  border-radius:9px; padding:11px 13px; border:1px solid var(--ok-pudar);
-  background:var(--ok-lembut);
+  border-radius:9px; padding:11px 13px; border:1px solid var(--line);
+  background:var(--sunk);
 }
-.tr-warna[data-tingkat="awas"]{border-color:var(--warn); background:var(--warn-bg)}
 .tr-warna-atas{display:flex; align-items:center; gap:8px; margin:0 0 5px}
-.tr-warna-ikon{
-  width:18px; height:18px; border-radius:50%; display:grid; place-items:center;
-  font-size:12px; font-weight:800; background:var(--ok); color:var(--on-ink);
-}
-.tr-warna[data-tingkat="awas"] .tr-warna-ikon{background:var(--warn)}
 .tr-warna-pesan{margin:0 0 8px; font-size:12.5px; line-height:1.55; color:var(--ink-dim)}
 .tr-cek{display:flex; gap:8px; align-items:flex-start; font-size:12.5px; cursor:pointer}
 .tr-cek input{margin-top:2px; flex:none}
@@ -2871,9 +2880,19 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
 .tr-p{cursor:help}
 .tr-warna-nilai{
   margin:6px 0 0; font-size:12px; line-height:1.55; color:var(--ink-dim);
-  padding-top:7px; border-top:1px dashed var(--ok-pudar);
+  padding-top:7px; border-top:1px dashed var(--line);
 }
-.tr-warna[data-tingkat="awas"] .tr-warna-nilai{border-top-color:var(--warn)}
+/* Satu-satunya aksen berwarna yang tersisa, dan ia hanya muncul untuk
+   kombinasi yang benar-benar mustahil: versi yang ronanya sudah diacak tidak
+   lagi menyimpan warna aslinya, jadi tidak ada setelan waktu-latih yang bisa
+   mengembalikannya. Aksennya di tepi kiri saja — cukup untuk tidak terlewat,
+   tidak cukup untuk terbaca sebagai kegagalan. */
+.tr-warna-catat{
+  margin:8px 0 0; padding:7px 10px; font-size:12px; line-height:1.55;
+  color:var(--ink-dim); background:var(--panel); border-radius:0 7px 7px 0;
+  border-left:3px solid var(--warn);
+}
+.tr-warna-catat b{color:var(--ink); font-weight:600}
 .tr-mode-pilih{
   display:flex; flex-direction:column; gap:0; margin:8px 0 10px;
   background:var(--panel); border:1px solid var(--line); border-radius:8px;

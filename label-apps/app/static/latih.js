@@ -197,18 +197,30 @@
     // di dalam datanya sendiri. Tidak ada setelan waktu-latih yang bisa
     // mengembalikannya.
     const mustahil = (m === 'warna' && asal === 'bentuk');
-    box.dataset.tingkat = mustahil ? 'awas' : (beda ? 'beda' : 'ok');
-    $('tr-warna-ikon').textContent = mustahil ? '!' : (beda ? '~' : '✓');
+    // Tidak ada lagi tingkat ok/beda/awas yang mewarnai seluruh panel: kedua
+    // mode sah, dan menandai salah satunya "lulus" membuat yang lain terbaca
+    // sebagai kesalahan. Yang tersisa cuma catatan untuk yang memang mustahil.
     $('tr-warna-judul').textContent = m === 'warna'
       ? 'Model akan mengenali dari WARNA dan bentuk'
       : 'Model akan mengenali dari BENTUK, bukan warna';
 
+    const catat = $('tr-warna-catat');
+    catat.hidden = !mustahil;
+    if (mustahil) {
+      // Fakta tentang DATANYA, bukan penilaian atas pilihannya — lengkap
+      // dengan jalan keluarnya, supaya tidak berhenti di kabar buruk.
+      catat.innerHTML = `<b>Versi v${n} tidak menyimpan warna aslinya.</b> `
+        + 'Saat versi ini dibangun, ronanya sengaja diacak lebar, jadi tidak '
+        + 'ada lagi warna asli di dalam datanya untuk dipelajari model. Untuk '
+        + 'model yang membedakan lewat warna, buat versi baru dan pilih '
+        + '"Warna ikut menentukan" di langkah Augmentasi.';
+    }
+
     let pesan;
     if (mustahil) {
-      pesan = `Versi v${n} dibuat dengan warnanya diacak lebar, jadi warna asli `
-        + 'sudah hilang dari datanya. Melatih model yang bergantung warna dari '
-        + 'versi ini tidak akan berhasil. Buat versi baru dengan pilihan '
-        + '"Warna ikut menentukan" di langkah Augmentasi.';
+      pesan = 'Model diminta memakai warna kemasan sebagai penanda kelas, '
+        + 'seperti untuk produk yang bentuknya mirip tapi kemasannya beda '
+        + 'warna.';
     } else if (beda) {
       pesan = `Versi v${n} dibuat dengan warna dipertahankan, tetapi model ini `
         + 'akan dilatih untuk mengabaikan warna. Itu boleh, hanya kurang kuat '
@@ -229,6 +241,10 @@
        (~50 derajat) daripada oleh setelan waktu-latih (~5 derajat), jadi
        kalimat yang cuma menyebut "saat melatih" akan menyesatkan. Dijaga
        test_klaim_layar_sesuai_kenyataan di tests/test_evaluasi.py. */
+    // Disembunyikan saat mustahil: catatannya sudah mengatakan hal yang sama
+    // dengan lebih langsung, dan dua paragraf yang berputar di keterangan
+    // yang sama membuat panelnya terbaca seperti dokumen, bukan pilihan.
+    $('tr-warna-nilai').hidden = mustahil;
     $('tr-warna-nilai').textContent = m === 'warna'
       ? 'Warna asli dipertahankan, ronanya praktis tidak digeser. Yang '
         + 'divariasikan gelap-terangnya (0,5x sampai 1,2x) dan sedikit '
@@ -765,7 +781,7 @@
         <div><dt>Sumber</dt><dd>v${t.versi}</dd></div>
         <div><dt>Oleh</dt><dd>${esc(t.oleh || '?')}</dd></div>
       </div>
-      ${w.pesan ? `<div class="tr-p-blok tr-warna" data-tingkat="${esc(w.tingkat)}">
+      ${w.pesan ? `<div class="tr-p-blok tr-warna">
         <h4>Sinkronisasi warna dengan versinya</h4>
         <p class="tr-warna-pesan">${esc(w.pesan)}</p></div>` : ''}
       ${blokKurva(r.kurva || [], t)}
@@ -790,11 +806,19 @@
   // ============================================================
 
   if (bolehKelola) {
-    $('tr-mulai').onclick = () => {
-      $('tr-form').hidden = !$('tr-form').hidden;
-      if (!$('tr-form').hidden) $('tr-nama').focus();
+    /* Tombolnya SEMBUNYI selama formnya terbuka, tidak cuma berganti makna.
+       Formnya sudah punya "Batal" sendiri; membiarkan "+ Training baru" tetap
+       di layar berarti ada dua tombol yang bertabrakan artinya, dan yang satu
+       masih mengajak membuat training baru padahal orangnya sudah ada di
+       dalamnya. */
+    const bukaForm = (buka) => {
+      $('tr-form').hidden = !buka;
+      $('tr-kepala').classList.toggle('tr-kepala-sunyi', buka);
+      if (buka) $('tr-nama').focus();
+      else $('tr-mulai').focus();
     };
-    $('tr-tutup').onclick = () => { $('tr-form').hidden = true; };
+    $('tr-mulai').onclick = () => bukaForm(true);
+    $('tr-tutup').onclick = () => bukaForm(false);
     document.querySelectorAll('input[name="tr-mode"]').forEach((r) => {
       r.onchange = () => {
         // Ditandai supaya pilihan orang tidak ditimpa bawaan versi saat ia
@@ -830,7 +854,7 @@
         ANTREAN = [];
         gambarAntrean();
         galat('');
-        $('tr-form').hidden = true;
+        bukaForm(false);
         muatDaftar();
       } catch (e) {
         galat(String(e));

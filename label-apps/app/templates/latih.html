@@ -25,7 +25,7 @@
   </section>
 
   {% if boleh_kelola %}
-  <div class="tr-kepala">
+  <div class="tr-kepala" id="tr-kepala">
     <div>
       <h2 class="tr-h2">Training</h2>
       <p class="halus tr-sub">Melatih model dari sebuah <b>versi</b> yang sudah
@@ -69,7 +69,6 @@
             menyebutkan akibatnya, bukan cuma "tidak cocok". -#}
         <div class="tr-warna" id="tr-warna" hidden>
           <div class="tr-warna-atas">
-            <span class="tr-warna-ikon" id="tr-warna-ikon" aria-hidden="true"></span>
             <b id="tr-warna-judul"></b>
           </div>
 
@@ -95,6 +94,11 @@
               sebagai pilihan hanya membuka jalan untuk salah. Yang perlu
               diketahui orang cuma AKIBATNYA, dan itu ada di baris ini. -#}
           <p class="tr-warna-nilai" id="tr-warna-nilai"></p>
+          {#- Muncul HANYA untuk kombinasi yang datanya memang tidak
+              mendukung. Tidak ada padanannya untuk pilihan yang "benar":
+              tanda lulus pada satu pilihan otomatis membuat pilihan lainnya
+              terbaca sebagai kesalahan. -#}
+          <p class="tr-warna-catat" id="tr-warna-catat" hidden></p>
         </div>
 
         <label class="tr-label">Jenis tugas
