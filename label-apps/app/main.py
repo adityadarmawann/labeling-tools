@@ -34,7 +34,8 @@ async def lifespan(app: FastAPI):
     print(f"  Akun      : {st.users_file}", flush=True)
     print(f"  Daftar dari: {st.datasets_root or '(LABELAPP_DATASETS_ROOT tidak diisi)'}", flush=True)
     print(f"  Unggahan  : {st.uploads_root}  (maks {st.max_upload_mb} MB/berkas)", flush=True)
-    print(f"  Thumbnail : {st.thumb_root}  (per akun, dihapus saat berhenti)", flush=True)
+    print(f"  Thumbnail : {st.thumb_root}  (dipakai bersama semua akun, "
+          f"dihapus saat berhenti)", flush=True)
     if st.autologin:
         print(f"  AUTOLOGIN : '{st.autologin}' — masuk tanpa password, HANYA dari\n"
               f"              mesin ini. Permintaan dari jaringan tetap harus login.",
