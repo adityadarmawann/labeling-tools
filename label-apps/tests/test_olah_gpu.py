@@ -17,6 +17,7 @@ dilanggar membuat jalur GPU berbahaya, bukan sekadar berbeda:
 Berjalan hanya kalau torch + CUDA ada. Di .venv biasa seluruh berkas ini
 di-skip, dan itu memang yang diinginkan: jalur CPU tidak boleh menuntut torch.
 """
+import random
 import time
 
 import numpy as np
@@ -237,3 +238,64 @@ def test_tiap_operasi_gpu_lebih_cepat_daripada_padanan_cpu(nama):
         np.clip(f * 1.1 + 3.0, 0, 255)
     lantai = (time.perf_counter() - a) / 10 * 1000
     assert per_gambar < lantai, f"{nama}: GPU {per_gambar:.3f} ms vs lantai CPU {lantai:.3f} ms"
+
+
+# ============================================================
+# PARAMETER YANG DIKIRIM KE OPERASI GPU
+# ============================================================
+#
+# jalankan_gpu membongkar parameternya dengan **arg, jadi SATU kunci yang
+# tidak ada di tanda tangan fungsinya sudah cukup menjatuhkan seluruh
+# pembuatan versi. Itu pernah terjadi: `aktif` ikut terbawa dari resep dan
+# gamma() menolaknya. Jalur CPU kebal karena ia menyerahkan parameternya
+# sebagai satu dict, jadi bug ini TIDAK bisa tertangkap oleh tes jalur CPU.
+#
+# Yang membuatnya mahal bukan crash-nya, melainkan tempatnya: galat itu muncul
+# di thread pembuatan versi, penanganannya di router memanggil nama yang tidak
+# ada, dan akibatnya pembuatan versi menggantung sampai batas waktu 180 detik
+# tanpa keterangan apa pun. Dari layar itu terbaca "GPU lambat".
+
+def _semua_resep_aktif():
+    """Resep yang menyalakan SETIAP operasi GPU secara eksplisit.
+
+    Eksplisit itu intinya: operasi yang tidak disebut memakai bawaan dan
+    tidak pernah membawa kunci `aktif`, jadi resep kosong justru melewatkan
+    bug ini sepenuhnya.
+    """
+    from app.services import olah
+    kat = olah.katalog_json()["aug"]
+    return {"aug": {oid: {"aktif": True} for oid in olah_gpu.DIPEGANG_GPU
+                    if oid in kat}}
+
+
+def test_par_gpu_tidak_meloloskan_kunci_asing():
+    """Tiap kunci yang keluar harus benar-benar diterima fungsinya."""
+    import inspect
+
+    from app.services import olah
+    par = olah_gpu.par_gpu(_semua_resep_aktif(), olah.katalog_json()["aug"])
+    assert par, "tidak ada satu pun operasi GPU yang aktif — resepnya salah"
+    for oid, p in par.items():
+        sah = set(inspect.signature(olah_gpu.OPERASI[oid]).parameters)
+        # `p` itu peluang, dibaca jalankan_gpu sendiri dan tidak diteruskan.
+        asing = set(p) - sah - {"p"}
+        assert not asing, f"{oid} akan menerima kunci yang ditolaknya: {asing}"
+
+
+@pytest.mark.skipif(not olah_gpu.tersedia(), reason="GPU tidak tersedia")
+def test_jalankan_gpu_dengan_semua_operasi_dinyalakan_eksplisit():
+    """Resep 'semua menyala' harus benar-benar berjalan, bukan melempar.
+
+    Inilah bentuk resep yang dikirim panel saat orang menyalakan seluruh
+    saklarnya, dan bentuk inilah yang dulu menjatuhkan pembuatan versi.
+    """
+    from app.services import olah
+    par = olah_gpu.par_gpu(_semua_resep_aktif(), olah.katalog_json()["aug"])
+    rng = random.Random(7)
+    img = np.random.default_rng(3).integers(0, 255, (96, 128, 3), dtype=np.uint8)
+    # Dijalankan berkali-kali: peluang tiap operasi di bawah 1, jadi sekali
+    # jalan belum tentu menyentuh operasi yang rusak.
+    for _ in range(40):
+        out = olah_gpu.jalankan_gpu(img, par, rng)
+        assert out.shape == img.shape
+        assert out.dtype == np.uint8

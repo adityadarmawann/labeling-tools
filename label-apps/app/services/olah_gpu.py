@@ -341,7 +341,20 @@ def par_gpu(resep: dict, katalog_aug: dict) -> dict:
         # mengenai seluruhnya, rata-rata piksel jatuh dari 106 ke 55, dan
         # ragamnya menyempit karena semua gambar diperlakukan sama.
         penuh = {k: s["bawaan"] for k, s in spec.items()}
-        penuh.update(_olah.saring_par(spec, minta or {}))
+        bersih = _olah.saring_par(spec, minta or {})
+        # HANYA kunci yang dikenal katalog yang diteruskan. saring_par sengaja
+        # meloloskan kunci asing (`sisi` dan `n_kelas` dipakai mesin dan tidak
+        # ditawarkan ke orang), dan jalur CPU tidak terganggu karena ia
+        # menyerahkan parameternya sebagai SATU dict -- fungsinya membaca kunci
+        # yang ia perlukan dan mengabaikan sisanya. Jalur GPU membongkarnya
+        # dengan **arg, jadi satu kunci asing saja menjatuhkannya:
+        #     TypeError: gamma() got an unexpected keyword argument 'aktif'
+        # Itu benar-benar terjadi, dan lebih buruk daripada kedengarannya --
+        # galatnya muncul di dalam thread pembuatan versi, penanganannya di
+        # router memanggil `log` yang tidak ada, dan hasilnya pembuatan versi
+        # menggantung 180 detik tanpa satu pun keterangan. Dari luar itu
+        # terbaca sebagai "GPU lambat", bukan sebagai crash.
+        penuh.update({k: v for k, v in bersih.items() if k in spec})
         keluar[oid] = penuh
     return keluar
 
@@ -601,3 +614,4 @@ def simpan_jpeg(path, img_bgr, mutu: int) -> bool:
 
 
 _jpeg_mati = False
+

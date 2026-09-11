@@ -386,7 +386,7 @@ async def versi_mulai(request: Request, split: str = "", catatan: str = "",
             buatversi.catat_maju(akun, jalan=False, batal=True)
             return
         except Exception as e:                     # noqa: BLE001
-            log.exception("pembuatan versi gagal")
+            _log.exception("pembuatan versi gagal")
             buatversi.buang_hasil(ds, nomor)
             buatversi.catat_maju(akun, jalan=False, galat=str(e)[:200])
             return
