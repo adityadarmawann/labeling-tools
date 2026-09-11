@@ -725,3 +725,47 @@ def ekor_log(ds, nomor: int, baris: int = 40) -> str:
         return "\n".join(p.read_text(errors="replace").splitlines()[-baris:])
     except OSError:
         return ""
+
+
+# ============================================================
+# EVALUASI PRODUKSI
+# ============================================================
+#
+# Dipisah dari training karena ia menjawab pertanyaan yang berbeda. Training
+# menghasilkan mAP; evaluasi ini menjawab "apakah model ini bisa dipakai di
+# ruang detektor" — dan v13 membuktikan keduanya bisa sangat berbeda: mAP50-95
+# 0,9499, lalu benar 0 dari 7 pada foto RVM sungguhan.
+#
+# Tidak memakai kunci GPU. Inferensi model nano memakai beberapa ratus MB dan
+# selesai dalam belasan detik; menunggui training yang berjam-jam hanya untuk
+# itu berarti tombol Uji tidak bisa dipakai sepanjang hari.
+
+def jalankan_evaluasi(ds, nomor: int) -> dict:
+    """Luncurkan evaluasi produksi untuk satu training yang sudah selesai."""
+    isi = baca(ds, nomor)
+    if isi is None:
+        raise ValueError(f"training L{nomor} tidak ada")
+    if not (dir_latih(ds, nomor) / "weights" / "best.pt").exists():
+        raise ValueError("belum ada best.pt — trainingnya belum selesai")
+
+    akar = Path(__file__).resolve().parents[2]
+    log_p = _dir(ds) / f"L{nomor}.eval.log"
+    env = dict(os.environ)
+    env.setdefault("PYTHONPATH", str(akar))
+    env["YOLO_VERBOSE"] = "False"
+    with open(log_p, "ab", buffering=0) as f:
+        f.write(f"\n=== {datetime.now():%Y-%m-%d %H:%M:%S} evaluasi L{nomor} ===\n"
+                .encode())
+        p = subprocess.Popen(
+            [sys.executable, "-m", "app.services.evaluasi_jalan",
+             str(Path(ds).resolve()), str(nomor)],
+            cwd=str(akar), env=env, stdout=f, stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL, start_new_session=True)
+    log.info("evaluasi L%s dimulai (pid %s)", nomor, p.pid)
+    return {"pid": p.pid}
+
+
+def hasil_evaluasi(ds, nomor: int) -> dict | None:
+    from . import evaluasi_jalan
+
+    return evaluasi_jalan.baca(ds, nomor)

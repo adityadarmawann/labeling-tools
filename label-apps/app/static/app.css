@@ -2791,3 +2791,44 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
   white-space:pre-wrap; word-break:break-word;
 }
 .sisi-angka-jalan{background:var(--aksi); color:var(--aksi-ink)}
+
+/* -- hasil uji produksi -------------------------------------------------- */
+/* Putusannya diberi warna penuh, bukan sekadar teks: inilah satu-satunya
+   tempat di sistem ini yang berkata "jangan dikirim ke produksi", dan
+   peringatan yang terlihat seperti keterangan biasa akan dilewati. */
+.lt-putusan{
+  display:flex; gap:10px; align-items:baseline; padding:10px 12px;
+  border-radius:8px; margin:0 0 12px; background:var(--ok-lembut);
+  border:1px solid var(--ok-pudar);
+}
+.lt-putusan>b{font-size:11px; letter-spacing:.06em; color:var(--ok)}
+.lt-putusan>span{font-size:12.5px; line-height:1.55; color:var(--ink-dim)}
+.lt-putusan[data-tingkat="sedang"]{background:var(--warn-bg); border-color:var(--warn)}
+.lt-putusan[data-tingkat="sedang"]>b{color:var(--warn)}
+.lt-putusan[data-tingkat="buruk"]{background:var(--bahaya-lembut); border-color:var(--stop)}
+.lt-putusan[data-tingkat="buruk"]>b{color:var(--stop)}
+
+.lt-uji-angka{display:flex; gap:24px; flex-wrap:wrap; margin:0 0 10px}
+.lt-uji-angka>span{display:flex; flex-direction:column; gap:2px; min-width:130px}
+.lt-uji-angka i{font-style:normal; font-size:11px; color:var(--ink-faint)}
+.lt-uji-angka b{font-size:21px; font-variant-numeric:tabular-nums}
+.lt-uji-angka u{text-decoration:none; font-size:11px; color:var(--ink-dim)}
+.lt-uji-angka>span[data-tingkat="baik"] b{color:var(--ok)}
+.lt-uji-angka>span[data-tingkat="sedang"] b{color:var(--warn)}
+.lt-uji-angka>span[data-tingkat="buruk"] b{color:var(--stop)}
+
+/* Tabel gambar yang goyah. Sel yang BERBEDA dari jawaban aslinya ditandai —
+   itu satu-satunya hal yang perlu dicari mata di tabel ini. */
+.lt-tabel{width:100%; border-collapse:collapse; font-size:11.5px; margin-top:8px}
+.lt-tabel th,.lt-tabel td{
+  padding:4px 7px; text-align:left; border-bottom:1px solid var(--line);
+  white-space:nowrap;
+}
+.lt-tabel th{color:var(--ink-faint); font-weight:600}
+.lt-tabel .lt-beda{color:var(--stop); font-weight:700}
+.chip-uji{border-color:var(--aksi); color:var(--aksi)}
+/* "tak-terukur" bukan hijau dan bukan merah: ia berarti angkanya TIDAK ADA,
+   bukan bagus dan bukan buruk. Mewarnainya hijau akan mengulang persis cacat
+   yang baru diperbaiki. */
+.lt-uji-angka>span[data-tingkat="tak-terukur"] b{color:var(--ink-faint)}
+.lt-putusan[data-tingkat="tak-terukur"]{background:var(--warn-bg); border-color:var(--warn)}

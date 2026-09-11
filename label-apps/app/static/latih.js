@@ -300,6 +300,8 @@
       </div>
       <div class="lt-kartu-aksi">
         <button class="chip" type="button" data-rinci="${t.nomor}">Rincian</button>
+        ${t.punya_bobot && bolehKelola ? `<button class="chip chip-uji" type="button"
+            data-uji="${t.nomor}">Uji produksi</button>` : ''}
         ${t.punya_bobot ? `<a class="chip" href="/latih/bobot?nomor=${t.nomor}&jenis=best"
             download>Unduh best.pt</a>` : ''}
         ${bolehKelola ? `<button class="chip chip-bahaya" type="button"
@@ -356,6 +358,19 @@
         muatDaftar();
       };
     });
+    document.querySelectorAll('[data-uji]').forEach((b) => {
+      b.onclick = async () => {
+        b.disabled = true;
+        b.textContent = 'Menguji…';
+        const j = await ambil(`/api/latih/evaluasi?nomor=${b.dataset.uji}`,
+                              {method: 'POST'});
+        if (!j.ok) { alert(j.error || 'gagal memulai evaluasi'); b.disabled = false;
+                     b.textContent = 'Uji produksi'; return; }
+        // Evaluasi selesai dalam belasan detik; panelnya dibuka supaya
+        // hasilnya muncul di tempat ia akan dibaca, bukan hilang di daftar.
+        setTimeout(() => bukaRincian(Number(b.dataset.uji)), 2500);
+      };
+    });
     document.querySelectorAll('[data-hapus]').forEach((b) => {
       b.onclick = async () => {
         if (!confirm('Hapus training ini beserta bobotnya? Tidak bisa dibatalkan.')) return;
@@ -368,6 +383,72 @@
     // Berdenyut hanya selama ada yang berjalan DAN tabnya terlihat.
     clearTimeout(timer);
     if (jalan.length && !document.hidden) timer = setTimeout(muatDaftar, 4000);
+  }
+
+  /* Hasil uji produksi.
+   *
+   * Ditaruh DI ATAS metrik training, dan itu disengaja: mAP yang tinggi tanpa
+   * uji ini tidak membuktikan apa pun. v13 melaporkan mAP50-95 0,9499 lalu
+   * benar 0 dari 7 pada foto RVM sungguhan, dan yang menangkapnya justru
+   * angka ketergantungan warna — bukan mAP.
+   */
+  function blokEvaluasi(e) {
+    if (!e) {
+      return `<div class="lt-p-blok">
+        <h4>Uji produksi</h4>
+        <p class="lt-bantu">Belum diuji. Tekan <b>Uji produksi</b> di kartunya.
+          mAP saja tidak cukup: ia diukur pada data yang sedomain dengan data
+          latih, sedangkan yang menentukan adalah foto dari ruang detektor.</p>
+      </div>`;
+    }
+    if (e.keadaan === 'jalan') {
+      return `<div class="lt-p-blok"><h4>Uji produksi</h4>
+        <p class="lt-diam">sedang berjalan…</p></div>`;
+    }
+    if (e.keadaan !== 'selesai') {
+      return `<div class="lt-p-blok"><h4>Uji produksi</h4>
+        <p class="lt-galat">${esc(e.galat || 'gagal tanpa keterangan')}</p></div>`;
+    }
+    const w = e.warna || {}, a = e.akurasi || {}, d = e.default || {},
+          pu = e.putusan || {};
+    const baris = (e.rinci || []).filter((x) => new Set(x.jawaban).size > 1);
+    return `
+      <div class="lt-p-blok">
+        <h4>Uji produksi</h4>
+        <div class="lt-putusan" data-tingkat="${esc(pu.tingkat)}">
+          <b>${esc((pu.tingkat || '').toUpperCase())}</b>
+          <span>${esc(pu.pesan || '')}</span>
+        </div>
+        <div class="lt-uji-angka">
+          <span data-tingkat="${esc(w.tingkat)}">
+            <i>Ketergantungan warna</i>
+            <b>${w.tingkat === 'tak-terukur' ? '—' : angka(w.skor, 0) + '%'}</b>
+            <u>${angka(w.berubah)} dari ${angka(w.total)} berubah kelas${
+              w.kosong ? ` · ${angka(w.kosong)} tidak terdeteksi` : ''}</u></span>
+          ${a.n ? `<span><i>Akurasi di test</i><b>${angka(a.persen, 0)}%</b>
+            <u>${angka(a.benar)} dari ${angka(a.n)}</u></span>` : ''}
+          <span data-tingkat="${esc(d.tingkat)}">
+            <i>Kelas default</i>
+            <b>${d.teratas ? esc(d.teratas) : 'tidak ada'}</b>
+            <u>${d.teratas ? angka(d.porsi, 0) + '% dari ' + angka(d.n) + ' latar'
+                           : angka(d.n) + ' latar kosong bersih'}</u></span>
+        </div>
+        <p class="lt-bantu">${esc(w.pesan || '')}</p>
+        <p class="lt-bantu">Latar kosong diambil dari ${esc(e.sumber_latar || '-')}.
+          Diuji pada ${angka(e.n_foto)} foto dari split test v${e.versi},
+          ${e.perlakuan ? e.perlakuan.length : 0} perlakuan warna
+          (${esc((e.perlakuan || []).join(', '))}).</p>
+        ${baris.length ? `<details class="lt-lanjut">
+          <summary>${baris.length} gambar yang jawabannya goyah</summary>
+          <table class="lt-tabel">
+            <thead><tr><th>berkas</th><th>sebenarnya</th>
+              ${(e.perlakuan || []).map((n) => `<th>${esc(n)}</th>`).join('')}</tr></thead>
+            <tbody>${baris.map((x) => `<tr>
+              <td>${esc(x.berkas)}</td><td>${esc(x.sebenarnya || '-')}</td>
+              ${x.jawaban.map((c) => `<td class="${c === x.jawaban[0] ? '' : 'lt-beda'}">`
+                + `${esc(c || 'none')}</td>`).join('')}</tr>`).join('')}</tbody>
+          </table></details>` : ''}
+      </div>`;
   }
 
   async function bukaRincian(nomor) {
@@ -394,6 +475,7 @@
       ${w.pesan ? `<div class="lt-p-blok lt-warna" data-tingkat="${esc(w.tingkat)}">
         <h4>Sinkronisasi warna dengan versinya</h4>
         <p class="lt-warna-pesan">${esc(w.pesan)}</p></div>` : ''}
+      ${blokEvaluasi(r.evaluasi)}
       <div class="lt-p-blok">
         <h4>Metrik terbaik</h4>
         <div class="lt-kartu-metrik">${barisMetrik(t.terbaik)}</div>

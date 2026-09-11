@@ -204,7 +204,29 @@ async def rincian(nomor: int = 0, sess: Session = Depends(current_session_api)):
         return {"ok": False, "error": "training itu tidak ada"}
     csv = await asyncio.to_thread(svc.baca_hasil_csv, svc.dir_latih(d, nomor))
     return {"ok": True, "latih": s, "kurva": csv.get("kurva") or [],
+            "evaluasi": await asyncio.to_thread(svc.hasil_evaluasi, d, nomor),
             "log": await asyncio.to_thread(svc.ekor_log, d, nomor, 60)}
+
+
+@router.post("/api/latih/evaluasi")
+async def mulai_evaluasi(nomor: int = 0,
+                         sess: Session = Depends(current_session_api),
+                         settings: Settings = Depends(get_settings)):
+    """Uji produksi satu model: akurasi, ketergantungan warna, kelas default."""
+    if not sess.src:
+        return {"ok": False, "error": "belum ada projek terbuka"}
+    d = Path(sess.src)
+    tdata = svc_tugas.baca_projek(d, settings.uploads_root)
+    if not svc_tugas.boleh_kelola(tdata, sess.user):
+        return {"ok": False, "error": "hanya pemilik projek yang boleh"}
+    try:
+        await asyncio.to_thread(svc.jalankan_evaluasi, d, nomor)
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
+    except Exception as e:                       # noqa: BLE001
+        _log.exception("gagal meluncurkan evaluasi")
+        return {"ok": False, "error": str(e)[:200]}
+    return {"ok": True}
 
 
 @router.get("/latih/bobot")
