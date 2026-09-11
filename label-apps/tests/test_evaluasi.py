@@ -642,3 +642,74 @@ def test_daftar_operasi_rona_cocok_dengan_katalog():
         assert o in kat, f"OP_GESER_RONA menyebut `{o}` yang tidak ada di katalog"
     for o in mw.OP_TERANG:
         assert o in kat, f"OP_TERANG menyebut `{o}` yang tidak ada di katalog"
+
+
+# ============================================================
+# SAMPEL LATAR YANG TERLALU SEDIKIT
+# ============================================================
+#
+# Form latar hanya menerima 1-3 foto, jadi memakai foto aslinya berarti n=3 —
+# dan pada n=3 satu deteksi sudah 33%, persis menyentuh ambang buruk. Terjadi
+# sungguhan pada projek paragon: 1 dari 3 foto, lalu vonisnya BURUK atas dasar
+# satu kejadian. Sampel sekecil itu tidak bisa membedakan "model bermasalah"
+# dari "satu foto yang kebetulan aneh".
+
+def test_satu_deteksi_dari_tiga_latar_tidak_langsung_divonis_buruk():
+    h = ev.nilai_default({"kaleng": 1}, 3)
+    assert h["tingkat"] == "tipis", h
+    assert "terlalu sedikit" in h["pesan"]
+    # Angkanya tetap dilaporkan — orang berhak melihatnya.
+    assert h["tally"] == {"kaleng": 1} and h["porsi"] == pytest.approx(33.3, abs=0.1)
+
+
+def test_tanpa_deteksi_pun_sampel_tipis_tidak_dinyatakan_baik():
+    """Nol dari tiga bukan bukti bersih.
+
+    Melaporkannya "baik" memberi rasa aman yang tidak berdasar — kesalahan
+    yang sama bentuknya dengan 0/0 yang dulu dilaporkan "baik".
+    """
+    assert ev.nilai_default({}, 3)["tingkat"] == "tipis"
+    assert ev.nilai_default({}, ev.MIN_LATAR)["tingkat"] == "baik"
+
+
+def test_sampel_cukup_tetap_divonis_seperti_biasa():
+    assert ev.nilai_default({"kaleng": 9}, 20)["tingkat"] == "buruk"
+    assert ev.nilai_default({"botol": 1}, 20)["tingkat"] == "baik"
+
+
+def test_putusan_tidak_meloloskan_kelas_default_yang_belum_terukur():
+    """"Belum bisa dinilai" tidak boleh terbaca sebagai "lolos"."""
+    p = ev.putusan({"tingkat": "baik", "skor": 2.0, "pesan": "stabil"},
+                   {"n": 5, "persen": 90.0, "benar": 4},
+                   ev.nilai_default({}, 3))
+    assert p["tingkat"] == "sedang"
+    assert "belum bisa dinilai" in p["pesan"].lower()
+
+
+def test_pelat_didahulukan_daripada_foto_asli(tmp_path):
+    """Pelat jauh lebih banyak (9 per foto) DAN lebih tepat.
+
+    Ia persis latar yang dilihat model saat augmentasi menempel objek ke
+    ruangan, jadi deteksi palsu di sana terjadi pada gambar yang bentuknya
+    sama dengan yang dilihat model sepanjang training.
+    """
+    from app.services import latar
+
+    akar = tmp_path / latar.FOLDER
+    (akar / latar.ASLI).mkdir(parents=True)
+    (akar / latar.PELAT).mkdir(parents=True)
+    for i in range(3):
+        cv2.imwrite(str(akar / latar.ASLI / f"f{i}.jpg"),
+                    np.zeros((64, 64, 3), np.uint8))
+    for i in range(9):
+        cv2.imwrite(str(akar / latar.PELAT / f"p{i}.png"),
+                    np.zeros((64, 64, 3), np.uint8))
+    p, sumber = ev.foto_latar(tmp_path)
+    assert len(p) == 9, "pelat harus didahulukan"
+    assert "pelat" in sumber
+
+
+def test_tanpa_latar_sama_sekali_jatuh_ke_petak_pojok(tmp_path):
+    p, sumber = ev.foto_latar(tmp_path)
+    assert p == []
+    assert "tebakan" in sumber, "cara cadangan harus menyebut dirinya tebakan"

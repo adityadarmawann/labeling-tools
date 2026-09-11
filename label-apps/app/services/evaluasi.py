@@ -294,12 +294,28 @@ def nilai_warna(jawaban_per_gambar: list[list[str]], mode: str = None) -> dict:
 def nilai_default(tally: dict[str, int], n_latar: int) -> dict:
     """Adakah kelas yang jadi tempat pelarian saat fiturnya ambigu."""
     if not tally:
+        if n_latar < MIN_LATAR:
+            return {"tally": {}, "tingkat": "tipis", "n": n_latar,
+                    "pesan": (f"Tidak ada deteksi pada {n_latar} latar kosong — "
+                              "tetapi sampelnya terlalu sedikit untuk "
+                              f"disimpulkan (perlu sekurangnya {MIN_LATAR}).")}
         return {"tally": {}, "tingkat": "baik", "n": n_latar,
-                "pesan": "Tidak ada deteksi pada latar kosong."}
+                "pesan": f"Tidak ada deteksi pada {n_latar} latar kosong."}
     urut = sorted(tally.items(), key=lambda t: -t[1])
     teratas, jml = urut[0]
-    # Satu deteksi dari dua puluh latar itu derau; sepertiga bukan.
     porsi = jml / n_latar if n_latar else 0
+    if n_latar < MIN_LATAR:
+        # Terlalu sedikit untuk memvonis. Angkanya tetap dilaporkan — orang
+        # berhak melihatnya — tetapi tidak dijadikan dasar "buruk", karena
+        # pada n sekecil ini satu kejadian saja sudah melewati ambang.
+        return {"tally": dict(urut), "tingkat": "tipis", "n": n_latar,
+                "teratas": teratas, "porsi": round(porsi * 100, 1),
+                "pesan": (f"`{teratas}` muncul pada {jml} dari {n_latar} latar "
+                          f"kosong. Sampelnya terlalu sedikit untuk disimpulkan "
+                          f"(perlu sekurangnya {MIN_LATAR}); unggah foto ruang "
+                          "kosong lewat halaman Versi supaya pelatnya terbangun "
+                          "dan angkanya bermakna.")}
+    # Satu deteksi dari dua puluh latar itu derau; sepertiga bukan.
     tingkat = "buruk" if porsi >= 0.33 else ("sedang" if porsi >= 0.1 else "baik")
     return {"tally": dict(urut), "tingkat": tingkat, "n": n_latar,
             "teratas": teratas, "porsi": round(porsi * 100, 1),
@@ -351,6 +367,10 @@ def putusan(warna: dict, akurasi: dict | None, default: dict) -> dict:
                 f"Hati-hati. `{default.get('teratas')}` jadi jawaban default "
                 "pada latar kosong, jadi model menebak kelas itu setiap kali "
                 "fiturnya ambigu."}
+    if default["tingkat"] == "tipis" and warna["tingkat"] == "baik":
+        return {"tingkat": "sedang", "pesan":
+                "Keputusannya stabil, tetapi kelas defaultnya belum bisa "
+                "dinilai. " + (default.get("pesan") or "")}
     if warna["tingkat"] == "sedang" or default["tingkat"] == "sedang":
         return {"tingkat": "sedang", "pesan":
                 ("Layak diuji lebih lanjut, tetapi belum bersih. " + ket).strip()}
@@ -441,22 +461,50 @@ def kelas_versi(ds, nomor_versi: int) -> list[str]:
     return []
 
 
-def foto_latar(ds, batas: int = 20) -> tuple[list[Path], str]:
-    """Foto ruang RVM KOSONG, untuk mengukur kelas default.
+# Sampel latar minimum sebelum vonisnya boleh dipercaya. Di bawah ini angkanya
+# tetap dilaporkan, tetapi tingkatnya "tipis" — bukan baik dan bukan buruk.
+#
+# Bukan angka yang dikarang: form latar hanya menerima 1-3 foto, jadi memakai
+# foto aslinya berarti n=3, dan pada n=3 satu deteksi sudah 33% — persis
+# menyentuh ambang buruk. Sampel sekecil itu tidak bisa membedakan "model
+# bermasalah" dari "satu foto yang kebetulan aneh". Terjadi sungguhan pada
+# projek paragon: 1 dari 3 foto, dan vonisnya BURUK atas dasar satu kejadian.
+MIN_LATAR = 8
 
-    Yang dipakai foto yang diunggah orang ke .latar — formnya memang meminta
-    foto ruangan kosong. Kalau tidak ada, pemanggil memakai cara v14: petak
-    pojok kiri-atas dari foto uji, yang cuma TEBAKAN bahwa bagian itu kosong.
-    Mana yang dipakai ikut dilaporkan, supaya angkanya tidak dibaca lebih kuat
-    daripada semestinya.
+
+def foto_latar(ds, batas: int = 40) -> tuple[list[Path], str]:
+    """Latar KOSONG untuk mengukur kelas default, dari yang terbaik ke terburuk.
+
+    1. PELAT (.latar/pelat) — potongan 640x640 ruang kosong dengan terang
+       bervariasi, sembilan per foto yang diunggah. Ini yang paling tepat:
+       jumlahnya cukup untuk vonis yang bermakna (27 dari tiga foto), DAN ia
+       persis latar yang dilihat model saat augmentasi menempel objek ke
+       ruangan. Kalau model menyangka ada objek di sini, itu pada gambar yang
+       bentuknya sama dengan yang ia lihat sepanjang training.
+
+    2. FOTO ASLI (.latar/asli) — yang diunggah orang, maksimal 3. Dipakai
+       kalau pelatnya belum dibangun.
+
+    3. PETAK POJOK foto uji — cara v14, dan cuma TEBAKAN bahwa bagian itu
+       kosong. Pada foto yang objeknya justru di pojok kiri-atas, ia mengukur
+       hal yang salah.
+
+    Mana yang dipakai ikut dilaporkan, supaya angkanya tidak pernah dibaca
+    lebih kuat daripada semestinya.
     """
     from . import latar
 
-    d = Path(ds) / latar.FOLDER / latar.ASLI
+    akar = Path(ds) / latar.FOLDER
+    pelat = akar / latar.PELAT
+    if pelat.is_dir():
+        p = sorted(x for x in pelat.iterdir() if x.suffix.lower() in EXTS)[:batas]
+        if p:
+            return p, f"{len(p)} pelat ruang RVM (dari foto yang diunggah)"
+    d = akar / latar.ASLI
     if d.is_dir():
         p = sorted(x for x in d.iterdir() if x.suffix.lower() in EXTS)[:batas]
         if p:
-            return p, "foto ruang RVM yang diunggah"
+            return p, f"{len(p)} foto ruang RVM yang diunggah"
     return [], "petak pojok foto uji (tebakan)"
 
 
