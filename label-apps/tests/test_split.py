@@ -683,3 +683,95 @@ def test_rute_versi_menerima_parameter_belah(klien, lingkungan):
 
     for fn in (d.versi_buat, d.versi_estimasi, d.versi_mulai, d.ekspor):
         assert "belah" in inspect.signature(fn).parameters, fn.__name__
+
+
+# ============================================================
+# JARAK SIDIK: BENTUK MATRIKS HARUS BIT-IDENTIK
+# ============================================================
+#
+# cari_kembar dan jarak_terdekat ditulis ulang dari gather-LUT jadi perkalian
+# matriks (20,8x di CPU), lalu didelegasikan ke GPU kalau ada (33,8x lagi).
+# Keduanya menghitung jarak Hamming — bilangan bulat — jadi yang dituntut di
+# sini BUKAN kesetaraan sebaran melainkan hasil yang sama persis. Kalau suatu
+# saat ada yang menggantinya dengan pendekatan hampiran demi kecepatan, tes
+# ini yang jatuh.
+
+def _jarak_acuan(acuan, uji):
+    """Cara lama, ditulis polos: XOR lalu hitung bit lewat tabel."""
+    A = np.array(list(acuan.values()), np.uint8)
+    U = np.array(list(uji.values()), np.uint8)
+    d = split._BIT[np.bitwise_xor(U[:, None, :], A[None, :, :])].sum(2)
+    return d.min(1).astype(np.int32)
+
+
+def _sidik_berkorelasi(rng, n, induk, maks_flip):
+    """Sidik yang mirip-mirip, seperti dHash foto dari sesi yang sama.
+
+    Sidik acak seragam berjarak ~128 bit satu sama lain, jadi ambang berapa
+    pun di bawah itu tidak pernah kena dan tesnya cuma menguji jalur "tidak
+    ketemu". Yang perlu diuji justru daerah di sekitar ambangnya.
+    """
+    basis = rng.integers(0, 256, (induk, 32), dtype=np.uint8)
+    out = {}
+    for i in range(n):
+        b = basis[i % induk].copy()
+        for f in rng.integers(0, 256, rng.integers(0, maks_flip + 1)):
+            b[f // 8] ^= np.uint8(1 << (f % 8))
+        out[i] = b
+    return out
+
+
+@pytest.mark.parametrize("n,m,induk,flip", [
+    (300, 300, 6, 60),          # berkorelasi rapat — banyak yang dekat ambang
+    (240, 360, 20, 120),        # berkorelasi longgar, jumlah tidak sama
+    (200, 1, 4, 40),            # satu sidik diuji terhadap banyak
+    (1, 200, 4, 40),            # banyak sidik diuji terhadap satu acuan
+])
+def test_jarak_terdekat_identik_dengan_cara_lama(n, m, induk, flip):
+    rng = np.random.default_rng(11)
+    A = _sidik_berkorelasi(rng, n, induk, flip)
+    U = _sidik_berkorelasi(rng, m, induk, flip)
+    assert np.array_equal(split.jarak_terdekat(A, U), _jarak_acuan(A, U))
+
+
+@pytest.mark.parametrize("ambang", [0, 12, 72, 130, 256])
+def test_cari_kembar_identik_dengan_cara_lama(ambang):
+    rng = np.random.default_rng(5)
+    A = _sidik_berkorelasi(rng, 300, 8, 60)
+    U = _sidik_berkorelasi(rng, 300, 8, 60)
+    # Kembaran sungguhan disisipkan: tanpa ini ambang 0 tidak pernah kena dan
+    # separuh tesnya tidak menguji apa pun.
+    for i in range(0, 300, 10):
+        U[i] = A[i % 300].copy()
+    k = list(U)
+    harusnya = {k[i] for i in np.flatnonzero(_jarak_acuan(A, U) <= ambang)}
+    assert split.cari_kembar(A, U, ambang) == harusnya
+
+
+def test_kembar_dengan_dirinya_sendiri_berjarak_nol():
+    """Sidik yang sama persis harus berjarak 0, ambang serendah apa pun."""
+    rng = np.random.default_rng(3)
+    A = {i: rng.integers(0, 256, 32, dtype=np.uint8) for i in range(50)}
+    assert np.array_equal(split.jarak_terdekat(A, dict(A)), np.zeros(50, np.int32))
+    assert split.cari_kembar(A, dict(A), 0) == set(A)
+
+
+def test_jarak_maksimum_256_bit():
+    """Sidik dan komplemennya berjarak 256 — batas atas hash 256 bit.
+
+    Menjaga skala hitungannya: kalau bentuk matriksnya salah tanda atau salah
+    faktor, angka inilah yang paling dulu meleset.
+    """
+    a = {0: np.full(32, 0x00, np.uint8)}
+    b = {0: np.full(32, 0xFF, np.uint8)}
+    assert split.jarak_terdekat(a, b)[0] == 256
+    assert split.jarak_terdekat(a, dict(a))[0] == 0
+
+
+def test_kosong_tidak_meledak():
+    rng = np.random.default_rng(1)
+    A = {i: rng.integers(0, 256, 32, dtype=np.uint8) for i in range(5)}
+    assert split.cari_kembar({}, A, 72) == set()
+    assert split.cari_kembar(A, {}, 72) == set()
+    assert len(split.jarak_terdekat({}, A)) == 0
+    assert len(split.jarak_terdekat(A, {})) == 0

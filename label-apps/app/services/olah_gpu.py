@@ -615,3 +615,107 @@ def simpan_jpeg(path, img_bgr, mutu: int) -> bool:
 
 _jpeg_mati = False
 
+# ============================================== pencarian kembar (dHash) di GPU
+#
+# Ini satu-satunya bagian jalur GPU yang BUKAN pengolahan gambar, dan satu-
+# satunya yang hasilnya wajib **bit-identik** dengan jalur CPU — bukan sekadar
+# setara secara sebaran. Boleh dituntut begitu karena seluruh hitungannya
+# bilangan bulat: yang dicari jarak Hamming antara dua sidik 256-bit, dan
+# bilangan bulat tidak punya ruang tafsir.
+#
+# KENAPA DIPINDAH. cari_kembar itu O(n x m): tiap sidik di `uji` dibandingkan
+# dengan tiap sidik di `acuan`. Terukur di mesin ini, hash acak:
+#     n = m =  3.000  ->   0,87 detik
+#     n = m = 12.000  ->  13,9  detik      (4x jumlah -> 16x waktu)
+# Diekstrapolasi ke sejuta gambar itu sekitar 26,7 JAM hanya untuk mencari
+# kembar. Docstring lamanya menaksir "hitungan menit"; taksiran itu meleset.
+#
+# CARANYA. Jarak Hamming dua vektor biner bisa ditulis ulang jadi perkalian
+# matriks, dan perkalian matriks persis yang dibangun GPU untuk mengerjakannya:
+#
+#     hamming(a, b) = popcount(a) + popcount(b) - 2 * (a . b)
+#
+# Yang dibutuhkan cuma "adakah tetangga dengan jarak <= ambang", jadi minimum
+# jarak bisa diganti maksimum skor, dan matriks jaraknya tidak perlu diwujudkan
+# seluruhnya.
+#
+# KENAPA fp16 AMAN DI SINI. a dan b vektor biner sepanjang 256, jadi hasil kali
+# titiknya bilangan bulat 0..256 dan skor akhirnya ada di -256..512. fp16
+# mewakili SETIAP bilangan bulat sampai 2048 dengan tepat, jadi tidak ada
+# pembulatan yang mungkin terjadi — termasuk pada penjumlahan parsial di dalam
+# kernelnya. Itu sebabnya boleh memakai tensor core tanpa kehilangan ketepatan.
+# Kalau panjang sidiknya suatu saat dinaikkan melewati 2048 bit, alasan ini
+# gugur dan hitungannya harus pindah ke fp32.
+#
+# Terukur, hash berkorelasi (mirip dHash sungguhan), n = m = 9.000:
+#     CPU cara lama (gather LUT)   7.709,9 ms
+#     CPU matmul (numpy)             369,8 ms   <- 20,8x, dari ALGORITMANYA
+#     GPU matmul                      10,9 ms   <- 33,8x lagi, dari GPU-nya
+# Pembagian itu sengaja ditulis: 20,8x yang pertama bukan jasa GPU, dan jalur
+# CPU sudah ikut memakainya. Yang benar-benar disumbang GPU 33,8x.
+
+# Sepetak hasil kali = TU x TA sel fp16. 2.048 x 16.384 -> 64 MB, cukup kecil
+# untuk hidup berdampingan dengan pembuatan versi yang sedang jalan.
+PETAK_UJI = 2048
+PETAK_ACUAN = 16384
+
+
+def jarak_terdekat_gpu(acuan: dict, uji: dict):
+    """Jarak Hamming tiap sidik `uji` ke sidik `acuan` terdekat — atau None.
+
+    None berarti "tidak dikerjakan di sini"; pemanggil wajib jatuh ke jalur
+    CPU. Itu terjadi kalau GPU tidak tersedia, atau kalau VRAM habis di tengah
+    jalan — dan kehabisan VRAM di sini memang mungkin, karena pencarian kembar
+    bisa berjalan bersamaan dengan pembuatan versi.
+
+    Jarak minimumnya jatuh langsung dari skor maksimumnya, jadi fungsi ini
+    sekaligus menjadi dasar cari_kembar_gpu; keduanya tidak menghitung dua
+    kali hal yang sama.
+    """
+    if not tersedia() or not acuan or not uji:
+        return None
+    try:
+        import numpy as np
+        import torch
+
+        dev = torch.device("cuda")
+        # unpackbits di CPU lalu dipindah sekali. Sidiknya 32 byte, jadi yang
+        # menyeberang bus cuma 256 byte per gambar — sejuta gambar = 256 MB,
+        # dan itu ongkos SEKALI untuk perbandingan yang jumlahnya kuadratik.
+        A = torch.from_numpy(np.unpackbits(
+            np.array(list(acuan.values()), np.uint8), axis=1)).to(dev).half()
+        U = torch.from_numpy(np.unpackbits(
+            np.array(list(uji.values()), np.uint8), axis=1)).to(dev).half()
+        popA, popU = A.sum(1), U.sum(1)
+
+        out = torch.empty(U.shape[0], dtype=torch.float16, device=dev)
+        for i in range(0, U.shape[0], PETAK_UJI):
+            blok = U[i:i + PETAK_UJI]
+            # -30.000 masih jauh di dalam jangkauan fp16 (+-65.504) dan pasti
+            # kalah dari skor apa pun yang mungkin (terendah -256).
+            best = torch.full((blok.shape[0],), -30000.0,
+                              dtype=torch.float16, device=dev)
+            for j in range(0, A.shape[0], PETAK_ACUAN):
+                sub = A[j:j + PETAK_ACUAN]
+                skor = (blok @ sub.T) * 2 - popA[j:j + PETAK_ACUAN][None, :]
+                torch.maximum(best, skor.max(1).values, out=best)
+            out[i:i + blok.shape[0]] = popU[i:i + PETAK_UJI] - best
+        return out.cpu().numpy().astype(np.int32)
+    except Exception as e:                      # noqa: BLE001
+        log.warning("jarak sidik di GPU gagal (%s) — memakai CPU", e)
+        return None
+
+
+def cari_kembar_gpu(acuan: dict, uji: dict, ambang: int):
+    """Indeks di `uji` yang punya kembaran di `acuan` — atau None.
+
+    None berarti "tidak dikerjakan di sini", sama seperti jarak_terdekat_gpu.
+    """
+    if not acuan or not uji:
+        return None
+    d = jarak_terdekat_gpu(acuan, uji)
+    if d is None:
+        return None
+    import numpy as np
+    k_uji = list(uji)
+    return {k_uji[int(i)] for i in np.flatnonzero(d <= ambang)}
