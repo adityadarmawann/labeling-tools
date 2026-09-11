@@ -377,23 +377,32 @@ async def versi_mulai(request: Request, split: str = "", catatan: str = "",
                          fase_nama="Menyiapkan")
 
     def kerja():
-        job = buatversi.Pekerjaan(ds, nomor, items, names, resep, peta,
-                                  kunci=akun, batal=lambda: sess.versi_batal,
-                                  jenis=jenis_ds, pemilik=sess.user)
-        try:
-            hasil = job.jalankan(catatan)
-        except buatversi.Dibatalkan:
-            buatversi.catat_maju(akun, jalan=False, batal=True)
-            return
-        except Exception as e:                     # noqa: BLE001
-            _log.exception("pembuatan versi gagal")
-            buatversi.buang_hasil(ds, nomor)
-            buatversi.catat_maju(akun, jalan=False, galat=str(e)[:200])
-            return
-        versi.buat(ds, akun, rasio, [it["img"].name for it in items], peta,
-                   ringkas, catatan, resep=resep, berencana=bool(rencana),
-                   nomor=nomor, hasil=hasil)
-        buatversi.catat_maju(akun, jalan=False, selesai=True, nomor=nomor)
+        # Giliran ditunggu DI DALAM thread ini, bukan di rutenya. Rutenya harus
+        # tetap menjawab seketika supaya tombolnya berhenti berputar, dan yang
+        # sedang antre melihat "Menunggu giliran" di panel kemajuan yang sama
+        # dengan pekerjaan yang sedang berjalan — pekerjaan yang tampak macet
+        # padahal cuma antre itu yang membuat orang menekan tombolnya lagi.
+        with buatversi.Giliran(akun):
+            if sess.versi_batal:            # dihentikan selagi masih antre
+                buatversi.catat_maju(akun, jalan=False, batal=True)
+                return
+            job = buatversi.Pekerjaan(ds, nomor, items, names, resep, peta,
+                                      kunci=akun, batal=lambda: sess.versi_batal,
+                                      jenis=jenis_ds, pemilik=sess.user)
+            try:
+                hasil = job.jalankan(catatan)
+            except buatversi.Dibatalkan:
+                buatversi.catat_maju(akun, jalan=False, batal=True)
+                return
+            except Exception as e:                 # noqa: BLE001
+                _log.exception("pembuatan versi gagal")
+                buatversi.buang_hasil(ds, nomor)
+                buatversi.catat_maju(akun, jalan=False, galat=str(e)[:200])
+                return
+            versi.buat(ds, akun, rasio, [it["img"].name for it in items], peta,
+                       ringkas, catatan, resep=resep, berencana=bool(rencana),
+                       nomor=nomor, hasil=hasil)
+            buatversi.catat_maju(akun, jalan=False, selesai=True, nomor=nomor)
 
     _tugas_versi[akun] = asyncio.create_task(asyncio.to_thread(kerja))
     return {"ok": True, "nomor": nomor, **hitung, "berencana": bool(rencana)}

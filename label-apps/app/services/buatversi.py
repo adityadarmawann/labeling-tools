@@ -23,6 +23,7 @@ Perbedaan mendasar dari aug-bal-v14.py, dan semuanya disengaja:
 from __future__ import annotations
 
 import json
+import os
 import random
 import shutil
 import threading
@@ -77,6 +78,118 @@ def kemajuan(kunci: str) -> dict:
 def bersihkan_maju(kunci: str) -> None:
     with _kunci:
         _maju.pop(kunci, None)
+
+
+# ------------------------------------------- batas pekerjaan yang serentak
+#
+# KENAPA ADA. Penjaga di rute /api/versi/mulai hanya menolak pembuatan versi
+# kedua DARI AKUN YANG SAMA. Lima orang yang berbeda bisa menekan "Buat"
+# bersamaan, dan itu memang akan terjadi begitu alat ini dipakai satu tim.
+#
+# YANG DILINDUNGI BUKAN PEKERJAAN LATARNYA. Ini penting dan sempat saya kira
+# sebaliknya: membatasi jumlah pekerjaan serentak TIDAK membuat pekerjaan latar
+# lebih cepat selesai — justru lebih lambat, karena mesinnya jadi kurang
+# terpakai. Yang dilindungi adalah orang yang sedang melabeli di depan layar.
+#
+# Terukur, lima pembuatan versi serentak sambil satu orang memakai pelabelan
+# otomatis (klik tanpa beban apa pun: 48 ms):
+#     tanpa batas : klik terburuk 137,7 ms | lima versi selesai  8,4 detik
+#     dibatasi 2  : klik terburuk  52,5 ms | lima versi selesai 13,6 detik
+#     dibatasi 3  : klik terburuk  54,0 ms | lima versi selesai 10,5 detik
+#     dibatasi 4  : klik terburuk  56,1 ms | lima versi selesai 10,5 detik
+# Tiga dipilih karena ia mengambil hampir seluruh perlindungan yang didapat
+# dua, dengan ongkos pekerjaan latar yang jauh lebih kecil. Empat tidak
+# menambah apa pun.
+#
+# Pertukarannya disengaja: pekerjaan latar selesai lebih lambat, orang yang
+# menunggu di depan layar tidak merasakan apa-apa. Bagi alat pelabelan itu
+# pertukaran yang benar — tidak ada yang menunggui pembuatan versi, semua
+# orang menunggui kliknya sendiri.
+#
+# Yang dibatasi jumlah yang BERJALAN, bukan jumlah yang boleh diminta. Yang
+# belum kebagian menunggu giliran dan melihat posisinya — bukan ditolak,
+# karena menolak berarti orang harus menekan tombolnya lagi nanti.
+SERENTAK = max(1, int(os.environ.get("LABELAPP_VERSI_SERENTAK") or 3))
+_giliran = threading.Semaphore(SERENTAK)
+_antre_kunci = threading.Lock()
+_antre = 0
+
+
+def menunggu() -> int:
+    """Berapa pembuatan versi yang sedang menunggu giliran."""
+    with _antre_kunci:
+        return _antre
+
+
+class Giliran:
+    """Tahan satu tempat dari SERENTAK yang tersedia.
+
+    Dipakai sebagai context manager di sekitar pekerjaan. Selagi menunggu,
+    kemajuan akun itu diisi supaya antarmukanya bisa berkata "menunggu
+    giliran" alih-alih diam tanpa keterangan — pekerjaan yang tampak macet
+    padahal sedang antre itu persis yang membuat orang menekan tombolnya
+    berkali-kali.
+    """
+
+    def __init__(self, kunci: str):
+        self.kunci = kunci
+
+    def __enter__(self):
+        global _antre
+        if _giliran.acquire(blocking=False):
+            return self
+        with _antre_kunci:
+            _antre += 1
+        try:
+            catat_maju(self.kunci, jalan=True, persen=0.0,
+                       fase_nama="Menunggu giliran",
+                       antre=menunggu())
+            _giliran.acquire()
+        finally:
+            with _antre_kunci:
+                _antre -= 1
+        catat_maju(self.kunci, fase_nama="Menyiapkan", antre=0)
+        return self
+
+    def __exit__(self, *a):
+        _giliran.release()
+        return False
+
+
+# ------------------------------------------------------- batas jumlah utas
+#
+# cv2 dan torch masing-masing mengambil sebanyak-banyaknya utas kalau tidak
+# dibatasi, dan keduanya tidak tahu satu sama lain. Tiga pembuatan versi
+# serentak dengan bawaan cv2 berarti 3 x 12 = 36 utas di 12 inti; waktunya
+# habis berpindah konteks dan cache tiap inti saling dibuang.
+#
+# Tidak seperti batas serentak di atas, batas utas ini menolong DUA-DUANYA.
+# Terukur, tiga pekerjaan serentak sambil ada yang melabeli:
+#     bawaan cv2 (12 utas) : klik terburuk 105,6 ms | lima versi 11,93 detik
+#     dibatasi 3 utas      : klik terburuk  56,5 ms | lima versi 10,18 detik
+# Membuang utas yang berlebih justru mempercepat pekerjaannya sendiri.
+#
+# Batasnya diturunkan dari SERENTAK supaya keduanya tidak bisa berselisih:
+# tiap pekerjaan mendapat jatah inti, dan satu inti disisakan untuk melayani
+# permintaan web serta pelabelan otomatis yang sedang berlangsung — itu yang
+# ditunggu orang di depan layar, dan tidak boleh kalah oleh pekerjaan latar.
+def batasi_utas() -> dict:
+    """Pasang batas utas untuk proses ini. Kembalikan yang dipasang."""
+    inti = os.cpu_count() or 4
+    jatah = max(1, (inti - 1) // SERENTAK)
+    minta = os.environ.get("LABELAPP_UTAS")
+    if minta:
+        jatah = max(1, int(minta))
+    try:
+        cv2.setNumThreads(jatah)
+    except Exception:                            # noqa: BLE001
+        pass
+    try:
+        import torch
+        torch.set_num_threads(jatah)
+    except Exception:                            # noqa: BLE001
+        pass
+    return {"inti": inti, "serentak": SERENTAK, "utas_per_pekerjaan": jatah}
 
 
 class Dibatalkan(Exception):

@@ -40,6 +40,19 @@ async def lifespan(app: FastAPI):
               f"              mesin ini. Permintaan dari jaringan tetap harus login.",
               flush=True)
 
+    # Batas utas dipasang SEKALI di sini, bukan di tiap pekerjaan. cv2 dan
+    # torch masing-masing mengambil sebanyak-banyaknya utas kalau dibiarkan,
+    # dan keduanya tidak tahu satu sama lain — dengan dua pembuatan versi
+    # berjalan bersamaan, jumlah utas yang diminta melewati jumlah inti dan
+    # hasilnya bukan lebih cepat melainkan lebih lambat untuk semua orang.
+    from .services.buatversi import batasi_utas
+    _b = batasi_utas()
+    print(f"  Beban     : {_b['inti']} inti · maksimum {_b['serentak']} "
+          f"pembuatan versi serentak · {_b['utas_per_pekerjaan']} utas tiap "
+          f"pekerjaan\n"
+          f"              ubah lewat LABELAPP_VERSI_SERENTAK dan LABELAPP_UTAS",
+          flush=True)
+
     # Selalu ada sekurang-kurangnya satu admin, dan haknya DITULIS ke berkas.
     # Menyimpulkannya saat dibaca tidak cukup: aturan apa pun yang bergantung
     # pada isi berkas bisa gugur begitu isinya berubah, dan yang berubah di
