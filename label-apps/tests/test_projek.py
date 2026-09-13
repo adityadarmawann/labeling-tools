@@ -728,3 +728,40 @@ def test_survei_menghitung_persis_tanpa_menyerah_di_tengah(lingkungan, tmp_path)
     s2 = sp._survei(d2)
     assert (s2["gambar"], s2["anotasi"]) == (5, 2), s2
     assert s2["sampul"].name == "a3.jpg", s2["sampul"]
+
+
+@pytest.mark.parametrize("kosong", ["", "   ", ".", "..", "/", "//", "./."])
+def test_pulihkan_menolak_nama_yang_menyusut_jadi_kosong(tmp_path, kosong):
+    """Nama kosong pernah me-rename SELURUH tempat sampah keluar.
+
+    bersihkan_nama mengembalikan "" untuk semua bentuk di atas, dan
+    `kotak / ""` bukan galat melainkan `kotak` itu sendiri. Penjagaan lama
+    memeriksa "ada di dalam kotak" dan "sebuah folder" — tempat sampah lolos
+    keduanya, karena ia memang ada di dalam dirinya sendiri dan memang folder.
+    Akibatnya seluruh isi sampah muncul sebagai satu projek bernama
+    "_sampah pulih" dan tempat sampahnya lenyap.
+
+    Ketahuan saat audit prod sesudah naik ke GPU: probe auditnya mengirim
+    parameter bernama `nama` padahal rutenya menerima `folder`, jadi yang
+    sampai ke fungsi ini adalah string kosong.
+    """
+    root = tmp_path / "ruang"
+    (root / projek.SAMPAH / "projekA--20260101-000000").mkdir(parents=True)
+    sebelum = sorted(p.name for p in root.iterdir())
+
+    with pytest.raises(projek.Tolak):
+        projek.pulihkan(root, kosong)
+
+    assert sorted(p.name for p in root.iterdir()) == sebelum, (
+        "tempat sampah ikut terbawa keluar oleh nama kosong")
+    assert (root / projek.SAMPAH / "projekA--20260101-000000").is_dir(), (
+        "isi sampah harus utuh sesudah permintaan yang ditolak")
+
+
+def test_pulihkan_nama_sah_tetap_bekerja(tmp_path):
+    """Penjagaan di atas tidak boleh ikut menutup jalur yang benar."""
+    root = tmp_path / "ruang"
+    (root / projek.SAMPAH / "projekA--20260101-000000").mkdir(parents=True)
+    r = projek.pulihkan(root, "projekA--20260101-000000")
+    assert r["nama"] == "projekA"
+    assert (root / "projekA").is_dir()

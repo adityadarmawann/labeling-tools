@@ -725,8 +725,22 @@ def isi_sampah(root: Path | None) -> list[dict]:
 def pulihkan(root: Path, folder: str) -> dict:
     """Kembalikan satu projek dari tempat sampah."""
     kotak = Path(root) / SAMPAH
-    src = kotak / bersihkan_nama(folder)
-    if not _didalam(src, kotak) or not src.is_dir():
+    # Nama yang menyusut jadi kosong DITOLAK di sini, sebelum dirangkai jadi
+    # path. bersihkan_nama mengembalikan "" untuk "", "   ", ".", "..", dan
+    # "/" — dan `kotak / ""` bukan galat melainkan `kotak` itu sendiri. Dulu
+    # penjagaan di bawah meloloskannya: tempat sampah memang ada di dalam
+    # dirinya sendiri dan memang sebuah folder, jadi yang ikut di-rename
+    # KELUAR adalah seluruh tempat sampahnya — isinya muncul sebagai satu
+    # projek bernama "_sampah pulih" dan folder sampahnya lenyap.
+    #
+    # ke_sampah tidak kena karena ia lewat _folder(), yang sudah menolak nama
+    # kosong; di sini pathnya dirangkai sendiri, jadi penjagaannya harus
+    # ditulis sendiri juga.
+    bersih = bersihkan_nama(folder)
+    if not bersih:
+        raise Tolak("nama folder sampah kosong atau seluruhnya karakter terlarang")
+    src = kotak / bersih
+    if src == kotak or not _didalam(src, kotak) or not src.is_dir():
         raise Tolak("tidak ada di tempat sampah")
     nama = src.name.rpartition("--")[0] or src.name
     dst = _folder(root, nama)
