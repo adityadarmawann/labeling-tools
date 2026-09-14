@@ -2437,3 +2437,56 @@ def test_halaman_job_paginasi_dan_saring_di_server(klien, lingkungan):
     # Saring 'belum' -> semua muncul (dipaginasi).
     hb = klien.get(f"/tugas/{tid}?ds={d.name}&saring=belum&per=500").text
     assert hb.count('class="jb-ubin"') == 120
+
+
+def test_per_halaman_diingat_lewat_cookie(klien, lingkungan):
+    """Pilih 100/halaman sekali, lalu ia bertahan tanpa diketik ulang.
+
+    Roboflow mengingat preferensi tampilan; di sini disimpan di cookie `hpp`
+    dan dibaca server sebagai bawaan saat URL tidak menyebut `per`. Berlaku
+    untuk grid Dataset dan halaman job — satu cookie untuk keduanya.
+    """
+    import pathlib
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    from tests.test_projek import _projek
+    d = _projek(ruang, "kukiper", n=60, label=False)
+    klien.post(f"/setsrc?path={d}")
+    gambar = sorted(str(p) for p in d.glob("*.jpg"))
+    tid = klien.post("/api/tugas/bagi",
+                     json={"pelabel": "paul", "gambar": gambar}).json()["id"]
+
+    # Menyebut per=100 di URL menyimpannya ke cookie.
+    r = klien.get(f"/tugas/{tid}?ds={d.name}&per=100")
+    assert r.cookies.get("hpp") == "100", "pilihan per-halaman tidak disimpan"
+    assert r.text.count('class="jb-ubin"') == 60  # semua muat dalam 100
+
+    # Kunjungan berikutnya TANPA per: cookie dipakai, satu halaman = 100.
+    h = klien.get(f"/tugas/{tid}?ds={d.name}").text
+    assert '<option value="100" selected>' in h, "cookie per-halaman tidak dibaca"
+    # Grid Dataset berbagi cookie yang sama.
+    klien.post("/api/tugas/dataset", json={"gambar": gambar})
+    g = klien.get(f"/?ds={d.name}").text
+    assert '<option value="100" selected>' in g, "grid tidak menghormati cookie hpp"
+
+
+def test_thumbnail_etag_menjawab_304(klien, lingkungan):
+    """/thumb mengirim ETag dari kunci isi, dan menjawab 304 kalau cocok —
+    supaya menggulir bolak-balik tidak mengunduh ulang JPEG yang sama."""
+    import pathlib
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    from tests.test_projek import _projek
+    d = _projek(ruang, "etaguji", n=2)
+    klien.post(f"/setsrc?path={d}")
+    img = sorted(str(p) for p in d.glob("*.jpg"))[0]
+
+    r1 = klien.get(f"/thumb?path={img}&s=220")
+    assert r1.status_code == 200
+    etag = r1.headers.get("etag")
+    assert etag, "tidak ada ETag"
+    assert "max-age=300" in r1.headers.get("cache-control", "")
+
+    r2 = klien.get(f"/thumb?path={img}&s=220", headers={"If-None-Match": etag})
+    assert r2.status_code == 304, "ETag cocok tapi tidak menjawab 304"
+    assert len(r2.content) == 0, "304 tidak boleh membawa badan gambar"

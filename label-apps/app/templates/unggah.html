@@ -267,6 +267,10 @@
 
       <div class="ug-unggah-aksi">
         <button class="chip" type="button" id="ug-batal">Batalkan</button>
+        {#- Muncul hanya saat unggahan terputus di tengah. Sisa berkas yang
+            belum berhasil dikirim ulang; yang sudah masuk tidak diulang. -#}
+        <button class="chip aksi" type="button" id="ug-coba-lagi" hidden>
+          Coba lagi sisanya</button>
         <span class="spacer"></span>
         <a class="chip aksi" id="ug-lanjut" href="/" hidden>Bagi tugas &rarr;</a>
       </div>

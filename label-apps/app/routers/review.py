@@ -42,6 +42,34 @@ URUT_BAWAAN = "nama"
 # gambar, memuat semuanya sekali jalan berarti HTML puluhan megabita.
 PER_PILIHAN = (50, 100, 500, 1000)
 PER_BAWAAN = 50
+# Nama cookie yang mengingat pilihan "per halaman" antar kunjungan. Satu untuk
+# seluruh aplikasi: orang yang suka 100 di grid hampir pasti juga mau 100 di
+# halaman job, dan menyetelnya di dua tempat terpisah cuma menambah kejutan.
+KUKI_PER = "hpp"
+
+
+def per_efektif(per_q: int, request) -> int:
+    """Jumlah per halaman: dari URL kalau disebut, kalau tidak dari cookie.
+
+    Dipakai grid Dataset dan halaman job. `per_q` 0 berarti URL tidak
+    menyebutkannya (bukan "nol per halaman"), jadi jatuh ke preferensi yang
+    tersimpan di cookie; menyimpannya dikerjakan `simpan_per` pada responsnya.
+    """
+    if per_q in PER_PILIHAN:
+        return per_q
+    c = (request.cookies.get(KUKI_PER) or "").strip()
+    if c.isdigit() and int(c) in PER_PILIHAN:
+        return int(c)
+    return PER_BAWAAN
+
+
+def simpan_per(response, per_q: int) -> None:
+    """Ingat pilihan per-halaman kalau URL menyebutnya — supaya sekali pilih
+    100 ia bertahan antar kunjungan tanpa perlu diketik ulang. Setahun, karena
+    ini preferensi tampilan, bukan data."""
+    if per_q in PER_PILIHAN:
+        response.set_cookie(KUKI_PER, str(per_q), max_age=31536000,
+                            samesite="lax")
 
 # Keadaan "tanpa kelas" yang bisa ikut dicentang di dropdown kelas. Keduanya
 # sama-sama gambar tanpa objek, tetapi artinya berlawanan: `latar` sudah selesai
@@ -191,7 +219,7 @@ async def index(request: Request, f: str = "all",
                 # kartu dan 11.319 <img> dalam satu HTML. loading="lazy"
                 # menahan unduhan gambarnya, tetapi tidak menahan HTML-nya, dan
                 # bukan itu yang membuat halamannya berat.
-                per_q: int = Query(PER_BAWAAN, alias="per"),
+                per_q: int = Query(0, alias="per"),
                 hal_q: int = Query(1, alias="hal"),
                 # Nomor gambar pertama yang sedang terlihat, dikirim HANYA oleh
                 # pengatur "per halaman". Dengan ini mengubah 100 jadi 50 tidak
@@ -337,7 +365,7 @@ async def index(request: Request, f: str = "all",
     # Potong jadi satu halaman. Dihitung SESUDAH seluruh saringan dan urutan,
     # supaya "halaman 2" berarti halaman kedua dari yang sedang dilihat, bukan
     # dari dataset penuh.
-    per = per_q if per_q in PER_PILIHAN else PER_BAWAAN
+    per = per_efektif(per_q, request)
     n_tampil = len(tampil)
     n_hal = max(1, -(-n_tampil // per))          # pembulatan ke atas
     hal = (dari_q - 1) // per + 1 if dari_q > 0 else hal_q
@@ -357,7 +385,7 @@ async def index(request: Request, f: str = "all",
         pr = await asyncio.to_thread(svc_projek.konteks, sess.src,
                                      settings.uploads_root, sess.user)
 
-    return templates.TemplateResponse(request, "index.html", {
+    resp = templates.TemplateResponse(request, "index.html", {
         "sess": sess,
         "pr": pr,
         "aktif": "dataset",
@@ -437,6 +465,8 @@ async def index(request: Request, f: str = "all",
         "tolak_tambah": tambah.boleh_ditambahi(
             sess.src, settings.uploads_root / safe_slug(sess.user)),
     })
+    simpan_per(resp, per_q)
+    return resp
 
 
 @router.get("/view", response_class=HTMLResponse)
@@ -487,17 +517,35 @@ async def view(request: Request, path: str = "",
 
 
 @router.get("/thumb")
-async def thumb(path: str = "", s: int = 320,
+async def thumb(request: Request, path: str = "", s: int = 320,
                 sess: Session = Depends(current_session)):
     it = sess.find(path)
     if not it:
         return Response(status_code=404)
     side = min(max(s, THUMB_MIN), THUMB_MAX)
+
+    # ETag dari nama berkas thumbnail, yang sudah memuat kunci ISI gambar dan
+    # anotasinya (render.nama_thumb): ia berubah tepat ketika thumbnailnya
+    # berubah, dan tidak ketika yang lain. Itu yang membuat cache agresif aman
+    # walau URL `/thumb?path=...` tetap sama sesudah anotasi disunting.
+    #
+    # Kenapa ini penting: satu halaman job/grid memuat puluhan thumbnail, dan
+    # menggulir bolak-balik atau pindah halaman lalu kembali memintanya lagi.
+    # Dengan ETag, peramban cukup bertanya "masih sama?" dan server menjawab
+    # 304 tanpa mengirim ulang satu byte gambar pun — jauh lebih murah daripada
+    # mengirim ulang JPEG-nya, dan itulah yang membuat halaman terasa ringan
+    # pada kunjungan kedua.
+    etag = '"' + render.nama_thumb(it, side).rsplit(".", 1)[0] + '"'
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers={
+            "ETag": etag, "Cache-Control": "private, max-age=300"})
+
     tp = await asyncio.to_thread(render.thumb_path, sess, it, side)
     if not tp:
         return Response(status_code=404)
     return Response(tp.read_bytes(), media_type="image/jpeg",
-                    headers={"Cache-Control": "private, max-age=60"})
+                    headers={"ETag": etag,
+                             "Cache-Control": "private, max-age=300"})
 
 
 @router.post("/markbg")

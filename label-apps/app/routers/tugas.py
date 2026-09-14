@@ -244,7 +244,8 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
     Menyaring di peramban tidak menolong — kartunya tetap harus dikirim dan
     dibangun dulu sebelum ada yang bisa disembunyikan.
     """
-    from ..routers.review import PER_BAWAAN, PER_PILIHAN
+    from ..routers.review import (PER_BAWAAN, PER_PILIHAN,
+                                per_efektif, simpan_per)
     from ..services import projek as sp
     from ..services import scanner
 
@@ -327,7 +328,7 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
                   or (kpset & set(x["kelas"]))]
 
     # -- paginasi, pola sama persis dengan grid Dataset ----------------------
-    per = per_q if per_q in PER_PILIHAN else PER_BAWAAN
+    per = per_efektif(per_q, request)
     n_tampil = len(tampil)
     n_hal = max(1, -(-n_tampil // per))
     hal = (dari_q - 1) // per + 1 if dari_q > 0 else hal_q
@@ -335,7 +336,7 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
     mulai_i = (hal - 1) * per
     halaman = tampil[mulai_i:mulai_i + per]
 
-    return templates.TemplateResponse(request, "job.html", {
+    resp = templates.TemplateResponse(request, "job.html", {
         "sess": sess, "pr": pr, "aktif": "anotasi", "aku": sess.user,
         "tid": tid, "job": job, "isi": halaman,
         "n": n_semua, "n_label": n_label, "n_latar": n_latar,
@@ -356,6 +357,8 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
         "boleh_ubah": (sess.user == job.get("pelabel")
                        or svc.boleh_kelola(data, sess.user)),
     })
+    simpan_per(resp, per_q)
+    return resp
 
 
 @router.get("/bagi", response_class=HTMLResponse)

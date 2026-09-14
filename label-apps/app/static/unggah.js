@@ -299,13 +299,66 @@
   }
 
   // ------------------------------------------------------------- kirim
-  async function kirim() {
-    const semua = [...berkas.values()];
+  // Ukuran manusiawi, dipakai di penghitung unggahan.
+  const mb = (b) => b >= 1e9 ? (b / 1e9).toFixed(1) + ' GB'
+                  : b >= 1e6 ? (b / 1e6).toFixed(1) + ' MB'
+                  : Math.max(1, Math.round(b / 1e3)) + ' KB';
+  const jam = (d) => d >= 60 ? `${Math.floor(d / 60)} mnt ${Math.round(d % 60)} dtk`
+                             : `${Math.max(1, Math.round(d))} dtk`;
+
+  /* Satu berkas, lewat XMLHttpRequest — BUKAN fetch. Dua alasan, keduanya
+     langsung menyentuh keluhan "tidak ada progress":
+
+     1. xhr.upload.onprogress melaporkan BYTE yang sudah terkirim, jadi bilahnya
+        bergerak DI DALAM satu berkas. Dengan fetch, satu foto 3 MB di jaringan
+        kantor membuat bilah beku beberapa detik per berkas — terlihat seperti
+        macet, bukan mengunggah.
+     2. fetch tidak punya batas waktu; koneksi yang menggantung (bukan putus
+        bersih) menahannya selamanya. xhr.timeout memberi lantai. */
+  function kirimBerkas(url, file, onByte) {
+    return new Promise((resolve) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('PUT', url);
+      xhr.timeout = 120000;                 // 2 menit per berkas
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && onByte) onByte(e.loaded);
+      };
+      xhr.onload = () => {
+        if (xhr.status === 401) {
+          location.href = '/login';
+          resolve({ ok: false, putus: false, error: 'sesi habis' });
+          return;
+        }
+        let j = {};
+        try { j = JSON.parse(xhr.responseText); } catch (e) { /* bukan JSON */ }
+        if (typeof j.ok === 'boolean') { resolve(j); return; }
+        const ok = xhr.status >= 200 && xhr.status < 300;
+        resolve({ ok, error: ok ? null : (j.detail || 'galat ' + xhr.status) });
+      };
+      // status 0 = jaringan putus / CORS / dibatalkan. `putus` membedakannya
+      // dari penolakan server (HTTP 4xx): yang pertama harus MENGHENTIKAN
+      // unggahan dan menawarkan sambung ulang, yang kedua cuma satu berkas
+      // yang dilewati.
+      xhr.onerror = () => resolve({ ok: false, putus: true, error: 'jaringan terputus' });
+      xhr.ontimeout = () => resolve({ ok: false, putus: true, error: 'waktu habis' });
+      xhr.send(file);
+    });
+  }
+
+  // Nama berkas yang SUDAH berhasil, bertahan lintas percobaan: "Coba lagi
+  // sisanya" tidak mengirim ulang yang sudah masuk.
+  const berhasil = new Set();
+
+  async function kirim(hanyaSisa) {
+    const semua = [...berkas.values()]
+      .filter((b) => !(hanyaSisa && berhasil.has(b.nama)));
     const namaBatch = ($('ug-nama-batch').value || '').trim();
     batal = false;
     keTahap(3);
     $('ug-unggah-nama').textContent = namaBatch || PROJEK;
     $('ug-lanjut').hidden = true;
+    $('ug-coba-lagi').hidden = true;
+    $('ug-batal').hidden = false;
 
     // Progres.mulai menghapus isi wadahnya, jadi tidak boleh ada rujukan ke
     // bilah di dalamnya yang disimpan lebih dulu.
@@ -319,23 +372,52 @@
       if (!buka.ok) { pr.gagal(buka.error || 'Gagal membuka dataset'); return; }
     }
 
-    let selesai = 0, gagal = 0;
+    // Bilah bergerak per-BYTE, bukan per-berkas: total byte seluruh pilihan
+    // jadi penyebutnya, dan `byteKirim` menghitung yang sudah tuntas.
+    const byteTotal = semua.reduce((s, b) => s + (b.file.size || 0), 0) || 1;
+    let byteKirim = 0, selesai = 0, gagal = 0;
     const arsip = [];
+    const t0 = Date.now();
+
+    const lukisBilah = (byteSekarang, ke) => {
+      const total = byteKirim + byteSekarang;
+      const dtk = (Date.now() - t0) / 1000;
+      const laju = dtk > 0.3 ? total / dtk : 0;
+      const sisa = laju > 0 ? (byteTotal - total) / laju : 0;
+      pr.set(total / byteTotal,
+        `${ke.toLocaleString('id-ID')} dari ${semua.length.toLocaleString('id-ID')} berkas`
+        + ` · ${mb(total)} / ${mb(byteTotal)}`
+        + (laju > 0 ? ` · ${mb(laju)}/dtk · sisa ${jam(sisa)}` : '')
+        + (gagal ? ` · ${gagal} gagal` : ''));
+    };
+
     for (const b of semua) {
       if (batal) { pr.gagal(`Dibatalkan setelah ${selesai} berkas`); return; }
-      try {
-        const url = BERISI
-          ? '/tambah?name=' + encodeURIComponent(b.nama)
-          : '/upload?ds=' + encodeURIComponent(PROJEK)
-            + '&name=' + encodeURIComponent(b.nama);
-        const j = await send(url, { method: 'PUT', body: b.file });
-        if (!j.ok) { gagal++; if (gagal <= 2) toast(b.nama + ': ' + j.error); }
-        else if (j.arsip) arsip.push(j.name);
-      } catch (e) { gagal++; }
+      const url = BERISI
+        ? '/tambah?name=' + encodeURIComponent(b.nama)
+        : '/upload?ds=' + encodeURIComponent(PROJEK)
+          + '&name=' + encodeURIComponent(b.nama);
+      const j = await kirimBerkas(url, b.file,
+        (byte) => lukisBilah(byte, selesai + 1));
+
+      // Jaringan putus: BERHENTI di sini. Versi lama membiarkan sisa berkas
+      // gagal secepat kilat lalu tetap lanjut memindai dataset — unggahan
+      // "selesai" dengan ribuan berkas hilang tanpa satu pun tanda. Sekarang
+      // yang sudah masuk diamankan, dan sisanya bisa disambung.
+      if (j.putus) {
+        pr.gagal(`Terputus di ${selesai.toLocaleString('id-ID')} dari `
+          + `${semua.length.toLocaleString('id-ID')} berkas. Periksa koneksi, `
+          + 'lalu Coba lagi sisanya.');
+        $('ug-batal').hidden = true;
+        $('ug-coba-lagi').hidden = false;
+        return;
+      }
+
       selesai++;
-      pr.set(selesai / semua.length,
-             `${selesai.toLocaleString('id-ID')} dari ${semua.length.toLocaleString('id-ID')} berkas`
-             + (gagal ? ` · ${gagal} gagal` : ''));
+      byteKirim += (b.file.size || 0);
+      if (j.ok) { berhasil.add(b.nama); if (j.arsip) arsip.push(j.name); }
+      else { gagal++; if (gagal <= 2) toast(b.nama + ': ' + j.error); }
+      lukisBilah(0, selesai);
     }
 
     if (selesai <= gagal) { pr.gagal('Semua berkas gagal terkirim'); return; }
@@ -372,10 +454,15 @@
       } catch (e) { toast('Gambar terunggah, tapi tagnya gagal disimpan'); }
     }
 
-    const pesan = `${(buka.n || 0).toLocaleString('id-ID')} gambar di dataset`
-                + (gagal ? ` · ${gagal} berkas gagal` : '');
+    // Jelas menyebut "selesai" dan jumlahnya: keluhan aslinya justru tidak
+    // tahu unggahannya tuntas atau belum.
+    const pesan = gagal
+      ? `Selesai — ${(berhasil.size).toLocaleString('id-ID')} terkirim, `
+        + `${gagal} gagal · ${(buka.n || 0).toLocaleString('id-ID')} gambar di dataset`
+      : `Selesai — ${(buka.n || 0).toLocaleString('id-ID')} gambar di dataset`;
     pr.selesai(pesan);
     $('ug-batal').hidden = true;
+    $('ug-coba-lagi').hidden = true;
     $('ug-lanjut').hidden = false;
     const ket = $('ug-unggah-ket');
     if ((buka.peringatan || []).length) {
@@ -532,7 +619,10 @@
     });
     ti.addEventListener('blur', () => { tambahTag(ti.value); ti.value = ''; });
 
-    $('ug-simpan').onclick = kirim;
+    $('ug-simpan').onclick = () => kirim(false);
+    // Sambung ulang: kirim HANYA yang belum berhasil (berhasil bertahan
+    // lintas percobaan), jadi 5.000 dari 6.000 yang sudah masuk tidak diulang.
+    $('ug-coba-lagi').onclick = () => kirim(true);
     $('ug-server-impor').onclick = imporServer;
     const jelajah = $('ug-server-jelajah');
     if (jelajah) {

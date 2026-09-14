@@ -2254,7 +2254,8 @@ def test_grid_memotong_jadi_halaman_bukan_merender_semuanya(klien, lingkungan):
     assert "101&ndash;130 dari <b>130</b>" in h3
 
 
-def test_per_halaman_bisa_diubah_dan_nomor_di_luar_rentang_dijepit(klien, lingkungan):
+def test_per_halaman_bisa_diubah_dan_nomor_di_luar_rentang_dijepit(
+        klien, aplikasi, lingkungan):
     """Halaman kosong dengan "tidak ada yang cocok" itu bohong: datanya ada,
     nomornya yang salah."""
     masuk(klien, "paul", PW_PAUL)
@@ -2262,12 +2263,20 @@ def test_per_halaman_bisa_diubah_dan_nomor_di_luar_rentang_dijepit(klien, lingku
 
     assert klien.get("/?per=100").text.count('class="card"') == 100
     assert klien.get("/?per=1000").text.count('class="card"') == 130
-    # nilai asing jatuh ke bawaan, bukan menggagalkan halaman
-    assert klien.get("/?per=7").text.count('class="card"') == 50
+    # Nilai asing tidak menggagalkan halaman. Sejak pilihan per-halaman
+    # diingat lewat cookie `hpp`, "bawaan" untuk nilai asing adalah pilihan
+    # tersimpan terakhir (1000 dari baris di atas), bukan 50 mati. Dibuktikan
+    # terpisah dengan klien tanpa cookie di bawah.
+    assert klien.get("/?per=7").text.count('class="card"') == 130
+    # Klien bersih (belum pernah menyimpan hpp): asing -> bawaan 50.
+    from conftest import klien_baru
+    bersih = klien_baru(aplikasi, "paul", PW_PAUL)
+    bersih.post(f"/setsrc?path={_grid_besar(lingkungan)}")
+    assert bersih.get("/?per=7").text.count('class="card"') == 50
 
-    jauh = klien.get("/?hal=99").text
+    jauh = klien.get("/?hal=99&per=100").text
     assert jauh.count('class="card"') == 30 and "101&ndash;130" in jauh
-    nol = klien.get("/?hal=0").text
+    nol = klien.get("/?hal=0&per=50").text
     assert nol.count('class="card"') == 50 and "1&ndash;50" in nol
 
 
