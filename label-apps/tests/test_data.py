@@ -968,6 +968,102 @@ def test_impor_menyalin_dan_tidak_pernah_menyentuh_sumber(klien, lingkungan):
     assert _sidik(sumber) == sebelum, "folder sumber berubah — ini tidak boleh"
 
 
+def test_impor_dataset_bersplit_diratakan_dan_sudah_dianotasi(klien, lingkungan):
+    """
+    Impor ekspor Roboflow yang sudah terbagi train/valid/test: persebarannya
+    dicopot supaya mesin versi HIGOLAB (anti-bocor) yang membelah, dan gambar
+    berlabelnya langsung terbaca "sudah dianotasi" — bukan tersembunyi di dalam
+    train/images sebagai "belum dilabeli". Nama kelas dari data.yaml ikut utuh.
+    """
+    from app.services import scanner
+
+    masuk(klien, "paul", PW_PAUL)
+    sumber = _proyek_bersplit(lingkungan["roots"] / "sumber" / "rf", n=(6, 2, 2))
+    r = klien.post(f"/impor?path={sumber}&ds=rf-datar").json()
+    assert r["ok"] is True and r["n"] == 10, r
+
+    salinan = lingkungan["roots"] / "_unggahan" / "paul" / "rf-datar"
+    # persebaran split dicopot: tidak ada train/valid/test, semua di images/
+    assert not (salinan / "train").exists()
+    assert not (salinan / "valid").exists()
+    assert len(list((salinan / "images").glob("*.jpg"))) == 10
+    assert len(list((salinan / "labels").glob("*.txt"))) == 10
+
+    items, names = scanner.scan(salinan)
+    # tak satu pun membawa penanda split, dan semuanya sudah dianotasi
+    assert all(not it.get("split") for it in items)
+    assert all(it.get("ann") for it in items), "semua harus 'sudah dianotasi'"
+    # nama kelas dari data.yaml tetap terbaca, bukan jatuh jadi angka
+    assert [names[i] for i in sorted(names)] == ["botol", "kaleng"]
+
+
+def test_ratakan_split_membungkus_pembungkus_dan_mengangkat_yaml(tmp_path):
+    """Unggahan folder membawa nama folder pembungkus (webkitRelativePath), jadi
+    split-nya mendarat satu tingkat lebih dalam. ratakan_split menurunkannya,
+    dan data.yaml yang ikut terbungkus diangkat ke akar supaya kelasnya terbaca."""
+    import cv2
+    import numpy as np
+    from app.services import scanner, tambah
+
+    d = tmp_path / "unggahan"
+    wrap = d / "rf-export"                    # folder pembungkus
+    for s in ("train", "valid"):
+        (wrap / s / "images").mkdir(parents=True)
+        (wrap / s / "labels").mkdir(parents=True)
+        cv2.imwrite(str(wrap / s / "images" / f"{s}.jpg"),
+                    np.full((40, 40, 3), 80, np.uint8))
+        (wrap / s / "labels" / f"{s}.txt").write_text("0 0.5 0.5 0.2 0.2\n")
+    (wrap / "data.yaml").write_text("names: [botol, kaleng]\n")
+
+    hasil = tambah.ratakan_split(d)
+    assert hasil["diratakan"] == 2 and not hasil["bentrok"]
+    assert not (d / "rf-export").exists(), "pembungkus kosong harus dibuang"
+    assert (d / "data.yaml").exists(), "data.yaml diangkat ke akar"
+    assert {p.name for p in (d / "images").glob("*.jpg")} == {"train.jpg", "valid.jpg"}
+    _, names = scanner.scan(d)
+    assert [names[i] for i in sorted(names)] == ["botol", "kaleng"]
+    # idempoten: sudah datar, panggilan kedua tak berbuat apa-apa
+    assert tambah.ratakan_split(d) == {"diratakan": 0, "bentrok": []}
+
+
+def test_ratakan_split_menjaga_pasangan_gambar_label_saat_nama_bentrok(tmp_path):
+    """Nama-dasar yang sama bisa muncul di train DAN valid sebagai foto berbeda.
+    Yang di valid masuk dengan akhiran, dan LABELNYA harus ikut akhiran itu —
+    bukan tertukar dengan label train."""
+    import cv2
+    import numpy as np
+    from app.services import scanner, tambah
+
+    d = tmp_path / "ds"
+    for s, warna in (("train", 10), ("valid", 200)):   # dup.jpg beda isi
+        (d / s / "images").mkdir(parents=True)
+        (d / s / "labels").mkdir(parents=True)
+        cv2.imwrite(str(d / s / "images" / "dup.jpg"),
+                    np.full((40, 40, 3), warna, np.uint8))
+        (d / s / "labels" / "dup.txt").write_text(f"{0 if s == 'train' else 1} 0.5 0.5 0.2 0.2\n")
+    (d / "data.yaml").write_text("names: [a, b]\n")
+
+    hasil = tambah.ratakan_split(d)
+    assert hasil["diratakan"] == 2 and hasil["bentrok"] == ["dup.jpg"]
+    gbr = {p.stem for p in (d / "images").glob("*.jpg")}
+    lbl = {p.stem for p in (d / "labels").glob("*.txt")}
+    assert gbr == lbl == {"dup", "dup-2"}
+    items, _ = scanner.scan(d)
+    assert len(items) == 2 and all(it.get("ann") for it in items)
+
+
+def test_ratakan_split_tak_menyentuh_dataset_datar(tmp_path):
+    """Dataset yang memang sudah datar (labelme, atau YOLO images/+labels/ di
+    akar) tidak punya split bersarang — jadi tak ada yang diubah."""
+    from conftest import buat_dataset
+    from app.services import tambah
+
+    d = buat_dataset(tmp_path / "datar", 3, 2)         # labelme
+    assert tambah.ratakan_split(d) == {"diratakan": 0, "bentrok": []}
+    # labelme dibiarkan apa adanya — tak ada images/ atau labels/ yang dibuat
+    assert not (d / "images").exists() and not (d / "labels").exists()
+
+
 def test_impor_menolak_tujuan_di_dalam_sumber(lingkungan):
     """Tanpa penjagaan ini, penyalinan memakan hasil salinannya sendiri."""
     from app.services import impor
@@ -1190,44 +1286,43 @@ def _gambar_baru(d, n, mulai=0):
     return d
 
 
-def _isi(root):
-    return {s: len(list((root / s / "images").glob("*.jpg")))
-            for s in ("train", "valid", "test")}
-
-
-def test_tambah_menjaga_rasio_split_yang_sudah_ada(klien, lingkungan):
+def test_upload_dataset_bersplit_diratakan_lalu_tambah_masuk_kolam(klien, lingkungan):
     """
-    Rasionya harus utuh sesudah penambahan, bukan cuma mendekati.
+    Dataset yang datang sudah terbagi train/valid/test diratakan saat diunggah.
 
-    Pernah gagal justru di sini: hitungan per split hanya naik setelah berkasnya
-    mendarat, sehingga setiap gambar dinilai seolah ia satu-satunya yang
-    ditambahkan dan seluruh batch menumpuk di train — 80:10:10 rusak jadi
-    100:10:10.
+    HIGOLAB membelah datasetnya SENDIRI saat membuat versi — pembagian
+    anti-bocor. Kalau persebaran bawaan Roboflow dibiarkan, ia dipertahankan
+    dan justru membatalkan pembelahan itu. Maka split-nya dicopot: semua gambar
+    berkumpul jadi satu kolam datar "sudah dianotasi", dan penambahan sesudahnya
+    ikut ke kolam itu — tidak menghidupkan kembali split.
     """
     masuk(klien, "paul", PW_PAUL)
     proyek = _proyek_bersplit(lingkungan["ruang"] / "proyek")
     assert klien.post("/useupload?ds=proyek").json()["n"] == 100
-    baru = _gambar_baru(lingkungan["roots"] / "baru", 20)
+    assert not (proyek / "train").exists(), "persebaran split harus dicopot"
+    assert len(list((proyek / "images").glob("*.jpg"))) == 100
 
+    baru = _gambar_baru(lingkungan["roots"] / "baru", 20)
     r = klien.post(f"/tambah/impor?path={baru}").json()
     assert r["ok"] is True and r["ditambah"] == 40 and r["n"] == 120
-    assert _isi(proyek) == {"train": 96, "valid": 12, "test": 12}
+    assert len(list((proyek / "images").glob("*.jpg"))) == 120
+    assert not (proyek / "train").exists()
 
 
-def test_tambah_menaruh_label_di_split_yang_sama_dengan_gambarnya(klien,
-                                                                  lingkungan):
+def test_tambah_menaruh_label_bersama_gambarnya_di_kolam_datar(klien,
+                                                               lingkungan):
     """Label yang terpisah dari gambarnya membuat gambar itu tampak belum
-    dilabeli, dan labelnya menjadi yatim di split lain."""
+    dilabeli, dan labelnya menjadi yatim. Di kolam datar, gambar di `images/`
+    dan labelnya di `labels/` harus tetap sepasang."""
     masuk(klien, "paul", PW_PAUL)
     proyek = _proyek_bersplit(lingkungan["ruang"] / "p2")
     klien.post("/useupload?ds=p2")
     baru = _gambar_baru(lingkungan["roots"] / "baru2", 20)
     klien.post(f"/tambah/impor?path={baru}")
 
-    for s in ("train", "valid", "test"):
-        gbr = {p.stem for p in (proyek / s / "images").glob("n*.jpg")}
-        lbl = {p.stem for p in (proyek / s / "labels").glob("n*.txt")}
-        assert gbr == lbl, f"split {s}: gambar {gbr} vs label {lbl}"
+    gbr = {p.stem for p in (proyek / "images").glob("*.jpg")}
+    lbl = {p.stem for p in (proyek / "labels").glob("*.txt")}
+    assert gbr == lbl, f"gambar {gbr} vs label {lbl}"
 
 
 def test_tambah_dua_kali_tidak_menggandakan(klien, lingkungan):
@@ -1237,10 +1332,10 @@ def test_tambah_dua_kali_tidak_menggandakan(klien, lingkungan):
     baru = _gambar_baru(lingkungan["roots"] / "baru3", 20)
 
     klien.post(f"/tambah/impor?path={baru}")
-    sesudah = _isi(proyek)
+    sesudah = len(list((proyek / "images").glob("*.jpg")))
     r = klien.post(f"/tambah/impor?path={baru}").json()
     assert r["ditambah"] == 0 and r["sudah_ada"] == 40
-    assert _isi(proyek) == sesudah
+    assert len(list((proyek / "images").glob("*.jpg"))) == sesudah
 
 
 def test_tambah_berkas_senama_tapi_beda_isi_tetap_masuk_berpasangan(klien,
@@ -1263,13 +1358,11 @@ def test_tambah_berkas_senama_tapi_beda_isi_tetap_masuk_berpasangan(klien,
 
     r = klien.post(f"/tambah/impor?path={lain}").json()
     assert r["ditambah"] == 2 and r["bentrok"]
-    pasang = [(s, (proyek / s / "labels" / "n0-2.txt").exists())
-              for s in ("train", "valid", "test")
-              if (proyek / s / "images" / "n0-2.jpg").exists()]
-    assert pasang and all(ada for _, ada in pasang), pasang
+    # gambar senama masuk dengan akhiran, dan labelnya ikut nama yang sama
+    assert (proyek / "images" / "n0-2.jpg").exists()
+    assert (proyek / "labels" / "n0-2.txt").exists()
     # yang lama tidak tersentuh
-    assert (proyek / pasang[0][0] / "labels" / "n0.txt").read_text() \
-        == "1 0.5 0.5 0.3 0.3\n"
+    assert (proyek / "labels" / "n0.txt").read_text() == "1 0.5 0.5 0.3 0.3\n"
 
 
 def test_tambah_ditolak_kalau_dataset_dibuka_dari_path_server(klien, lingkungan):
@@ -1298,12 +1391,12 @@ def test_tambah_satu_berkas_lewat_unggahan(klien, lingkungan):
     masuk(klien, "paul", PW_PAUL)
     proyek = _proyek_bersplit(lingkungan["ruang"] / "p6")
     klien.post("/useupload?ds=p6")
-    gbr = (proyek / "train" / "images" / "train0.jpg").read_bytes()
+    gbr = (proyek / "images" / "train0.jpg").read_bytes()
 
     r = klien.put("/tambah?name=sub/folder/foto-baru.jpg", content=gbr).json()
     assert r["ok"] is True and r["hasil"] == "baru"
     # struktur folder pengirim dibuang; yang menentukan adalah tata letak tujuan
-    assert (proyek / r["split"] / "images" / "foto-baru.jpg").exists()
+    assert (proyek / "images" / "foto-baru.jpg").exists()
     assert not (proyek / "sub").exists()
 
     # berkas yang sama persis, dikirim lagi
@@ -1496,13 +1589,18 @@ def test_catatan_tingkat_gambar_bisa_dibaca_dan_ditulis(klien, lingkungan):
 def test_daftar_berkas_membawa_penanda_split(klien, lingkungan):
     """Pada ekspor Roboflow nama berkas yang sama muncul di train/valid/test;
     tanpa penandanya barisnya tampak kembar dan orang tidak tahu mana yang
-    sedang dibuka."""
+    sedang dibuka.
+
+    Penanda ini masih berlaku untuk dataset yang DIBUKA DI TEMPAT lewat /setsrc:
+    di sana folder sumber tidak pernah disentuh, jadi split-nya utuh. (Yang
+    diunggah/diimpor ke ruang kerja justru diratakan — lihat
+    test_upload_dataset_bersplit_diratakan_lalu_tambah_masuk_kolam.)"""
     import json as _json
 
     masuk(klien, "paul", PW_PAUL)
-    proyek = _proyek_bersplit(lingkungan["ruang"] / "psplit",
+    proyek = _proyek_bersplit(lingkungan["roots"] / "psplit-ext",
                               n=(2, 1, 1))
-    klien.post("/useupload?ds=psplit")
+    klien.post(f"/setsrc?path={proyek}")
     ip = proyek / "train" / "images" / "train0.jpg"
     html = klien.get(f"/label?path={ip}").text
     data = _json.loads(re.search(r'id="data-awal"[^>]*>(.*?)</script>',

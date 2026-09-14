@@ -188,3 +188,98 @@ def boleh_ditambahi(src: Path, ruang_kerja: Path) -> str:
                 "bisa ditambahi — salin dulu ke ruang kerjamu lewat "
                 "\"Salin ke ruang kerjaku\" di halaman pilih dataset")
     return ""
+
+
+def ratakan_split(d: Path) -> dict:
+    """
+    Ratakan ekspor bersplit (train/valid/test) jadi satu kolam YOLO datar.
+
+    HIGOLAB membelah datasetnya SENDIRI saat membuat versi — pembagian
+    anti-bocor berdasarkan sesi + dHash. Kalau split bawaan Roboflow dibiarkan,
+    `export.bagi_split` mempertahankannya (aturan 1) dan justru MEMBATALKAN
+    pembelahan kita: gambar yang tadinya di valid tetap di valid, kebocoran
+    tetap kebocoran. Maka begitu dataset jadi diunggah atau diimpor ke ruang
+    kerja, persebaran train/valid/test-nya dicopot di sini — semua gambar
+    berkumpul di `images/`+`labels/` di akar, dan pembagian sepenuhnya
+    diserahkan ke mesin versi.
+
+    HANYA untuk dataset di ruang unggahan sendiri. Folder yang dibuka di tempat
+    lewat /setsrc tidak pernah melewati sini, dan memang tidak boleh diubah.
+
+    Split-nya dicari di `d` sendiri MAUPUN satu tingkat lebih dalam: unggahan
+    folder dari laptop selalu membawa nama folder pembungkus (webkitRelativePath
+    "rf-dataset/train/images/x.jpg"), jadi split-nya mendarat di
+    `d/rf-dataset/`, bukan di `d`. Sekalian, `data.yaml` yang ikut terbungkus
+    itu diangkat ke akar — tanpa itu `baca_nama_kelas` yang cuma menengok dua
+    tingkat tak menemukannya dan kelasnya jatuh jadi "0", "1", "2".
+
+    Idempoten: dataset yang sudah datar tidak punya split bersarang lagi
+    (`images/`+`labels/` di akar membuat `split_bersarang` mengembalikan []),
+    jadi panggilan berikutnya tidak melakukan apa-apa.
+
+    -> {"diratakan": n, "bentrok": [..maks 5..]}
+    """
+    d = Path(d)
+    splits = scanner.split_bersarang(d)
+    if not splits:
+        # Unggahan folder membungkus datasetnya satu tingkat. Turun satu tingkat
+        # untuk menemukannya — tetapi hanya satu, dan tidak menembus projek lain.
+        for sub in sorted(p for p in d.iterdir() if p.is_dir()):
+            dalam = scanner.split_bersarang(sub)
+            if dalam:
+                splits = dalam
+                break
+    if not splits:
+        return {"diratakan": 0, "bentrok": []}
+
+    akar = splits[0].parent            # d sendiri, atau pembungkusnya
+    (d / "images").mkdir(exist_ok=True)
+    (d / "labels").mkdir(exist_ok=True)
+
+    # Daftar kelas ekspor Roboflow ada di akar split. Kalau akar itu bukan `d`
+    # (kasus pembungkus), berkasnya diangkat supaya kelasnya tetap terbaca.
+    if akar != d:
+        for nama in ("data.yaml", "data.yml", "dataset.yaml", "classes.txt"):
+            asal = akar / nama
+            if asal.is_file() and not (d / nama).exists():
+                asal.replace(d / nama)
+
+    # Diproses PER SPLIT, gambar sebuah nama sebelum labelnya. Penggantian nama
+    # karena bentrok dilacak per split, bukan global: nama-dasar yang sama bisa
+    # muncul di train DAN valid sebagai foto yang berbeda, dan gambar dengan
+    # labelnya yang sepasang selalu berada di split yang sama. Melacaknya global
+    # membuat bentrok di valid menyeret nama label train — labelnya jadi yatim.
+    bentrok: list[str] = []
+    diratakan = 0
+    for s in splits:
+        ganti: dict[str, str] = {}
+        img_dir, lbl_dir = s / "images", s / "labels"
+        imgs = sorted(p for p in img_dir.iterdir() if p.is_file()) if img_dir.is_dir() else []
+        lbls = sorted(p for p in lbl_dir.iterdir() if p.is_file()) if lbl_dir.is_dir() else []
+        for p in imgs:
+            akhir, hasil = pasang(p, d / "images" / p.name)
+            if hasil == "senama":
+                ganti[p.stem] = akhir.stem
+                if len(bentrok) < 5:
+                    bentrok.append(p.name)
+            if hasil != "sudah-ada":
+                diratakan += 1
+        for p in lbls:
+            nama = ganti.get(p.stem, p.stem) + p.suffix
+            pasang(p, d / "labels" / nama)
+
+    # Folder split yang kini kosong dibuang; yang menyisakan berkas lain (mis.
+    # gambar rusak yang tak tersalin) sengaja dibiarkan daripada menghapus data.
+    for s in splits:
+        for sub in ("images", "labels"):
+            f = s / sub
+            if f.is_dir() and not any(f.iterdir()):
+                f.rmdir()
+        if s.is_dir() and not any(s.iterdir()):
+            s.rmdir()
+    # Pembungkus yang kini kosong ikut dibuang, supaya scan(d) mengenali
+    # `images/`+`labels/` di akar dan bukan lagi menuruni pembungkusnya.
+    if akar != d and akar.is_dir() and not any(akar.iterdir()):
+        akar.rmdir()
+
+    return {"diratakan": diratakan, "bentrok": bentrok}

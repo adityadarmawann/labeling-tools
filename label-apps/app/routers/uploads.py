@@ -323,6 +323,12 @@ async def impor_dari_server(path: str = "", ds: str = "",
         impor.catat_maju(sess.user, tahap="gagal")
         return {"ok": False, "error": f"gagal menyalin: {str(e)[:90]}"}
 
+    # Persebaran train/valid/test ekspor Roboflow dicopot di sini: HIGOLAB
+    # membelah sendiri per versi (anti-bocor), jadi split bawaan harus lenyap
+    # dulu supaya tidak dipertahankan dan membatalkan pembelahan itu. Datar
+    # begini, semua gambar berlabel langsung terbaca "sudah dianotasi".
+    await asyncio.to_thread(tambah.ratakan_split, tujuan)
+
     n = len(await asyncio.to_thread(sess.load, tujuan))
     peringatan = await asyncio.to_thread(scanner.periksa_kelengkapan, tujuan)
     riwayat.catat(settings, sess.user, sumber.resolve(), "salin")
@@ -464,6 +470,10 @@ async def use_upload(ds: str = "", sess: Session = Depends(current_session_api))
     d = sess.upload_dir(ds)
     if not d.is_dir():
         return {"ok": False, "error": "folder unggahan belum ada"}
+    # Sama seperti /impor: kalau yang diunggah ternyata ekspor bersplit
+    # (train/valid/test dari laptop atau di dalam zip), split-nya dicopot
+    # supaya mesin versi yang membelahnya, bukan Roboflow.
+    await asyncio.to_thread(tambah.ratakan_split, d)
     n = len(await asyncio.to_thread(sess.load, d))
     if not n:
         return {"ok": False, "error": "tidak ada gambar terbaca di unggahan itu"}
