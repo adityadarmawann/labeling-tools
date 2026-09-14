@@ -2569,7 +2569,10 @@ def test_kanvas_punya_tombol_tandai_latar(klien, lingkungan):
 
     h = klien.get(f"/label?path={img}").text
     assert 'id="btn-latar"' in h, "tombol tandai latar tidak ada di kanvas"
-    assert "Tandai sebagai latar" in h
+    # Ada di palet alat kanan (lab-palet), bukan panel objek kiri.
+    palet = h[h.index('lab-palet'):]
+    assert 'id="btn-latar"' in palet, "tombol latar tidak di palet alat kanan"
+    assert 'id="btn-latar-teks"' in h and ">Latar<" in h
 
 
 def test_tandai_latar_konsisten_di_semua_jalur(klien, lingkungan):

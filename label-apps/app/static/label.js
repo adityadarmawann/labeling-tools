@@ -2188,21 +2188,14 @@ function perbaruiLatar() {
   if (!btn) return;
   const f = gambarIni();
   const sudahLatar = f && f.sev === 'bg';
-  const ket = el('latar-ket');
-  if (sudahLatar) {
-    btn.textContent = 'Batal latar';
-    btn.title = 'Kembalikan gambar ini ke belum dilabeli';
-    btn.classList.remove('tbl-utama');
-    ket.textContent = 'Gambar ini ditandai latar — dianggap tidak berisi '
-                    + 'objek, ikut sebagai contoh negatif.';
-  } else {
-    btn.textContent = 'Tandai sebagai latar';
-    btn.title = 'Nyatakan gambar ini tidak berisi objek apa pun (contoh negatif)';
-    btn.classList.toggle('tbl-utama', S.shapes.length === 0);
-    ket.textContent = S.shapes.length
-      ? `Objeknya (${S.shapes.length}) akan dihapus lebih dulu.`
-      : '';
-  }
+  // Menyala seperti mode aktif saat gambarnya SUDAH latar; sekali klik lagi
+  // membatalkannya. Ikonnya tetap, cuma keadaannya yang berubah.
+  btn.toggleAttribute('data-on', !!sudahLatar);
+  btn.title = sudahLatar
+    ? 'Gambar ini latar — klik untuk membatalkan (kembali belum dilabeli)'
+    : (S.shapes.length
+        ? `Tandai latar — ${S.shapes.length} objeknya akan dihapus lebih dulu`
+        : 'Tandai gambar ini sebagai latar (tanpa objek)');
 }
 
 async function toggleLatar() {

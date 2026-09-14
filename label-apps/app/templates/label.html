@@ -141,18 +141,6 @@
     <div class="pan pan-grow" id="pan-objects">
       <h3>Objects <span class="ct" id="nobj">0</span></h3>
       <div class="obj-list" id="objek"></div>
-      {% if boleh_ubah %}
-      {#- Tandai latar DI SINI, bukan cuma di grid dan halaman job. Gambar
-          tanpa objek yang sengaja dinyatakan kosong adalah contoh negatif
-          (padanan Mark Null di Roboflow), dan sebelum ini menandainya berarti
-          keluar dari kanvas ke grid. -#}
-      <div class="lab-latar" id="lab-latar">
-        <button class="tbl tbl-lebar" type="button" id="btn-latar"
-                title="Nyatakan gambar ini tidak berisi objek apa pun (contoh negatif)">
-          Tandai sebagai latar</button>
-        <p class="halus" id="latar-ket"></p>
-      </div>
-      {% endif %}
     </div>
 
     <div class="pan" id="pan-labels">
@@ -307,6 +295,24 @@
       <button class="tool" data-mode="edit"
               title="Sunting (V): pilih bentuk, geser titiknya">
         {{ ikon('sunting', 21) }}<span>Sunting</span></button>
+
+      {% if boleh_ubah %}
+      {#- Tandai latar: BUKAN mode menggambar (tidak punya data-mode), tapi
+          aksi sekali-klik — gambar ini sengaja dinyatakan tanpa objek, contoh
+          negatif (padanan Mark Null di Roboflow). Ditaruh di palet ini, bukan
+          di panel kiri, supaya sejangkauan dengan alat gambar. Saat gambarnya
+          sudah latar, tombolnya menyala (data-on) dan sekali klik lagi
+          membatalkannya. -#}
+      <span class="tool-sep"></span>
+      <button class="tool tool-latar" type="button" id="btn-latar"
+              title="Tandai gambar ini sebagai latar (tanpa objek)">
+        <svg class="ik" width="21" height="21" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2" stroke-linecap="round"
+             stroke-linejoin="round" aria-hidden="true">
+          <rect x="3" y="3" width="18" height="18" rx="2" stroke-dasharray="4 3"/>
+          <path d="M8 15l3-3 2 2 3-4"/>
+        </svg><span id="btn-latar-teks">Latar</span></button>
+      {% endif %}
     </div>
 
     {# -------------------------------------------------------------- bar SAM
