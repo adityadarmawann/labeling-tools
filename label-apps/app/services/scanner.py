@@ -29,7 +29,7 @@ from ..log import catat
 log = catat("labelapp.scanner")
 from PIL import Image
 
-from ..config import IMG_EXT
+from ..config import IMG_EXT, SAMPAH_GAMBAR
 
 # Nama folder split yang dikenali pada ekspor Roboflow/ultralytics. `val` dan
 # `valid` dua-duanya dipakai di lapangan: data.yaml Roboflow menulis `val:`
@@ -298,7 +298,8 @@ def periksa_kelengkapan(src: Path) -> list[str]:
 def tersembunyi(p: Path, src: Path) -> bool:
     """
     True kalau `p` berada di dalam folder berawalan titik relatif terhadap
-    `src`, atau namanya sendiri berawalan titik.
+    `src`, di dalam keranjang `_sampah-gambar/`, atau namanya sendiri berawalan
+    titik.
 
     Berkas maupun FOLDER berawalan titik adalah keterangan aplikasi ini, bukan
     data: `.tag.json`, `.tugas.json`, dan `.versi/`. Sejak versi dataset
@@ -306,12 +307,16 @@ def tersembunyi(p: Path, src: Path) -> bool:
     kerapian dan jadi syarat kebenaran — tanpa ia, setiap versi yang dibuat
     akan terbaca sebagai puluhan ribu gambar baru di projek yang sama, dan
     versi berikutnya dibuat dari hasil versi sebelumnya.
+
+    `_sampah-gambar/` ikut di sini walau awalannya "_" bukan ".": gambar yang
+    dibuang lewat "Hapus dari projek" mendarat di situ, dan menghitungnya lagi
+    membuat scanner tak sepakat dengan papan maupun sidebar.
     """
     try:
         bagian = p.relative_to(src).parts
     except ValueError:
         return False
-    return any(b.startswith(".") for b in bagian)
+    return any(b.startswith(".") or b == SAMPAH_GAMBAR for b in bagian)
 
 
 def anotasi_json(src: Path):

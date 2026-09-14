@@ -18,6 +18,14 @@ ANN_EXT = (".json", ".txt")
 # situlah nama kelas disimpan, dan tanpa menerimanya dataset yang diunggah
 # tampil dengan kelas "0", "1", "2" alih-alih nama sebenarnya.
 META_EXT = (".yaml", ".yml")
+
+# Keranjang gambar yang dibuang lewat "Hapus dari projek" (tugas.buang_gambar
+# memindahkan berkasnya ke <projek>/_sampah-gambar/<cap>/). Ia ada DI DALAM
+# projek tapi ISINYA BUKAN data projek lagi — sama seperti berkas berawalan
+# titik. Namanya berawalan "_" bukan ".", jadi ia harus disebut terpisah di
+# mana pun isi projek ditelusuri (scanner maupun sidebar) supaya gambar yang
+# sudah dibuang tidak ikut terhitung.
+SAMPAH_GAMBAR = "_sampah-gambar"
 # Arsip yang boleh diunggah lalu dibongkar di server.
 ARSIP_EXT = (".zip",)
 

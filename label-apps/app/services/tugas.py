@@ -500,10 +500,10 @@ def buang_gambar(ds: Path, item_daftar: list[dict], pemilik: str = "") -> dict:
     """
     from datetime import datetime
 
-    from ..config import IMG_EXT
+    from ..config import IMG_EXT, SAMPAH_GAMBAR
 
     dsr = Path(ds)
-    kotak = dsr / "_sampah-gambar" / datetime.now().strftime("%Y%m%d-%H%M%S")
+    kotak = dsr / SAMPAH_GAMBAR / datetime.now().strftime("%Y%m%d-%H%M%S")
     dipindah, kunci_buang = 0, set()
     with _kunci:
         data = baca(ds, pemilik)

@@ -573,6 +573,34 @@ def test_angka_sidebar_dihitung_bukan_disalin(klien, lingkungan):
         assert ">Versi<b class=\"sisi-angka\">1<" in menu, (url, menu)
 
 
+def test_gambar_di_keranjang_sampah_tak_ikut_dihitung_sidebar(lingkungan):
+    """Gambar yang dibuang lewat "Hapus dari projek" mendarat di
+    `_sampah-gambar/`. Folder itu ada DI DALAM projek dan namanya berawalan
+    "_", bukan ".", jadi penelusuran sidebar dulu ikut menghitungnya — lencana
+    Anotasi lalu menyebut angka lebih besar daripada papan, yang menyaring
+    sampah dengan benar. Di sini enam gambar hidup, tiga di sampah: sidebar
+    harus menghitung enam, sama seperti scanner.
+    """
+    from app.services import projek, scanner, tugas
+
+    d = _projek(lingkungan["roots"] / "_unggahan" / "paul", "berkeranjang",
+                n=6, label=True)
+    # Kurasi + semua masuk dataset, lalu buang tiga: yang dibuang pindah ke
+    # _sampah-gambar dan lepas dari dataset.
+    nama = sorted(p.name for p in d.glob("*.jpg"))
+    tugas.masukkan(d, nama, "paul")
+    buang = [{"img": d / n} for n in nama[:3]]
+    hasil = tugas.buang_gambar(d, buang, "paul")
+    assert hasil["dibuang"] == 3, hasil
+    assert (d / "_sampah-gambar").is_dir()
+
+    # scanner dan sidebar sepakat: tiga yang tersisa, bukan enam.
+    assert len(scanner.scan(d)[0]) == 3
+    pr = projek.konteks(d, lingkungan["roots"] / "_unggahan", "paul")
+    assert pr["jumlah"] == 3, f"sampah ikut terhitung: {pr['jumlah']}"
+    assert pr["n_dataset"] == 3 and pr["belum"] == 0, pr
+
+
 def test_sidebar_projek_tamu_tidak_kehilangan_awalan_pemiliknya(klien, aplikasi,
                                                                  lingkungan):
     """Awalan pemilik dihitung dari letak folder, bukan disalin dari URL.

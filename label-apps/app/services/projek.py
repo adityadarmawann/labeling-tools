@@ -27,7 +27,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from ..config import ANN_EXT, IMG_EXT
+from ..config import ANN_EXT, IMG_EXT, SAMPAH_GAMBAR
 from ..log import catat
 
 log = catat("labelapp.projek")
@@ -36,6 +36,13 @@ SAMPAH = "_sampah"
 
 # Folder yang tidak pernah muncul sebagai projek.
 _SEMBUNYI = {SAMPAH, "_unggahan"}
+
+# Folder internal yang dilewati saat menelusuri ISI sebuah projek: keranjang
+# "Hapus dari projek". Isinya bukan data projek lagi, jadi _survei dan sidebar
+# harus melewatinya persis seperti scanner (lihat scanner.tersembunyi) — kalau
+# tidak, gambar yang sudah dibuang tetap terhitung di sidebar sementara papan
+# yang memakai scanner tidak, dan lencananya jadi lebih besar dari isinya.
+_LEWATI_DALAM = {SAMPAH_GAMBAR}
 
 # Batas penelusuran per folder. Tanpa ini, satu dataset 300 ribu berkas
 # membuat halaman daftar menggantung setiap kali dibuka.
@@ -197,7 +204,7 @@ def _survei(d: Path) -> dict:
             continue
         with entri:
             for e in entri:
-                if e.name.startswith("."):
+                if e.name.startswith(".") or e.name in _LEWATI_DALAM:
                     continue
                 n += 1
                 if n > MAKS_TELUSUR:
@@ -535,7 +542,7 @@ def konteks(d: Path, uploads_root: Path, aku: str) -> dict:
                 continue
             with entri:
                 for e in entri:
-                    if e.name.startswith("."):
+                    if e.name.startswith(".") or e.name in _LEWATI_DALAM:
                         continue
                     try:
                         if e.is_dir(follow_symlinks=False):
