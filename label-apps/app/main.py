@@ -108,6 +108,20 @@ def create_app() -> FastAPI:
 
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
+    # Kompresi gzip untuk semua jawaban teks yang cukup besar. Halaman kanvas
+    # sebuah projek 11.000 gambar mengirim daftar berkasnya sebagai HTML 1,4 MB
+    # — nama dan path yang berulang-ulang — dan itulah yang paling lama sampai
+    # ke peramban walau internetnya kencang. Ter-gzip ia jadi ~70 KB (20x),
+    # jadi bukan cuma kanvas: papan, grid, dan tiap jawaban JSON besar ikut
+    # lebih ringan, tanpa satu baris pun berubah di sisi peramban.
+    #
+    # Dipasang PALING LUAR (sesudah semua middleware lain didaftarkan, jadi
+    # dijalankan lebih dulu) supaya ia membungkus jawaban yang sudah jadi.
+    # minimum_size menahan gzip dari jawaban kecil yang overhead-nya tak
+    # terbayar.
+    from starlette.middleware.gzip import GZipMiddleware
+    app.add_middleware(GZipMiddleware, minimum_size=1024)
+
     @app.middleware("http")
     async def _halaman_jangan_dicache(request: Request, panggil):
         """

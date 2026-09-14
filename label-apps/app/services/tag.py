@@ -93,11 +93,24 @@ def _tulis(ds: Path, data: dict) -> None:
 
 
 def kunci_gambar(ds: Path, gambar: Path) -> str:
-    """Nama gambar relatif terhadap akar projek, dengan garis miring maju."""
+    """Nama gambar relatif terhadap akar projek, dengan garis miring maju.
+
+    Dipanggil sekali PER GAMBAR di banyak halaman — papan anotasi memanggilnya
+    berkali-kali atas seluruh isi projek. Pada projek 11.000 gambar `.resolve()`
+    (satu syscall per panggilan) menjadikannya 0,5 detik yang ikut tiap muat
+    halaman. Karena `ds` dari sesi dan `gambar` dari pemindaian sudah absolut
+    dan sekanonik itu, relative_to langsung hampir selalu berhasil dan memberi
+    kunci yang sama; resolve hanya perlu sebagai jaring pengaman saat path
+    datang dari luar (mis. symlink), dan itu jarang.
+    """
+    g, d = Path(gambar), Path(ds)
     try:
-        return Path(gambar).resolve().relative_to(Path(ds).resolve()).as_posix()
+        return g.relative_to(d).as_posix()
     except ValueError:
-        return Path(gambar).name
+        try:
+            return g.resolve().relative_to(d.resolve()).as_posix()
+        except ValueError:
+            return g.name
 
 
 def untuk(data: dict, kunci: str) -> dict:

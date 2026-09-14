@@ -155,12 +155,16 @@ async def halaman_papan(request: Request, ds: str = "", urut: str = "terbaru",
 
     with sess.lock:
         items = list(sess.items)
-    semua = {svc_tag.kunci_gambar(d, it["img"]) for it in items}
+    # Kunci tiap gambar dihitung SEKALI, lalu dipakai ulang. Dulu tiga blok di
+    # bawah masing-masing memanggil kunci_gambar atas SELURUH isi projek — pada
+    # 11.000 gambar itu tiga kali 0,5 detik hanya untuk kunci yang sama.
+    kunci_dari = {id(it): svc_tag.kunci_gambar(d, it["img"]) for it in items}
+    semua = set(kunci_dari.values())
     # "Sudah dikerjakan" berarti punya berkas anotasi, TERMASUK yang ditandai
     # latar. Menandai gambar sebagai tanpa objek adalah keputusan yang sudah
     # diambil; menghitungnya sebagai belum dikerjakan membuat kemajuan pelabel
     # yang datasetnya banyak latar tampak macet.
-    berlabel = {svc_tag.kunci_gambar(d, it["img"]) for it in items
+    berlabel = {kunci_dari[id(it)] for it in items
                 if scanner.severity(it) != "stop"}
 
     # Nama unggahan tiap gambar, dipakai mengelompokkan kolom pertama.
@@ -168,7 +172,7 @@ async def halaman_papan(request: Request, ds: str = "", urut: str = "terbaru",
     batch_dari = {}
     if tdata_tag["gambar"]:
         for it in items:
-            k = svc_tag.kunci_gambar(d, it["img"])
+            k = kunci_dari[id(it)]
             b = svc_tag.untuk(tdata_tag, k)["batch"]
             if b:
                 batch_dari[k] = b
