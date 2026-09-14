@@ -857,3 +857,50 @@ async def ke_dataset(request: Request,
     data = await asyncio.to_thread(svc.baca, sess.src, sess.user)
     r["total"] = sum(1 for k in data["dataset"] if k in ada)
     return {"ok": True, **r}
+
+
+@router.post("/api/tugas/hapus-gambar")
+async def hapus_gambar(request: Request,
+                       sess: Session = Depends(current_session_api),
+                       settings: Settings = Depends(get_settings)):
+    """
+    Buang sekumpulan gambar dari projek ke tempat sampah, bisa dipulihkan.
+
+    Destruktif walau ke sampah: berkasnya benar-benar pindah dari folder yang
+    dipindai, jadi ia hilang dari grid, job, dan dataset seketika. Karena itu
+    penjaganya sama dengan menyunting label: pemilik projek, atau pelabel yang
+    memegang gambar itu — bukan siapa saja yang kebetulan bisa membuka projek.
+    """
+    data, galat = _siap(sess)
+    if galat:
+        return {"ok": False, "error": galat}
+    body = await bodi_json(request)
+    minta = _paths(body.get("gambar"))
+    if minta is None:
+        return {"ok": False, "error": "daftar gambar harus berupa larik"}
+
+    # Path -> item hasil pindai (yang memegang letak berkasnya di disk), lalu
+    # saring dengan hak per gambar. Yang bukan haknya dihitung ditolak, bukan
+    # menggagalkan seluruh daftar.
+    boleh, ditolak = [], 0
+    for p in minta:
+        it = sess.find(p)
+        if it is None:
+            ditolak += 1
+            continue
+        k = svc_tag.kunci_gambar(sess.src, it["img"])
+        if svc.boleh_labeli(data, sess.user, k):
+            boleh.append(it)
+        else:
+            ditolak += 1
+    if not boleh:
+        return {"ok": False, "error": f"{ditolak} gambar bukan tugasmu; hanya "
+                                      "pelabelnya atau pemilik projek yang bisa "
+                                      "menghapusnya"}
+
+    r = await asyncio.to_thread(svc.buang_gambar, sess.src, boleh, data["pemilik"])
+    # Berkasnya sudah pindah dari disk; pindai ulang supaya sesi ini tidak lagi
+    # menunjuk gambar yang tak ada, dan indeks find()-nya ikut segar.
+    await asyncio.to_thread(sess.load, sess.src)
+    r["ditolak"] = ditolak
+    return {"ok": True, **r}

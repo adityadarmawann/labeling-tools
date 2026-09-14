@@ -147,10 +147,18 @@
         <button class="chip" type="button" id="jb-batal-latar" disabled
                 title="Lepaskan tanda latar, kembalikan jadi belum dikerjakan">
           Batal latar</button>
-        <button class="chip" type="button" id="jb-keluarkan" disabled>
+        <button class="chip" type="button" id="jb-keluarkan" disabled
+                title="Keluarkan dari dataset dan kembalikan ke belum ditugaskan">
           Keluarkan dari dataset</button>
         <button class="chip aksi" type="button" id="jb-masukkan" disabled>
           Tambahkan ke dataset</button>
+        {#- Buang gambar dari projek SELURUHNYA. Ke tempat sampah, bukan
+            hilang: satu klik keliru di sini menghapus jam kerja pelabelan.
+            Warna bahaya membedakannya dari aksi dataset yang bisa dibalik
+            dengan sekali klik. -#}
+        <button class="chip chip-bahaya" type="button" id="jb-hapus" disabled
+                title="Pindahkan gambar terpilih ke tempat sampah projek">
+          Hapus dari projek</button>
       </div>
       {% else %}
       <p class="halus jb-baca">Tugas ini milik <b>{{ job.pelabel }}</b>. Kamu bisa

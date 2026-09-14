@@ -446,24 +446,121 @@ def jenis_berlaku(data: dict, items: list | None = None) -> str:
 
 
 def keluarkan(ds: Path, kunci_daftar: list[str], pemilik: str = "") -> dict:
-    """Kembalikan gambar dari dataset ke daftar yang masih dikerjakan."""
+    """Keluarkan gambar dari dataset DAN kembalikan ke belum ditugaskan.
+
+    Dua langkah dalam satu, sesuai yang dipilih: gambar lepas dari dataset
+    (tidak lagi ikut ekspor/versi) dan sekaligus lepas dari job-nya, jadi ia
+    kembali ke kolam "belum ditugaskan" di halaman Bagi dan bisa dibagi ulang.
+    Dulu ia hanya lepas dari dataset tetapi tetap tugas pelabelnya, dan tidak
+    ada satu pun jalan mengembalikan satu gambar ke belum-ditugaskan tanpa
+    membubarkan seluruh job.
+    """
     with _kunci:
         data = baca(ds, pemilik)
-        if not data["kurasi"]:
-            # Belum ada yang dimasukkan, jadi tidak ada yang bisa dikeluarkan.
-            # Menjawab "berhasil, 0 dikeluarkan" membuat orang mengira
-            # datasetnya kosong padahal seluruh isinya justru terhitung masuk.
-            return _tanpa_perubahan(data, {"dikeluarkan": 0, "total": 0,
-                                           "belum_dikurasi": True})
         buang = set(kunci_daftar)
-        sebelum = len(data["dataset"])
-        sisa = [k for k in data["dataset"] if k not in buang]
-        if len(sisa) == sebelum:
-            return _tanpa_perubahan(data, {"dikeluarkan": 0,
+
+        # 1. Lepas dari dataset (kalau kurasi menyala; kalau belum, tidak ada
+        #    yang tercatat masuk sehingga tidak ada yang bisa dikeluarkan).
+        n_ds = 0
+        if data["kurasi"]:
+            sisa = [k for k in data["dataset"] if k not in buang]
+            n_ds = len(data["dataset"]) - len(sisa)
+            data["dataset"] = sisa
+
+        # 2. Lepas dari SEMUA job -> kembali ke belum ditugaskan. Job yang jadi
+        #    kosong dibiarkan apa adanya; membubarkannya diam-diam menghapus
+        #    catatan siapa yang pernah mengerjakannya, dan itu keputusan yang
+        #    pantas dilihat pemiliknya, bukan efek samping.
+        n_unassign = 0
+        for job in data["tugas"].values():
+            g = job.get("gambar") or []
+            baru = [k for k in g if k not in buang]
+            if len(baru) != len(g):
+                n_unassign += len(g) - len(baru)
+                job["gambar"] = baru
+
+        if not n_ds and not n_unassign:
+            return _tanpa_perubahan(data, {"dikeluarkan": 0, "diunassign": 0,
                                            "total": len(data["dataset"])})
-        data["dataset"] = sisa
         _tulis(ds, data)
-    return {"dikeluarkan": sebelum - len(sisa), "total": len(sisa)}
+    return {"dikeluarkan": n_ds, "diunassign": n_unassign,
+            "total": len(data["dataset"])}
+
+
+def buang_gambar(ds: Path, item_daftar: list[dict], pemilik: str = "") -> dict:
+    """Pindahkan gambar + anotasinya ke tempat sampah projek, bisa dipulihkan.
+
+    BUKAN hapus permanen: satu klik keliru di sini berarti jam kerja pelabelan
+    hilang, jadi berkasnya dipindahkan ke `<projek>/_sampah-gambar/<cap>/`,
+    bukan di-unlink. Sekaligus dilepas dari dataset dan dari semua job, supaya
+    tidak ada catatan yang menunjuk ke gambar yang sudah tidak ada.
+
+    `item_daftar` adalah item hasil pindai (punya path berkasnya), karena yang
+    dipindah bukan cuma catatannya melainkan berkas di disk.
+    """
+    from datetime import datetime
+
+    from ..config import IMG_EXT
+
+    dsr = Path(ds)
+    kotak = dsr / "_sampah-gambar" / datetime.now().strftime("%Y%m%d-%H%M%S")
+    dipindah, kunci_buang = 0, set()
+    with _kunci:
+        data = baca(ds, pemilik)
+        for it in item_daftar:
+            img = Path(it["img"])
+            if not img.is_file():
+                continue
+            # Gambar dan SEMUA berkas sebelahnya yang menyertainya: .json
+            # labelme, .txt YOLO. Dipindah ke bawah sampah dengan tata letak
+            # relatif yang sama, jadi memulihkannya cukup memindahnya balik.
+            rel = img.resolve().relative_to(dsr.resolve())
+            tuju = kotak / rel
+            tuju.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                for berkas in _berkas_menyertai(it):
+                    if berkas.is_file():
+                        b_rel = berkas.resolve().relative_to(dsr.resolve())
+                        b_tuju = kotak / b_rel
+                        b_tuju.parent.mkdir(parents=True, exist_ok=True)
+                        berkas.replace(b_tuju)
+                img.replace(tuju)
+            except OSError:
+                continue
+            dipindah += 1
+            kunci_buang.add(kunci_gambar(ds, img))
+
+        if not dipindah:
+            return {"dibuang": 0}
+        # Bersihkan catatannya: keluar dari dataset dan dari semua job.
+        if data["kurasi"]:
+            data["dataset"] = [k for k in data["dataset"] if k not in kunci_buang]
+        for job in data["tugas"].values():
+            g = job.get("gambar") or []
+            job["gambar"] = [k for k in g if k not in kunci_buang]
+        _tulis(ds, data)
+    log.info("%s gambar dibuang ke sampah di %s", dipindah, dsr.name)
+    return {"dibuang": dipindah, "sampah": str(kotak)}
+
+
+def _berkas_menyertai(it: dict) -> list[Path]:
+    """Berkas anotasi yang menempel pada satu gambar (tanpa gambarnya)."""
+    keluar = []
+    for kunci in ("ann", "labels"):
+        p = it.get(kunci)
+        if p:
+            keluar.append(Path(p))
+    # labelme di sebelah gambar, kalau item YOLO pun kadang punya cadangan .json
+    keluar.append(Path(it["img"]).with_suffix(".json"))
+    # unik, dan bukan gambarnya sendiri
+    img = Path(it["img"]).resolve()
+    out, lihat = [], set()
+    for p in keluar:
+        r = p.resolve()
+        if r != img and r not in lihat:
+            lihat.add(r)
+            out.append(p)
+    return out
 
 
 # ============================================================

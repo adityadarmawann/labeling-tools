@@ -50,6 +50,8 @@
     $('jb-latar').textContent = n ? `Tandai ${n} latar` : 'Tandai latar';
     $('jb-latar').disabled = !n;
     $('jb-batal-latar').disabled = !n;
+    $('jb-hapus').textContent = n ? `Hapus ${n} dari projek` : 'Hapus dari projek';
+    $('jb-hapus').disabled = !n;
     const semua = $('jb-centang-semua');
     semua.checked = n > 0 && n === ubin.length;
     semua.indeterminate = n > 0 && n < ubin.length;
@@ -97,8 +99,43 @@
     } catch (e) { pr.gagal('Gagal menghubungi server'); tombol.disabled = false; return; }
     if (!j.ok) { pr.gagal(j.error); tombol.disabled = false; return; }
 
-    pr.selesai(keluarkan ? `${j.dikeluarkan} gambar keluar dari dataset`
-                         : `${j.ditambah} gambar masuk dataset`);
+    pr.selesai(keluarkan
+      ? `${j.diunassign} gambar keluar dari dataset dan kembali ke belum ditugaskan`
+      : `${j.ditambah} gambar masuk dataset`);
+    setTimeout(() => location.reload(), 800);
+  }
+
+  /*
+   * Hapus dari projek: pindahkan gambar terpilih ke tempat sampah projek.
+   *
+   * Bisa dipulihkan, bukan hilang — tetapi tetap destruktif: berkasnya pindah
+   * dari folder yang dipindai, jadi ia lenyap dari grid, job, dan dataset
+   * seketika. Karena itu ditanyakan dulu, dengan angkanya, dan tombolnya
+   * berwarna bahaya.
+   */
+  async function hapus() {
+    const dipilih = terpilih();
+    if (!dipilih.length) return;
+    if (!confirm(
+        `Hapus ${dipilih.length} gambar dari projek?\n\n`
+        + 'Gambar dan anotasinya dipindah ke tempat sampah projek — bisa '
+        + 'dipulihkan dari sana, tetapi hilang dari grid, tugas, dan dataset.')) return;
+
+    $('jb-hapus').disabled = true;
+    const pr = Progres.mulai(`Menghapus ${dipilih.length} gambar dari projek`,
+                             { di: $('jb-jalur') });
+    pr.taktentu('memindahkan ke sampah');
+    let j;
+    try {
+      j = await send('/api/tugas/hapus-gambar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gambar: dipilih.map(u => u.dataset.path) }),
+      });
+    } catch (e) { pr.gagal('Gagal menghubungi server'); $('jb-hapus').disabled = false; return; }
+    if (!j.ok) { pr.gagal(j.error); $('jb-hapus').disabled = false; return; }
+
+    pr.selesai(`${j.dibuang} gambar dipindah ke sampah`
+               + (j.ditolak ? ` · ${j.ditolak} ditolak (bukan tugasmu)` : ''));
     setTimeout(() => location.reload(), 800);
   }
 
@@ -153,5 +190,6 @@
   $('jb-keluarkan').onclick = () => pindahkan(true);
   $('jb-latar').onclick = () => latar(false);
   $('jb-batal-latar').onclick = () => latar(true);
+  $('jb-hapus').onclick = hapus;
   perbarui();
 })();

@@ -2490,3 +2490,64 @@ def test_thumbnail_etag_menjawab_304(klien, lingkungan):
     r2 = klien.get(f"/thumb?path={img}&s=220", headers={"If-None-Match": etag})
     assert r2.status_code == 304, "ETag cocok tapi tidak menjawab 304"
     assert len(r2.content) == 0, "304 tidak boleh membawa badan gambar"
+
+
+def test_keluarkan_dari_dataset_juga_mengembalikan_ke_belum_ditugaskan(klien, lingkungan):
+    """"Keluarkan dari dataset" kini melepas dari dataset DAN dari job.
+
+    Dipilih digabung: satu klik mengeluarkan gambar dari dataset dan
+    mengembalikannya ke kolam "belum ditugaskan", supaya bisa dibagi ulang.
+    Dulu ia hanya lepas dari dataset tetapi tetap tugas pelabelnya, dan tidak
+    ada jalan mengembalikan satu gambar tanpa membubarkan seluruh job.
+    """
+    import pathlib
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    from tests.test_projek import _projek
+    d = _projek(ruang, "keluarunassign", n=4)
+    klien.post(f"/setsrc?path={d}")
+    g = sorted(str(p) for p in d.glob("*.jpg"))
+    tid = klien.post("/api/tugas/bagi",
+                     json={"pelabel": "paul", "gambar": g}).json()["id"]
+    klien.post("/api/tugas/dataset", json={"gambar": g[:2]})
+
+    r = klien.post("/api/tugas/dataset",
+                   json={"gambar": g[:1], "keluarkan": True}).json()
+    assert r["ok"] and r["dikeluarkan"] == 1 and r["diunassign"] == 1, r
+
+    # Lenyap dari job (unassign) tetapi TIDAK dari disk.
+    h = klien.get(f"/tugas/{tid}?ds={d.name}").text
+    assert h.count('class="jb-ubin"') == 3, "gambar yang dikeluarkan masih di job"
+    assert pathlib.Path(g[0]).is_file(), "keluarkan tidak boleh menghapus berkas"
+    # Kembali ke kolam belum-ditugaskan di halaman Bagi.
+    b = klien.get(f"/bagi?ds={d.name}").text
+    assert pathlib.Path(g[0]).name in b, "tidak kembali ke belum ditugaskan"
+
+
+def test_hapus_gambar_ke_sampah_bisa_dipulihkan(klien, lingkungan):
+    """"Hapus dari projek" memindahkan gambar + anotasinya ke tempat sampah
+    projek — bukan unlink. Gambar lenyap dari job/dataset, berkasnya masih ada
+    di bawah _sampah-gambar/ untuk dipulihkan."""
+    import pathlib
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    from tests.test_projek import _projek
+    d = _projek(ruang, "hapussampah", n=4)
+    klien.post(f"/setsrc?path={d}")
+    g = sorted(str(p) for p in d.glob("*.jpg"))
+    tid = klien.post("/api/tugas/bagi",
+                     json={"pelabel": "paul", "gambar": g}).json()["id"]
+
+    r = klien.post("/api/tugas/hapus-gambar", json={"gambar": g[:2]}).json()
+    assert r["ok"] and r["dibuang"] == 2, r
+
+    # Berkas gambar pindah dari folder projek ke sampah.
+    assert not pathlib.Path(g[0]).exists(), "gambar tidak dipindah dari projek"
+    sampah = list((d / "_sampah-gambar").rglob("*.jpg"))
+    assert len(sampah) == 2, f"gambar tidak mendarat di sampah: {sampah}"
+    # Anotasinya ikut (labelme .json).
+    assert list((d / "_sampah-gambar").rglob("*.json")), "anotasi tidak ikut ke sampah"
+    # Lenyap dari job.
+    h = klien.get(f"/tugas/{tid}?ds={d.name}").text
+    assert h.count('class="jb-ubin"') == 2
+
