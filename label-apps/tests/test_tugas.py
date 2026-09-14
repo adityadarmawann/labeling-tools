@@ -2570,3 +2570,49 @@ def test_kanvas_punya_tombol_tandai_latar(klien, lingkungan):
     h = klien.get(f"/label?path={img}").text
     assert 'id="btn-latar"' in h, "tombol tandai latar tidak ada di kanvas"
     assert "Tandai sebagai latar" in h
+
+
+def test_tandai_latar_konsisten_di_semua_jalur(klien, lingkungan):
+    """Tandai latar dari grid (/markbg), job (/api/latar), dan kanvas
+    (/api/simpan shapes []) harus menghasilkan latar yang IDENTIK.
+
+    Tiga jalur, satu makna: gambar yang sengaja dinyatakan tanpa objek. Kalau
+    salah satu menulis format berbeda, "latar" dari satu halaman tidak dikenali
+    di halaman lain, dan angka contoh negatif jadi berbeda-beda menurut dari
+    mana ia ditandai.
+    """
+    import json
+    import pathlib
+    from app.services import scanner
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    from tests.test_projek import _projek
+    d = _projek(ruang, "latarkonsisten", n=4, label=False)
+    klien.post(f"/setsrc?path={d}")
+    g = sorted(str(p) for p in d.glob("*.jpg"))
+    klien.post("/api/tugas/bagi", json={"pelabel": "paul", "gambar": g})
+
+    # g0 via grid, g1 via job, g2 via kanvas. g3 dibiarkan belum dilabeli.
+    assert klien.post(f"/markbg?path={g[0]}").json()["ok"]
+    assert klien.post("/api/latar", json={"gambar": [g[1]]}).json()["ok"]
+    assert klien.post("/api/simpan", json={"path": g[2], "shapes": []}).json()["ok"]
+
+    # Berkas .json ketiganya sama-sama shapes kosong.
+    for p in g[:3]:
+        jp = pathlib.Path(p).with_suffix(".json")
+        assert jp.is_file() and json.loads(jp.read_text())["shapes"] == []
+    assert not pathlib.Path(g[3]).with_suffix(".json").exists()
+
+    # Dan dikenali IDENTIK oleh pemindai: bg + issue latar untuk tiga pertama,
+    # stop untuk yang belum dilabeli.
+    items, _ = scanner.scan(d)
+    sev = {it["img"].name: (scanner.severity(it), it["issues"]) for it in items}
+    for p in g[:3]:
+        nm = pathlib.Path(p).name
+        assert sev[nm][0] == "bg", f"{nm}: {sev[nm]}"
+        assert "latar (tanpa objek)" in sev[nm][1], f"{nm}: {sev[nm]}"
+    assert sev[pathlib.Path(g[3]).name][0] == "stop"
+
+    # Batal latar dari kanvas (/unmarkbg) mengembalikan ke belum dilabeli.
+    assert klien.post(f"/unmarkbg?path={g[0]}").json()["ok"]
+    assert not pathlib.Path(g[0]).with_suffix(".json").exists()
