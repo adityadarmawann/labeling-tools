@@ -30,15 +30,15 @@
   <a class="lab-balik" href="/" title="Kembali ke grid">{{ ikon('kembali', 20) }}</a>
   <span class="lab-judul">
     <a href="/pilih" class="lab-projek">{{ sess.src.name if sess.src else 'dataset' }}</a>
-    <b class="lab-berkas" title="{{ it.img.name }}">{{ it.img.name }}</b>
-    <span class="mono lab-ukuran">{{ it.W }}×{{ it.H }}</span>
+    <b class="lab-berkas" id="lab-berkas" title="{{ it.img.name }}">{{ it.img.name }}</b>
+    <span class="mono lab-ukuran" id="lab-ukuran">{{ it.W }}×{{ it.H }}</span>
   </span>
 
   <span class="lab-urut">
     <a class="lab-nav" id="prev" title="Gambar sebelumnya (A)"
        href="{% if prev_path %}/label?path={{ prev_path | urlquote }}{% else %}#{% endif %}"
        {% if not prev_path %}data-off{% endif %}>{{ ikon('kiri', 18) }}</a>
-    <span class="lab-urut-n mono">{{ posisi[0] }} / {{ posisi[1] }}</span>
+    <span class="lab-urut-n mono" id="lab-urut-n">{{ posisi[0] }} / {{ posisi[1] }}</span>
     <a class="lab-nav" id="next" title="Gambar berikutnya (D)"
        href="{% if next_path %}/label?path={{ next_path | urlquote }}{% else %}#{% endif %}"
        {% if not next_path %}data-off{% endif %}>{{ ikon('kanan', 18) }}</a>
@@ -207,7 +207,7 @@
     </div>
 
     <div class="pan pan-grow" id="pan-files">
-      <h3>Files <span class="ct">{{ posisi[0] }}/{{ posisi[1] }}</span></h3>
+      <h3>Files <span class="ct" id="lab-files-ct">{{ posisi[0] }}/{{ posisi[1] }}</span></h3>
       <input id="cari" type="text" placeholder="Search Filename">
       <div class="file-list" id="berkas"></div>
       <p class="halus" id="berkasinfo"></p>

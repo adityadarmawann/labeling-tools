@@ -2534,8 +2534,105 @@ async function pindah(path) {
   }
   titipUntukKeepPrev();
   titipZoom();
-  location.href = '/label?path=' + encodeURIComponent(path);
+  await muatGambar(path, true);
 }
+
+/* Pindah gambar TANPA memuat ulang halaman — inilah yang membuat panah terasa
+ * seketika, seperti Roboflow. Dulu tiap pindah gambar `location.href` memuat
+ * ulang seluruh halaman: server merender lagi, peramban mem-parse HTML,
+ * daftar berkas (1,4 MB pada projek besar) diurai ulang, dan seluruh kanvas
+ * dibangun dari nol. Di sini yang berganti cuma gambar dan anotasinya; daftar
+ * berkas, kelas, penangan, dan kanvasnya tetap.
+ *
+ * Yang mengubah LEBIH dari sekadar gambar+anotasi tetap jatuh ke muat ulang
+ * penuh — hak sunting yang berbeda (gambar orang lain jadi baca-saja) atau
+ * berkas anotasi rusak menuntut tampilan yang berbeda, dan menyetengahkannya
+ * di sini lebih berisiko daripada satu reload yang jujur.
+ */
+async function muatGambar(path, dorongRiwayat) {
+  status('Memuat…');
+  let d;
+  try {
+    const r = await fetch('/api/label-data?path=' + encodeURIComponent(path));
+    d = await r.json();
+  } catch (e) {
+    location.href = '/label?path=' + encodeURIComponent(path);
+    return;
+  }
+  if (!d.ok || d.boleh_ubah === BACA_SAJA || d.rusak) {
+    location.href = '/label?path=' + encodeURIComponent(path);
+    return;
+  }
+
+  // Data per-gambar yang dipegang D.
+  D.path = d.path; D.nama = d.nama; D.W = d.W; D.H = d.H;
+  D.prev = d.prev; D.next = d.next; D.shapes = d.shapes;
+
+  // Reset keadaan PER-GAMBAR. Yang global — kelas, mode, setelan View,
+  // kecerahan — sengaja dipertahankan; me-reset-nya justru yang dulu bikin
+  // kesal saat memuat ulang (kelas terpilih hilang tiap pindah).
+  S.shapes = d.shapes.map(s => ({ ...s, points: s.points.map(p => [p[0], p[1]]) }));
+  S.flags = { ...(d.flags_gambar || {}) };
+  S.teksGambar = d.teks_gambar || '';
+  S.label = ''; S.sel = -1; S.terpilih = []; S.selv = -1;
+  S.prompt = []; S.kotak = null; S.pratinjau = null; S.draft = null;
+  S.seret = null; S.seretKanan = null; S.salinanSeret = null;
+  S.kursor = null; S.hover = null; S.sisi = null;
+  S.undo = []; S.redo = [];
+  S.kotor = false;
+  el('btn-simpan').removeAttribute('data-kotor');
+  // Salin anotasi gambar sebelumnya kalau "Pertahankan anotasi" menyala dan
+  // gambar ini masih kosong — sama seperti saat memuat ulang.
+  pakaiKeepPrev();
+
+  // Bar atas dan daftar berkas.
+  el('lab-berkas').textContent = d.nama; el('lab-berkas').title = d.nama;
+  el('lab-ukuran').textContent = d.W + '×' + d.H;
+  el('lab-urut-n').textContent = d.posisi[0] + ' / ' + d.posisi[1];
+  if (el('lab-files-ct')) el('lab-files-ct').textContent = d.posisi[0] + '/' + d.posisi[1];
+  perbaruiNav('prev', d.prev);
+  perbaruiNav('next', d.next);
+  // sev gambar ini mungkin berubah (mis. baru ditandai latar di tempat lain);
+  // segarkan catatannya supaya penanda di daftar berkas benar.
+  const f = D.berkas.find(x => x.path === d.path);
+  if (f) { f.sev = d.sev; f.n = d.n; }
+  renderBerkas();
+
+  // Alamatnya ikut berganti tanpa reload, jadi tombol Back peramban bekerja
+  // dan menyalin URL tetap menunjuk gambar yang benar.
+  if (dorongRiwayat) {
+    history.pushState({ path: d.path }, '',
+                      '/label?path=' + encodeURIComponent(d.path));
+  }
+
+  // Gambar terakhir: sudah di cache dari praambil, jadi onload memicu seketika
+  // dan render menggambar anotasi baru di atasnya.
+  img.src = '/gambar?path=' + encodeURIComponent(d.path);
+  pesan('');
+}
+
+function perbaruiNav(id, path) {
+  const a = el(id);
+  if (!a) return;
+  if (path) {
+    a.href = '/label?path=' + encodeURIComponent(path);
+    a.removeAttribute('data-off');
+  } else {
+    a.href = '#';
+    a.setAttribute('data-off', '');
+  }
+}
+
+// Tombol Back/Forward peramban: pindah tanpa reload juga. Perubahan yang belum
+// tersimpan diamankan dulu kalau simpan-otomatis menyala — URL sudah terlanjur
+// berganti saat popstate tiba, jadi tidak bisa dibatalkan seperti di pindah().
+window.addEventListener('popstate', () => {
+  const p = new URLSearchParams(location.search).get('path') || '';
+  if (S.kotor && S.v.autosave) simpan();
+  titipUntukKeepPrev();
+  titipZoom();
+  muatGambar(p, false);
+});
 
 window.addEventListener('beforeunload', ev => {
   if (S.kotor) { ev.preventDefault(); ev.returnValue = ''; }

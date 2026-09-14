@@ -222,6 +222,48 @@ async def halaman(request: Request, path: str = "",
     })
 
 
+@router.get("/api/label-data")
+async def label_data(path: str = "", sess: Session = Depends(current_session)):
+    """
+    Data SATU gambar untuk kanvas — anotasi, tetangga, posisi — sebagai JSON.
+
+    Padanan ringan /label: kanvas memakainya untuk pindah gambar TANPA memuat
+    ulang halaman. Yang tidak berubah antar gambar di projek yang sama (daftar
+    berkas 1,4 MB pada projek besar, daftar kelas, setelan SAM) sengaja TIDAK
+    ikut — itu sudah ada di peramban sejak halaman pertama dibuka, dan mengirim
+    ulangnya tiap pindah gambar justru yang membuat panah terasa lama.
+    """
+    await asyncio.to_thread(sess.segarkan)
+    it = sess.find(path) if path else (sess.items[0] if sess.items else None)
+    if it is None:
+        return {"ok": False, "error": "gambar tidak ada di dataset ini"}
+    mentah = baca_mentah(it["img"].with_suffix(".json"))
+    with sess.lock:
+        items = sess.items
+        i = items.index(it)
+        prev_it = items[i - 1] if i > 0 else None
+        next_it = items[i + 1] if i < len(items) - 1 else None
+    tolak = tugas.tolak_tulis(sess.src, sess.user, it["img"]) if sess.src else ""
+    return {
+        "ok": True,
+        "path": str(it["img"].resolve()),
+        "nama": it["img"].name,
+        "W": it["W"], "H": it["H"],
+        "shapes": bentuk_untuk_kanvas(it, mentah),
+        "flags_gambar": {**dict.fromkeys(sess.settings.flags, False),
+                         **(mentah.get("flags") or {})},
+        "teks_gambar": mentah.get("image_text") or "",
+        "prev": str(prev_it["img"].resolve()) if prev_it else "",
+        "next": str(next_it["img"].resolve()) if next_it else "",
+        "posisi": [i + 1, len(items)],
+        "boleh_ubah": not tolak,
+        "alasan_tolak": tolak,
+        "rusak": "berkas anotasi rusak" in (it.get("issues") or []),
+        "sev": scanner.severity(it),
+        "n": len(it["shapes"]),
+    }
+
+
 @router.get("/gambar")
 async def gambar(path: str = "", sess: Session = Depends(current_session)):
     """

@@ -2619,3 +2619,35 @@ def test_tandai_latar_konsisten_di_semua_jalur(klien, lingkungan):
     # Batal latar dari kanvas (/unmarkbg) mengembalikan ke belum dilabeli.
     assert klien.post(f"/unmarkbg?path={g[0]}").json()["ok"]
     assert not pathlib.Path(g[0]).with_suffix(".json").exists()
+
+
+def test_api_label_data_untuk_pindah_tanpa_reload(klien, lingkungan):
+    """/api/label-data memberi data SATU gambar (anotasi, tetangga, posisi)
+    sebagai JSON, supaya kanvas bisa pindah gambar tanpa memuat ulang halaman.
+
+    Yang tidak berubah antar gambar (daftar berkas, kelas) sengaja TIDAK ikut:
+    itu sudah di peramban sejak halaman pertama, dan mengirimnya ulang tiap
+    pindah gambar justru yang dulu bikin panah terasa lama.
+    """
+    import pathlib
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    from tests.test_projek import _projek
+    d = _projek(ruang, "labeldata", n=3)
+    klien.post(f"/setsrc?path={d}")
+    g = sorted(str(p) for p in d.glob("*.jpg"))
+
+    r = klien.get(f"/api/label-data?path={g[1]}").json()
+    assert r["ok"] is True
+    # Gambar tengah punya tetangga di dua sisi.
+    assert r["prev"] and r["next"], r
+    assert r["posisi"] == [2, 3]
+    assert r["nama"] == pathlib.Path(g[1]).name
+    assert "shapes" in r and "W" in r and "H" in r
+    # Daftar berkas & kelas TIDAK dikirim (itu yang bikin ringan).
+    assert "berkas" not in r and "kelas" not in r
+    # Gambar pertama tak punya prev, terakhir tak punya next.
+    assert klien.get(f"/api/label-data?path={g[0]}").json()["prev"] == ""
+    assert klien.get(f"/api/label-data?path={g[2]}").json()["next"] == ""
+    # Path asing ditolak, bukan diam-diam membuka gambar lain.
+    assert klien.get("/api/label-data?path=/tidak/ada.jpg").json()["ok"] is False
