@@ -2709,8 +2709,37 @@ img.onload = () => {
   // hanya memakan tempat yang dipakai kalimat hasil menyimpan.
   pesan('');
   status('Siap');
+  // Baru SESUDAH gambar ini tampil: siapkan tetangganya di latar. Foto di
+  // dataset ini 2296x4080 ~3 MB; di jaringan kantor mengunduhnya baru saat
+  // panah ditekan memakan 2-3 detik tiap pindah. Diambil lebih dulu, ia sudah
+  // di cache peramban saat panah ditekan, jadi pindahnya terasa seketika —
+  // sama seperti Roboflow. Ditaruh di onload supaya tidak berebut jalur
+  // dengan gambar yang sedang ditunggu orang.
+  praambilTetangga();
 };
 img.onerror = () => { pesan('Gambar gagal dimuat'); toast('Gambar gagal dimuat'); };
+
+/* Ambil-dulu beberapa gambar tetangga ke cache peramban. ±2, bukan cuma ±1:
+   orang menekan panah beruntun ke satu arah, dan yang kedua harus sudah siap
+   juga sebelum yang pertama selesai dilihat. /gambar sudah mengizinkan cache
+   (max-age 300), jadi Image() yang dibuang tetap meninggalkan isinya di cache
+   untuk dipakai <img> di halaman berikutnya. */
+let _praambil = [];
+function praambilTetangga() {
+  const i = D.berkas.findIndex(f => f.path === D.path);
+  if (i < 0) return;
+  // Urutan menentukan di jaringan lambat: satu foto 3 MB butuh detik untuk
+  // sampai, jadi yang paling mungkin ditekan harus diambil DULUAN. Orang
+  // menyusuri maju, maka next lebih dulu dari prev, dan yang dekat sebelum
+  // yang jauh: [i+1, i-1, i+2, i-2].
+  _praambil = [i + 1, i - 1, i + 2, i - 2]
+    .filter(k => k >= 0 && k < D.berkas.length)
+    .map(k => {
+      const im = new Image();
+      im.src = '/gambar?path=' + encodeURIComponent(D.berkas[k].path);
+      return im;                 // referensi ditahan supaya tidak keburu di-GC
+    });
+}
 img.src = '/gambar?path=' + encodeURIComponent(D.path);
 
 setMode('p+');
