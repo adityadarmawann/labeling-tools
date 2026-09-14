@@ -2169,9 +2169,85 @@ function pindahkanObjek(dari, ke) {
   render();
 }
 
+/*
+ * Tandai latar dari kanvas.
+ *
+ * "Latar" = gambar yang SENGAJA dinyatakan tanpa objek — contoh negatif, ikut
+ * terekspor sebagai berkas label kosong. Berbeda dari "belum dilabeli" (belum
+ * disentuh): yang membedakan keduanya cuma ada-tidaknya berkas anotasi.
+ * Menyimpan gambar tanpa objek MEMANG sudah menuliskannya sebagai latar; yang
+ * belum ada sebelum ini cuma tombol yang mengatakannya dengan jelas, tanpa
+ * harus keluar ke grid.
+ */
+function gambarIni() {
+  return D.berkas.find(x => x.path === D.path) || null;
+}
+
+function perbaruiLatar() {
+  const btn = el('btn-latar');
+  if (!btn) return;
+  const f = gambarIni();
+  const sudahLatar = f && f.sev === 'bg';
+  const ket = el('latar-ket');
+  if (sudahLatar) {
+    btn.textContent = 'Batal latar';
+    btn.title = 'Kembalikan gambar ini ke belum dilabeli';
+    btn.classList.remove('tbl-utama');
+    ket.textContent = 'Gambar ini ditandai latar — dianggap tidak berisi '
+                    + 'objek, ikut sebagai contoh negatif.';
+  } else {
+    btn.textContent = 'Tandai sebagai latar';
+    btn.title = 'Nyatakan gambar ini tidak berisi objek apa pun (contoh negatif)';
+    btn.classList.toggle('tbl-utama', S.shapes.length === 0);
+    ket.textContent = S.shapes.length
+      ? `Objeknya (${S.shapes.length}) akan dihapus lebih dulu.`
+      : '';
+  }
+}
+
+async function toggleLatar() {
+  if (BACA_SAJA) {
+    toast('Gambar ini ditugaskan ke orang lain; kamu hanya bisa melihat');
+    return;
+  }
+  const f = gambarIni();
+  if (f && f.sev === 'bg') {
+    // Batal latar: hapus penanda, kembali ke belum dilabeli.
+    try {
+      const r = await fetch('/unmarkbg?path=' + encodeURIComponent(D.path),
+                            { method: 'POST' });
+      const j = await r.json();
+      if (!j.ok) { toast(j.error || 'Gagal membatalkan latar'); return; }
+    } catch (e) { toast('Gagal menghubungi server'); return; }
+    if (f) { f.sev = 'stop'; f.n = 0; }
+    S.kotor = false;
+    el('btn-simpan').removeAttribute('data-kotor');
+    status('Tanda latar dilepas');
+    renderBerkas();
+    perbaruiLatar();
+    toast('Tanda latar dilepas — gambar kembali belum dilabeli');
+    return;
+  }
+  // Tandai latar: kosongkan objeknya lalu simpan. Menyimpan tanpa objek
+  // menuliskannya sebagai latar (lihat /api/simpan).
+  if (S.shapes.length && !confirm(
+      `Hapus ${S.shapes.length} objek dan tandai gambar ini sebagai latar?\n\n`
+      + 'Latar berarti gambar sengaja dinyatakan tanpa objek — contoh negatif.')) return;
+  simpanUndo();
+  S.shapes = [];
+  S.sel = -1;
+  S.terpilih = [];
+  S.pratinjau = null;
+  render();
+  renderObjek();
+  await simpan();
+  perbaruiLatar();
+}
+
 function renderObjek() {
   const box = el('objek');
   el('nobj').textContent = S.shapes.length;
+  perbaruiLatar();
   box.innerHTML = '';
   if (!S.shapes.length) {
     box.innerHTML = '<div class="obj-kosong">Belum ada objek. Klik objeknya, '
@@ -2437,6 +2513,7 @@ async function simpan(diam = false) {
     status('Tersimpan');
     const f = D.berkas.find(x => x.path === D.path);
     if (f) { f.n = j.n; f.sev = j.sev; renderBerkas(); }
+    perbaruiLatar();
     pesan(`Tersimpan · ${j.n} objek · ${(j.issues || []).join(' · ') || 'tidak ada temuan'}`);
     // Peringatan dari penulisan label YOLO selalu ditampilkan, termasuk saat
     // autosave: kalau sebuah bentuk atau kelas tidak ikut tersimpan ke berkas
@@ -2485,6 +2562,7 @@ el('btn-del').onclick = hapusTerpilih;
 el('btn-undo').onclick = urungkan;
 el('btn-redo').onclick = ulangi;
 el('btn-simpan').onclick = simpan;
+if (el('btn-latar')) el('btn-latar').onclick = toggleLatar;
 el('btn-fit').onclick = muatKeLayar;
 el('btn-zin').onclick = () => zoomDi(1.25, c.width / 2, c.height / 2);
 el('btn-zout').onclick = () => zoomDi(1 / 1.25, c.width / 2, c.height / 2);

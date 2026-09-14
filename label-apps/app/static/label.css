@@ -114,6 +114,10 @@ body.lab {
 .tbl-utama[data-kotor] { background: var(--warn); border-color: var(--warn);
                          color: #fff; }
 .tbl-lebar { width: 100%; justify-content: center; margin-top: 8px; }
+/* Blok tandai-latar di dasar panel Objects, dipisah tipis dari daftarnya. */
+.lab-latar { margin-top: 10px; padding-top: 10px;
+  border-top: 1px solid var(--line); }
+.lab-latar .halus { margin: 6px 0 0; }
 .tbl.tema { padding: 0 6px; color: var(--ink-dim); }
 /* Tombol tanpa teks: tetap 34px supaya sasarannya sama besar dengan yang
    bertulisan, bukan sekadar sebesar ikonnya. */

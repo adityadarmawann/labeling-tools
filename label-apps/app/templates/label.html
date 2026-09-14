@@ -141,6 +141,18 @@
     <div class="pan pan-grow" id="pan-objects">
       <h3>Objects <span class="ct" id="nobj">0</span></h3>
       <div class="obj-list" id="objek"></div>
+      {% if boleh_ubah %}
+      {#- Tandai latar DI SINI, bukan cuma di grid dan halaman job. Gambar
+          tanpa objek yang sengaja dinyatakan kosong adalah contoh negatif
+          (padanan Mark Null di Roboflow), dan sebelum ini menandainya berarti
+          keluar dari kanvas ke grid. -#}
+      <div class="lab-latar" id="lab-latar">
+        <button class="tbl tbl-lebar" type="button" id="btn-latar"
+                title="Nyatakan gambar ini tidak berisi objek apa pun (contoh negatif)">
+          Tandai sebagai latar</button>
+        <p class="halus" id="latar-ket"></p>
+      </div>
+      {% endif %}
     </div>
 
     <div class="pan" id="pan-labels">

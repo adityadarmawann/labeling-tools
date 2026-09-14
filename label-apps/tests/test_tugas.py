@@ -2551,3 +2551,22 @@ def test_hapus_gambar_ke_sampah_bisa_dipulihkan(klien, lingkungan):
     h = klien.get(f"/tugas/{tid}?ds={d.name}").text
     assert h.count('class="jb-ubin"') == 2
 
+
+
+def test_kanvas_punya_tombol_tandai_latar(klien, lingkungan):
+    """"Tandai latar" kini ada DI kanvas, bukan cuma di grid dan job.
+
+    Gambar tanpa objek yang sengaja dinyatakan kosong adalah contoh negatif;
+    sebelum ini menandainya berarti keluar dari halaman labeling ke grid.
+    """
+    import pathlib
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    from tests.test_projek import _projek
+    d = _projek(ruang, "kanvaslatar", n=2)
+    klien.post(f"/setsrc?path={d}")
+    img = sorted(str(p) for p in d.glob("*.jpg"))[0]
+
+    h = klien.get(f"/label?path={img}").text
+    assert 'id="btn-latar"' in h, "tombol tandai latar tidak ada di kanvas"
+    assert "Tandai sebagai latar" in h
