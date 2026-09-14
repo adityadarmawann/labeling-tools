@@ -2651,3 +2651,43 @@ def test_api_label_data_untuk_pindah_tanpa_reload(klien, lingkungan):
     assert klien.get(f"/api/label-data?path={g[2]}").json()["next"] == ""
     # Path asing ditolak, bukan diam-diam membuka gambar lain.
     assert klien.get("/api/label-data?path=/tidak/ada.jpg").json()["ok"] is False
+
+
+def test_job_saring_status_dataset(klien, lingkungan):
+    """Job page bisa menyaring gambar menurut STATUS DATASET, terpisah dari
+    status anotasi.
+
+    Pada projek besar gambar yang sudah dianotasi tapi belum dimasukkan ke
+    dataset tersebar di antara ribuan yang sudah masuk; tanpa saringan ini
+    tidak ada cara menemukan mana yang tinggal dimasukkan — persis yang bikin
+    bingung: lencana Anotasi menyebut angka yang tak turun walau semua sudah
+    dilabeli, karena ia menghitung yang belum masuk dataset.
+    """
+    import pathlib
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    from tests.test_projek import _projek
+    d = _projek(ruang, "dssaring", n=6)  # semua berlabel
+    klien.post(f"/setsrc?path={d}")
+    g = sorted(str(p) for p in d.glob("*.jpg"))
+    tid = klien.post("/api/tugas/bagi",
+                     json={"pelabel": "paul", "gambar": g}).json()["id"]
+    # Masukkan 4 dari 6 ke dataset.
+    klien.post("/api/tugas/dataset", json={"gambar": g[:4]})
+
+    # Chip menghitung benar: 4 di dataset, 2 belum.
+    h = klien.get(f"/tugas/{tid}?ds={d.name}").text
+    assert "Di dataset <b>4</b>" in h
+    assert "Belum di dataset <b>2</b>" in h
+
+    # Saring 'belum' -> hanya 2 yang belum masuk dataset, tanpa cap dataset.
+    hb = klien.get(f"/tugas/{tid}?ds={d.name}&dsf=belum").text
+    assert hb.count('class="jb-ubin"') == 2
+    assert "jb-cap-ds" not in hb
+    # Saring 'di' -> 4, semuanya bercap dataset.
+    hd = klien.get(f"/tugas/{tid}?ds={d.name}&dsf=di").text
+    assert hd.count('class="jb-ubin"') == 4
+    assert hd.count("jb-cap-ds") == 4
+    # Gabung dengan status anotasi: sudah dianotasi & belum di dataset.
+    hg = klien.get(f"/tugas/{tid}?ds={d.name}&saring=sudah&dsf=belum").text
+    assert hg.count('class="jb-ubin"') == 2

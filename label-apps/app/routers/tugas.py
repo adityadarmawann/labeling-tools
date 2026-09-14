@@ -226,6 +226,7 @@ async def set_jenis(ds: str = "", jenis: str = "",
 @router.get("/tugas/{tid}", response_class=HTMLResponse)
 async def halaman_job(request: Request, tid: str, ds: str = "",
                       saring_q: str = Query("semua", alias="saring"),
+                      dsf_q: str = Query("semua", alias="dsf"),
                       kelas_q: list[str] = Query([], alias="c"),
                       latar_q: int = Query(0, alias="bg"),
                       per_q: int = Query(0, alias="per"),
@@ -320,6 +321,16 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
         tampil = [x for x in isi if x["berlabel"]]
     else:
         tampil = list(isi)
+    # Saringan status dataset — terpisah dari status anotasi. Pada projek besar
+    # gambar yang SUDAH dianotasi tapi BELUM dimasukkan ke dataset tersebar di
+    # antara ribuan yang sudah masuk, dan tanpa saringan ini tidak ada cara
+    # menemukan mana yang tinggal dimasukkan. Justru inilah yang dihitung
+    # lencana Anotasi di sidebar.
+    dsf = dsf_q if dsf_q in ("semua", "di", "belum") else "semua"
+    if dsf == "di":
+        tampil = [x for x in tampil if x["di_dataset"]]
+    elif dsf == "belum":
+        tampil = [x for x in tampil if not x["di_dataset"]]
     kelas_pilih = [k for k in dict.fromkeys(kelas_q) if k in kelas_hitung]
     latar_pilih = bool(latar_q)
     if kelas_pilih or latar_pilih:
@@ -349,6 +360,8 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
         "persen": round(n_label * 100 / n_semua) if n_semua else 0,
         # Keadaan saringan, supaya tab dan menu kelas tahu yang sedang aktif.
         "saring": saring,
+        "dsf": dsf,
+        "n_belum_ds": n_semua - n_ds,
         "kelas_aktif": set(kelas_pilih),
         "latar_aktif": latar_pilih,
         # Paginasi. `mulai`/`akhir` 1-berbasis untuk "1–50 dari 86".

@@ -567,7 +567,9 @@ def test_angka_sidebar_dihitung_bukan_disalin(klien, lingkungan):
         menu = klien.get(url).text
         menu = menu[menu.find('<nav class="sisi-menu"'):menu.find("</nav>")]
         assert ">Dataset<b class=\"sisi-angka\">2<" in menu, (url, menu)
-        assert ">Anotasi<b class=\"sisi-angka\">3<" in menu, (url, menu)
+        # Anotasi kini membawa title penjelas (lencananya menghitung yang belum
+        # masuk dataset, bukan yang belum dilabeli), jadi <b> tidak lagi rapat.
+        assert "Anotasi" in menu and "sisi-angka" in menu and ">3<" in menu, (url, menu)
         assert ">Versi<b class=\"sisi-angka\">1<" in menu, (url, menu)
 
 

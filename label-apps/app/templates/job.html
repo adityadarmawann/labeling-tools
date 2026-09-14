@@ -57,10 +57,12 @@
         menu kelas menautkan URL, bukan menyembunyikan kartu di peramban. Job
         produksi berisi 11.409 gambar; menyaring di peramban tetap menuntut
         seluruh kartu dikirim dan dibangun dulu. -#}
-    {%- macro jt(s=none, h=none, p=none) -%}
+    {%- macro jt(s=none, h=none, p=none, dd=none) -%}
     /tugas/{{ tid }}?ds={{ pr.ds | urlquote }}
     {%- set ss = s if s is not none else saring -%}
     {%- if ss != 'semua' %}&saring={{ ss }}{% endif -%}
+    {%- set dsx = dd if dd is not none else dsf -%}
+    {%- if dsx != 'semua' %}&dsf={{ dsx }}{% endif -%}
     {%- for k in kelas_aktif %}&c={{ k | urlquote }}{% endfor -%}
     {%- if latar_aktif %}&bg=1{% endif -%}
     {%- set pp = p if p is not none else per -%}
@@ -69,7 +71,7 @@
     {%- endmacro -%}
     <section class="jb-utama">
       <div class="jb-baris-saring">
-      <div class="seg jb-tab" id="jb-tab" role="group" aria-label="Saring gambar">
+      <div class="seg jb-tab" id="jb-tab" role="group" aria-label="Saring status anotasi">
         <a class="seg-opt"{% if saring == 'semua' %} data-on{% endif %}
            href="{{ jt(s='semua') }}#jb-kisi">Semua <b>{{ n }}</b></a>
         <a class="seg-opt"{% if saring == 'belum' %} data-on{% endif %}
@@ -81,6 +83,21 @@
             Yang membedakannya kelas, dan itu urusan saringan di sebelah. -#}
         <a class="seg-opt"{% if saring == 'sudah' %} data-on{% endif %}
            href="{{ jt(s='sudah') }}#jb-kisi">Sudah dianotasi <b>{{ n_label }}</b></a>
+      </div>
+
+      {#- Saringan status DATASET, terpisah dari status anotasi. Sebuah gambar
+          bisa sudah dianotasi tapi belum dimasukkan ke dataset; pada projek
+          besar yang belum-masuk itu tersebar di antara ribuan yang sudah, dan
+          tanpa saringan ini tidak ada cara menemukan mana yang tinggal
+          dimasukkan. Angka "Belum di dataset" inilah yang muncul di lencana
+          Anotasi di sidebar. -#}
+      <div class="seg jb-tab" role="group" aria-label="Saring status dataset">
+        <a class="seg-opt"{% if dsf == 'semua' %} data-on{% endif %}
+           href="{{ jt(dd='semua') }}#jb-kisi">Semua status</a>
+        <a class="seg-opt"{% if dsf == 'di' %} data-on{% endif %}
+           href="{{ jt(dd='di') }}#jb-kisi">Di dataset <b>{{ n_dataset }}</b></a>
+        <a class="seg-opt"{% if dsf == 'belum' %} data-on{% endif %}
+           href="{{ jt(dd='belum') }}#jb-kisi">Belum di dataset <b>{{ n_belum_ds }}</b></a>
       </div>
 
         {#- Saringan kelas: form GET, bukan centang yang menyembunyikan di
@@ -99,6 +116,7 @@
           <form class="menu-isi" method="get" action="/tugas/{{ tid }}" id="jb-kelas-form">
             <input type="hidden" name="ds" value="{{ pr.ds }}">
             {%- if saring != 'semua' %}<input type="hidden" name="saring" value="{{ saring }}">{% endif %}
+            {%- if dsf != 'semua' %}<input type="hidden" name="dsf" value="{{ dsf }}">{% endif %}
             {%- if per != per_bawaan %}<input type="hidden" name="per" value="{{ per }}">{% endif %}
             <span class="menu-judul">Tampilkan yang punya salah satu</span>
             <div class="kelas-daftar kelas-tanpa">
@@ -121,8 +139,9 @@
             </div>
             <span class="kelas-aksi">
               {%- if kelas_aktif or latar_aktif %}
-              {#- Bersihkan: buang kelas dan latar, pertahankan tab & per. -#}
-              <a class="chip" href="/tugas/{{ tid }}?ds={{ pr.ds | urlquote }}{% if saring != 'semua' %}&saring={{ saring }}{% endif %}{% if per != per_bawaan %}&per={{ per }}{% endif %}">Bersihkan</a>
+              {#- Bersihkan: buang kelas dan latar, pertahankan tab, status
+                  dataset, & per. -#}
+              <a class="chip" href="/tugas/{{ tid }}?ds={{ pr.ds | urlquote }}{% if saring != 'semua' %}&saring={{ saring }}{% endif %}{% if dsf != 'semua' %}&dsf={{ dsf }}{% endif %}{% if per != per_bawaan %}&per={{ per }}{% endif %}">Bersihkan</a>
               {%- endif %}
               <button class="chip aksi" type="submit">Terapkan</button>
             </span>
@@ -222,6 +241,7 @@
         <form class="hal-pp" method="get" action="/tugas/{{ tid }}">
           <input type="hidden" name="ds" value="{{ pr.ds }}">
           {%- if saring != 'semua' %}<input type="hidden" name="saring" value="{{ saring }}">{% endif %}
+            {%- if dsf != 'semua' %}<input type="hidden" name="dsf" value="{{ dsf }}">{% endif %}
           {%- for k in kelas_aktif %}<input type="hidden" name="c" value="{{ k }}">{% endfor %}
           {%- if latar_aktif %}<input type="hidden" name="bg" value="1">{% endif %}
           {#- Nomor gambar pertama yang terlihat: mengubah 100 jadi 50 mendarat
@@ -265,6 +285,7 @@
         <form class="hal-loncat" method="get" action="/tugas/{{ tid }}">
           <input type="hidden" name="ds" value="{{ pr.ds }}">
           {%- if saring != 'semua' %}<input type="hidden" name="saring" value="{{ saring }}">{% endif %}
+            {%- if dsf != 'semua' %}<input type="hidden" name="dsf" value="{{ dsf }}">{% endif %}
           {%- for k in kelas_aktif %}<input type="hidden" name="c" value="{{ k }}">{% endfor %}
           {%- if latar_aktif %}<input type="hidden" name="bg" value="1">{% endif %}
           {%- if per != per_bawaan %}<input type="hidden" name="per" value="{{ per }}">{% endif %}
