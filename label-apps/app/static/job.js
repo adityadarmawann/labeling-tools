@@ -4,35 +4,41 @@
  * Melabeli dan menyatakan selesai sengaja dua tindakan terpisah. Yang pertama
  * dilakukan berkali-kali sambil ragu; yang kedua sekali dan berakibat, karena
  * isi dataset itulah yang nanti di-splitting, diberi versi, dan diekspor.
+ *
+ * Saringan (tab, kelas) dan paginasi dikerjakan DI SERVER — lihat job.html dan
+ * routers/tugas.py. Halaman ini dulu merender seluruh isi job sekali jalan
+ * lalu menyaringnya di peramban; pada job 11.409 gambar itu berarti HTML 15,8
+ * MB dan sebelas ribu permintaan thumbnail sekaligus. Yang tersisa di sini
+ * cuma memilih kartu di halaman yang sedang tampil dan menekan aksinya.
  */
 (() => {
   const $ = (id) => document.getElementById(id);
   const isi = $('jb-isi');
   if (!isi || !$('jb-kisi')) return;
 
-  const DS = isi.dataset.ds || '';
   const BOLEH = isi.dataset.boleh === '1';
+  // Hanya kartu di halaman yang sedang tampil. Tidak ada lagi yang tersembunyi
+  // oleh saringan: yang tidak cocok saringan tidak dikirim server sama sekali.
   const ubin = [...document.querySelectorAll('.jb-ubin')];
-  let saring = 'semua';
-  // Kelas yang dicentang. Kosong berarti tidak menyaring sama sekali —
-  // bukan "tidak ada yang cocok".
-  let kelasPilih = new Set();
-  let latarPilih = false;
 
-  // Daftar kelas tiap ubin dibaca sekali. JSON, bukan teks berpemisah: nama
-  // kelas boleh berisi apa saja, dan pemisah karakter apa pun cepat atau
-  // lambat muncul di dalam salah satu nama.
-  for (const u of ubin) {
-    try { u._kelas = new Set(JSON.parse(u.dataset.kelas || '[]')); }
-    catch (e) { u._kelas = new Set(); }
-  }
+  // Menu kelas: buka/tutup saja. Isinya form GET yang disubmit tombol
+  // "Terapkan" — penyaringannya di server, jadi di sini tidak ada lagi logika
+  // sembunyi-tampilkan.
+  (() => {
+    const menu = $('jb-menu-kelas');
+    if (!menu) return;
+    const tombol = $('jb-kelas-tombol');
+    tombol.onclick = (ev) => { ev.stopPropagation(); menu.toggleAttribute('data-buka'); };
+    menu.addEventListener('click', (ev) => ev.stopPropagation());
+    document.addEventListener('click', () => menu.removeAttribute('data-buka'));
+  })();
 
-  const terlihat = () => ubin.filter(u => !u.hidden);
+  if (!BOLEH) return;
+
   const terpilih = () => ubin.filter(
-    u => !u.hidden && u.querySelector('.jb-pilih') && u.querySelector('.jb-pilih').checked);
+    u => u.querySelector('.jb-pilih') && u.querySelector('.jb-pilih').checked);
 
   function perbarui() {
-    if (!BOLEH) return;
     const n = terpilih().length;
     $('jb-terpilih').textContent = n ? `${n} dipilih` : '0 dipilih';
     // Tombolnya menyebut angkanya. "Tambahkan ke dataset" tanpa jumlah membuat
@@ -41,93 +47,13 @@
                                      : 'Tambahkan ke dataset';
     $('jb-masukkan').disabled = !n;
     $('jb-keluarkan').disabled = !n;
-    // Tombol latar juga menyebut angkanya, dengan alasan yang sama.
     $('jb-latar').textContent = n ? `Tandai ${n} latar` : 'Tandai latar';
     $('jb-latar').disabled = !n;
     $('jb-batal-latar').disabled = !n;
     const semua = $('jb-centang-semua');
-    const t = terlihat().length;
-    semua.checked = n > 0 && n === t;
-    semua.indeterminate = n > 0 && n < t;
+    semua.checked = n > 0 && n === ubin.length;
+    semua.indeterminate = n > 0 && n < ubin.length;
   }
-
-  function saringUlang() {
-    for (const u of ubin) {
-      const label = u.dataset.label === '1';
-      const bg = u.dataset.bg === '1';
-      // Latar TERMASUK "sudah dianotasi": menandai gambar tanpa objek adalah
-      // keputusan yang sudah diambil, bukan pekerjaan yang belum dikerjakan.
-      // Yang memisahkannya kelas, dan itu urusan saringan di sebelahnya.
-      let tampak = saring === 'belum' ? !label
-                 : saring === 'sudah' ? label : true;
-      // Saringan kelas bersifat "punya salah satu", sama seperti di grid:
-      // "botol atau latar" adalah satu pertanyaan, dan menuntut keduanya
-      // sekaligus hampir tidak pernah yang dimaksud.
-      if (tampak && (kelasPilih.size || latarPilih)) {
-        let cocok = latarPilih && bg;
-        if (!cocok) for (const k of kelasPilih) { if (u._kelas.has(k)) { cocok = true; break; } }
-        tampak = cocok;
-      }
-      u.hidden = !tampak;
-      // Yang tersembunyi ikut dilepas centangnya: mengirim gambar yang tidak
-      // terlihat lagi adalah kejutan, bukan kemudahan.
-      const c = u.querySelector('.jb-pilih');
-      if (u.hidden && c) c.checked = false;
-    }
-    $('jb-kosong').hidden = terlihat().length > 0;
-    perbarui();
-  }
-
-  // ---- saringan kelas
-  (() => {
-    const menu = $('jb-menu-kelas');
-    if (!menu) return;
-    const tombol = $('jb-kelas-tombol');
-    const centang = [...menu.querySelectorAll('input[type=checkbox]')];
-
-    function judul() {
-      const n = kelasPilih.size + (latarPilih ? 1 : 0);
-      // Tombolnya menyebut pilihannya sendiri. "Semua kelas" yang tidak
-      // berubah padahal saringannya aktif membuat daftar yang menyusut
-      // terbaca seperti gambar yang hilang.
-      tombol.textContent = (n === 0 ? 'Semua kelas'
-        : n === 1 ? (latarPilih ? 'Latar' : [...kelasPilih][0])
-        : `${n} kelas`) + ' \u25be';
-      tombol.toggleAttribute('data-on', n > 0);
-    }
-
-    function baca() {
-      kelasPilih = new Set();
-      latarPilih = false;
-      for (const c of centang) {
-        if (!c.checked) continue;
-        if (c.dataset.latar === '1') latarPilih = true;
-        else kelasPilih.add(c.dataset.kelas);
-      }
-      judul();
-      saringUlang();
-    }
-
-    tombol.onclick = (ev) => { ev.stopPropagation(); menu.toggleAttribute('data-buka'); };
-    menu.addEventListener('click', (ev) => ev.stopPropagation());
-    document.addEventListener('click', () => menu.removeAttribute('data-buka'));
-    centang.forEach(c => c.addEventListener('change', baca));
-    $('jb-kelas-bersih').onclick = () => {
-      centang.forEach(c => { c.checked = false; });
-      baca();
-    };
-    judul();
-  })();
-
-  $('jb-tab').addEventListener('change', (e) => {
-    saring = e.target.value;
-    for (const l of $('jb-tab').querySelectorAll('.seg-opt')) {
-      l.toggleAttribute('data-on', l.contains(e.target));
-    }
-    saringUlang();
-  });
-
-  if (!BOLEH) return;
 
   for (const u of ubin) {
     const c = u.querySelector('.jb-pilih');
@@ -135,7 +61,7 @@
   }
 
   $('jb-centang-semua').addEventListener('change', (e) => {
-    for (const u of terlihat()) {
+    for (const u of ubin) {
       const c = u.querySelector('.jb-pilih');
       if (c) c.checked = e.target.checked;
     }
@@ -219,7 +145,7 @@
     // milik pelabel lain, dan diam soal itu membuat orang mengira semuanya
     // berhasil.
     pr.selesai(`${j.n} gambar ${lepas ? 'lepas dari' : 'ditandai'} latar`
-               + (j.ditolak ? ` \u00b7 ${j.ditolak} ditolak (bukan tugasmu)` : ''));
+               + (j.ditolak ? ` · ${j.ditolak} ditolak (bukan tugasmu)` : ''));
     setTimeout(() => location.reload(), 800);
   }
 
@@ -227,5 +153,5 @@
   $('jb-keluarkan').onclick = () => pindahkan(true);
   $('jb-latar').onclick = () => latar(false);
   $('jb-batal-latar').onclick = () => latar(true);
-  saringUlang();
+  perbarui();
 })();

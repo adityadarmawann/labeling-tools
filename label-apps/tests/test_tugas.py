@@ -1683,7 +1683,12 @@ def test_pelabel_bisa_menandai_latar_borongan_dari_halaman_tugasnya(
     assert "Sudah dianotasi <b>2</b>" in rapat, "latar tidak dihitung sudah dianotasi"
     assert "Belum dianotasi <b>2</b>" in rapat
     # Dan ia bisa disaring lewat daftar kelas, sebaris dengan kelas lainnya.
-    assert 'data-latar="1"' in h and "Latar (tanpa objek)" in h
+    # Saringannya kini form GET di server (name="bg"), bukan centang yang
+    # menyembunyikan kartu di peramban.
+    assert 'name="bg"' in h and "Latar (tanpa objek)" in h
+    # Saring 'sudah' menampilkan kedua latar (latar = sudah dianotasi).
+    hs = pelabel.get(f"/tugas/{tid}?ds=paul/latar-uji&saring=sudah").text
+    assert hs.count('jb-cap-bg') == 2 and hs.count('class="jb-ubin"') == 2
 
     # Dan tanda itu bisa dilepas lagi.
     r = pelabel.post("/api/latar", json={"gambar": g[:1], "lepas": True}).json()
@@ -2393,3 +2398,42 @@ def test_find_pakai_indeks_dan_tetap_benar_setelah_anotasi_berubah(klien, lingku
     sess.segarkan()
     it0b = sess.find(gambar[0])
     assert it0b is not None and it0b in sess.items, "indeks basi setelah edit"
+
+
+def test_halaman_job_paginasi_dan_saring_di_server(klien, lingkungan):
+    """Job besar tidak boleh mengirim semua kartu sekaligus.
+
+    Dulu seluruh isi job dirender lalu disaring di peramban. Pada job produksi
+    11.409 gambar itu HTML 15,8 MB dan sebelas ribu permintaan thumbnail
+    sekali buka. Sekarang saringan (tab, kelas) dan paginasi dikerjakan di
+    server, seperti grid Dataset: satu halaman memuat paling banyak `per`
+    kartu, dan tab "Belum dianotasi" mengirim HANYA yang belum.
+    """
+    import pathlib
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    from tests.test_projek import _projek
+    # 120 gambar, semua tanpa label -> semua "belum dianotasi"
+    d = _projek(ruang, "jobpag", n=120, label=False)
+    klien.post(f"/setsrc?path={d}")
+    gambar = sorted(str(p) for p in d.glob("*.jpg"))
+    tid = klien.post("/api/tugas/bagi",
+                     json={"pelabel": "paul", "gambar": gambar}).json()["id"]
+
+    # Bawaan 50 per halaman: 120 gambar dipotong, tidak dikirim sekaligus.
+    h1 = klien.get(f"/tugas/{tid}?ds={d.name}").text
+    assert h1.count('class="jb-ubin"') == 50, "halaman 1 harus 50 kartu"
+    assert "1&ndash;50 dari <b>120</b>" in h1 or "dari <b>120</b>" in h1
+    # Halaman terakhir: sisa 20.
+    h3 = klien.get(f"/tugas/{tid}?ds={d.name}&hal=3").text
+    assert h3.count('class="jb-ubin"') == 20, "halaman 3 harus 20 kartu"
+    # per=100.
+    h100 = klien.get(f"/tugas/{tid}?ds={d.name}&per=100").text
+    assert h100.count('class="jb-ubin"') == 100
+    # Saring 'sudah' pada job yang semuanya belum -> nol kartu, bukan 120.
+    hs = klien.get(f"/tugas/{tid}?ds={d.name}&saring=sudah").text
+    assert hs.count('class="jb-ubin"') == 0
+    assert "Tidak ada yang cocok" in hs
+    # Saring 'belum' -> semua muncul (dipaginasi).
+    hb = klien.get(f"/tugas/{tid}?ds={d.name}&saring=belum&per=500").text
+    assert hb.count('class="jb-ubin"') == 120

@@ -734,6 +734,9 @@ input:focus{outline:0;border-color:var(--ok)}
   justify-content:center;padding:6px 10px;border-radius:6px;font-size:12.5px;
   color:var(--ink-dim);cursor:pointer;transition:background .12s,color .12s;
   white-space:nowrap;margin:0}
+/* .seg-opt kini juga dipakai sebagai <a> (tab job menautkan URL, bukan
+   radio). text-decoration dibuang supaya tidak bergaris bawah. */
+.seg-opt{text-decoration:none}
 .seg-opt input{position:absolute;opacity:0;width:0;height:0}
 .seg-opt:hover{color:var(--ink)}
 .seg-opt[data-on]{background:var(--panel);color:var(--ink);font-weight:600;

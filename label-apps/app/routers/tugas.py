@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import asyncio
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from ..config import Settings, get_settings
@@ -221,6 +221,12 @@ async def set_jenis(ds: str = "", jenis: str = "",
 
 @router.get("/tugas/{tid}", response_class=HTMLResponse)
 async def halaman_job(request: Request, tid: str, ds: str = "",
+                      saring_q: str = Query("semua", alias="saring"),
+                      kelas_q: list[str] = Query([], alias="c"),
+                      latar_q: int = Query(0, alias="bg"),
+                      per_q: int = Query(0, alias="per"),
+                      hal_q: int = Query(1, alias="hal"),
+                      dari_q: int = Query(0, alias="dari"),
                       sess: Session = Depends(current_session),
                       settings: Settings = Depends(get_settings)):
     """
@@ -230,7 +236,15 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
     Di sinilah pekerjaan yang sudah selesai dipindahkan ke dataset. Melabeli
     dan menyatakan selesai sengaja dua tindakan terpisah: yang pertama
     dilakukan berkali-kali sambil ragu, yang kedua sekali dan berakibat.
+
+    Saringan (tab dan kelas) dan paginasi dikerjakan DI SERVER, sama seperti
+    grid Dataset. Dulu seluruh isi job dirender sekali jalan lalu disaring di
+    peramban: job produksi berisi 11.409 gambar berarti 11.409 kartu, HTML
+    15,8 MB, dan setiap muat halaman menembakkan 11.409 permintaan thumbnail.
+    Menyaring di peramban tidak menolong — kartunya tetap harus dikirim dan
+    dibangun dulu sebelum ada yang bisa disembunyikan.
     """
+    from ..routers.review import PER_BAWAAN, PER_PILIHAN
     from ..services import projek as sp
     from ..services import scanner
 
@@ -276,6 +290,10 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
         })
     isi.sort(key=lambda x: x["it"]["img"].name)
 
+    # Angka tab dan bilah kemajuan dihitung dari SELURUH isi job, bukan dari
+    # halaman yang sedang tampil: "Belum dianotasi 86" harus tetap 86 di
+    # halaman berapa pun.
+    n_semua = len(isi)
     n_label = sum(1 for x in isi if x["berlabel"])
     n_latar = sum(1 for x in isi if x["latar"])
     n_ds = sum(1 for x in isi if x["di_dataset"])
@@ -286,13 +304,53 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
     for x in isi:
         for k2 in x["kelas"]:
             kelas_hitung[k2] = kelas_hitung.get(k2, 0) + 1
+
+    # -- saringan, DI SERVER (dulu di job.js) --------------------------------
+    saring = saring_q if saring_q in ("semua", "belum", "sudah") else "semua"
+    # Latar termasuk "sudah dianotasi": menandai gambar tanpa objek adalah
+    # keputusan yang sudah diambil, bukan pekerjaan yang belum dikerjakan.
+    if saring == "belum":
+        tampil = [x for x in isi if not x["berlabel"]]
+    elif saring == "sudah":
+        tampil = [x for x in isi if x["berlabel"]]
+    else:
+        tampil = list(isi)
+    kelas_pilih = [k for k in dict.fromkeys(kelas_q) if k in kelas_hitung]
+    latar_pilih = bool(latar_q)
+    if kelas_pilih or latar_pilih:
+        # "Punya salah satu", sama seperti di grid: "botol atau latar" adalah
+        # satu pertanyaan, dan menuntut keduanya sekaligus hampir tidak pernah
+        # yang dimaksud.
+        kpset = set(kelas_pilih)
+        tampil = [x for x in tampil
+                  if (latar_pilih and x["latar"])
+                  or (kpset & set(x["kelas"]))]
+
+    # -- paginasi, pola sama persis dengan grid Dataset ----------------------
+    per = per_q if per_q in PER_PILIHAN else PER_BAWAAN
+    n_tampil = len(tampil)
+    n_hal = max(1, -(-n_tampil // per))
+    hal = (dari_q - 1) // per + 1 if dari_q > 0 else hal_q
+    hal = min(max(hal, 1), n_hal)
+    mulai_i = (hal - 1) * per
+    halaman = tampil[mulai_i:mulai_i + per]
+
     return templates.TemplateResponse(request, "job.html", {
         "sess": sess, "pr": pr, "aktif": "anotasi", "aku": sess.user,
-        "tid": tid, "job": job, "isi": isi,
-        "n": len(isi), "n_label": n_label, "n_latar": n_latar,
+        "tid": tid, "job": job, "isi": halaman,
+        "n": n_semua, "n_label": n_label, "n_latar": n_latar,
         "n_dataset": n_ds,
         "kelas_hitung": dict(sorted(kelas_hitung.items())),
-        "persen": round(n_label * 100 / len(isi)) if isi else 0,
+        "persen": round(n_label * 100 / n_semua) if n_semua else 0,
+        # Keadaan saringan, supaya tab dan menu kelas tahu yang sedang aktif.
+        "saring": saring,
+        "kelas_aktif": set(kelas_pilih),
+        "latar_aktif": latar_pilih,
+        # Paginasi. `mulai`/`akhir` 1-berbasis untuk "1–50 dari 86".
+        "per": per, "per_pilihan": PER_PILIHAN, "per_bawaan": PER_BAWAAN,
+        "hal": hal, "n_hal": n_hal, "n_tampil": n_tampil,
+        "mulai": mulai_i + 1 if n_tampil else 0,
+        "akhir": mulai_i + len(halaman),
         # Yang boleh memindahkan ke dataset hanya pelabelnya sendiri dan
         # pemilik projek. Sama persis dengan aturan menyunting labelnya.
         "boleh_ubah": (sess.user == job.get("pelabel")

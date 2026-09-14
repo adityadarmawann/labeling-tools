@@ -53,54 +53,80 @@
     </aside>
 
     {# ---------------------------------------------------------- kanan #}
+    {#- Saringan dan paginasi DI SERVER, sama seperti grid Dataset: tab dan
+        menu kelas menautkan URL, bukan menyembunyikan kartu di peramban. Job
+        produksi berisi 11.409 gambar; menyaring di peramban tetap menuntut
+        seluruh kartu dikirim dan dibangun dulu. -#}
+    {%- macro jt(s=none, h=none, p=none) -%}
+    /tugas/{{ tid }}?ds={{ pr.ds | urlquote }}
+    {%- set ss = s if s is not none else saring -%}
+    {%- if ss != 'semua' %}&saring={{ ss }}{% endif -%}
+    {%- for k in kelas_aktif %}&c={{ k | urlquote }}{% endfor -%}
+    {%- if latar_aktif %}&bg=1{% endif -%}
+    {%- set pp = p if p is not none else per -%}
+    {%- if pp != per_bawaan %}&per={{ pp }}{% endif -%}
+    {%- if h and h > 1 %}&hal={{ h }}{% endif -%}
+    {%- endmacro -%}
     <section class="jb-utama">
       <div class="jb-baris-saring">
       <div class="seg jb-tab" id="jb-tab" role="group" aria-label="Saring gambar">
-        <label class="seg-opt" data-on>
-          <input type="radio" name="jb-saring" value="semua" checked>
-          Semua <b>{{ n }}</b></label>
-        <label class="seg-opt">
-          <input type="radio" name="jb-saring" value="belum">
-          Belum dianotasi <b>{{ n - n_label }}</b></label>
-        {#- Latar TERMASUK di sini. Menandai gambar tanpa objek adalah
+        <a class="seg-opt"{% if saring == 'semua' %} data-on{% endif %}
+           href="{{ jt(s='semua') }}#jb-kisi">Semua <b>{{ n }}</b></a>
+        <a class="seg-opt"{% if saring == 'belum' %} data-on{% endif %}
+           href="{{ jt(s='belum') }}#jb-kisi">Belum dianotasi <b>{{ n - n_label }}</b></a>
+        {#- Latar TERMASUK di "sudah". Menandai gambar tanpa objek adalah
             keputusan yang sudah diambil, bukan pekerjaan yang belum
             dikerjakan; memisahkannya jadi tab sendiri membuat angka ini
             mengecil tiap kali seseorang menyelesaikan satu contoh negatif.
             Yang membedakannya kelas, dan itu urusan saringan di sebelah. -#}
-        <label class="seg-opt">
-          <input type="radio" name="jb-saring" value="sudah">
-          Sudah dianotasi <b>{{ n_label }}</b></label>
+        <a class="seg-opt"{% if saring == 'sudah' %} data-on{% endif %}
+           href="{{ jt(s='sudah') }}#jb-kisi">Sudah dianotasi <b>{{ n_label }}</b></a>
       </div>
 
-        {#- Saringan kelas, sebentuk dengan yang di halaman grid: satu tombol,
-            daftar bercentang, "punya salah satu" yang dicentang. Latar ikut di
-            daftar yang sama, bukan di kotak terpisah — "botol atau latar"
-            adalah satu pertanyaan. -#}
+        {#- Saringan kelas: form GET, bukan centang yang menyembunyikan di
+            peramban. Latar ikut di daftar yang sama, bukan kotak terpisah —
+            "botol atau latar" adalah satu pertanyaan. `saring` dan `per`
+            dititipkan supaya memilih kelas tidak mengembalikan tab atau jumlah
+            per halaman ke bawaannya. -#}
         <span class="menu menu-kiri" id="jb-menu-kelas">
-          <button class="chip kelas-tombol" type="button" id="jb-kelas-tombol"
-                  aria-haspopup="true" aria-expanded="false">Semua kelas &#9662;</button>
-          <span class="menu-isi">
+          <button class="chip kelas-tombol{% if kelas_aktif or latar_aktif %} chip-on{% endif %}"
+                  type="button" id="jb-kelas-tombol"
+                  aria-haspopup="true" aria-expanded="false">
+            {%- set n_kel = kelas_aktif | length + (1 if latar_aktif else 0) -%}
+            {%- if n_kel == 0 %}Semua kelas
+            {%- elif n_kel == 1 %}{{ 'Latar' if latar_aktif else (kelas_aktif | list | first) }}
+            {%- else %}{{ n_kel }} kelas{% endif %} &#9662;</button>
+          <form class="menu-isi" method="get" action="/tugas/{{ tid }}" id="jb-kelas-form">
+            <input type="hidden" name="ds" value="{{ pr.ds }}">
+            {%- if saring != 'semua' %}<input type="hidden" name="saring" value="{{ saring }}">{% endif %}
+            {%- if per != per_bawaan %}<input type="hidden" name="per" value="{{ per }}">{% endif %}
             <span class="menu-judul">Tampilkan yang punya salah satu</span>
             <div class="kelas-daftar kelas-tanpa">
               <label class="kelas-baris">
-                <input type="checkbox" data-latar="1"><span class="cb"></span>
+                <input type="checkbox" name="bg" value="1"{% if latar_aktif %} checked{% endif %}>
+                <span class="cb"></span>
                 <i style="background:var(--latar)"></i>
                 <span>Latar (tanpa objek)</span><b>{{ n_latar }}</b></label>
             </div>
             <div class="kelas-daftar">
-              {%- for k, n in kelas_hitung.items() %}
+              {%- for k, kn in kelas_hitung.items() %}
               <label class="kelas-baris">
-                <input type="checkbox" data-kelas="{{ k }}"><span class="cb"></span>
+                <input type="checkbox" name="c" value="{{ k }}"{% if k in kelas_aktif %} checked{% endif %}>
+                <span class="cb"></span>
                 <i style="background:{{ k | warnakelas }}"></i>
-                <span>{{ k }}</span><b>{{ n }}</b></label>
+                <span>{{ k }}</span><b>{{ kn }}</b></label>
               {%- else %}
               <span class="menu-catatan">Belum ada kelas terpakai di tugas ini.</span>
               {%- endfor %}
             </div>
             <span class="kelas-aksi">
-              <button class="chip" type="button" id="jb-kelas-bersih">Bersihkan</button>
+              {%- if kelas_aktif or latar_aktif %}
+              {#- Bersihkan: buang kelas dan latar, pertahankan tab & per. -#}
+              <a class="chip" href="/tugas/{{ tid }}?ds={{ pr.ds | urlquote }}{% if saring != 'semua' %}&saring={{ saring }}{% endif %}{% if per != per_bawaan %}&per={{ per }}{% endif %}">Bersihkan</a>
+              {%- endif %}
+              <button class="chip aksi" type="submit">Terapkan</button>
             </span>
-          </span>
+          </form>
         </span>
       </div>
 
@@ -174,10 +200,74 @@
         </figure>
         {%- endfor %}
       </div>
-      <div class="pkosong" id="jb-kosong" hidden>
+      <div class="pkosong" id="jb-kosong"{% if isi %} hidden{% endif %}>
         <b>Tidak ada yang cocok</b>
         Tidak ada gambar pada saringan ini.
       </div>
+
+      {#- Bar paginasi, pola sama persis dengan grid Dataset. "1–50 dari 86"
+          selalu tampil, juga saat cuma satu halaman: kalimat itulah yang
+          mengatakan sisanya ada, dan tanpanya paginasi terbaca seperti gambar
+          yang hilang. -#}
+      {%- if n_tampil %}
+      <div class="hal">
+        <form class="hal-pp" method="get" action="/tugas/{{ tid }}">
+          <input type="hidden" name="ds" value="{{ pr.ds }}">
+          {%- if saring != 'semua' %}<input type="hidden" name="saring" value="{{ saring }}">{% endif %}
+          {%- for k in kelas_aktif %}<input type="hidden" name="c" value="{{ k }}">{% endfor %}
+          {%- if latar_aktif %}<input type="hidden" name="bg" value="1">{% endif %}
+          {#- Nomor gambar pertama yang terlihat: mengubah 100 jadi 50 mendarat
+              di halaman yang memuat gambar yang sama, bukan melempar ke hal 1. -#}
+          <input type="hidden" name="dari" value="{{ mulai }}">
+          <label for="jb-per">Per halaman</label>
+          <select id="jb-per" name="per" onchange="this.form.submit()">
+            {%- for nn in per_pilihan %}
+            <option value="{{ nn }}"{% if per == nn %} selected{% endif %}>{{ nn }}</option>
+            {%- endfor %}
+          </select>
+        </form>
+
+        <span class="hal-info">{{ mulai }}&ndash;{{ akhir }} dari <b>{{ n_tampil }}</b>
+          {%- if n_tampil != n %} cocok <em>&middot; dari {{ n }} gambar</em>{% endif %}</span>
+
+        {%- if n_hal > 1 %}
+        {%- set nomor = [] %}
+        {%- for p in range(1, n_hal + 1) %}
+          {%- if p == 1 or p == n_hal or (hal - 1 <= p <= hal + 1)
+                 or (hal <= 4 and p <= 5) or (hal >= n_hal - 3 and p >= n_hal - 4) %}
+          {%- set _ = nomor.append(p) %}
+          {%- endif %}
+        {%- endfor %}
+        <span class="hal-nav">
+          <a class="hal-n" title="Halaman sebelumnya"
+             {% if hal <= 1 %}data-mati{% endif %}
+             href="{{ jt(h=hal - 1) }}#jb-kisi">&lsaquo;</a>
+          {%- set ns = namespace(sebelum=0) %}
+          {%- for p in nomor %}
+          {%- if p > ns.sebelum + 1 %}<span class="hal-gap">&hellip;</span>{% endif %}
+          <a class="hal-n"{% if p == hal %} data-on{% endif %}
+             href="{{ jt(h=p) }}#jb-kisi">{{ p }}</a>
+          {%- set ns.sebelum = p %}
+          {%- endfor %}
+          <a class="hal-n" title="Halaman berikutnya"
+             {% if hal >= n_hal %}data-mati{% endif %}
+             href="{{ jt(h=hal + 1) }}#jb-kisi">&rsaquo;</a>
+        </span>
+        {%- if n_hal > 10 %}
+        <form class="hal-loncat" method="get" action="/tugas/{{ tid }}">
+          <input type="hidden" name="ds" value="{{ pr.ds }}">
+          {%- if saring != 'semua' %}<input type="hidden" name="saring" value="{{ saring }}">{% endif %}
+          {%- for k in kelas_aktif %}<input type="hidden" name="c" value="{{ k }}">{% endfor %}
+          {%- if latar_aktif %}<input type="hidden" name="bg" value="1">{% endif %}
+          {%- if per != per_bawaan %}<input type="hidden" name="per" value="{{ per }}">{% endif %}
+          <label for="jb-ke-hal">Ke halaman</label>
+          <input id="jb-ke-hal" type="number" name="hal" min="1" max="{{ n_hal }}"
+                 value="{{ hal }}" title="1 sampai {{ n_hal }}">
+        </form>
+        {%- endif %}
+        {%- endif %}
+      </div>
+      {%- endif %}
       <div class="jalur-status" id="jb-jalur"></div>
     </section>
   </div>
