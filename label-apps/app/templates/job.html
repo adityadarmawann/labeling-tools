@@ -144,8 +144,14 @@
             <input type="checkbox" class="jb-pilih">
             <span class="jb-tanda-pilih" aria-hidden="true">&check;</span>
             {% endif %}
+            {#- loading=lazy: satu job bisa berisi sebelas ribu gambar, dan
+                tanpa ini peramban meminta sebelas ribu thumbnail sekaligus
+                saat halaman dibuka. Terukur pada projek 11.409 gambar: itulah
+                yang membuat tab memuat setengah jam dan laptopnya tersendat.
+                Pola yang sama sudah dipakai grid Dataset. Yang tersembunyi
+                oleh saringan pun tidak diminta sampai benar-benar terlihat. -#}
             <img src="/thumb?path={{ x.it | imgpath }}&s=220" alt=""
-                 width="110" height="110" decoding="async">
+                 width="110" height="110" loading="lazy" decoding="async">
             {% if x.latar %}
             {#- Latar disebut lebih dulu walau ia juga "sudah dianotasi":
                 bedanya justru itu yang perlu terlihat sekilas. -#}

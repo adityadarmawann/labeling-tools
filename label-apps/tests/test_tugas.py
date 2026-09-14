@@ -2330,3 +2330,66 @@ def test_hanya_pengelola_boleh_mengubah_format_anotasi(klien, lingkungan):
                    params={"ds": "projek-yang-tidak-ada", "jenis": "kotak"})
     assert r.status_code == 200
     assert r.json().get("ok") is False, r.json()
+
+
+def test_halaman_job_memuat_thumbnail_lazy(klien, lingkungan):
+    """Satu job bisa berisi sebelas ribu gambar, dan tanpa loading=lazy
+    peramban meminta sebelas ribu thumbnail sekaligus saat halaman dibuka.
+
+    Terukur pada projek produksi 11.409 gambar: halaman /tugas mengirim satu
+    <img> per gambar TANPA lazy, jadi peramban menembakkan 11.409 permintaan
+    /thumb sekaligus; tiap /thumb dulu memanggil sess.find() yang menyapu
+    seluruh daftar (O(n) dengan .resolve() per item, di event loop), sehingga
+    O(n^2) per halaman. Hasilnya: tab memuat setengah jam dan laptopnya
+    tersendat. Grid Dataset sudah lazy sejak lama; halaman job tertinggal.
+    """
+    import pathlib
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    from tests.test_projek import _projek
+    d = _projek(ruang, "joblazy", n=5, label=False)
+    klien.post(f"/setsrc?path={d}")
+    gambar = sorted(str(p) for p in d.glob("*.jpg"))
+    tid = klien.post("/api/tugas/bagi",
+                     json={"pelabel": "paul", "gambar": gambar}).json()["id"]
+
+    html = klien.get(f"/tugas/{tid}?ds={d.name}").text
+    n_img = html.count("/thumb?path=")
+    n_lazy = html.count('loading="lazy"')
+    assert n_img == 5, f"harusnya satu thumbnail per gambar, ada {n_img}"
+    assert n_lazy >= n_img, (
+        f"{n_img} thumbnail tetapi cuma {n_lazy} yang loading=lazy — "
+        "tanpa lazy, membuka job besar meminta semua thumbnail sekaligus")
+
+
+def test_find_pakai_indeks_dan_tetap_benar_setelah_anotasi_berubah(klien, lingkungan):
+    """find() lewat indeks path->item, bukan sapuan linear — dan indeksnya
+    tidak boleh basi saat anotasi berubah.
+
+    muat_ulang_item mengubah isi item DI TEMPAT (objek tetap), jadi indeks
+    yang dibangun di load() tetap sahih; hanya penambahan/penghapusan gambar
+    yang lewat load() penuh. Diuji: thumbnail gambar yang valid dilayani,
+    yang di luar dataset ditolak, dan keduanya tetap benar setelah satu
+    anotasi disimpan ulang.
+    """
+    import pathlib
+    from app import session as sesi_mod
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    from tests.test_projek import _projek
+    d = _projek(ruang, "findidx", n=4, label=False)
+    klien.post(f"/setsrc?path={d}")
+    gambar = sorted(str(p) for p in d.glob("*.jpg"))
+
+    sess = next(iter(sesi_mod.store._data.values()))
+    # indeks terbangun, dan menunjuk ke objek item yang sama dengan daftarnya
+    assert len(sess._by_path) == len(sess.items) == 4
+    it0 = sess.find(gambar[0])
+    assert it0 is not None and it0 in sess.items
+    assert sess.find(str(pathlib.Path(gambar[0]).parent / "tidak-ada.jpg")) is None
+
+    # ubah anotasi satu gambar -> muat_ulang_item in-place -> find tetap benar
+    klien.post("/api/simpan", json={"path": gambar[0], "shapes": []})
+    sess.segarkan()
+    it0b = sess.find(gambar[0])
+    assert it0b is not None and it0b in sess.items, "indeks basi setelah edit"

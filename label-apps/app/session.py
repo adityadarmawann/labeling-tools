@@ -139,6 +139,13 @@ class Session:
         self.settings = settings
         self.src: Path | None = None
         self.items: list[dict] = []
+        # Indeks path->item, dibangun sekali per pemindaian. find() dipanggil
+        # sekali PER thumbnail, dan halaman job memuat 11.409 thumbnail dalam
+        # satu kali buka; find() yang menyapu seluruh daftar (masing-masing
+        # dengan .resolve() = syscall) berarti O(n) per gambar, O(n^2) per
+        # halaman, di event loop. Terukur: 90 find() 4,7 detik, 11.409 find()
+        # ~10 menit -- itulah "loading setengah jam" yang dilaporkan.
+        self._by_path: dict[str, dict] = {}
         # Nilai penanda perubahan saat isi ini dipindai. Lihat _cap_ubah.
         self.cap = 0
         # Tanda tangan folder saat isi ini terakhir dibaca. Lihat sidik_disk:
@@ -176,6 +183,7 @@ class Session:
         # lebih baik memicu satu pemindaian berlebih daripada terlewat.
         self.cap = cap_sekarang(self.src)
         self.items, self.names = scanner.scan(self.src)
+        self._bangun_indeks()
         # Dicatat SESUDAH memindai: yang dijanjikan tanda tangan ini adalah
         # "isi folder saat items terakhir dibaca".
         self._sidik = sidik_disk(self.src)
@@ -296,19 +304,49 @@ class Session:
             self.load(self.src)
         return True
 
+    def _bangun_indeks(self) -> None:
+        """Petakan path-terselesaikan -> item, sekali per pemindaian.
+
+        muat_ulang_item mengubah isi item DI TEMPAT (objeknya tetap), jadi
+        indeks ini tidak basi saat anotasi berubah; hanya penambahan atau
+        penghapusan gambar yang mengubah daftar, dan keduanya lewat load()
+        penuh yang membangunnya ulang.
+        """
+        peta: dict[str, dict] = {}
+        for it in self.items:
+            try:
+                peta[str(it["img"].resolve())] = it
+            except (OSError, ValueError):
+                continue
+        self._by_path = peta
+
     def find(self, path: str) -> dict | None:
         """
         Cari item berdasarkan path. Hanya berkas yang ada di dataset yang
         sedang dibuka akun ini yang bisa ditemukan — inilah yang mencegah
         satu akun membaca berkas sembarangan di disk server.
+
+        Lewat indeks path->item, bukan sapuan linear: rute /thumb memanggil
+        ini sekali per gambar, dan satu halaman job bisa memuat sebelas ribu
+        thumbnail sekaligus.
         """
         try:
-            rp = Path(path).resolve()
+            rp = str(Path(path).resolve())
         except (OSError, ValueError):
             return None
-        for it in self.items:
-            if it["img"].resolve() == rp:
-                return it
+        it = self._by_path.get(rp)
+        if it is not None:
+            return it
+        # Jaring pengaman: indeks dibangun di load(), dan kalau suatu jalur
+        # menyisipkan item tanpa lewat sana, sapuan lama tetap menemukannya
+        # daripada mengembalikan "tidak ada" yang keliru.
+        for cand in self.items:
+            try:
+                if str(cand["img"].resolve()) == rp:
+                    self._by_path[rp] = cand
+                    return cand
+            except (OSError, ValueError):
+                continue
         return None
 
     # -- berkas milik akun --
