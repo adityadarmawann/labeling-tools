@@ -186,6 +186,32 @@ def test_tanpa_results_csv_tidak_meledak(tmp_path):
     assert h["epoch"] == 0 and h["metrik"] == {}
 
 
+def test_kemajuan_dalam_epoch_pertama_tak_ditebak_kedua_akurat(tmp_path, monkeypatch):
+    """Kemajuan di dalam epoch: epoch PERTAMA hanya melaporkan waktu berlalu
+    (durasinya belum bisa dipakai jadi persen), epoch KEDUA melaporkan persen
+    yang dihitung dari durasi epoch pertama yang sudah terjadi."""
+    monkeypatch.setattr(latih, "hidup", lambda pid: True)   # anggap prosesnya hidup
+    latih.perbarui(tmp_path, 1, keadaan="jalan", pid=12345, versi=1,
+                   par={"epochs": 400}, mulai_pada="2026-09-17 11:15")
+    d = latih.dir_latih(tmp_path, 1)
+    d.mkdir(parents=True, exist_ok=True)
+
+    # Epoch pertama: belum ada results.csv -> tidak menebak persen, tapi tahu
+    # sudah berjalan berapa lama (supaya bilahnya tidak tampak menggantung).
+    st = latih.status(tmp_path, 1)
+    assert st["keadaan"] == "jalan"
+    assert st["epoch"] == 0 and st["epoch_berjalan"] == 1
+    assert st["persen_epoch"] is None
+    assert st["berlalu_epoch"] is not None
+
+    # Epoch kedua: satu epoch selesai + kolom time -> persen epoch ini akurat.
+    (d / "results.csv").write_text(
+        "epoch,time,metrics/mAP50-95(B)\n1,1500,0.4\n")
+    st = latih.status(tmp_path, 1)
+    assert st["epoch"] == 1 and st["epoch_berjalan"] == 2
+    assert st["persen_epoch"] is not None and 0 <= st["persen_epoch"] <= 99
+
+
 def test_proses_yang_sudah_mati_tidak_dianggap_hidup():
     assert latih.hidup(0) is False
     assert latih.hidup(None) is False

@@ -2750,6 +2750,10 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
 
 .tr-bar{height:7px; border-radius:4px; background:var(--sunk); overflow:hidden; margin:10px 0 9px}
 .tr-bar>i{display:block; height:100%; background:var(--aksi); transition:width .6s}
+/* Epoch pertama: durasinya belum bisa dipakai jadi persen (belum ada epoch
+   selesai sebagai acuan), jadi bilahnya "meluncur" — tanda jelas SEDANG BEKERJA
+   tanpa mengarang angka persen. Memakai animasi yang sama dengan .prog. */
+.tr-bar-kerja>i{width:35% !important; transition:none; animation:meluncur 1.15s ease-in-out infinite}
 
 /* Angka disejajarkan dengan tabular-nums supaya digitnya tidak bergoyang
    tiap kali diperbarui — halaman ini menyegarkan dirinya tiap 4 detik, dan

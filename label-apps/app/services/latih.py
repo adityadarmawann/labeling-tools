@@ -338,20 +338,24 @@ def _periksa_warna_bentuk(versi: dict, katalog_aug: dict | None, m: str) -> dict
 
     if dibuka:
         saran = mw.par_latih(m)
-        pesan = ("Versi ini dibuat dengan warna dibuka (%s). Setelan "
-                 "waktu-latih di bawah mengikutinya." % ", ".join(nyala))
+        pesan = ("Versi ini dibuat untuk MENGABAIKAN WARNA: ronanya sengaja "
+                 "diacak lebar (%s) supaya model tidak bisa menebak dari warna "
+                 "dan terpaksa belajar bentuk — cocok untuk botol/kaleng/tetra. "
+                 "Setelan waktu-latih di bawah menyamainya (hsv_h dibuka)."
+                 % ", ".join(nyala))
         tingkat = "ok"
     else:
         # Warna terkunci di sisi dataset. Membukanya di sini saja TIDAK
         # memperbaiki apa pun — v14 menyatakan keduanya harus sejalan — tetapi
         # menguncinya di kedua sisi persis keadaan v13 yang gagal 0 dari 7.
         saran = mw.par_latih(m)
-        pesan = ("Versi ini dibuat dengan augmentasi warna nyaris mati (%s). "
-                 "Itu keadaan v13, yang melaporkan mAP50-95 0,9499 lalu gagal "
-                 "0 dari 7 pada foto RVM sungguhan karena model memutuskan "
-                 "lewat warna, bukan bentuk. Membuka warna di sini saja tidak "
-                 "menambalnya — buat ulang versinya dengan augmentasi warna "
-                 "menyala."
+        pesan = ("Versi ini dibuat dengan augmentasi warna nyaris mati (%s), "
+                 "jadi warna asli masih utuh di datanya dan model bisa memakainya "
+                 "sebagai pintasan. Itu keadaan v13, yang melaporkan mAP50-95 "
+                 "0,9499 lalu gagal 0 dari 7 pada foto RVM sungguhan karena "
+                 "model memutuskan lewat warna, bukan bentuk. Mengacak warna "
+                 "hanya saat latih tidak menambalnya — buat ulang versinya "
+                 "dengan augmentasi warna menyala."
                  % (", ".join(nyala) if nyala else "tidak ada satu pun"))
         tingkat = "awas"
 
@@ -579,6 +583,26 @@ def statistik() -> dict:
 BERJALAN = ("antre", "jalan")
 
 
+def _mulai_epoch_pertama(d: Path, ds, isi: dict) -> float:
+    """Perkiraan kapan epoch PERTAMA mulai mengiterasi — bukan kapan prosesnya
+    dinyalakan. mtime cache label versi paling tepat: ia ditulis persis setelah
+    pemindaian dataset selesai dan iterasi dimulai."""
+    try:
+        c = (Path(ds) / ".versi" / f"v{int(isi.get('versi'))}"
+             / "train" / "labels.cache")
+        if c.exists():
+            return c.stat().st_mtime
+    except (OSError, TypeError, ValueError):
+        pass
+    lg = d.parent / f"{d.name}.log"
+    try:
+        if lg.exists():
+            return lg.stat().st_mtime
+    except OSError:
+        pass
+    return time.time()
+
+
 def status(ds, nomor: int) -> dict:
     """Keadaan satu training SEKARANG, disusun dari disk."""
     isi = baca(ds, nomor)
@@ -606,12 +630,43 @@ def status(ds, nomor: int) -> dict:
     detik = csv.get("detik") or 0.0
     sisa = (detik / ep * (epochs - ep)) if (ep and epochs > ep) else 0.0
 
+    # Kemajuan DI DALAM epoch yang sedang berjalan. results.csv hanya bertambah
+    # saat sebuah epoch SELESAI, jadi tanpa ini bilahnya diam di 0/400 selama
+    # epoch pertama (bisa 20+ menit di dataset besar) dan orang tidak tahu
+    # apakah ia jalan atau menggantung.
+    #
+    # `persen_epoch` HANYA dihitung sejak epoch kedua, dari rata-rata durasi
+    # epoch yang BENAR-BENAR terjadi — itu akurat. Untuk epoch PERTAMA sengaja
+    # TIDAK menebak persen: laju latih bergantung disk/dataset (di sini terukur
+    # ~2x lebih lambat dari tolok ukur RAM), jadi taksiran a-priori pasti
+    # meleset dan "99%" di paruh jalan lebih menyesatkan daripada menolong.
+    # Sebagai gantinya UI menampilkan waktu berlalu + bilah "sedang bekerja".
+    epoch_berjalan = ep
+    persen_epoch = None
+    berlalu_epoch = None
+    if keadaan in BERJALAN and epochs and ep < epochs:
+        epoch_berjalan = ep + 1
+        rp = d / "results.csv"
+        mulai_epoch = (rp.stat().st_mtime if rp.exists()
+                       else _mulai_epoch_pertama(d, ds, isi))
+        berlalu_epoch = round(max(0.0, time.time() - mulai_epoch))
+        if ep >= 1 and detik > 0:
+            durasi = detik / ep
+            if durasi > 0:
+                persen_epoch = min(99.0, round(berlalu_epoch / durasi * 100, 1))
+    # Bilah keseluruhan yang halus: epoch yang selesai + pecahan epoch berjalan.
+    frac = (persen_epoch or 0.0) / 100.0
+    persen_halus = (min(100.0, round((ep + frac) / epochs * 100, 1))
+                    if epochs else persen)
+
     out = {
         **{k: isi.get(k) for k in
            ("nomor", "nama", "catatan", "versi", "tugas", "bobot", "oleh",
             "dibuat", "selesai_pada", "galat", "par", "warna")},
         "keadaan": keadaan,
         "epoch": ep, "epochs": epochs, "persen": persen,
+        "epoch_berjalan": epoch_berjalan, "persen_epoch": persen_epoch,
+        "persen_halus": persen_halus, "berlalu_epoch": berlalu_epoch,
         "detik": detik, "sisa": sisa,
         "metrik": csv.get("metrik") or {},
         "terbaik": csv.get("terbaik") or {},

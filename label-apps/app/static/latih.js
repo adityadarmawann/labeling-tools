@@ -332,7 +332,19 @@
      orang "masih lama atau tidak", bukan "sudah sebagus apa". mAP-nya tetap
      ada di deretan pendukung. */
   function kartuJalan(t) {
-    const pj = Math.max(0, Math.min(100, t.persen || 0));
+    // Bilah kemajuan punya tiga keadaan:
+    //  - epoch >= 2 berjalan  -> persen DI DALAM epoch itu (akurat, dari durasi
+    //    epoch sebelumnya). Terlihat bergerak tiap beberapa menit.
+    //  - epoch PERTAMA berjalan -> belum ada durasi acuan, jadi TIDAK ada
+    //    persen; bilah "meluncur" + waktu berlalu, jelas bekerja tanpa angka
+    //    palsu.
+    //  - selesai -> persen keseluruhan.
+    const jalan = t.keadaan === 'jalan' || t.keadaan === 'antre';
+    const dalamEpoch = t.persen_epoch != null;
+    const ep1 = jalan && !dalamEpoch && t.berlalu_epoch != null;
+    const pj = Math.max(0, Math.min(100,
+      dalamEpoch ? t.persen_epoch : (t.persen || 0)));
+    const epNo = t.epoch_berjalan != null ? t.epoch_berjalan : t.epoch;
     const m = t.metrik || {};
     const mk = Object.keys(m).slice(0, 2);
     return `<article class="tr-kartu tr-kartu-jalan" data-nomor="${t.nomor}">
@@ -343,13 +355,17 @@
         <span class="tr-k-meta">L${t.nomor}<i>dari</i>v${t.versi}<i>oleh</i>${esc(t.oleh || '?')}</span>
       </header>
 
-      <div class="tr-bar" role="progressbar" aria-valuenow="${pj.toFixed(0)}"
-           aria-valuemin="0" aria-valuemax="100"><i style="width:${pj}%"></i></div>
+      <div class="tr-bar${ep1 ? ' tr-bar-kerja' : ''}" role="progressbar"
+           aria-valuenow="${ep1 ? '' : pj.toFixed(0)}"
+           aria-valuemin="0" aria-valuemax="100"><i style="width:${ep1 ? 100 : pj}%"></i></div>
 
       <div class="tr-k-isi">
         <div class="tr-skor">
-          <b>${angka(pj, 0)}<span>%</span></b>
-          <i>epoch ${angka(t.epoch)} dari ${angka(t.epochs)}</i>
+          ${ep1
+            ? `<b class="tr-skor-jam">${durasi(t.berlalu_epoch)}</b>
+               <i>epoch ${angka(epNo)} dari ${angka(t.epochs)} · berjalan</i>`
+            : `<b>${angka(pj, 0)}<span>%</span></b>
+               <i>epoch ${angka(epNo)} dari ${angka(t.epochs)}${dalamEpoch ? ' (epoch ini)' : ''}</i>`}
         </div>
         <dl class="tr-k-angka">
           <div><dt>Terpakai</dt><dd>${durasi(t.detik)}</dd></div>
@@ -776,13 +792,18 @@
     $('tr-panel-isi').innerHTML = `
       <div class="tr-p-pita">
         <div><dt>Status</dt><dd>${LABEL_KEADAAN[t.keadaan] || t.keadaan}</dd></div>
-        <div><dt>Epoch</dt><dd>${angka(t.epoch)} / ${angka(t.epochs)}</dd></div>
+        <div><dt>Epoch</dt><dd>${
+          t.persen_epoch != null
+            ? `${angka(t.epoch_berjalan)} / ${angka(t.epochs)} <small>(${angka(t.persen_epoch, 0)}% epoch ini)</small>`
+            : (t.berlalu_epoch != null && (t.keadaan === 'jalan' || t.keadaan === 'antre')
+                ? `${angka(t.epoch_berjalan)} / ${angka(t.epochs)} <small>(epoch ini berjalan ${durasi(t.berlalu_epoch)})</small>`
+                : `${angka(t.epoch)} / ${angka(t.epochs)}`)}</dd></div>
         <div><dt>Lama</dt><dd>${durasi(t.detik)}</dd></div>
         <div><dt>Sumber</dt><dd>v${t.versi}</dd></div>
         <div><dt>Oleh</dt><dd>${esc(t.oleh || '?')}</dd></div>
       </div>
       ${w.pesan ? `<div class="tr-p-blok tr-warna">
-        <h4>Sinkronisasi warna dengan versinya</h4>
+        <h4>Warna: setelan latih mengikuti versinya</h4>
         <p class="tr-warna-pesan">${esc(w.pesan)}</p></div>` : ''}
       ${blokKurva(r.kurva || [], t)}
       ${blokGambar(r.gambar || [], t.nomor)}
