@@ -366,6 +366,49 @@ def test_pulihkan_menolak_folder_di_luar_sampah(tmp_path):
     assert (root / "punyaku").is_dir()
 
 
+def test_hapus_permanen_membebaskan_disk(tmp_path):
+    """Hapus permanen dari sampah benar-benar menghapus berkasnya dari disk —
+    ini satu-satunya jalur yang boleh rmtree, dan hanya untuk yang sudah di
+    tempat sampah."""
+    root = tmp_path / "ruang"
+    _projek(root, "buang-ku", n=4)
+    projek.ke_sampah(root, "buang-ku")
+    folder = projek.isi_sampah(root)[0]["folder"]
+
+    r = projek.hapus_permanen(root, folder)
+    assert r["nama"] == "buang-ku"
+    # tak ada satu pun berkas tersisa di tempat sampah
+    kotak = root / projek.SAMPAH
+    assert list(kotak.rglob("*.jpg")) == []
+    assert projek.isi_sampah(root) == []
+
+
+def test_hapus_permanen_menolak_di_luar_sampah(tmp_path):
+    """Penjagaan sama dengan pulihkan: "" / ".." / path luar TIDAK boleh —
+    di sini akibatnya permanen, jadi wajib rapat."""
+    root = tmp_path / "ruang"
+    _projek(root, "aman", n=2)
+    _projek(root, "korban", n=3)
+    projek.ke_sampah(root, "korban")
+    for jahat in ("", "   ", ".", "..", "../aman", "/etc"):
+        with pytest.raises(projek.Tolak):
+            projek.hapus_permanen(root, jahat)
+    # projek aktif + tempat sampah utuh
+    assert (root / "aman").is_dir()
+    assert len(projek.isi_sampah(root)) == 1
+
+
+def test_isi_sampah_melaporkan_ukuran(tmp_path):
+    """Daftar sampah menyertakan ukuran tiap item supaya orang tahu mana yang
+    paling memakan disk sebelum menghapus permanen."""
+    root = tmp_path / "ruang"
+    _projek(root, "besar", n=3)
+    projek.ke_sampah(root, "besar")
+    item = projek.isi_sampah(root)[0]
+    assert item["bytes"] > 0
+    assert item["ukuran"] and item["ukuran"][-1] in "BKMGT"  # ada satuan
+
+
 # ============================================================
 # GABUNG
 # ============================================================
@@ -453,6 +496,28 @@ def test_membuang_projek_yang_sedang_dibuka_menutup_sesinya(klien, lingkungan):
     j = klien.post("/api/projek/sampah?nama=sedang-dipakai").json()
     assert j["ok"] and j["sesi_ditutup"] is True
     assert klien.get("/api/projek/daftar").json()["ruang"] == str(ruang)
+
+
+def test_hapus_permanen_lewat_rute(klien, lingkungan):
+    """Alur lengkap lewat HTTP: buang ke sampah -> hapus permanen -> disk bebas."""
+    import pathlib
+
+    from tests.test_data import masuk, PW_PAUL
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    _projek(ruang, "sekali-pakai", n=3)
+    klien.post("/api/projek/sampah?nama=sekali-pakai")
+
+    sampah = klien.get("/api/projek/daftar").json()["sampah"]
+    assert len(sampah) == 1 and sampah[0]["bytes"] > 0     # ukuran ikut dilaporkan
+    folder = sampah[0]["folder"]
+
+    j = klien.post(f"/api/projek/hapus-permanen?folder={folder}").json()
+    assert j["ok"] and j["nama"] == "sekali-pakai"
+    # benar-benar lenyap dari disk
+    assert klien.get("/api/projek/daftar").json()["sampah"] == []
+    assert list((ruang / projek.SAMPAH).rglob("*.jpg")) == []
 
 
 def test_sampul_menolak_berkas_di_luar_ruang_kerja(klien, lingkungan):

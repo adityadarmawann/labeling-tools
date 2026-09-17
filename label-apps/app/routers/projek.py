@@ -260,6 +260,16 @@ async def pulihkan(folder: str = "",
     return await asyncio.to_thread(_jawab, projek.pulihkan, root, folder)
 
 
+@router.post("/api/projek/hapus-permanen")
+async def hapus_permanen(folder: str = "",
+                         sess: Session = Depends(current_session_api),
+                         settings: Settings = Depends(get_settings)):
+    """Hapus satu folder di tempat sampah dari disk — permanen. Lihat
+    projek.hapus_permanen untuk penjagaannya."""
+    root = _ruang(sess, settings)
+    return await asyncio.to_thread(_jawab, projek.hapus_permanen, root, folder)
+
+
 @router.post("/api/projek/gabung")
 async def gabung(sumber: str = "", tujuan: str = "",
                  sess: Session = Depends(current_session_api),

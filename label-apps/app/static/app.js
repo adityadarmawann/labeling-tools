@@ -1254,12 +1254,15 @@ const Progres = (() => {
     isiSampah.innerHTML = isi.map(s => `
       <div class="row" style="gap:8px;align-items:center;margin-bottom:5px">
         <span style="flex:1">${esc(s.nama)}
-          <span class="halus">· dibuang ${esc(s.usia)}</span></span>
+          <span class="halus">· dibuang ${esc(s.usia)}${s.ukuran ? ' · ' + esc(s.ukuran) : ''}</span></span>
         <button class="chip" data-pulih="${esc(s.folder)}">Kembalikan</button>
+        <button class="chip chip-bahaya" data-hapus="${esc(s.folder)}"
+                data-nama="${esc(s.nama)}">Hapus permanen</button>
       </div>`).join('')
-      + '<div class="halus" style="margin-top:8px">Isinya masih memakan ruang '
-      + 'disk. Untuk membuangnya betulan, hapus foldernya lewat berkas manajer '
-      + 'atau terminal.</div>';
+      + '<div class="halus" style="margin-top:8px">'
+      + '<b>Kembalikan</b> mengembalikan projek utuh. '
+      + '<b>Hapus permanen</b> menghapus berkasnya dari disk dan membebaskan '
+      + 'ruang — tidak bisa dibatalkan.</div>';
   }
 
   /*
@@ -1409,12 +1412,35 @@ const Progres = (() => {
   });
 
   isiSampah.addEventListener('click', async ev => {
-    const b = ev.target.closest('[data-pulih]');
-    if (!b) return;
-    ev.preventDefault();
-    const j = await kirim('/api/projek/pulihkan', {folder: b.dataset.pulih},
-                          'Mengembalikan dari tempat sampah');
-    if (j && j.ok) { toast(`"${j.nama}" dikembalikan`); muat(); }
+    const pulih = ev.target.closest('[data-pulih]');
+    if (pulih) {
+      ev.preventDefault();
+      const j = await kirim('/api/projek/pulihkan', {folder: pulih.dataset.pulih},
+                            'Mengembalikan dari tempat sampah');
+      if (j && j.ok) { toast(`"${j.nama}" dikembalikan`); muat(); }
+      return;
+    }
+    const hapus = ev.target.closest('[data-hapus]');
+    if (hapus) {
+      ev.preventDefault();
+      // Penghapusan ini TIDAK bisa dibatalkan, jadi konfirmasinya sekuat
+      // "buang ke sampah": namanya harus DIKETIK, bukan sekadar klik "yakin?".
+      const nama = hapus.dataset.nama || '';
+      const jwb = prompt(
+        `HAPUS PERMANEN projek "${nama}" dari disk?\n\n`
+        + 'Berkasnya dihapus betulan dan ruang disk dibebaskan — '
+        + 'TIDAK BISA dikembalikan lagi.\n\n'
+        + 'Ketik nama projeknya untuk melanjutkan:');
+      if (jwb !== nama) {
+        if (jwb !== null) toast('Nama tidak cocok, dibatalkan');
+        return;
+      }
+      const j = await kirim('/api/projek/hapus-permanen',
+                            {folder: hapus.dataset.hapus},
+                            'Menghapus permanen dari disk');
+      if (j && j.ok) { toast(`"${j.nama}" dihapus permanen`); muat(); }
+      return;
+    }
   });
 
   document.addEventListener('click', ev => {

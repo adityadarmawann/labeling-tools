@@ -711,6 +711,38 @@ def ke_sampah(root: Path, nama: str) -> dict:
     return {"nama": src.name, "sampah": str(dst)}
 
 
+def _ukuran_folder(d: Path) -> int:
+    """Total byte seluruh berkas di dalam `d` (rekursif, tanpa mengikuti
+    symlink). os.scandir supaya jenis entri terbawa tanpa stat tambahan."""
+    import os
+
+    total = 0
+    tumpuk = [str(d)]
+    while tumpuk:
+        try:
+            with os.scandir(tumpuk.pop()) as it:
+                for e in it:
+                    try:
+                        if e.is_dir(follow_symlinks=False):
+                            tumpuk.append(e.path)
+                        elif e.is_file(follow_symlinks=False):
+                            total += e.stat(follow_symlinks=False).st_size
+                    except OSError:
+                        continue
+        except OSError:
+            continue
+    return total
+
+
+def _ukuran_manusiawi(n: int) -> str:
+    x = float(n)
+    for satuan in ("B", "KB", "MB", "GB"):
+        if x < 1024:
+            return f"{x:.0f} {satuan}" if satuan == "B" else f"{x:.1f} {satuan}"
+        x /= 1024
+    return f"{x:.1f} TB"
+
+
 def isi_sampah(root: Path | None) -> list[dict]:
     kotak = Path(root) / SAMPAH if root else None
     if not kotak or not kotak.is_dir():
@@ -724,8 +756,10 @@ def isi_sampah(root: Path | None) -> list[dict]:
             t = datetime.strptime(cap, "%Y%m%d-%H%M%S").timestamp()
         except ValueError:
             nama, t = d.name, d.stat().st_mtime
+        b = _ukuran_folder(d)
         out.append({"nama": nama or d.name, "folder": d.name,
-                    "path": str(d.resolve()), "usia": _usia(t)})
+                    "path": str(d.resolve()), "usia": _usia(t),
+                    "bytes": b, "ukuran": _ukuran_manusiawi(b)})
     return out
 
 
@@ -758,6 +792,33 @@ def pulihkan(root: Path, folder: str) -> dict:
     src.rename(dst)
     log.info("pulih dari sampah: %s -> %r", folder, dst.name)
     return {"nama": dst.name, "path": str(dst)}
+
+
+def hapus_permanen(root: Path, folder: str) -> dict:
+    """
+    Hapus SATU folder di tempat sampah dari disk — permanen, membebaskan ruang.
+
+    Ini satu-satunya jalur di aplikasi ini yang benar-benar `rmtree` berkas
+    pengguna (aturan no. 3 di kepala berkas: menghapus = memindahkan). Boleh
+    di sini justru karena isinya SUDAH di tempat sampah — sudah lewat langkah
+    "buang" yang bisa dibatalkan, jadi ini keputusan kedua yang disengaja.
+
+    Penjagaannya ketat dan sama persis dengan pulihkan(): nama dibersihkan
+    lebih dulu, dan targetnya WAJIB berada DI DALAM `_sampah/` dan bukan
+    `_sampah/` itu sendiri. Tanpa itu, "" atau ".." bisa menghapus seluruh
+    ruang kerja — dan di sini akibatnya tak bisa dikembalikan.
+    """
+    kotak = Path(root) / SAMPAH
+    bersih = bersihkan_nama(folder)
+    if not bersih:
+        raise Tolak("nama folder sampah kosong atau seluruhnya karakter terlarang")
+    src = kotak / bersih
+    if src == kotak or not _didalam(src, kotak) or not src.is_dir():
+        raise Tolak("tidak ada di tempat sampah")
+    nama = src.name.rpartition("--")[0] or src.name
+    shutil.rmtree(src)
+    log.info("hapus permanen dari sampah: %r", src.name)
+    return {"nama": nama, "folder": folder}
 
 
 def gabung(root: Path, sumber: str, tujuan: str, *, kunci: str = "",
