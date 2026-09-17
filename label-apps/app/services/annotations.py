@@ -65,6 +65,29 @@ def mark_background(it: dict) -> Path:
     tanpa satu pun peringatan. unmark_background sudah membaca disk sejak
     awal; yang merusak justru yang tidak.
     """
+    # Penanda latar ditulis TEPAT di tempat pemindai mencarinya. Untuk dataset
+    # YOLO itu berkas label KOSONG di labels/<nama>.txt; untuk labelme, .json
+    # kosong di sebelah gambar. Menulis .json untuk dataset YOLO adalah bug
+    # lama: pemindai YOLO membaca labels/*.txt dan tak pernah melihat .json itu,
+    # jadi gambar yang "ditandai latar" kembali ke "belum dianotasi" tiap kali
+    # dimuat ulang.
+    if it.get("yolo"):
+        lp = it.get("labels") or (it["img"].parent.parent / "labels"
+                                  / (it["img"].stem + ".txt"))
+        di_disk_n = 0
+        if lp.is_file():
+            di_disk_n = sum(1 for b in
+                            lp.read_text(encoding="utf-8", errors="ignore").splitlines()
+                            if b.strip())
+        n = di_disk_n or len(it["shapes"])
+        if n:
+            raise Menolak(f"gambar ini punya {n} objek — hapus dulu anotasinya")
+        lp.parent.mkdir(parents=True, exist_ok=True)
+        tulis_aman(lp, "")                     # label .txt kosong = latar
+        it["shapes"] = []
+        it["issues"] = ["latar (tanpa objek)"]
+        return lp
+
     jp = it["img"].with_suffix(".json")
     di_disk = []
     if jp.is_file():
@@ -93,6 +116,17 @@ def unmark_background(it: dict) -> Path:
     # pemeriksaan disknya memang sudah ada sejak awal, di bawah.
     if it["shapes"]:
         raise Menolak("gambar ini punya anotasi — tidak dihapus")
+    # Cerminan mark_background: untuk YOLO, penanda latar ada di labels/*.txt.
+    if it.get("yolo"):
+        lp = it.get("labels") or (it["img"].parent.parent / "labels"
+                                  / (it["img"].stem + ".txt"))
+        if lp.exists():
+            if any(b.strip() for b in
+                   lp.read_text(encoding="utf-8", errors="ignore").splitlines()):
+                raise Menolak("berkas anotasi tidak kosong — tidak dihapus")
+            lp.unlink()
+        it["issues"] = ["belum dilabeli"]
+        return lp
     jp = it["img"].with_suffix(".json")
     if jp.exists():
         try:

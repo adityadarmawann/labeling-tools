@@ -147,6 +147,41 @@ def test_batal_tandai_latar_tidak_menghapus_anotasi_berisi(klien, lingkungan):
     assert img.with_suffix(".json").exists()
 
 
+def test_tandai_latar_dataset_yolo_menulis_txt_kosong(klien, lingkungan):
+    """Regresi: di dataset YOLO, "Tandai latar" HARUS menulis label .txt kosong
+    di labels/ — bukan .json di sebelah gambar. Pemindai YOLO membaca
+    labels/*.txt dan tak pernah melihat .json itu, jadi gambarnya kembali
+    "belum dianotasi" tiap muat ulang. Ini persis kegagalan yang dilaporkan di
+    projek botol setelah diratakan jadi YOLO."""
+    import cv2
+    import numpy as np
+    from app.services import scanner
+
+    d = lingkungan["roots"] / "yolo-latar"
+    (d / "images").mkdir(parents=True)
+    (d / "labels").mkdir(parents=True)
+    ip = d / "images" / "kosong.jpg"
+    cv2.imwrite(str(ip), np.full((60, 80, 3), 60, np.uint8))   # TANPA label -> belum
+    (d / "classes.txt").write_text("botol\n")
+
+    masuk(klien, "paul", PW_PAUL)
+    klien.post(f"/setsrc?path={d}")
+    its, _ = scanner.scan(d)
+    assert scanner.severity(its[0]) == "stop"                  # belum dianotasi
+
+    assert klien.post(f"/markbg?path={ip}").json()["ok"] is True
+    lp = d / "labels" / "kosong.txt"
+    assert lp.exists() and lp.read_text().strip() == ""        # .txt kosong di labels/
+    assert not ip.with_suffix(".json").exists()                # BUKAN .json di images/
+    its, _ = scanner.scan(d)
+    assert scanner.severity(its[0]) == "bg"                    # kini terbaca latar
+
+    assert klien.post(f"/unmarkbg?path={ip}").json()["ok"] is True
+    assert not lp.exists()
+    its, _ = scanner.scan(d)
+    assert scanner.severity(its[0]) == "stop"                  # kembali belum
+
+
 # ---------------------------------------------------------------- saringan grid
 
 def _chip(html: str, nama: str) -> int:
