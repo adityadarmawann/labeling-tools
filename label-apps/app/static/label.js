@@ -3058,8 +3058,33 @@ function pilihPanel(id) {
   try { localStorage.setItem(KUNCI_PANEL, id); } catch (e) { /* mode privat */ }
 }
 
+/* Di layar sempit (<=620px) panel jadi laci melayang di atas kanvas: menekan
+ * tombol rel MEMBUKA lacinya dengan panel itu; menekan tombol yang sama lagi
+ * menutupnya. Di layar lebar perilakunya seperti biasa — panel langsung
+ * berganti tanpa laci. */
+const _sempit = () => window.matchMedia('(max-width: 620px)').matches;
+const _labWrap = document.querySelector('.lab-wrap');
+function tutupLaci() { if (_labWrap) _labWrap.removeAttribute('data-laci'); }
+if (_labWrap) {
+  const backdrop = document.createElement('div');
+  backdrop.className = 'lab-laci-tutup';
+  backdrop.addEventListener('click', tutupLaci);
+  _labWrap.appendChild(backdrop);
+  // Laci yang terbuka lalu layar dilebarkan lagi tidak boleh tertinggal
+  // "terbuka" secara tak terlihat.
+  window.addEventListener('resize', () => { if (!_sempit()) tutupLaci(); });
+}
 document.querySelectorAll('.lab-rel .rel').forEach(b => {
-  b.onclick = () => pilihPanel(b.dataset.pan);
+  b.onclick = () => {
+    if (_sempit()) {
+      const terbuka = _labWrap.hasAttribute('data-laci');
+      if (b.hasAttribute('data-on') && terbuka) { tutupLaci(); return; }
+      pilihPanel(b.dataset.pan);
+      _labWrap.setAttribute('data-laci', '1');
+    } else {
+      pilihPanel(b.dataset.pan);
+    }
+  };
 });
 
 muatView();

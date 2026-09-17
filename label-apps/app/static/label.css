@@ -548,3 +548,36 @@ kbd{font-family:ui-monospace,"SF Mono",Menlo,monospace; font-size:10.5px;
   .lab-berkas { max-width: 22vw; }
   .lab-pesan { max-width: 14vw; }
 }
+
+/* ------------------------------------------------------- RESPONSIF: sempit
+ *
+ * Setengah layar laptop (window kiri/kanan) dan layar kecil. Dua tahap:
+ *
+ * 1) <= 900px — panel dipersempit, keterangan bar atas yang sekunder
+ *    disembunyikan, supaya kanvas tetap dapat lebar yang berguna.
+ * 2) <= 620px — panel jadi LACI melayang: tertutup, kanvas dapat lebar PENUH,
+ *    dan panel muncul di atas kanvas hanya saat dipilih dari rel (lihat
+ *    label.js: rel membuka laci di layar sempit). Backdrop menutupnya. */
+@media (max-width: 900px) {
+  .lab-side { width: 220px; }
+  .lab-ukuran, .lab-top .who, .lab-pesan { display: none; }
+  .lab-berkas { max-width: 30vw; }
+}
+@media (max-width: 620px) {
+  .lab-wrap { position: relative; }
+  .lab-side {
+    position: absolute; top: 0; bottom: 0; left: 64px;
+    width: min(280px, calc(100% - 64px)); z-index: 40;
+    transform: translateX(calc(-100% - 64px));
+    transition: transform .2s ease;
+    box-shadow: 3px 0 18px rgba(0, 0, 0, .22);
+  }
+  .lab-wrap[data-laci] .lab-side { transform: none; }
+  .lab-laci-tutup {
+    position: absolute; top: 0; right: 0; bottom: 0; left: 64px; z-index: 39;
+    background: rgba(0, 0, 0, .28); opacity: 0; pointer-events: none;
+    transition: opacity .2s;
+  }
+  .lab-wrap[data-laci] .lab-laci-tutup { opacity: 1; pointer-events: auto; }
+  .lab-berkas { max-width: 42vw; }
+}
