@@ -270,7 +270,10 @@ body.lab {
   min-width: 0;
   margin: 10px 92px 58px 10px;
 }
-.lab-canvas canvas { display: block; cursor: crosshair; }
+/* touch-action:none: gulir & cubit-zoom bawaan peramban dimatikan supaya
+   touchmove sampai ke penangan sentuh kanvas (label.js) — di situ satu jari
+   menggambar dan dua jari mencubit-zoom. */
+.lab-canvas canvas { display: block; cursor: crosshair; touch-action: none; }
 .lab-canvas[data-mode="edit"] canvas { cursor: default; }
 .lab-canvas[data-geser] canvas { cursor: grabbing; }
 

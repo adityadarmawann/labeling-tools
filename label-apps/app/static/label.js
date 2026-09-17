@@ -881,7 +881,10 @@ async function finishObject() {
 
 let geser = null, spasi = false;
 
-c.addEventListener('mousedown', ev => {
+// Ditulis sebagai fungsi bernama (bukan penangan anonim) supaya jalur sentuh di
+// bawah bisa memanggilnya dengan peristiwa tikus sintetis — satu-satunya logika
+// kanvas, dipakai bersama oleh tikus dan jari.
+function tikusTurun(ev) {
   const gx = keGambarX(ev.offsetX), gy = keGambarY(ev.offsetY);
 
   if (ev.button === 1 || spasi) {
@@ -999,9 +1002,10 @@ c.addEventListener('mousedown', ev => {
   S.prompt.push({ x: gx, y: gy, label: negatif ? 0 : 1 });
   gambar();
   jalankanSam();
-});
+}
+c.addEventListener('mousedown', tikusTurun);
 
-c.addEventListener('mousemove', ev => {
+function tikusGerak(ev) {
   const gx = keGambarX(ev.offsetX), gy = keGambarY(ev.offsetY);
   S.kursor = [gx, gy];
   el('koord').textContent =
@@ -1083,7 +1087,8 @@ c.addEventListener('mousemove', ev => {
     petunjuk(null);
   }
   gambar();
-});
+}
+c.addEventListener('mousemove', tikusGerak);
 
 /*
  * Kursor dan teks petunjuk menurut apa yang ada di bawahnya — canvas.py memasang
@@ -1118,7 +1123,7 @@ c.addEventListener('mouseleave', () => {
   gambar();
 });
 
-window.addEventListener('mouseup', ev => {
+function tikusNaik(ev) {
   if (S.seretKanan) {
     const k = S.seretKanan;
     S.seretKanan = null;
@@ -1172,7 +1177,95 @@ window.addEventListener('mouseup', ev => {
   } else {
     render();
   }
-});
+}
+window.addEventListener('mouseup', tikusNaik);
+
+// ---------------------------------------------------------------- sentuh (HP/tablet)
+/*
+ * Kanvas ini seluruhnya berbasis tikus, dan layar sentuh tak punya tombol
+ * maupun hover. Maka gerak jari diterjemahkan ke peristiwa tikus sintetis lalu
+ * diumpan ke penangan yang sama: satu jari = klik kiri (gambar, seret titik,
+ * pilih objek), dua jari = cubit-zoom + geser (padanan Ctrl+roda dan seret
+ * tengah). Tak ada logika kanvas yang digandakan — sentuh cuma memanggil yang
+ * sudah teruji di atas. touch-action:none (label.css) mematikan gulir/zoom
+ * bawaan peramban supaya touchmove sampai ke sini, dan preventDefault menahan
+ * peristiwa tikus tiruan yang biasa menyusul sentuhan.
+ */
+let cubit = null;       // { d, cx, cy } jarak & titik-tengah dua jari terakhir
+let jariAktif = false;  // satu jari sedang menggambar/menyeret
+
+function _relOffset(t) {
+  const r = c.getBoundingClientRect();
+  return { x: t.clientX - r.left, y: t.clientY - r.top };
+}
+function _acaraSentuh(t, tambahan) {
+  const o = _relOffset(t);
+  return { offsetX: o.x, offsetY: o.y, clientX: t.clientX, clientY: t.clientY,
+           button: 0, buttons: 1, shiftKey: false, ctrlKey: false, altKey: false,
+           preventDefault() {}, _sentuh: true, ...(tambahan || {}) };
+}
+function _dua(ts) {
+  const r = c.getBoundingClientRect();
+  const dx = ts[0].clientX - ts[1].clientX, dy = ts[0].clientY - ts[1].clientY;
+  return { d: Math.hypot(dx, dy),
+           cx: (ts[0].clientX + ts[1].clientX) / 2 - r.left,
+           cy: (ts[0].clientY + ts[1].clientY) / 2 - r.top };
+}
+function _batalSeretJari() {
+  // Jari kedua turun saat satu jari sedang menyeret: buang seretnya tanpa
+  // mengesahkan apa-apa (kotak/lingkaran/geser vertex batal mentah).
+  S.seret = null;
+  S.seretKanan = null;
+  S.salinanSeret = null;
+  if (geser) { geser = null; wrap.removeAttribute('data-geser'); }
+  jariAktif = false;
+  gambar();
+}
+
+c.addEventListener('touchstart', ev => {
+  if (ev.touches.length === 1 && !cubit) {
+    jariAktif = true;
+    tikusTurun(_acaraSentuh(ev.touches[0]));
+    ev.preventDefault();
+  } else if (ev.touches.length >= 2) {
+    if (jariAktif) _batalSeretJari();
+    cubit = _dua(ev.touches);
+    ev.preventDefault();
+  }
+}, { passive: false });
+
+c.addEventListener('touchmove', ev => {
+  if (cubit && ev.touches.length >= 2) {
+    const n = _dua(ev.touches);
+    if (cubit.d > 0) zoomDi(n.d / cubit.d, n.cx, n.cy);  // cubit -> zoom di titik-tengah
+    S.panx += n.cx - cubit.cx;                           // dua jari geser -> pan
+    S.pany += n.cy - cubit.cy;
+    S.zoomManual = true;
+    cubit = n;
+    gambar();
+    ev.preventDefault();
+  } else if (jariAktif && ev.touches.length === 1) {
+    tikusGerak(_acaraSentuh(ev.touches[0]));
+    ev.preventDefault();
+  }
+}, { passive: false });
+
+c.addEventListener('touchend', ev => {
+  if (cubit && ev.touches.length < 2) {
+    cubit = null;
+    jariAktif = false;              // jari sisa tak melanjutkan seret; perlu sentuh baru
+    ev.preventDefault();
+    return;
+  }
+  if (jariAktif && ev.touches.length === 0) {
+    jariAktif = false;
+    tikusNaik(_acaraSentuh(ev.changedTouches[0]));
+    ev.preventDefault();
+  }
+}, { passive: false });
+
+c.addEventListener('touchcancel', () => { cubit = null; _batalSeretJari(); },
+  { passive: false });
 
 /*
  * Klik ganda menutup bentuk (canvas.py:557-569). Dua hal yang dulu terlewat:
