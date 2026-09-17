@@ -172,7 +172,8 @@
         {%- if val != 'all' %} <b>{{ n }}</b>{% endif %}
         {%- endif %}{% endfor %}
         {%- if flt == 'all' and n_warn %}<i class="titik t-warn"
-           title="{{ n_warn }} gambar perlu dicek"></i>{% endif %} &#9662;</button>
+           title="{{ n_warn }} gambar perlu dicek"></i>{% endif %}
+        <i class="kd-caret" aria-hidden="true">&#9662;</i></button>
       <span class="menu-isi" id="keadaan-isi">
         {%- for val, nama, n, warna, ket in keadaan %}
         <a class="kd-baris" title="{{ ket }}"
@@ -197,7 +198,7 @@
         {%- if not pilihan_nama %}Semua kelas
         {%- elif pilihan_nama | length == 1 %}{{ pilihan_nama[0] }}
         {%- else %}{{ pilihan_nama | length }} pilihan{% if mode == 'dan' %} · semuanya{% endif %}
-        {%- endif %} ▾</button>
+        {%- endif %} <i class="kd-caret" aria-hidden="true">▾</i></button>
       <span class="menu-isi" id="kelas-isi">
         <form method="get" action="/">
           <input type="hidden" name="f" value="{{ flt }}">
@@ -271,7 +272,7 @@
         {%- if batch_pilih %}{{ batch_pilih }}
         {%- elif tag_pilih | length == 1 %}{{ tag_pilih[0] }}
         {%- elif tag_pilih %}{{ tag_pilih | length }} tag
-        {%- else %}Tag{% endif %} &#9662;</button>
+        {%- else %}Tag{% endif %} <i class="kd-caret" aria-hidden="true">&#9662;</i></button>
       <span class="menu-isi" id="tag-isi">
         <form method="get" action="/">
           {#- 'g' dan 'b' dibuang karena form inilah yang menuliskannya. Sisanya
@@ -342,7 +343,7 @@
         {%- set n_pilih = (split_pilih | length) + (turunan_pilih | length) %}
         {%- if n_pilih == 1 %}{{ (split_pilih + turunan_pilih)[0] }}
         {%- elif n_pilih %}{{ n_pilih }} bagian
-        {%- else %}Bagian{% endif %} &#9662;</button>
+        {%- else %}Bagian{% endif %} <i class="kd-caret" aria-hidden="true">&#9662;</i></button>
       <span class="menu-isi" id="split-isi">
         <form method="get" action="/">
           {#- 'n' dibuang karena form inilah yang menuliskan sp dan tu. Tag dan

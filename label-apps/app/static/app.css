@@ -171,6 +171,16 @@ h1{font-size:15px;font-weight:600;letter-spacing:.02em}
 /* Chip terpilih berlatar tinta; titiknya perlu tepian supaya tidak melebur. */
 .chip[data-on] .titik{box-shadow:0 0 0 1.5px var(--on-ink)}
 
+/* Tombol pembuka menu saringan (Semua keadaan, kelas, Tag, Bagian). Ikon
+   status, label, angka, dan caret diberi jarak yang SAMA lewat flex-gap —
+   bukan margin ad-hoc. Tanpa ini titik status menempel ke teks: titik oranye
+   di "Semua keadaan" tampak dipaksakan, menempel di "keadaan" tanpa spasi. */
+.menu > .chip{display:inline-flex; align-items:center; gap:7px}
+.menu > .chip .titik{margin:0; top:0}
+.kd-caret{font-size:9px; line-height:1; flex:0 0 auto; color:var(--ink-faint);
+  margin-left:1px}
+.menu > .chip[data-on] .kd-caret{color:var(--on-ink); opacity:.75}
+
 .bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px 0 13px}
 /* Aturan display milik kita sendiri lebih kuat daripada [hidden] bawaan
    peramban, jadi `el.hidden = true` pada .chip atau .prog-baris tidak
