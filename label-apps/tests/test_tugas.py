@@ -108,6 +108,34 @@ def test_gambar_yang_sudah_ditugaskan_tidak_dipindah_diam_diam(tmp_path):
     assert tugas.pelabel_gambar(data, "c.jpg") == "rizky"
 
 
+def test_membagi_semua_gambar_sudah_ditugaskan_tak_bikin_job_kosong(tmp_path):
+    """Dulu membagi gambar yang SEMUANYA sudah ditugaskan tetap membuat job 0
+    gambar — job yang tak bisa dikerjakan dan membingungkan di papan."""
+    d = _ds(tmp_path)
+    tugas.tugaskan(d, "darma", "aditya", ["a.jpg", "b.jpg"])
+    r = tugas.tugaskan(d, "darma", "rizky", ["a.jpg", "b.jpg"])   # semua sudah dibagi
+    assert r.get("kosong") and r["n"] == 0
+    data = tugas.baca(d, "darma")
+    assert len(data["tugas"]) == 1                # tidak ada job baru dibuat
+    assert "rizky" not in data["anggota"]         # anggota pun tidak ditambah
+
+
+def test_buang_job_kosong(tmp_path):
+    """Job 0 gambar (leftover lama) dibersihkan tanpa menyentuh yang berisi."""
+    d = _ds(tmp_path)
+    tugas.tugaskan(d, "darma", "aditya", ["a.jpg"])
+    data = tugas.baca(d, "darma")
+    data["tugas"]["tkosong"] = {"pelabel": "darma", "gambar": [], "oleh": "darma",
+                                "dibuat": "2026-09-17 14:16", "judul": "", "catatan": ""}
+    tugas._tulis(d, data)
+
+    assert tugas.buang_job_kosong(d, "darma") == 1
+    data = tugas.baca(d, "darma")
+    assert "tkosong" not in data["tugas"] and len(data["tugas"]) == 1
+    # idempoten: panggilan kedua tak menemukan yang kosong
+    assert tugas.buang_job_kosong(d, "darma") == 0
+
+
 def test_mengeluarkan_anggota_membubarkan_tugasnya(tmp_path):
     """Job tanpa pelabel yang berhak adalah pekerjaan yang tidak bisa
     dilanjutkan siapa pun."""

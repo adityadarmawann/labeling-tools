@@ -151,6 +151,12 @@ async def halaman_papan(request: Request, ds: str = "", urut: str = "terbaru",
         await asyncio.to_thread(sess.segarkan)
 
     data = svc.baca_projek(d, settings.uploads_root)
+    # Bersihkan job 0 gambar yang terlanjur ada (leftover dari membagi gambar
+    # yang semuanya sudah ditugaskan). Tidak ada pekerjaan yang hilang — memang
+    # kosong — dan sesudahnya papan tidak lagi menampilkan job yang membingungkan.
+    if any(not (t.get("gambar") or []) for t in data.get("tugas", {}).values()):
+        await asyncio.to_thread(svc.buang_job_kosong, d, data["pemilik"] or sess.user)
+        data = svc.baca_projek(d, settings.uploads_root)
     pr = await asyncio.to_thread(sp.konteks, d, settings.uploads_root, sess.user)
 
     with sess.lock:
@@ -642,6 +648,9 @@ async def bagi(request: Request, sess: Session = Depends(current_session_api),
     r = await asyncio.to_thread(svc.tugaskan, sess.src, data["pemilik"], pelabel,
                                 kunci, str(body.get("catatan") or ""),
                                 str(body.get("judul") or ""))
+    if r.get("kosong"):
+        return {"ok": False, "error": "semua gambar itu sudah ditugaskan ke job "
+                "lain — tidak ada job baru dibuat"}
     # Path yang tidak dikenal ikut dihitung dilewati: dulu ia dibuang sebelum
     # tugaskan() sempat melihatnya, jadi enam path masuk dan balasannya
     # menyebut satu terbagi, dua dilewati, tanpa menyinggung tiga sisanya.

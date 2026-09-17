@@ -718,6 +718,13 @@ def tugaskan(ds: Path, pemilik: str, pelabel: str, gambar: list[str],
         data["pemilik"] = data["pemilik"] or pemilik
         sudah = {k for t in data["tugas"].values() for k in (t.get("gambar") or [])}
         milik = [k for k in gambar if k not in sudah]
+        # Job tanpa satu pun gambar tidak pernah bisa dikerjakan dan cuma
+        # membingungkan (papan menampilkannya sebagai job 0 gambar). Dulu ia
+        # tetap terbuat kalau seluruh gambar yang diminta SUDAH ditugaskan ke
+        # job lain. Ditolak di sini, sebelum anggota atau job dibuat.
+        if not milik:
+            return {"id": None, "pelabel": pelabel, "n": 0,
+                    "dilewati": len(gambar), "kosong": True}
         if pelabel != data["pemilik"] and pelabel not in data["anggota"]:
             data["anggota"][pelabel] = {
                 "peran": "pelabel",
@@ -780,6 +787,26 @@ def bubarkan(ds: Path, pemilik: str, tid: str) -> dict:
         data["tugas"].pop(tid, None)
         _tulis(ds, data)
     return {"dibubarkan": True}
+
+
+def buang_job_kosong(ds: Path, pemilik: str) -> int:
+    """Buang job yang tidak punya satu pun gambar.
+
+    Job 0 gambar tak bisa dikerjakan dan hanya membingungkan di papan (leftover
+    dari membagi gambar yang semuanya sudah ditugaskan). Membuangnya tidak
+    menghilangkan pekerjaan apa pun — memang tidak ada. Idempoten dan berkunci,
+    jadi aman dipanggil saat papan dibuka walau beberapa sesi sekaligus."""
+    with _kunci:
+        data = baca(ds, pemilik)
+        kosong = [tid for tid, t in data["tugas"].items()
+                  if not (t.get("gambar") or [])]
+        for tid in kosong:
+            data["tugas"].pop(tid, None)
+        if kosong:
+            _tulis(ds, data)
+    if kosong:
+        log.info("buang %s job kosong di %s", len(kosong), Path(ds).name)
+    return len(kosong)
 
 
 # ============================================================
