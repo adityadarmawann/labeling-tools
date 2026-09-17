@@ -703,6 +703,15 @@ input:focus{outline:0;border-color:var(--ok)}
    mendarat di bawah header yang lengket. */
 .grid{scroll-margin-top:72px}
 
+/* Di HP grid jatuh ke satu kolom (minmax 210px > separuh layar), jadi ubin
+   persegi penuh-lebar jadi setinggi layar dan cuma satu kartu muat per layar.
+   Tombol aksi butuh ~210px (lihat catatan di templat), jadi dua kolom bukan
+   pilihan; yang dipendekkan tingginya. object-fit:contain tetap: seluruh foto
+   terlihat, cuma dikotakkan lebih pendek supaya beberapa kartu muat sekaligus. */
+@media (max-width:560px){
+  .card img{aspect-ratio:auto;height:190px}
+}
+
 /* Daftar saringan di kotak "tidak ada yang cocok" — di sanalah orang paling
    butuh tahu kenapa layarnya kosong. */
 .empty-saring{margin-top:10px;font-size:12px;color:var(--ink-dim)}
