@@ -123,3 +123,49 @@ def test_bukan_projek_ditolak(tmp_path):
     (d / "train" / "images").mkdir(parents=True)
     (d / "train" / "labels").mkdir(parents=True)
     assert rp.migrasi(d, apply=True)["status"] == "BUKAN-PROJEK"
+
+
+def test_betulkan_latar_konversi_json_kosong_ke_txt(tmp_path):
+    """Penanda latar gaya-labelme (.json kosong) yang nyasar di dataset YOLO
+    diubah jadi label .txt kosong di labels/ — di situlah pemindai mencarinya.
+    Yang ber-objek (cadangan labelme untuk gambar berlabel) TIDAK disentuh."""
+    import json
+    from app.services import scanner
+
+    P = tmp_path / "proj"
+    (P / "images").mkdir(parents=True)
+    (P / "labels").mkdir(parents=True)
+    cv2.imwrite(str(P / "images" / "a.jpg"), np.zeros((40, 40, 3), np.uint8))
+    cv2.imwrite(str(P / "images" / "b.jpg"), np.zeros((40, 40, 3), np.uint8))
+    (P / "classes.txt").write_text("botol\n")
+    # a: penanda latar nyasar (json KOSONG, tanpa labels/txt) -> harus dikonversi
+    (P / "images" / "a.json").write_text(json.dumps(
+        {"version": "0.4.36", "flags": {}, "shapes": [],
+         "imagePath": "a.jpg", "imageHeight": 40, "imageWidth": 40}))
+    # b: gambar berlabel dengan cadangan .json ber-objek -> JANGAN disentuh
+    (P / "labels" / "b.txt").write_text("0 0.5 0.5 0.2 0.2\n")
+    (P / "images" / "b.json").write_text(json.dumps(
+        {"version": "0.4.36", "flags": {}, "shapes": [{"label": "botol",
+         "shape_type": "rectangle", "points": [[1, 1], [9, 9]]}],
+         "imagePath": "b.jpg", "imageHeight": 40, "imageWidth": 40}))
+
+    def sev(name):
+        its, _ = scanner.scan(P)
+        it = next(x for x in its if x["img"].name == name)
+        return scanner.severity(it)
+
+    assert sev("a.jpg") == "stop"                 # sebelum: json diabaikan pemindai YOLO
+    r = rp.betulkan_latar(P, apply=True)
+    assert r["latar_dibetulkan"] == 1
+    assert not (P / "images" / "a.json").exists()  # json usang dibuang
+    lp = P / "labels" / "a.txt"
+    assert lp.exists() and lp.read_text() == ""    # jadi .txt kosong
+    assert sev("a.jpg") == "bg"                     # sesudah: terbaca latar
+    # b tidak tersentuh
+    assert (P / "images" / "b.json").exists() and sev("b.jpg") == "ok"
+
+
+def test_betulkan_latar_lewati_bukan_yolo(tmp_path):
+    d = tmp_path / "labelme"
+    d.mkdir()
+    assert rp.betulkan_latar(d, apply=True)["latar_status"] == "bukan-yolo"

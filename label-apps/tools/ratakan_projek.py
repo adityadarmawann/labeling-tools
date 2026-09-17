@@ -154,13 +154,54 @@ def _tulis_json(path: Path, data: dict) -> None:
     tmp.replace(path)
 
 
+def betulkan_latar(P: Path, apply: bool) -> dict:
+    """Betulkan penanda latar gaya-labelme yang nyasar di dataset YOLO.
+
+    Versi lama "Tandai latar" menulis .json KOSONG (shapes:[]) di sebelah gambar
+    (images/), padahal pemindai YOLO membaca labels/*.txt — jadi gambar itu tak
+    pernah terbaca sebagai latar. Di sini tiap images/<n>.json yang shapes-nya
+    kosong diubah jadi labels/<n>.txt kosong (penanda latar yang benar), lalu
+    .json usangnya dibuang. HANYA untuk projek YOLO (images/+labels/ di akar);
+    .json yang berisi objek (cadangan labelme) TIDAK disentuh.
+    """
+    P = Path(P)
+    idir, ldir = P / "images", P / "labels"
+    if not (idir.is_dir() and ldir.is_dir()):
+        return {"latar_status": "bukan-yolo", "latar_dibetulkan": 0}
+    dibetulkan, cruft = 0, 0
+    for jp in sorted(idir.glob("*.json")):
+        try:
+            d = json.loads(jp.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not (isinstance(d, dict) and d.get("shapes") == []):
+            continue                      # bukan penanda latar (ada objek) -> lewati
+        lp = ldir / (jp.stem + ".txt")
+        konversi = not lp.exists()
+        if apply:
+            if konversi:
+                lp.write_text("")         # label .txt kosong = latar
+            jp.unlink()                   # buang .json usang
+        if konversi:
+            dibetulkan += 1
+        else:
+            cruft += 1
+    return {"latar_status": "ok" if apply else "uji-kering",
+            "latar_dibetulkan": dibetulkan, "json_usang_dibuang": cruft}
+
+
 def main(argv: list[str]) -> int:
     args = [a for a in argv if not a.startswith("-")]
     apply = "--apply" in argv
     if len(args) != 1 or "-h" in argv or "--help" in argv:
         print(__doc__)
         return 2
-    hasil = migrasi(Path(args[0]).expanduser(), apply)
+    P = Path(args[0]).expanduser()
+    hasil = migrasi(P, apply)
+    # Betulkan penanda latar SETELAH diratakan (butuh layout YOLO datar). Jalan
+    # juga saat projek sudah datar, karena di situlah orphan latar botol berada.
+    if hasil["status"] in ("ok", "uji-kering", "sudah-datar"):
+        hasil.update(betulkan_latar(P, apply))
     print(json.dumps(hasil, ensure_ascii=False, indent=2))
     return 0 if hasil["status"] in ("ok", "uji-kering", "sudah-datar") else 1
 
