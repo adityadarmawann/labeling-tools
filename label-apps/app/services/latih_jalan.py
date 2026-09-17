@@ -113,6 +113,58 @@ def main() -> int:
         sys.stdout.flush()
 
         model = YOLO(isi["bobot"])
+
+        # Ultralytics dimatikan verbose-nya di atas — kalau tidak, bilah tqdm
+        # per-batch membanjiri log 400 epoch. Sebagai gantinya kita tulis SATU
+        # baris ringkas TIAP epoch (loss latih + mAP val + menit berjalan),
+        # supaya panel Log menampilkan kemajuan sungguhan, bukan diam di baris
+        # pembuka. Callback ditulis defensif: satu galat pelaporan tidak boleh
+        # menjatuhkan training yang sudah berjalan berjam-jam.
+        def _lapor_epoch(trainer):
+            try:
+                ep = int(getattr(trainer, "epoch", 0)) + 1
+                tot = int(getattr(trainer, "epochs", 0) or 0)
+                # Ultralytics memanggil sekali lagi untuk validasi akhir setelah
+                # epoch terakhir (ep = tot+1); jangan cetak baris "epoch 401/400".
+                if tot and ep > tot:
+                    return
+                bagian = [f"epoch {ep}/{tot}"]
+                try:
+                    li = (trainer.label_loss_items(trainer.tloss)
+                          if getattr(trainer, "tloss", None) is not None else {})
+                    pendek = {"box_loss": "box", "seg_loss": "seg", "cls_loss": "cls"}
+                    los = [f"{pendek[n]} {float(v):.3f}"
+                           for k, v in (li or {}).items()
+                           for n in [k.split("/")[-1]] if n in pendek]
+                    if los:
+                        bagian.append("loss " + " ".join(los))
+                except Exception:                       # noqa: BLE001
+                    pass
+                try:
+                    m = trainer.metrics or {}
+
+                    def amb(*nama):
+                        for x in nama:
+                            if m.get(x) is not None:
+                                return float(m[x])
+                        return None
+                    map50 = amb("metrics/mAP50(M)", "metrics/mAP50(B)")
+                    map5095 = amb("metrics/mAP50-95(M)", "metrics/mAP50-95(B)")
+                    mt = []
+                    if map50 is not None:
+                        mt.append(f"mAP50 {map50:.3f}")
+                    if map5095 is not None:
+                        mt.append(f"mAP50-95 {map5095:.3f}")
+                    if mt:
+                        bagian.append("· " + " ".join(mt))
+                except Exception:                       # noqa: BLE001
+                    pass
+                bagian.append(f"· {int(time.time() - t0) // 60}m")
+                print("  " + "  ".join(bagian), flush=True)
+            except Exception:                           # noqa: BLE001
+                pass
+
+        model.add_callback("on_fit_epoch_end", _lapor_epoch)
         model.train(
             data=str(yaml),
             task=isi["tugas"],
