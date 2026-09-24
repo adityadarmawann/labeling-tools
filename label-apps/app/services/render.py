@@ -18,7 +18,12 @@ from ..config import get_settings
 from .scanner import item_key, kunci_isi
 
 JPEG_QUALITY = 86
-OVERLAY_ALPHA = 0.34
+# Isi mask di atas gambar. Dinaikkan dari 0.34: pada foto terang (kotak susu
+# putih) warna setipis itu nyaris tak terlihat.
+OVERLAY_ALPHA = 0.45
+# Dinaikkan tiap kali gambar overlay-nya berubah, supaya thumbnail lama yang
+# tercache (kunci-nya dari isi berkas, BUKAN dari kode ini) ikut dibuat ulang.
+RENDER_VERSI = 2
 
 
 def hash_kelas(nama) -> int:
@@ -57,25 +62,30 @@ def render(item: dict, side: int):
     im = cv2.imread(str(item["img"]))
     if im is None:
         return None
+    # Diperkecil DULU, baru mask digambar di atasnya. Sebelumnya kebalikannya:
+    # garis 3px digambar di gambar 4080px lalu diperkecil ke 320px, jadi lebarnya
+    # ikut menyusut ke <0,3px dan lenyap kabur oleh INTER_AREA — itulah kenapa
+    # poligonnya "hampir tak kelihatan". Digambar sesudah diperkecil, tebalnya
+    # relatif ke ukuran thumbnail dan tetap tajam apa pun resolusi sumbernya.
+    h, w = im.shape[:2]
+    sc = side / max(h, w)
+    ow, oh = max(1, round(w * sc)), max(1, round(h * sc))
+    im = cv2.resize(im, (ow, oh), interpolation=cv2.INTER_AREA)
     ov = im.copy()
+    tebal = max(2, round(min(ow, oh) / 75))        # ~4px di thumbnail 320px
     for s in item["shapes"]:
         col = cls_color(s["label"])[::-1]          # cv2 memakai BGR
-        pts = s["pts"].astype(np.int32)
-        tebal = max(2, int(min(im.shape[:2]) / 200))
+        pts = np.round(s["pts"] * sc).astype(np.int32)
         # Titik, garis, dan polyline tidak punya bagian dalam: mengisinya
         # menghasilkan bercak yang tidak ada di anotasinya.
         if s["type"] == "point":
-            cv2.circle(im, tuple(pts[0]), max(3, tebal * 2), col, -1)
+            cv2.circle(im, tuple(pts[0]), max(3, tebal * 2), col, -1, cv2.LINE_AA)
         elif s["type"] in ("line", "linestrip"):
-            cv2.polylines(im, [pts], False, col, tebal)
+            cv2.polylines(im, [pts], False, col, tebal, cv2.LINE_AA)
         else:
             cv2.fillPoly(ov, [pts], col)
-            cv2.polylines(im, [pts], True, col, tebal)
-    im = cv2.addWeighted(ov, OVERLAY_ALPHA, im, 1 - OVERLAY_ALPHA, 0)
-    h, w = im.shape[:2]
-    sc = side / max(h, w)
-    return cv2.resize(im, (max(1, int(w * sc)), max(1, int(h * sc))),
-                      interpolation=cv2.INTER_AREA)
+            cv2.polylines(im, [pts], True, col, tebal, cv2.LINE_AA)
+    return cv2.addWeighted(ov, OVERLAY_ALPHA, im, 1 - OVERLAY_ALPHA, 0)
 
 
 # Thumbnail dipakai BERSAMA semua akun, tidak lagi satu salinan per akun.
@@ -114,7 +124,7 @@ def nama_thumb(item: dict, side: int) -> str:
     disapu dengan satu glob saat anotasinya berubah — tanpa itu, tiap suntingan
     meninggalkan thumbnail yatim yang menumpuk selama server hidup.
     """
-    return f"{item_key(item)}_{kunci_isi(item)}_{side}.jpg"
+    return f"{item_key(item)}_{kunci_isi(item)}_{side}v{RENDER_VERSI}.jpg"
 
 
 def thumb_path(sess, item: dict, side: int) -> Path | None:
