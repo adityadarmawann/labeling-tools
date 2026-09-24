@@ -67,6 +67,32 @@ const wrap = document.getElementById('wrap');
 const img = new Image();
 const el = id => document.getElementById(id);
 
+// Panah "kembali" mengarah ke halaman ASAL (job / papan anotasi / grid tempat
+// labeler dibuka), bukan selalu ke grid. Halamannya ditangkap dari referrer
+// SATU KALI saat masuk lalu disimpan per-tab; pindah antar gambar menulis ulang
+// URL (pushState/location.href ke /label?path=...) tetapi itu BUKAN asal baru,
+// jadi tujuan kembalinya tidak bergeser ke gambar sebelumnya. Referrer beda-
+// situs atau kosong diabaikan — jatuh ke "/" seperti sebelumnya.
+function _asalDariReferrer(ref, hrefSekarang) {
+  if (!ref || /\/label(?:[/?#]|$)/.test(ref)) return null;   // kosong / masih di labeler
+  try {
+    const u = new URL(ref, hrefSekarang);
+    if (u.origin !== new URL(hrefSekarang).origin) return null;
+    return u.pathname + u.search;
+  } catch (e) { return null; }
+}
+(function () {
+  const bal = document.querySelector('.lab-balik');
+  if (!bal) return;
+  let asal = '/';
+  try {
+    const a = _asalDariReferrer(document.referrer, location.href);
+    if (a) sessionStorage.setItem('labelapp_asal', a);
+    asal = sessionStorage.getItem('labelapp_asal') || '/';
+  } catch (e) { /* mode privat / referrer disembunyikan */ }
+  bal.setAttribute('href', asal);
+})();
+
 // ---------------------------------------------------------------- warna kelas
 
 // Rumus yang sama dengan cls_color di server, supaya warna sebuah kelas
