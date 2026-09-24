@@ -1857,22 +1857,40 @@ const Progres = (() => {
  * aksi ikut menghitung ulang — mengubah `.checked` lewat skrip tidak memicu
  * 'change' pada kotak yang lain.
  */
+// Pelacak Shift global — dilacak dari keydown/keyup, BUKAN dibaca dari
+// peristiwa kotak centang. Dua sebab: 'change' tidak punya shiftKey sama
+// sekali, dan pada ubin job kotaknya tersembunyi (0x0) sementara gambarnya
+// yang jadi label — klik yang DITERUSKAN label ke kotak itu bisa kehilangan
+// shiftKey di peramban sungguhan. Keadaan tombol Shift yang sebenarnya selalu
+// benar apa pun jalannya.
+(function () {
+  if (window.__lacakShift) return;
+  window.__lacakShift = true;
+  window.__shiftDitekan = false;
+  addEventListener('keydown', (e) => { if (e.key === 'Shift') window.__shiftDitekan = true; });
+  addEventListener('keyup', (e) => { if (e.key === 'Shift') window.__shiftDitekan = false; });
+  addEventListener('blur', () => { window.__shiftDitekan = false; });
+})();
+
 window.pilihRentang = function (wadah, sel, saatUbah) {
-  let jangkar = null;
-  wadah.addEventListener('click', (ev) => {
-    const k = ev.target.closest(sel);
-    if (!k || !wadah.contains(k)) return;
-    if (ev.shiftKey && jangkar && jangkar !== k && wadah.contains(jangkar)) {
-      const semua = [...wadah.querySelectorAll(sel)];
-      const a = semua.indexOf(jangkar);
-      const b = semua.indexOf(k);
-      if (a >= 0 && b >= 0) {
-        for (let i = Math.min(a, b); i <= Math.max(a, b); i++) {
-          semua[i].checked = k.checked;
-        }
+  let jangkar = -1;                     // indeks kotak terakhir yang berubah
+  // Dipasang di 'change' (bukan 'click'): change terpicu SEKALI tiap kotak yang
+  // benar-benar berganti — diklik langsung (grid) maupun lewat labelnya (ubin
+  // job) — dan `checked`-nya sudah final di situ. Rentang lalu disamakan ke
+  // keadaan itu. Menyetel .checked lewat skrip TIDAK memicu change, jadi
+  // saatUbah dipanggil sendiri supaya bilah aksi menghitung ulang seisi rentang.
+  wadah.addEventListener('change', (ev) => {
+    const k = ev.target;
+    if (!k.matches || !k.matches(sel)) return;
+    const semua = [...wadah.querySelectorAll(sel)];
+    const idx = semua.indexOf(k);
+    if (idx < 0) return;
+    if (window.__shiftDitekan && jangkar >= 0 && jangkar !== idx && jangkar < semua.length) {
+      for (let i = Math.min(idx, jangkar); i <= Math.max(idx, jangkar); i++) {
+        semua[i].checked = k.checked;
       }
     }
-    jangkar = k;
+    jangkar = idx;
     if (saatUbah) saatUbah();
   });
 };
@@ -1904,11 +1922,10 @@ window.pilihRentang = function (wadah, sel, saatUbah) {
       .classList.toggle('kartu-terpilih', k.checked));
   }
 
-  // Perbarui bilah saat centang berubah oleh sebab apa pun (klik tunggal,
-  // Pilih semua, keyboard). Rentang Shift ditangani pilihRentang di 'click'.
-  grid.addEventListener('change', (ev) => {
-    if (ev.target.classList && ev.target.classList.contains('kp-in')) segarkan();
-  });
+  // pilihRentang mendengarkan 'change' pada grid: tiap centang yang berubah
+  // (klik tunggal maupun rentang Shift) memanggil segarkan. Tombol "Pilih
+  // semua/Bersihkan" di bawah memanggil segarkan sendiri karena menyetel
+  // .checked lewat skrip tidak memicu change.
   pilihRentang(grid, '.kp-in', segarkan);
 
   document.getElementById('pb-semua').onclick = () => {

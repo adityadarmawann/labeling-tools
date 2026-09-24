@@ -1742,6 +1742,10 @@ body.berprojek main{flex:1 1 auto;min-height:0;
   background:rgba(var(--header),.86);backdrop-filter:blur(4px);cursor:pointer}
 .kartu-pilih input{width:15px;height:15px;cursor:pointer;accent-color:var(--aksi)}
 .card{position:relative}
+/* Kartu yang bisa dicentang (grid dataset): Shift+klik memilih rentang, jadi
+   teksnya tidak boleh ikut tersorot biru. Kartu tanpa centang — mis. daftar
+   projek — tidak kena, jadi namanya tetap bisa disalin. */
+.card:has(.kartu-pilih){user-select:none}
 /* Terpilih ditandai di kartunya sendiri, bukan cuma di bilah: pada 50 kartu,
    yang sudah dicentang berada jauh dari angka penghitungnya. */
 .card.kartu-terpilih{outline:2px solid var(--aksi);outline-offset:-2px}
@@ -1955,7 +1959,9 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
 .jb-kisi{display:grid;gap:10px;
   grid-template-columns:repeat(auto-fill,minmax(110px,1fr));
   max-height:min(62vh,640px);overflow-y:auto;padding:2px}
-.jb-ubin{margin:0}
+/* user-select:none supaya Shift+klik memilih ubin, bukan menyorot teks nama
+   berkas & tombol jadi biru. Ubin memang untuk dicentang, bukan disalin. */
+.jb-ubin{margin:0; user-select:none}
 .jb-gambar{position:relative;display:block;aspect-ratio:1;border-radius:7px;
   overflow:hidden;background:var(--sunk);border:1px solid var(--line);
   cursor:pointer}
