@@ -1844,6 +1844,40 @@ const Progres = (() => {
 })();
 
 
+/* Pilih rentang dengan Shift, dipakai SEMUA grid multi-pilih (grid dataset di
+ * bawah, rincian job di job.js). Klik satu centang, lalu Shift+klik centang
+ * lain: semua yang di antaranya ikut mengambil keadaan centang terakhir —
+ * seperti memilih berkas di penjelajah file mana pun.
+ *
+ * Dipasang di 'click', BUKAN 'change'. `change` bukan MouseEvent, jadi
+ * `shiftKey`-nya selalu undefined di sana — itulah kenapa versi lama yang
+ * memakai `change` tidak pernah benar-benar memilih rentang. `click` pada
+ * kotak centang berjalan SESUDAH keadaannya berpindah, jadi `k.checked` sudah
+ * bernilai baru saat rentangnya disamakan. `saatUbah` dipanggil supaya bilah
+ * aksi ikut menghitung ulang — mengubah `.checked` lewat skrip tidak memicu
+ * 'change' pada kotak yang lain.
+ */
+window.pilihRentang = function (wadah, sel, saatUbah) {
+  let jangkar = null;
+  wadah.addEventListener('click', (ev) => {
+    const k = ev.target.closest(sel);
+    if (!k || !wadah.contains(k)) return;
+    if (ev.shiftKey && jangkar && jangkar !== k && wadah.contains(jangkar)) {
+      const semua = [...wadah.querySelectorAll(sel)];
+      const a = semua.indexOf(jangkar);
+      const b = semua.indexOf(k);
+      if (a >= 0 && b >= 0) {
+        for (let i = Math.min(a, b); i <= Math.max(a, b); i++) {
+          semua[i].checked = k.checked;
+        }
+      }
+    }
+    jangkar = k;
+    if (saatUbah) saatUbah();
+  });
+};
+
+
 /* ==================================================== pilih borongan di grid
  * Memilih beberapa gambar lalu mengembalikannya ke antrean kerja. Gunanya
  * validasi menyeluruh: kalau saat memeriksa dataset ternyata ada yang salah
@@ -1860,7 +1894,6 @@ const Progres = (() => {
 
   const kotak = () => [...grid.querySelectorAll('.kp-in')];
   const dipilih = () => kotak().filter((k) => k.checked);
-  let terakhir = null;                 // untuk pilih rentang dengan Shift
 
   function segarkan() {
     const n = dipilih().length;
@@ -1871,24 +1904,12 @@ const Progres = (() => {
       .classList.toggle('kartu-terpilih', k.checked));
   }
 
+  // Perbarui bilah saat centang berubah oleh sebab apa pun (klik tunggal,
+  // Pilih semua, keyboard). Rentang Shift ditangani pilihRentang di 'click'.
   grid.addEventListener('change', (ev) => {
-    const k = ev.target;
-    if (!k.classList || !k.classList.contains('kp-in')) return;
-    // Shift+klik memilih seluruh rentang, seperti daftar berkas mana pun.
-    // Tanpa ini, memilih 50 kartu berarti lima puluh klik.
-    if (ev.shiftKey && terakhir && terakhir !== k) {
-      const semua = kotak();
-      const a = semua.indexOf(terakhir);
-      const b = semua.indexOf(k);
-      if (a >= 0 && b >= 0) {
-        for (let i = Math.min(a, b); i <= Math.max(a, b); i++) {
-          semua[i].checked = k.checked;
-        }
-      }
-    }
-    terakhir = k;
-    segarkan();
+    if (ev.target.classList && ev.target.classList.contains('kp-in')) segarkan();
   });
+  pilihRentang(grid, '.kp-in', segarkan);
 
   document.getElementById('pb-semua').onclick = () => {
     kotak().forEach((k) => { k.checked = true; });

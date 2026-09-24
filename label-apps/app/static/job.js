@@ -70,6 +70,11 @@
     perbarui();
   });
 
+  // Shift+klik memilih seluruh rentang, sama seperti grid dataset. Seluruh
+  // ubin di sini adalah label (.jb-gambar), jadi Shift+klik di gambarnya pun
+  // ikut. pilihRentang global didefinisikan di app.js yang dimuat lebih dulu.
+  pilihRentang($('jb-kisi'), '.jb-pilih', perbarui);
+
   async function pindahkan(keluarkan) {
     const dipilih = terpilih();
     if (!dipilih.length) return;
