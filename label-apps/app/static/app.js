@@ -1896,6 +1896,28 @@ window.pilihRentang = function (wadah, sel, saatUbah) {
 };
 
 
+/* ============================================= kartu per baris grid Dataset
+ * Preferensi tampilan MURNI di peramban (localStorage), disetel sebagai
+ * --kartu-kolom pada #grid (lihat app.css). Tidak lewat URL/server: ia tidak
+ * mengubah data, cuma kerapatan tampilan. */
+(() => {
+  const sel = document.getElementById('kartu-kolom');
+  const grid = document.getElementById('grid');
+  if (!sel || !grid) return;
+  const BAWAAN = '10';
+  const terapkan = (v) => grid.style.setProperty('--kartu-kolom', v);
+  let v = BAWAAN;
+  try { v = localStorage.getItem('labelapp_kartu_kolom') || BAWAAN; } catch (e) { /* mode privat */ }
+  if (![...sel.options].some((o) => o.value === v)) v = BAWAAN;
+  sel.value = v;
+  terapkan(v);
+  sel.addEventListener('change', () => {
+    terapkan(sel.value);
+    try { localStorage.setItem('labelapp_kartu_kolom', sel.value); } catch (e) { /* abai */ }
+  });
+})();
+
+
 /* ==================================================== pilih borongan di grid
  * Memilih beberapa gambar lalu mengembalikannya ke antrean kerja. Gunanya
  * validasi menyeluruh: kalau saat memeriksa dataset ternyata ada yang salah

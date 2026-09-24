@@ -212,6 +212,14 @@ h1{font-size:15px;font-weight:600;letter-spacing:.02em}
 main{padding:20px 22px 60px}
 .grid{display:grid;gap:14px;
   grid-template-columns:repeat(auto-fill,minmax(210px,1fr))}
+/* Grid Dataset: jumlah kartu per baris bisa diatur (kontrol "Per baris"),
+   disimpan per-peramban. Bawaan 10. Di layar sempit (<=1200px) balik ke
+   auto-fill supaya kartunya tidak jadi terlalu kecil; tombol aksi menciut rapi
+   (elipsis + title). */
+#grid{grid-template-columns:repeat(var(--kartu-kolom,10),minmax(0,1fr))}
+@media (max-width:1200px){
+  #grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;
   overflow:hidden;position:relative;transition:.14s;
   box-shadow:0 1px 2px rgba(var(--bayang),.05)}

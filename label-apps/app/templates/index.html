@@ -405,6 +405,18 @@
       </select>
     </form>
 
+    {#- Jumlah kartu per baris: preferensi tampilan MURNI di peramban
+        (localStorage), jadi tidak lewat form/URL seperti Urut. Di layar sempit
+        diabaikan (auto-fill), lihat app.css. -#}
+    <span class="saring-urut">
+      <label class="halus" for="kartu-kolom">Per baris</label>
+      <select id="kartu-kolom" aria-label="Kartu per baris">
+        {%- for n in [6, 8, 10, 12, 14] %}
+        <option value="{{ n }}"{% if n == 10 %} selected{% endif %}>{{ n }}</option>
+        {%- endfor %}
+      </select>
+    </span>
+
     {#- Satu tindakan untuk membatalkan semuanya. Tanpa ini, saringan yang
         sedang berlaku hanya terbaca dari tombol yang tertutup, dan orang harus
         membuka tiga dropdown satu per satu untuk mengosongkannya. Urutan dan
