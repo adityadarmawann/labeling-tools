@@ -95,7 +95,7 @@ with connect(ws_url, max_size=None) as ws:
     dd.kirim("Page.navigate", url=f"http://127.0.0.1:{PORT}/versi?ds=p1"); time.sleep(2.5)
 
     dd.js("document.getElementById('vs-mulai').click()"); time.sleep(2.5)
-    dd.js("document.querySelector('[data-langkah=\"4\"] .wz-ubah').click()"); time.sleep(0.8)
+    dd.js("document.querySelector('[data-langkah=\"5\"] .wz-ubah').click()"); time.sleep(0.8)
 
     n_bentuk = dd.js("document.querySelectorAll('#wz-aug .op-baris').length")
     cek("mode bentuk: daftar langkah terisi", n_bentuk >= 10, f"{n_bentuk} langkah")
@@ -122,7 +122,7 @@ with connect(ws_url, max_size=None) as ws:
           "window.fetch = (u, o) => { if (String(u).includes('/api/versi/estimasi'))"
           " { try { window.__resep = JSON.parse(o.body).resep; } catch(e){} }"
           " return _f(u, o); };")
-    dd.js("document.querySelector('[data-langkah=\"4\"] [data-lanjut]').click()")
+    dd.js("document.querySelector('[data-langkah=\"5\"] [data-lanjut]').click()")
     time.sleep(2.5)
     r = dd.js("window.__resep && JSON.stringify(window.__resep)")
     cek("resep tertangkap saat dikirim", bool(r))
@@ -136,7 +136,7 @@ with connect(ws_url, max_size=None) as ws:
             len(mati) == 6, f"{len(mati)}/6: {mati}")
 
     # Kembali ke bentuk: harus pulih
-    dd.js("document.querySelector('[data-langkah=\"4\"] .wz-ubah').click()"); time.sleep(0.6)
+    dd.js("document.querySelector('[data-langkah=\"5\"] .wz-ubah').click()"); time.sleep(0.6)
     dd.js("document.querySelector('input[name=\"wz-warna\"][value=\"bentuk\"]').click()")
     time.sleep(1.0)
     n2 = dd.js("document.querySelectorAll('#wz-aug .op-baris').length")

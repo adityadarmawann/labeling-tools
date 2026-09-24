@@ -122,7 +122,7 @@
         Terbanyak <b>${kelas[0][0]}</b> berbanding tersedikit
         <b>${kelas[kelas.length - 1][0]}</b> =
         <b>${desimal(rasio)}&times;</b>${timpang
-          ? ' — cukup timpang. "Seimbangkan jumlah kelas" di langkah 4 memperkecil selisih ini.'
+          ? ' — cukup timpang. "Seimbangkan jumlah kelas" di langkah 5 memperkecil selisih ini.'
           : ' — cukup seimbang.'}</p>` : ''}
     </div>`;
   }
@@ -266,7 +266,8 @@
       li.toggleAttribute('data-buka', Number(li.dataset.langkah) === n);
       li.toggleAttribute('data-lewat', Number(li.dataset.langkah) < n);
     });
-    if (n === 5) hitungPerkiraan();
+    if (n === 2) muatKelas();
+    if (n === 6) hitungPerkiraan();
   }
   /* Mode warna. Begitu dipilih, operasi penggeser rona di daftar augmentasi
      ditandai mati — bukan sekadar diabaikan diam-diam di server. Orang harus
@@ -368,10 +369,11 @@
       `<span><b>${r.negatif_sumber}</b> sampel negatif</span>`;
     el('wz-r1').textContent = `${r.n_sumber} gambar · ${r.kelas} kelas`;
     gambarSplit();
+    muatKelas();
   }
   const jumlahVersi = () => document.querySelectorAll('.vs-kartu').length;
 
-  // ---------------------------------------------------- langkah 2: split
+  // ---------------------------------------------------- langkah 3: split
   const rasioTeks = () =>
     `${el('wz-train').value},${el('wz-valid').value},${el('wz-test').value}`;
 
@@ -395,7 +397,7 @@
         + 'tanpa itu pembagiannya tetap memakai nama berkas.';
     }
     const lanjut = document.querySelector(
-      '[data-langkah="2"] [data-lanjut]');
+      '[data-langkah="3"] [data-lanjut]');
     if (lanjut) lanjut.disabled = bocor && !adaRencana;
   }
 
@@ -457,7 +459,7 @@
   };
   el('wz-batal-bocor').onclick = () => fetch('/api/split/batal', { method: 'POST' });
 
-  // ------------------------------------------- langkah 3 & 4: daftar operasi
+  // ------------------------------------------- langkah 4 & 5: daftar operasi
   function aktif(tahap, oid) {
     const p = resep[tahap][oid];
     if (p !== undefined) return p.aktif !== false;
@@ -524,7 +526,11 @@
     if (!katalog) return;
     for (const tahap of ['pra', 'aug']) {
       const wadah = el(tahap === 'pra' ? 'wz-pra' : 'wz-aug');
-      const urut = tahap === 'pra' ? katalog.urut_pra : Object.keys(katalog.aug);
+      // ubah_kelas punya langkahnya sendiri (Langkah 2 · Kelas), jadi tidak
+      // ikut di daftar operasi Preprocessing — dua tempat mengatur hal yang
+      // sama cuma membingungkan.
+      const urut = (tahap === 'pra' ? katalog.urut_pra : Object.keys(katalog.aug))
+        .filter((oid) => oid !== 'ubah_kelas');
       const nyala = urut.filter((oid) => aktif(tahap, oid));
       // Bawaan yang DIMATIKAN: tidak muncul di daftar, tetapi harus disebut.
       // Tanpa ini, mematikan langkah adalah pintu satu arah yang tidak
@@ -691,7 +697,7 @@
         `${rentang ? ((Number(bar.value) - s.min) / rentang) * 100 : 0}%`);
     };
     // Ditulis saat digeser supaya angkanya tidak pernah tertinggal di
-    // belakang batangnya; daftar di langkah 3/4 baru digambar ulang saat
+    // belakang batangnya; daftar di langkah 4/5 baru digambar ulang saat
     // jarinya lepas, karena itu menyentuh seluruh petak.
     bar.oninput = () => {
       entri(tahap, oid)[kunci] = s.jenis === 'int'
@@ -758,39 +764,39 @@
     return baris;
   }
 
-  // Satu layar untuk seluruh kelas projek: gabung, buang, atau ganti nama.
-  // `peta` memakai INDEKS kelas (itu yang dibaca mesinnya) tetapi yang tampil
-  // harus nama, jadi keduanya datang bersama dari /api/versi/estimasi.
+  // Satu layar untuk seluruh kelas projek (Langkah 2 · Kelas): centang =
+  // dipakai, lepas centang = jadi latar (buang), plus gabung ke kelas lain atau
+  // ganti nama. `peta` memakai INDEKS kelas — itu yang dibaca mesinnya — tetapi
+  // yang tampil harus nama, jadi keduanya datang bersama dari
+  // /api/versi/estimasi. Perubahan apa pun MENYALAKAN operasinya sendiri
+  // (aktif=true); kalau semua dikembalikan ke "dipakai + Biarkan", ia mati lagi
+  // supaya versi yang tak menyentuh kelas tidak membayar apa-apa.
   function layarKelas(tahap, oid) {
     const bagian = document.createElement('div');
     const daftar = (sumber && sumber.daftar_kelas) || [];
     if (!daftar.length) {
       bagian.innerHTML = '<p class="op-hampa">Dataset ini belum punya kelas '
-        + 'bernama, jadi tidak ada yang bisa digabung atau diganti.</p>';
+        + 'bernama, jadi tidak ada yang bisa diatur.</p>';
       return bagian;
     }
     const par = resep[tahap][oid] || {};
     const peta = par.peta || {};
     const nama = par.nama || {};
 
-    // Perubahan di sini tidak berlaku selama saklarnya mati. Mengatakannya di
-    // sini, bukan membiarkan orang menemukannya sesudah versinya jadi.
-    if (!aktif(tahap, oid)) {
-      const p = document.createElement('p');
-      p.className = 'kl-mati';
-      p.textContent = 'Modify Classes masih mati. Nyalakan saklarnya di daftar '
-        + 'langkah supaya perubahan di sini ikut dipakai.';
-      bagian.appendChild(p);
-    }
+    const jumlahDipakai = () =>
+      [...bagian.querySelectorAll('.kl-pakai')].filter((x) => x.checked).length;
 
     for (const k of daftar) {
       const baris = document.createElement('div');
       baris.className = 'kl';
+      const dibuang = peta[k.i] === null;
+      if (dibuang) baris.classList.add('kl-latar');
       const lain = daftar.filter((x) => x.i !== k.i);
-      const kini = peta[k.i] === null ? 'buang'
-        : (peta[k.i] !== undefined ? `g:${peta[k.i]}`
-          : (nama[k.i] !== undefined ? 'nama' : ''));
+      const kini = (typeof peta[k.i] === 'number') ? `g:${peta[k.i]}`
+        : (nama[k.i] !== undefined ? 'nama' : '');
       baris.innerHTML =
+        `<label class="kl-pakai-bungkus" title="Centang: dipakai. Lepas: jadi latar.">` +
+        `<input class="kl-pakai" type="checkbox"${dibuang ? '' : ' checked'}></label>` +
         `<div class="kl-kiri"><b>${k.nama}</b>` +
         `<span class="kl-n">${k.objek.toLocaleString('id')} objek</span></div>` +
         '<select class="kl-sel">' +
@@ -798,11 +804,12 @@
         `<option value="nama"${kini === 'nama' ? ' selected' : ''}>Ganti nama</option>` +
         lain.map((x) => `<option value="g:${x.i}"` +
           `${kini === `g:${x.i}` ? ' selected' : ''}>Gabung ke ${x.nama}</option>`).join('') +
-        `<option value="buang"${kini === 'buang' ? ' selected' : ''}>Buang kelas ini</option>` +
         '</select>' +
         `<input class="kl-nama" type="text" maxlength="60" placeholder="nama baru" ` +
         `value="${nama[k.i] !== undefined ? String(nama[k.i]).replace(/"/g, '&quot;') : ''}"` +
-        `${kini === 'nama' ? '' : ' hidden'}>`;
+        `${kini === 'nama' ? '' : ' hidden'}>` +
+        `<span class="kl-latar-tanda"${dibuang ? '' : ' hidden'}>&rarr; jadi latar</span>`;
+      const cb = baris.querySelector('.kl-pakai');
       const sel = baris.querySelector('.kl-sel');
       const inp = baris.querySelector('.kl-nama');
       const tulis = () => {
@@ -811,10 +818,27 @@
         e.nama = { ...(e.nama || {}) };
         delete e.peta[k.i];
         delete e.nama[k.i];
-        if (sel.value === 'buang') e.peta[k.i] = null;
+        if (!cb.checked) e.peta[k.i] = null;                 // jadi latar (buang)
         else if (sel.value.startsWith('g:')) e.peta[k.i] = Number(sel.value.slice(2));
         else if (sel.value === 'nama') e.nama[k.i] = inp.value;
+        // Nyalakan/matikan operasinya sendiri menurut ada-tidaknya perubahan.
+        e.aktif = !!(Object.keys(e.peta).length || Object.keys(e.nama).length);
+        ringkasKelas();
         gambarOperasi();
+      };
+      cb.onchange = () => {
+        // Jangan biarkan SEMUA kelas jadi latar: versi tanpa satu pun kelas
+        // cuma berisi contoh negatif dan tak bisa melatih apa pun.
+        if (!cb.checked && jumlahDipakai() < 1) {
+          cb.checked = true;
+          toast('Sisakan minimal satu kelas — versi tanpa kelas cuma berisi latar.');
+          return;
+        }
+        baris.classList.toggle('kl-latar', !cb.checked);
+        sel.disabled = !cb.checked;
+        inp.hidden = !cb.checked || sel.value !== 'nama';
+        baris.querySelector('.kl-latar-tanda').hidden = cb.checked;
+        tulis();
       };
       sel.onchange = () => {
         inp.hidden = sel.value !== 'nama';
@@ -823,9 +847,43 @@
         if (!inp.hidden) inp.focus();
       };
       inp.oninput = tulis;
+      sel.disabled = dibuang;
       bagian.appendChild(baris);
     }
     return bagian;
+  }
+
+  // Langkah 2 · Kelas: gambar panelnya + ringkasannya. Dipanggil saat sumber
+  // termuat dan tiap kali langkah 2 dibuka, jadi ia selalu mencerminkan keadaan
+  // resep.pra.ubah_kelas terkini (mis. sesudah diubah lalu dibuka lagi).
+  function muatKelas() {
+    const wrap = el('wz-kelas');
+    if (!wrap) return;
+    if (!sumber) { wrap.textContent = 'memuat…'; return; }
+    wrap.innerHTML = '';
+    wrap.appendChild(layarKelas('pra', 'ubah_kelas'));
+    ringkasKelas();
+  }
+
+  function ringkasKelas() {
+    const daftar = (sumber && sumber.daftar_kelas) || [];
+    const peta = ((resep.pra.ubah_kelas || {}).peta) || {};
+    const nama = ((resep.pra.ubah_kelas || {}).nama) || {};
+    const latar = daftar.filter((k) => peta[k.i] === null).length;
+    const gabung = daftar.filter((k) => typeof peta[k.i] === 'number').length;
+    const rename = daftar.filter((k) => nama[k.i] !== undefined).length;
+    const pakai = daftar.length - latar;
+    const bagian = [];
+    if (latar) bagian.push(`${latar} jadi latar`);
+    if (gabung) bagian.push(`${gabung} digabung`);
+    if (rename) bagian.push(`${rename} diganti nama`);
+    const r = el('wz-r-kelas');
+    if (r) {
+      r.textContent = daftar.length
+        ? (bagian.length ? `${pakai} kelas dipakai · ${bagian.join(' · ')}`
+                         : `${daftar.length} kelas, semua dipakai`)
+        : '';
+    }
   }
 
   function gambarAtur() {
@@ -872,7 +930,7 @@
     const q = (el('op-cari').value || '').trim().toLowerCase();
     const wadah = el('op-isi');
     wadah.innerHTML = '';
-    const semua = Object.keys(katalog[tahap]);
+    const semua = Object.keys(katalog[tahap]).filter((i) => i !== 'ubah_kelas');
     const nyala = semua.filter((i) => aktif(tahap, i));
 
     // Dua kelompok, dinamai menurut AKIBATNYA — bukan asal-usulnya. Dengan
@@ -968,7 +1026,7 @@
     gambarOperasi();
   };
 
-  // ------------------------------------------------------- langkah 5: buat
+  // ------------------------------------------------------- langkah 6: buat
   function kumpulkanResep() {
     // Dibaca ulang di sini, bukan cuma mengandalkan handler change: kalau
     // radionya dipulihkan browser (muat ulang, kembali dari tab lain) tanpa
@@ -1000,8 +1058,8 @@
     // Fase lanjutan ikut ditinjau, dan itu bukan hiasan: keempatnya menyala
     // sejak awal dan justru merekalah yang paling banyak menambah gambar —
     // "Seimbangkan jumlah kelas" bisa melipatgandakan kelas minoritas. Tanpa
-    // baris ini langkah 5 diam soal keempatnya, sehingga satu-satunya cara
-    // tahu balancer sedang menyala adalah kembali ke langkah 4 dan membukanya.
+    // baris ini langkah 6 diam soal keempatnya, sehingga satu-satunya cara
+    // tahu balancer sedang menyala adalah kembali ke langkah 5 dan membukanya.
     // Yang tidak aktif TETAP disebut, sebagai "mati": senyap tentang sesuatu
     // yang dimatikan terbaca sama dengan senyap karena tidak punya fiturnya.
     // Yang mati disebut di barisnya sendiri, dengan kata "mati" yang benar-
@@ -1035,7 +1093,7 @@
     const keluhan = r.rasio_pesan
       ? `<span class="split-warn">${r.rasio_pesan}</span><br>` : '';
     // Tiga fase penambah menumpang pipeline augmentasi. Kalau seluruh
-    // transform dimatikan di langkah 4, ketiganya tidak menghasilkan apa pun
+    // transform dimatikan di langkah 5, ketiganya tidak menghasilkan apa pun
     // — sementara sakelarnya di sana tetap tampak menyala dan tidak
     // menceritakan itu kepada siapa pun.
     const matiAug = r.ada_aug === false

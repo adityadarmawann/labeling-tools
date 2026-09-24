@@ -2531,6 +2531,16 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
 .kl{display:flex;align-items:center;flex-wrap:wrap;gap:8px 10px;padding:11px 0;
   border-bottom:1px solid var(--line)}
 .kl:last-child{border-bottom:0}
+/* Langkah 2 · Kelas: centang dipakai/latar + pilihan gabung/rename. */
+.wz-kelas{margin-top:6px}
+.kl-pakai-bungkus{flex:0 0 auto;display:grid;place-items:center;cursor:pointer}
+.kl-pakai{width:16px;height:16px;cursor:pointer;accent-color:var(--aksi)}
+/* Baris yang dijadikan latar: diredupkan, nama dicoret halus, tanda hijau. */
+.kl.kl-latar .kl-kiri b{color:var(--ink-dim);text-decoration:line-through;
+  text-decoration-color:var(--ink-faint)}
+.kl.kl-latar .kl-sel{opacity:.4}
+.kl-latar-tanda{flex:0 0 auto;font-size:11px;font-weight:600;color:var(--latar);
+  white-space:nowrap}
 .kl-kiri{flex:1 1 110px;min-width:0;display:flex;flex-direction:column;gap:2px}
 .kl-kiri b{font-size:12.5px;color:var(--ink);overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap}

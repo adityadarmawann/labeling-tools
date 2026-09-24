@@ -451,6 +451,38 @@ def test_gabung_buang_dan_ganti_nama_kelas_benar_benar_terjadi(klien, lingkungan
     assert indeks == {kel["botol"]}, (indeks, kel)
 
 
+def test_buang_kelas_jadi_latar_untuk_versi_ini_sumber_utuh(klien, lingkungan):
+    """Kelas yang dilepas centangnya di Langkah "Kelas" jadi LATAR versi ini:
+    objeknya lenyap dari label, gambar yang isinya cuma kelas itu jadi sampel
+    negatif, dan dataset SUMBER sama sekali tidak berubah. Ini payload persis
+    yang dikirim panel Kelas saat satu kelas di-none-kan."""
+    masuk(klien, "paul", PW_PAUL)
+    d = _ds(klien, n_botol=12, n_kaleng=8, n_negatif=6)
+    klien.post("/setsrc", params={"path": str(d)})
+
+    kel = {k["nama"]: k["i"] for k in klien.post(
+        "/api/versi/estimasi?split=80,10,10", json={"resep": {}}).json()["daftar_kelas"]}
+    resep = {"pra": {"ubah_kelas": {"aktif": True,
+                                    "peta": {str(kel["kaleng"]): None}}},
+             "aug": False, "volume": {"per_gambar": 0},
+             "fase": {"crop_zoom": {"aktif": False}, "balans_skala": {"aktif": False},
+                      "balans_kelas": {"aktif": False}, "porsi_negatif": {"aktif": False}}}
+    assert _mulai(klien, resep).get("ok")
+    assert _tunggu(klien, batas=180).get("selesai")
+
+    isi = klien.get("/api/versi/isi", params={"nomor": 1}).json()["isi"]
+    # kaleng lenyap sebagai kelas; botol utuh.
+    assert "kaleng" not in isi["per_kelas"], isi["per_kelas"]
+    assert isi["per_kelas"].get("botol") == 12, isi["per_kelas"]
+    # 8 gambar kaleng (kini tanpa objek) + 6 negatif asli = 14 sampel negatif.
+    assert isi["negatif"] == 14, isi
+
+    # SUMBER tak tersentuh: label kaleng pertama (g12) masih menyebut kaleng,
+    # dan daftar kelas projek masih dua.
+    assert "kaleng" in (d / "g12.json").read_text()
+    assert (d / "classes.txt").read_text().split() == ["botol", "kaleng"]
+
+
 def test_ganti_nama_diabaikan_kalau_operasinya_mati(klien, lingkungan):
     """Saklar mati berarti mati. Nama baru yang tetap terpakai membuat saklarnya
     berbohong."""
@@ -584,8 +616,8 @@ def test_fase_lanjutan_ikut_ditinjau_sebelum_tombol_buat(klien, lingkungan):
     """Langkah 5 harus menyebut keempat fase lanjutan, termasuk balancer.
 
     Keempatnya menyala sejak awal dan justru merekalah yang paling banyak
-    menambah gambar. Sebelum ini langkah 5 diam sama sekali soal mereka, jadi
-    satu-satunya cara tahu balancer sedang menyala adalah kembali ke langkah 4
+    menambah gambar. Sebelum ini langkah 6 diam sama sekali soal mereka, jadi
+    satu-satunya cara tahu balancer sedang menyala adalah kembali ke langkah 5
     dan membuka panelnya -- dan orang yang tidak menemukannya menyimpulkan
     fiturnya memang belum ada.
 
@@ -604,7 +636,7 @@ def test_fase_lanjutan_ikut_ditinjau_sebelum_tombol_buat(klien, lingkungan):
     assert blok.count("checked") == 4, blok[:400]
 
     js = klien.get("/static/versi.js").text
-    assert "Fase lanjutan" in js, "peninjau langkah 5 tidak menyebut fase"
+    assert "Fase lanjutan" in js, "peninjau langkah 6 tidak menyebut fase"
     for oid in ("wz-f-crop", "wz-f-skala", "wz-f-kelas", "wz-f-neg"):
         assert js.count(oid) >= 2, (
             f"{oid} dibaca saat menyusun resep tetapi tidak saat meninjau")

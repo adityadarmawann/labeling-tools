@@ -200,13 +200,14 @@ def test_tanpa_dataset_terbuka_ditolak(klien, lingkungan):
                          content=_foto_ruang()).json()["ok"]
 
 
-def test_formulirnya_ada_di_langkah_4_wizard(klien, lingkungan):
-    """Di langkah 4 karena di sinilah pelatnya dipakai: fase crop/zoom dan
-    skala yang menempel objek ke pelat latar."""
+def test_formulirnya_ada_di_langkah_5_wizard(klien, lingkungan):
+    """Di langkah 5 (Augmentasi) karena di sinilah pelatnya dipakai: fase
+    crop/zoom dan skala yang menempel objek ke pelat latar. (Sejak langkah
+    "Kelas" disisipkan sebagai langkah 2, nomornya bergeser dari 4 ke 5.)"""
     masuk(klien, "paul", PW_PAUL)
     d = _projek(klien)
     h = klien.get(f"/versi?ds={d.name}").text
-    blok = h.split('data-langkah="4"')[1].split('data-langkah="5"')[0]
+    blok = h.split('data-langkah="5"')[1].split('data-langkah="6"')[0]
     assert 'id="wz-latar"' in blok
     assert 'id="lt-berkas"' in blok and 'id="lt-daftar"' in blok
     assert "kosong" in blok, "formulirnya harus menyebut syarat ruang kosong"
