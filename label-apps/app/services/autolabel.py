@@ -329,29 +329,69 @@ def _segment_mobilesam(img: Path, points, labels, eps) -> Usulan:
 # itu berlaku untuk seluruh proses dan ikut mematikan torch, sehingga
 # pembuatan versi kehilangan GPU-nya juga.
 #
-# LABELAPP_OSAM_GPU=1 membuka paksaan ini untuk kartu yang memang cukup besar.
+# LABELAPP_OSAM_GPU=1 memaksa SEMUA model osam ke GPU (lewati penjaga ukuran).
 OSAM_GPU = (os.environ.get("LABELAPP_OSAM_GPU") or "").strip().lower() in (
     "1", "true", "ya")
+
+# Model osam yang cukup KECIL untuk muat di GPU 8 GB — boleh naik GPU kalau ada
+# ruang. SAM 3 (3,4 GB bobot + buffer 1,64 GB) dan YOLO-World TIDAK muat (diuji
+# OOM bahkan saat GPU kosong), jadi TETAP di CPU apa pun keadaannya.
+OSAM_GPU_KECIL = {"sam2:tiny", "sam2:small",
+                  "efficientsam:10m", "efficientsam:latest"}
+# Sisa VRAM minimal supaya osam boleh naik GPU. Di bawah ini — mis. training
+# atau pembuatan versi sedang memakai GPU — osam JATUH KE CPU: pelan, tapi tidak
+# merebut memori fungsi utama itu dan tidak OOM. sam2:small ~4 GB, jadi ~4,7 GB
+# menyisakan sedikit kepala.
+OSAM_GPU_MIN_BEBAS = 4_700_000_000
+
 _osam_dipaksa = False
+_osam_model_kini = None                # model yang sedang dimuat -> pemilih provider
+
+
+def _boleh_gpu_osam(model) -> bool:
+    """GPU untuk osam HANYA kalau: saklar olah=gpu, model termasuk yang kecil
+    (atau OSAM_GPU dipaksa), CUDA ada, DAN VRAM cukup bebas. Selain itu CPU."""
+    if olah_gpu.MODE != "gpu":
+        return False
+    if not OSAM_GPU and model not in OSAM_GPU_KECIL:
+        return False
+    try:
+        import torch
+        if not torch.cuda.is_available():
+            return False
+        bebas, _ = torch.cuda.mem_get_info()
+        return bebas >= OSAM_GPU_MIN_BEBAS
+    except Exception:
+        return False
 
 
 def _siapkan_osam():
-    """Pasang paksaan CPU pada osam. Aman dipanggil berkali-kali."""
+    """Pasang pemilih provider osam. Aman dipanggil berkali-kali.
+
+    Model kecil naik GPU kalau ada ruang; yang besar (SAM 3, YOLO-World) dan
+    saat GPU sesak jatuh ke CPU. Diputuskan SAAT sesi dibuat, memakai
+    `_osam_model_kini` yang diset pemanggil (di dalam _KUNCI, jadi tak balapan).
+    """
     global _osam_dipaksa
-    if _osam_dipaksa or OSAM_GPU:
+    if _osam_dipaksa:
         return
     import osam.types._model as _m
 
     asli = _m._load_inference_session
 
-    def hanya_cpu(blob, providers=None):
+    def _rute(blob, providers=None):
+        if _boleh_gpu_osam(_osam_model_kini):
+            return asli(blob, providers=["CUDAExecutionProvider",
+                                         "CPUExecutionProvider"])
         return asli(blob, providers=["CPUExecutionProvider"])
 
-    _m._load_inference_session = hanya_cpu
+    _m._load_inference_session = _rute
     _osam_dipaksa = True
 
 
 def _segment_osam(img: Path, points, labels, model: str, eps) -> Usulan:
+    global _osam_model_kini
+    _osam_model_kini = model            # pemilih provider saat sesi dimuat
     _siapkan_osam()
     import osam.apis
     import osam.types
@@ -452,6 +492,7 @@ def dari_teks(img: Path, teks: list[str], model: str = "yoloworld:latest",
     if not teks:
         raise TidakAdaObjek("belum ada nama kelas yang dicari")
 
+    global _osam_model_kini
     _siapkan_osam()
     import osam.apis
     import osam.types
@@ -462,6 +503,7 @@ def dari_teks(img: Path, teks: list[str], model: str = "yoloworld:latest",
     rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
 
     with _KUNCI:            # sesi model global, harus diserialkan
+        _osam_model_kini = model        # SAM 3 / YOLO-World -> selalu CPU (tak muat)
         r = osam.apis.generate(osam.types.GenerateRequest(
             model=model, image=rgb,
             prompt=osam.types.Prompt(texts=teks, score_threshold=float(ambang),

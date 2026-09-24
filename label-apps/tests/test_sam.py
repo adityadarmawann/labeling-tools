@@ -161,3 +161,35 @@ def test_paksaan_osam_tidak_menyentuh_mobilesam():
     sam = al._mobilesam()
     assert sam.provider == "CUDAExecutionProvider", (
         f"MobileSAM ikut terseret ke {sam.provider}")
+
+
+def test_osam_routing_kecil_gpu_besar_dan_sesak_cpu(monkeypatch):
+    """Routing per-model osam: model kecil (sam2:small, efficientsam) boleh GPU
+    saat ada ruang; SAM 3 / YOLO-World (tak muat 8 GB) TETAP CPU; dan saat VRAM
+    sesak (training/pembuatan versi memakai GPU) semua jatuh ke CPU — supaya
+    fungsi utama tak kehilangan memori dan tak OOM."""
+    import sys
+    import types
+
+    from app.services import autolabel as al
+    from app.services import olah_gpu
+
+    if al.OSAM_GPU:
+        pytest.skip("LABELAPP_OSAM_GPU sengaja dinyalakan (paksa semua GPU)")
+
+    monkeypatch.setattr(olah_gpu, "MODE", "gpu", raising=False)
+    fake = types.SimpleNamespace(cuda=types.SimpleNamespace(
+        is_available=lambda: True,
+        mem_get_info=lambda: (6_000_000_000, 8_000_000_000)))
+    monkeypatch.setitem(sys.modules, "torch", fake)
+
+    assert al._boleh_gpu_osam("sam2:small") is True
+    assert al._boleh_gpu_osam("efficientsam:10m") is True
+    assert al._boleh_gpu_osam("sam3:latest") is False        # 3,4 GB, tak muat
+    assert al._boleh_gpu_osam("yoloworld:latest") is False
+
+    fake.cuda.mem_get_info = lambda: (1_000_000_000, 8_000_000_000)   # GPU sesak
+    assert al._boleh_gpu_osam("sam2:small") is False          # -> CPU, tak rebutan
+
+    monkeypatch.setattr(olah_gpu, "MODE", "cpu", raising=False)
+    assert al._boleh_gpu_osam("sam2:small") is False          # olah=cpu -> CPU
