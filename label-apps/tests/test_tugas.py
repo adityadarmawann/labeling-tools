@@ -2829,3 +2829,36 @@ def test_kanvas_navigasi_ikut_filter_belum_dianotasi(klien, lingkungan):
     # Tanpa konteks: navigasi PENUH (6 gambar, tidak disaring).
     jf = klien.get(f"/api/label-data?path={g[2]}").json()
     assert jf["posisi"][1] == 6, jf["posisi"]
+
+
+def test_kanvas_hitungan_jumlah_gambar_penugasan_bukan_dataset(klien, lingkungan):
+    """Hitungan "X / N" di kanvas = jumlah gambar PENUGASAN yang dibuka, bukan
+    seluruh dataset. Persis keluhan: card berisi sedikit gambar, tapi kanvas
+    menghitung ribuan gambar projek. Kunci: penugasan SUBSET dari projek."""
+    import pathlib
+
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = _projek(ruang, "hitung-job", n=8)                # 8 gambar di projek
+    klien.post(f"/setsrc?path={d}")
+    g = sorted(str(x) for x in d.glob("*.jpg"))
+    # Hanya 3 gambar yang ditugaskan ke job ini (subset dari 8).
+    tid = klien.post("/api/tugas/bagi",
+                     json={"pelabel": "paul", "gambar": g[2:5]}).json()["id"]
+
+    rp = lambda p: str(pathlib.Path(p).resolve())
+    # Buka g[3] dari tab "Semua" penugasan (job konteks, tanpa saring).
+    j = klien.get(f"/api/label-data?path={g[3]}&job={tid}").json()
+    assert j["ok"], j
+    assert j["posisi"] == [2, 3], j["posisi"]      # ke-2 dari 3 gambar JOB
+    assert j["prev"] == rp(g[2]) and j["next"] == rp(g[4]), j
+
+    # Halaman kanvas awal juga: posisi & panah dari subset job.
+    h = klien.get(f"/label?path={g[3]}&job={tid}").text
+    assert "2 / 3" in h, "hitungan halaman harus 2 / 3 (jumlah job), bukan 8"
+
+    # Tanpa job: seluruh projek (8).
+    jf = klien.get(f"/api/label-data?path={g[3]}").json()
+    assert jf["posisi"][1] == 8, jf["posisi"]
