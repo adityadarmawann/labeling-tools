@@ -846,7 +846,15 @@ def test_ringkasan_memisahkan_latar_dari_yang_belum_dilabeli(klien, lingkungan):
         {"label": "botol", "shape_type": "rectangle",
          "points": [[2, 2], [30, 30]]}]})
     klien.post("/api/latar", json={"gambar": g[1:3]})     # dua latar disengaja
-    klien.post("/api/tugas/dataset", json={"gambar": g})  # g[3] belum disentuh
+    klien.post("/api/tugas/dataset", json={"gambar": g})  # g[3] belum dianotasi -> DITOLAK
+
+    # g[3] harus TETAP masuk dataset walau belum dilabeli, supaya ringkasan
+    # bisa diuji membedakan "latar" (sengaja kosong) dari "lalai" (belum
+    # dikerjakan). Jalur tambah lewat UI kini menolaknya (hanya yang sudah
+    # dianotasi yang boleh masuk), jadi keadaan itu — gambar yang sempat masuk
+    # lalu labelnya hilang — disetel langsung lewat service di sini.
+    from app.services import tugas as _t, tag as _tag
+    _t.masukkan(d, [_tag.kunci_gambar(d, pathlib.Path(g[3]))], "paul")
 
     j = klien.get("/api/ekspor/ringkasan?format=yolo-seg&split=8:1:1").json()
     assert j["tanpa_objek"] == 3, j

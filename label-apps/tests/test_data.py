@@ -83,11 +83,14 @@ def test_hasil_unggahan_bisa_dibuka_sebagai_dataset(klien, lingkungan):
     assert h.count('class="card"') == 0
     assert "Belum ada gambar yang masuk dataset" in h
 
-    # Dan setelah dimasukkan, keduanya muncul.
+    # Dan setelah dianotasi lalu dimasukkan, keduanya muncul. Hanya gambar yang
+    # sudah dianotasi (berlabel atau latar) yang boleh masuk dataset; di sini
+    # keduanya foto tanpa objek, jadi ditandai latar dulu.
     import pathlib
     ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
-    klien.post("/api/tugas/dataset", json={
-        "gambar": [str(ruang / "batch-2" / n) for n in ("satu.jpg", "dua.jpg")]})
+    path = [str(ruang / "batch-2" / n) for n in ("satu.jpg", "dua.jpg")]
+    assert klien.post("/api/latar", json={"gambar": path}).json()["n"] == 2
+    klien.post("/api/tugas/dataset", json={"gambar": path})
     assert klien.get("/").text.count('class="card"') == 2
 
 

@@ -74,26 +74,42 @@
     const dipilih = terpilih();
     if (!dipilih.length) return;
 
-    // Memindahkan gambar yang BELUM dianotasi ke dataset hampir selalu tidak
-    // disengaja: yang dimaksud biasanya "semua yang sudah selesai". Ditanyakan,
-    // bukan ditolak, karena gambar latar yang memang tanpa objek juga sah.
-    const polos = keluarkan ? [] : dipilih.filter(u => u.dataset.label !== '1');
-    if (polos.length && !confirm(
-        `${polos.length} dari ${dipilih.length} gambar yang dipilih belum `
-        + 'dianotasi sama sekali.\n\nTetap masukkan ke dataset?')) return;
+    // Gambar yang BELUM dianotasi tidak boleh masuk dataset — bukan ditanyakan
+    // lalu tetap dikirim, tetapi disingkirkan dari yang dikirim. `data-label`
+    // '1' berarti sudah dianotasi TERMASUK latar (gambar tanpa objek yang
+    // memang sah); yang tersisih hanya yang benar-benar belum dikerjakan.
+    // Server menjaga hal yang sama; penyaringan di sini supaya orang tahu lebih
+    // dulu berapa yang dilewati, bukan mendapati angkanya berubah diam-diam.
+    let kirim = dipilih;
+    if (!keluarkan) {
+      const polos = dipilih.filter(u => u.dataset.label !== '1');
+      if (polos.length) {
+        kirim = dipilih.filter(u => u.dataset.label === '1');
+        if (!kirim.length) {
+          alert(`${polos.length} gambar yang dipilih belum dianotasi.\n\n`
+            + 'Hanya gambar yang sudah dianotasi — berlabel atau ditandai '
+            + 'latar — yang bisa masuk dataset. Anotasi dulu, atau tandai latar '
+            + 'kalau memang tanpa objek.');
+          return;
+        }
+        if (!confirm(`${polos.length} dari ${dipilih.length} gambar belum `
+            + `dianotasi dan akan dilewati.\n\nMasukkan ${kirim.length} gambar `
+            + 'yang sudah dianotasi ke dataset?')) return;
+      }
+    }
 
     const tombol = keluarkan ? $('jb-keluarkan') : $('jb-masukkan');
     tombol.disabled = true;
     const pr = Progres.mulai(
-      keluarkan ? `Mengeluarkan ${dipilih.length} gambar dari dataset`
-                : `Memasukkan ${dipilih.length} gambar ke dataset`,
+      keluarkan ? `Mengeluarkan ${kirim.length} gambar dari dataset`
+                : `Memasukkan ${kirim.length} gambar ke dataset`,
       { di: $('jb-jalur') });
     pr.taktentu('menyimpan');
     let j;
     try {
       j = await send('/api/tugas/dataset', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gambar: dipilih.map(u => u.dataset.path),
+        body: JSON.stringify({ gambar: kirim.map(u => u.dataset.path),
                                keluarkan: !!keluarkan }),
       });
     } catch (e) { pr.gagal('Gagal menghubungi server'); tombol.disabled = false; return; }

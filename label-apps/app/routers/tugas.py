@@ -870,7 +870,28 @@ async def ke_dataset(request: Request,
     if body.get("keluarkan"):
         r = await asyncio.to_thread(svc.keluarkan, sess.src, kunci, pemilik)
     else:
+        # Hanya gambar yang SUDAH dianotasi — berlabel ATAU ditandai latar —
+        # yang boleh masuk dataset. Yang belum dianotasi (severity "stop")
+        # disingkirkan di sini, bukan sekadar ditanyakan di peramban: konfirmasi
+        # peramban bisa dilewati, dan satu gambar tanpa label yang lolos ke
+        # dataset ikut terekspor lalu mengajari model sebuah contoh yang tak
+        # punya jawaban. Latar TERMASUK dianotasi (menandai gambar tanpa objek
+        # adalah keputusan yang sudah diambil).
+        from ..services import scanner
+        with sess.lock:
+            items = list(sess.items)
+        sev_dari = {svc_tag.kunci_gambar(sess.src, it["img"]): scanner.severity(it)
+                    for it in items}
+        berlabel = [k for k in kunci if sev_dari.get(k) != "stop"]
+        belum = len(kunci) - len(berlabel)
+        if not berlabel:
+            return {"ok": False, "ditolak": ditolak, "belum_dianotasi": belum,
+                    "error": f"{belum} gambar belum dianotasi — hanya gambar "
+                             "yang sudah dianotasi (berlabel atau ditandai "
+                             "latar) yang bisa masuk dataset"}
+        kunci = berlabel
         r = await asyncio.to_thread(svc.masukkan, sess.src, kunci, pemilik)
+        r["belum_dianotasi"] = belum
     r["ditolak"] = ditolak
 
     # `total` dihitung ulang atas gambar yang BENAR-BENAR ada di dataset

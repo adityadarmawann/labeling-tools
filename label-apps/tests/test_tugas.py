@@ -539,6 +539,43 @@ def test_rincian_job_menyaring_dan_memindahkan_ke_dataset(klien, lingkungan):
     assert "0 sudah di dataset" in klien.get(f"/tugas/{tid}?ds=job-uji").text
 
 
+def test_dataset_hanya_menerima_yang_sudah_dianotasi(klien, lingkungan):
+    """Hanya gambar yang SUDAH dianotasi — berlabel ATAU ditandai latar — yang
+    boleh masuk dataset. Yang belum dianotasi disingkirkan, bukan diam-diam
+    ikut: satu gambar tanpa label yang lolos ke dataset ikut terekspor lalu
+    mengajari model contoh yang tak punya jawaban."""
+    import pathlib
+
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = _projek(ruang, "ds-anotasi", n=4, label=False)   # empat gambar polos
+    klien.post(f"/setsrc?path={d}")
+    g = sorted(str(q) for q in d.glob("*.jpg"))
+    # g0 diberi label, g1 ditandai latar; g2 & g3 dibiarkan belum dianotasi.
+    klien.post("/api/simpan", json={"path": g[0], "shapes": [
+        {"label": "botol", "shape_type": "rectangle", "points": [[2, 2], [30, 30]]}]})
+    assert klien.post("/api/latar", json={"gambar": [g[1]]}).json()["n"] == 1
+
+    # Campur keempatnya: hanya dua yang sah (berlabel + latar) yang masuk.
+    j = klien.post("/api/tugas/dataset", json={"gambar": g}).json()
+    assert j["ok"] is True, j
+    assert j["ditambah"] == 2, "hanya berlabel + latar yang masuk"
+    assert j["belum_dianotasi"] == 2, j
+
+    from app.services import tag as _tag, tugas as _t
+    data = _t.baca(d, "paul")
+    sah = {_tag.kunci_gambar(d, pathlib.Path(x)) for x in (g[0], g[1])}
+    assert set(data["dataset"]) == sah, "yang belum dianotasi tidak boleh tercatat"
+
+    # Kalau SEMUA yang dipilih belum dianotasi: ditolak mentah, dataset utuh.
+    j2 = klien.post("/api/tugas/dataset", json={"gambar": g[2:]}).json()
+    assert j2["ok"] is False and "belum dianotasi" in j2["error"], j2
+    assert j2["belum_dianotasi"] == 2, j2
+    assert set(_t.baca(d, "paul")["dataset"]) == sah, "penolakan tak boleh mengubah dataset"
+
+
 def test_rincian_job_hanya_bisa_diubah_pelabelnya_atau_pemilik(klien, aplikasi,
                                                                lingkungan):
     import pathlib
@@ -1385,6 +1422,9 @@ def test_gambar_baru_menunggu_di_anotasi_bukan_langsung_di_dataset(klien,
     assert j["n_dataset"] == 0 and j["n_semua"] == 2
 
     d = _ruang(klien) / "alur"
+    # "Kerjakan di Anotasi dulu": a.jpg dianotasi (di sini ditandai latar) baru
+    # boleh masuk dataset. Yang belum dianotasi ditolak jalur tambahnya.
+    assert klien.post("/api/latar", json={"gambar": [str(d / "a.jpg")]}).json()["n"] == 1
     klien.post("/api/tugas/dataset", json={"gambar": [str(d / "a.jpg")]})
     h = klien.get("/").text
     assert h.count('class="card"') == 1
