@@ -186,6 +186,68 @@ def baca_nama_kelas(src: Path) -> dict:
     return {}
 
 
+def _tulis_nama_kelas(src: Path, names: dict) -> None:
+    """Simpan {indeks: nama} ke berkas kelas dataset — data.yaml kalau ada
+    (dengan `nc` ikut diperbarui), kalau tidak classes.txt. Ditulis di TEMPAT
+    yang SAMA dengan yang dibaca baca_nama_kelas, supaya tak ada dua daftar
+    berbeda. Kunci lain di data.yaml (train/val/roboflow) dipertahankan."""
+    src = Path(src)
+    urut = [names[i] for i in sorted(names)]
+
+    def _atomik(p: Path, teks: str) -> None:
+        tmp = p.with_suffix(p.suffix + ".tmp")
+        tmp.write_text(teks, encoding="utf-8")
+        tmp.replace(p)
+
+    for folder in (src, src.parent, src.parent.parent):
+        for nm in ("data.yaml", "data.yml", "dataset.yaml"):
+            p = folder / nm
+            if p.is_file():
+                try:
+                    d = yaml.safe_load(p.read_text(encoding="utf-8"))
+                except (OSError, yaml.YAMLError):
+                    d = None
+                d = d if isinstance(d, dict) else {}
+                d["names"] = urut
+                d["nc"] = len(urut)
+                _atomik(p, yaml.safe_dump(d, allow_unicode=True, sort_keys=False))
+                return
+        cf = folder / "classes.txt"
+        if cf.is_file():
+            _atomik(cf, "\n".join(urut) + "\n")
+            return
+    _atomik(src / "classes.txt", "\n".join(urut) + "\n")
+
+
+def daftarkan_kelas(src: Path, names_ada: dict, nama_baru) -> dict:
+    """Tambahkan kelas BARU ke daftar kelas dataset dan kembalikan {indeks:
+    nama} yang lengkap.
+
+    `names_ada` adalah nama yang SEDANG dipakai sesi (indeksnya itulah yang
+    tertulis di label lama), jadi kelas baru diberi indeks BERIKUTNYA — bukan
+    di-index ulang dari nol, yang akan menggeser arti label yang sudah ada.
+
+    Kenapa perlu: kelas yang dibuat lewat dialog kanvas belum ada di data.yaml/
+    classes.txt. Menyimpan objeknya di dataset YOLO tanpa mendaftarkannya
+    membuat tulis_yolo tak bisa memetakan namanya ke indeks — objeknya terbuang
+    diam-diam dan gambarnya jadi latar. Idempoten: nama yang sudah ada dilewati.
+    """
+    ada = dict(names_ada)
+    punya = set(ada.values())
+    tambah = []
+    for n in nama_baru:
+        t = str(n).strip()
+        if t and t not in punya and t not in tambah:
+            tambah.append(t)
+    if not tambah:
+        return ada
+    mulai = (max(ada) + 1) if ada else 0
+    for j, t in enumerate(tambah):
+        ada[mulai + j] = t
+    _tulis_nama_kelas(src, ada)
+    return ada
+
+
 def tutup_cincin(pts: list) -> list:
     """
     Tambahkan lagi titik pertama di akhir poligon, kalau belum ada.

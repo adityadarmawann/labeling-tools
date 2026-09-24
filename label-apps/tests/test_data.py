@@ -822,9 +822,13 @@ def test_buka_lalu_simpan_tanpa_perubahan_tidak_mengubah_berkas(klien, lingkunga
     assert (d / "labels" / "a.txt").read_text() == asli
 
 
-def test_kelas_di_luar_daftar_diberi_peringatan(klien, lingkungan):
+def test_kelas_baru_didaftarkan_bukan_dibuang_jadi_latar(klien, lingkungan):
+    """Kelas yang belum ada di daftar DIDAFTARKAN otomatis saat disimpan lewat
+    kanvas — yang memang sudah meminta konfirmasi "kelas baru" lebih dulu — lalu
+    objeknya ditulis dengan indeks BERIKUTNYA. Bukan lagi diperingatkan lalu
+    dibuang, yang membuat gambarnya diam-diam jadi latar (keluhan pemakai)."""
     d = lingkungan["roots"] / "yolo-kelas-baru"
-    ip = _buat_yolo(d)
+    ip = _buat_yolo(d)                          # classes.txt: botol, kaleng
     masuk(klien, "paul", PW_PAUL)
     klien.post(f"/setsrc?path={d}")
 
@@ -832,9 +836,14 @@ def test_kelas_di_luar_daftar_diberi_peringatan(klien, lingkungan):
     b[0]["label"] = "kelas-yang-belum-ada"
     j = klien.post("/api/simpan",
                    json={"path": str(ip), "shapes": b, "flags": {}}).json()
-    assert any("belum ada di daftar kelas" in p for p in j["peringatan"]), j
-    # Barisnya tidak ditulis sembarangan dengan indeks tebakan.
-    assert (d / "labels" / "a.txt").read_text().strip() == ""
+    assert j["ok"], j
+    assert not any("belum ada di daftar kelas" in p
+                   for p in (j["peringatan"] or [])), j
+    # Kelas baru masuk classes.txt di indeks BERIKUTNYA; yang lama tetap utuh.
+    assert (d / "classes.txt").read_text().split() == [
+        "botol", "kaleng", "kelas-yang-belum-ada"]
+    # Objeknya BENAR-BENAR ditulis (indeks 2), bukan dibuang jadi latar.
+    assert (d / "labels" / "a.txt").read_text().strip().startswith("2 ")
 
 
 # ---------------------------------------------------------------- tipe bentuk

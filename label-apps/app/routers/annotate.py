@@ -532,6 +532,22 @@ async def api_simpan(request: Request, sess: Session = Depends(current_session_a
 
     peringatan: list[str] = []
     if it.get("yolo"):
+        # Kelas BARU (dibuat lewat dialog kanvas) belum ada di daftar kelas
+        # dataset (data.yaml/classes.txt). Di dataset YOLO, indeks itulah yang
+        # ditulis ke label — tanpa mendaftarkannya lebih dulu, tulis_yolo tak
+        # bisa memetakan namanya, objeknya terbuang, dan gambarnya jadi latar.
+        # Didaftarkan di sini, dengan indeks BERIKUTNYA supaya label lama tak
+        # bergeser artinya, lalu sess.names ikut diperbarui untuk sesi ini.
+        ada_nama = set(sess.names.values())
+        baru = []
+        for s in bentuk:
+            nm = str(s.get("label") or "").strip()
+            if nm and nm not in ada_nama and nm not in baru:
+                baru.append(nm)
+        if baru:
+            names_baru = scanner.daftarkan_kelas(sess.src, sess.names, baru)
+            with sess.lock:
+                sess.names = names_baru
         # Dataset YOLO: berkas .txt itulah yang dibaca saat melatih, jadi dia
         # yang harus ikut berubah. Tanpa ini, menyimpan dari web terasa
         # berhasil tetapi hasilnya tidak pernah terpakai — dan hilang begitu

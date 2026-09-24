@@ -2862,3 +2862,39 @@ def test_kanvas_hitungan_jumlah_gambar_penugasan_bukan_dataset(klien, lingkungan
     # Tanpa job: seluruh projek (8).
     jf = klien.get(f"/api/label-data?path={g[3]}").json()
     assert jf["posisi"][1] == 8, jf["posisi"]
+
+
+def test_kelas_baru_didaftarkan_saat_simpan_yolo(klien, lingkungan):
+    """Menyimpan objek berkelas BARU di dataset YOLO mendaftarkan kelasnya ke
+    data.yaml dan menulis objeknya — bukan membuangnya jadi latar. Ini persis
+    keluhan "kelas belum ada di daftar" -> gambar jadi latar."""
+    import pathlib
+
+    import cv2
+    import numpy as np
+    import yaml as _yaml
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = ruang / "yolo-kelasbaru"
+    (d / "images").mkdir(parents=True)
+    (d / "labels").mkdir()
+    (d / "data.yaml").write_text("nc: 2\nnames: ['botol', 'kaleng']\n")
+    for i in range(2):
+        cv2.imwrite(str(d / "images" / f"g{i}.jpg"), np.zeros((40, 60, 3), np.uint8))
+        (d / "labels" / f"g{i}.txt").write_text("")
+    klien.post(f"/setsrc?path={d}")
+
+    r = klien.post("/api/simpan", json={"path": str(d / "images" / "g0.jpg"),
+        "shapes": [{"label": "paper-cup", "shape_type": "polygon",
+                    "points": [[5, 5], [30, 5], [30, 30], [5, 30]]}]}).json()
+    assert r["ok"] and r["n"] == 1, r
+    assert r["sev"] != "bg", "gambar jangan jadi latar — objeknya harus tersimpan"
+    assert not any("belum ada" in p for p in (r.get("peringatan") or [])), r
+
+    # data.yaml kini memuat paper-cup di indeks BERIKUTNYA (2), yang lama utuh.
+    dy = _yaml.safe_load((d / "data.yaml").read_text())
+    assert dy["names"] == ["botol", "kaleng", "paper-cup"], dy
+    assert dy["nc"] == 3, dy
+    # label YOLO memakai indeks 2, bukan kosong (latar).
+    assert (d / "labels" / "g0.txt").read_text().strip().startswith("2 ")
