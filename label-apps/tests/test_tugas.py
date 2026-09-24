@@ -2787,3 +2787,45 @@ def test_simpan_menandai_gambarnya_bukan_pindai_ulang_penuh(klien, lingkungan):
     diub = berubah_sejak(d, cap0)
     assert diub is not None, "menyimpan memaksa pindai ulang penuh (None)"
     assert diub == {str(img.resolve())}, diub
+
+
+def test_kanvas_navigasi_ikut_filter_belum_dianotasi(klien, lingkungan):
+    """Panah kiri/kanan kanvas mengikuti tab filter penugasan.
+
+    Dibuka dari tab "belum dianotasi", tetangga (prev/next) harus gambar yang
+    BELUM dianotasi juga — melewati yang sudah — bukan menyusuri seluruh folder.
+    Tanpa konteks job (mis. dibuka dari grid Dataset), navigasi tetap penuh.
+    """
+    import pathlib
+
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = _projek(ruang, "nav-filter", n=6, label=False)      # 6 gambar polos
+    klien.post(f"/setsrc?path={d}")
+    g = sorted(str(x) for x in d.glob("*.jpg"))              # urut nama
+    tid = klien.post("/api/tugas/bagi",
+                     json={"pelabel": "paul", "gambar": g}).json()["id"]
+    # Labeli g[1] & g[3] -> "sudah"; sisanya (0,2,4,5) "belum".
+    for i in (1, 3):
+        assert klien.post("/api/simpan", json={"path": g[i], "shapes": [
+            {"label": "botol", "shape_type": "polygon",
+             "points": [[2, 2], [30, 2], [30, 30]]}]}).json()["ok"]
+
+    rp = lambda p: str(pathlib.Path(p).resolve())
+    # Buka g[2] (belum) dari tab "belum". Subset urut-nama = [g0,g2,g4,g5].
+    j = klien.get(f"/api/label-data?path={g[2]}&job={tid}&saring=belum").json()
+    assert j["ok"], j
+    assert j["prev"] == rp(g[0]), j["prev"]      # g1 (sudah) dilewati
+    assert j["next"] == rp(g[4]), j["next"]      # g3 (sudah) dilewati
+    assert j["posisi"] == [2, 4], j["posisi"]    # ke-2 dari 4 yang belum
+
+    # Tab "sudah": subset = [g1,g3]. g[1] -> next g3, tak ada prev.
+    js = klien.get(f"/api/label-data?path={g[1]}&job={tid}&saring=sudah").json()
+    assert js["prev"] == "" and js["next"] == rp(g[3]), js
+    assert js["posisi"] == [1, 2], js["posisi"]
+
+    # Tanpa konteks: navigasi PENUH (6 gambar, tidak disaring).
+    jf = klien.get(f"/api/label-data?path={g[2]}").json()
+    assert jf["posisi"][1] == 6, jf["posisi"]

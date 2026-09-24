@@ -16,9 +16,12 @@ import re
 import time
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, Request, Response
+import bisect
+
+from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import HTMLResponse
 
+from ..config import Settings, get_settings
 from ..deps import current_session, current_session_api, is_local, bodi_json
 from ..services import annotations, autolabel, scanner, tugas
 from ..services.autolabel import TidakAdaObjek
@@ -151,9 +154,50 @@ def bentuk_untuk_kanvas(it: dict, mentah: dict) -> list[dict]:
     return out
 
 
+def _nav(sess: Session, it: dict, *, job: str = "", saring: str = "semua",
+         dsf: str = "semua", kelas=(), latar: bool = False, uploads_root=None):
+    """(prev_it, next_it, posisi, daftar) untuk panah kiri/kanan kanvas.
+
+    Kalau `job` diberi, navigasi DIBATASI ke gambar penugasan itu yang cocok
+    filter — subset yang SAMA dengan grid job — jadi kiri/kanan tidak keluar
+    dari "belum dianotasi". Tanpa `job`, seluruh isi projek (perilaku saat
+    kanvas dibuka dari grid Dataset atau /view). `daftar` juga mengisi panel
+    Files supaya konsisten dengan panahnya.
+    """
+    with sess.lock:
+        items = list(sess.items)
+    daftar = None
+    if job and sess.src is not None:
+        try:
+            data = tugas.baca_projek(sess.src, uploads_root)
+            daftar = tugas.gambar_konteks_job(
+                items, data, sess.src, job, saring=saring, dsf=dsf,
+                kelas=list(kelas), latar=latar)
+        except OSError:
+            daftar = None
+    if daftar is None:                         # daftar penuh (perilaku lama)
+        i = items.index(it)
+        prev_it = items[i - 1] if i > 0 else None
+        next_it = items[i + 1] if i < len(items) - 1 else None
+        return prev_it, next_it, (i + 1, len(items)), items
+    # Subset: gambar yang sedang dibuka bisa SUDAH tak cocok filter (mis. baru
+    # dilabeli lalu digeser) — dicari lewat posisi nama supaya tetangganya tetap
+    # yang cocok filter, bukan meleset ke daftar penuh.
+    nama = [x["img"].name for x in daftar]
+    i = bisect.bisect_left(nama, it["img"].name)
+    ada = i < len(nama) and nama[i] == it["img"].name
+    prev_it = daftar[i - 1] if i > 0 else None
+    next_it = (daftar[i + 1] if ada else daftar[i]) if (i + (1 if ada else 0)) < len(daftar) else None
+    posisi = (i + 1, len(daftar)) if ada else (i, len(daftar))
+    return prev_it, next_it, posisi, daftar
+
+
 @router.get("/label", response_class=HTMLResponse)
 async def halaman(request: Request, path: str = "",
-                  sess: Session = Depends(current_session)):
+                  job: str = "", saring: str = "semua", dsf: str = "semua",
+                  c: list[str] = Query(default=[]), bg: int = 0,
+                  sess: Session = Depends(current_session),
+                  settings: Settings = Depends(get_settings)):
     # Isi projek dipindai sekali lalu dipakai dari ingatan sesi. Di halaman ini
     # itu bukan sekadar angka yang basi: orang membuka gambar, melihat anotasi
     # versi lama, menyuntingnya, lalu menyimpan — dan pekerjaan orang lain yang
@@ -173,17 +217,15 @@ async def halaman(request: Request, path: str = "",
         return templates.TemplateResponse(request, "notfound.html", {"sess": sess},
                                           status_code=404)
     mentah = baca_mentah(it["img"].with_suffix(".json"))
-    with sess.lock:
-        items = sess.items
-        i = items.index(it)
-        prev_it = items[i - 1] if i > 0 else None
-        next_it = items[i + 1] if i < len(items) - 1 else None
-        # `split` ikut dikirim: pada ekspor Roboflow, nama berkas yang sama bisa
-        # muncul di train/valid/test sebagai baris yang tampak kembar, dan
-        # tanpa penandanya orang tidak tahu mana yang sedang dibuka.
-        berkas = [{"nama": x["img"].name, "path": str(x["img"].resolve()),
-                   "n": len(x["shapes"]), "sev": scanner.severity(x),
-                   "split": x.get("split", "")} for x in items]
+    prev_it, next_it, posisi, daftar = _nav(
+        sess, it, job=job, saring=saring, dsf=dsf, kelas=c, latar=bool(bg),
+        uploads_root=settings.uploads_root)
+    # `split` ikut dikirim: pada ekspor Roboflow, nama berkas yang sama bisa
+    # muncul di train/valid/test sebagai baris yang tampak kembar, dan tanpa
+    # penandanya orang tidak tahu mana yang sedang dibuka.
+    berkas = [{"nama": x["img"].name, "path": str(x["img"].resolve()),
+               "n": len(x["shapes"]), "sev": scanner.severity(x),
+               "split": x.get("split", "")} for x in daftar]
 
     # Hak sunting gambar INI, dihitung sekali di server. Kanvas yang membiarkan
     # orang menggambar lalu menolak saat Simpan ditekan membuang pekerjaannya;
@@ -202,7 +244,7 @@ async def halaman(request: Request, path: str = "",
         "sess": sess,
         "local": is_local(request),
         "it": it,
-        "posisi": (i + 1, len(items)),
+        "posisi": posisi,
         "prev_path": str(prev_it["img"].resolve()) if prev_it else "",
         "next_path": str(next_it["img"].resolve()) if next_it else "",
         "kelas": daftar_kelas(sess),
@@ -223,7 +265,10 @@ async def halaman(request: Request, path: str = "",
 
 
 @router.get("/api/label-data")
-async def label_data(path: str = "", sess: Session = Depends(current_session)):
+async def label_data(path: str = "", job: str = "", saring: str = "semua",
+                     dsf: str = "semua", c: list[str] = Query(default=[]),
+                     bg: int = 0, sess: Session = Depends(current_session),
+                     settings: Settings = Depends(get_settings)):
     """
     Data SATU gambar untuk kanvas — anotasi, tetangga, posisi — sebagai JSON.
 
@@ -232,17 +277,19 @@ async def label_data(path: str = "", sess: Session = Depends(current_session)):
     berkas 1,4 MB pada projek besar, daftar kelas, setelan SAM) sengaja TIDAK
     ikut — itu sudah ada di peramban sejak halaman pertama dibuka, dan mengirim
     ulangnya tiap pindah gambar justru yang membuat panah terasa lama.
+
+    `job`+filter (kalau ada) membatasi prev/next ke gambar penugasan itu yang
+    cocok filter — dihitung ULANG tiap pindah, jadi begitu satu gambar dilabeli
+    ia keluar dari subset "belum dianotasi" dengan sendirinya.
     """
     await asyncio.to_thread(sess.segarkan)
     it = sess.find(path) if path else (sess.items[0] if sess.items else None)
     if it is None:
         return {"ok": False, "error": "gambar tidak ada di dataset ini"}
     mentah = baca_mentah(it["img"].with_suffix(".json"))
-    with sess.lock:
-        items = sess.items
-        i = items.index(it)
-        prev_it = items[i - 1] if i > 0 else None
-        next_it = items[i + 1] if i < len(items) - 1 else None
+    prev_it, next_it, posisi, _ = _nav(
+        sess, it, job=job, saring=saring, dsf=dsf, kelas=c, latar=bool(bg),
+        uploads_root=settings.uploads_root)
     tolak = tugas.tolak_tulis(sess.src, sess.user, it["img"]) if sess.src else ""
     return {
         "ok": True,
@@ -255,7 +302,7 @@ async def label_data(path: str = "", sess: Session = Depends(current_session)):
         "teks_gambar": mentah.get("image_text") or "",
         "prev": str(prev_it["img"].resolve()) if prev_it else "",
         "next": str(next_it["img"].resolve()) if next_it else "",
-        "posisi": [i + 1, len(items)],
+        "posisi": list(posisi),
         "boleh_ubah": not tolak,
         "alasan_tolak": tolak,
         "rusak": "berkas anotasi rusak" in (it.get("issues") or []),

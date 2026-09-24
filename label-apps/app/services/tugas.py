@@ -397,6 +397,51 @@ def masukkan(ds: Path, kunci_daftar: list[str], pemilik: str = "") -> dict:
     return {"ditambah": len(baru), "total": len(data["dataset"])}
 
 
+def gambar_konteks_job(items: list[dict], data: dict, ds: Path, tid: str, *,
+                       saring: str = "semua", dsf: str = "semua",
+                       kelas=(), latar: bool = False) -> list[dict] | None:
+    """Item gambar TERURUT (nama) untuk satu konteks job + filter — sama persis
+    dengan yang ditampilkan halaman rincian job (routers/tugas.halaman_rincian).
+
+    Dipakai kanvas supaya panah kiri/kanan hanya menyusuri gambar penugasan ini
+    yang cocok filter yang dibuka (mis. "belum dianotasi"), bukan seluruh folder
+    projek. `None` kalau tid tak dikenal — pemanggil lalu memakai daftar penuh.
+
+    Aturan saringnya WAJIB tetap sama dengan router: kalau salah satu berubah,
+    subset kanvas dan grid job jadi berbeda diam-diam. test_konteks_kanvas
+    menjaganya tetap sinkron.
+    """
+    from . import scanner
+    from . import tag as _tag
+    job = (data.get("tugas") or {}).get(tid)
+    if job is None:
+        return None
+    punya = set(job.get("gambar") or [])
+    kpset = set(kelas)
+    keluar = []
+    for it in items:
+        k = _tag.kunci_gambar(ds, it["img"])
+        if k not in punya:
+            continue
+        sev = scanner.severity(it)
+        berlabel = sev != "stop"           # latar TERMASUK sudah dianotasi
+        if saring == "belum" and berlabel:
+            continue
+        if saring == "sudah" and not berlabel:
+            continue
+        if dsf == "di" and not sudah_dimasukkan(data, k):
+            continue
+        if dsf == "belum" and sudah_dimasukkan(data, k):
+            continue
+        if kpset or latar:
+            kls = {str(s["label"]) for s in it["shapes"]}
+            if not ((latar and sev == "bg") or (kpset & kls)):
+                continue
+        keluar.append(it)
+    keluar.sort(key=lambda x: x["img"].name)
+    return keluar
+
+
 JENIS_ANOTASI = ("poligon", "kotak")
 
 

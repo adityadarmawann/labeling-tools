@@ -69,6 +69,17 @@
     {%- if pp != per_bawaan %}&per={{ pp }}{% endif -%}
     {%- if h and h > 1 %}&hal={{ h }}{% endif -%}
     {%- endmacro -%}
+    {#- Konteks untuk tautan "Labeli": bikin panah kiri/kanan kanvas menyusuri
+        gambar PENUGASAN ini yang cocok filter yang sedang dibuka, bukan seluruh
+        folder projek. `job` selalu disertakan — di tab "Semua" pun kiri/kanan
+        tetap dalam penugasan ini, bukan projek utuh. -#}
+    {%- macro konteks() -%}
+    &job={{ tid | urlquote }}
+    {%- if saring != 'semua' %}&saring={{ saring }}{% endif -%}
+    {%- if dsf != 'semua' %}&dsf={{ dsf }}{% endif -%}
+    {%- for k in kelas_aktif %}&c={{ k | urlquote }}{% endfor -%}
+    {%- if latar_aktif %}&bg=1{% endif -%}
+    {%- endmacro -%}
     <section class="jb-utama">
       <div class="jb-baris-saring">
       <div class="seg jb-tab" id="jb-tab" role="group" aria-label="Saring status anotasi">
@@ -219,7 +230,7 @@
               dataset. Halaman Dataset hanya menampilkan yang sudah masuk, jadi
               tanpa tautan ini pekerjaan yang sudah dibagi tidak bisa dibuka
               dari mana pun — dan yang paling perlu dilabeli justru itu. -#}
-          <a class="jb-buka" href="/label?path={{ x.it | imgpath }}"
+          <a class="jb-buka" href="/label?path={{ x.it | imgpath }}{{ konteks() }}"
              title="Buka {{ x.it.img.name }} di kanvas">
             {{ 'Perbaiki' if x.berlabel else 'Labeli' }}</a>
           <figcaption class="bg-nama" title="{{ x.it.img.name }}">

@@ -67,6 +67,22 @@ const wrap = document.getElementById('wrap');
 const img = new Image();
 const el = id => document.getElementById(id);
 
+// Konteks navigasi (job + filter) yang membawa kita ke kanvas. Dipertahankan
+// di TIAP tautan/aksi pindah gambar supaya panah kiri/kanan, daftar Files, dan
+// URL tetap dalam subset yang sama — mis. hanya "belum dianotasi" di penugasan
+// ini. Kosong kalau kanvas dibuka dari grid Dataset/Lihat: navigasi penuh.
+const KONTEKS = (() => {
+  try {
+    const q = new URLSearchParams(location.search), p = new URLSearchParams();
+    for (const k of ['job', 'saring', 'dsf', 'bg']) if (q.get(k)) p.set(k, q.get(k));
+    for (const c of q.getAll('c')) p.append('c', c);
+    const s = p.toString();
+    return s ? '&' + s : '';
+  } catch (e) { return ''; }
+})();
+const urlLabel = (path) => '/label?path=' + encodeURIComponent(path) + KONTEKS;
+const urlData = (path) => '/api/label-data?path=' + encodeURIComponent(path) + KONTEKS;
+
 // Panah "kembali" mengarah ke halaman ASAL (job / papan anotasi / grid tempat
 // labeler dibuka), bukan selalu ke grid. Halamannya ditangkap dari referrer
 // SATU KALI saat masuk lalu disimpan per-tab; pindah antar gambar menulis ulang
@@ -2477,7 +2493,7 @@ function renderBerkas() {
   tampil.forEach(f => {
     const a = document.createElement('a');
     a.className = 'fitem';
-    a.href = '/label?path=' + encodeURIComponent(f.path);
+    a.href = urlLabel(f.path);
     a.dataset.sev = f.sev;
     if (f.path === D.path) a.setAttribute('data-on', '');
     const i = document.createElement('i');
@@ -2672,14 +2688,14 @@ async function muatGambar(path, dorongRiwayat) {
   status('Memuat…');
   let d;
   try {
-    const r = await fetch('/api/label-data?path=' + encodeURIComponent(path));
+    const r = await fetch(urlData(path));
     d = await r.json();
   } catch (e) {
-    location.href = '/label?path=' + encodeURIComponent(path);
+    location.href = urlLabel(path);
     return;
   }
   if (!d.ok || d.boleh_ubah === BACA_SAJA || d.rusak) {
-    location.href = '/label?path=' + encodeURIComponent(path);
+    location.href = urlLabel(path);
     return;
   }
 
@@ -2721,7 +2737,7 @@ async function muatGambar(path, dorongRiwayat) {
   // dan menyalin URL tetap menunjuk gambar yang benar.
   if (dorongRiwayat) {
     history.pushState({ path: d.path }, '',
-                      '/label?path=' + encodeURIComponent(d.path));
+                      urlLabel(d.path));
   }
 
   // Gambar terakhir: sudah di cache dari praambil, jadi onload memicu seketika
@@ -2734,7 +2750,7 @@ function perbaruiNav(id, path) {
   const a = el(id);
   if (!a) return;
   if (path) {
-    a.href = '/label?path=' + encodeURIComponent(path);
+    a.href = urlLabel(path);
     a.removeAttribute('data-off');
   } else {
     a.href = '#';
@@ -2907,6 +2923,10 @@ el('kelasbaru').addEventListener('keydown', ev => {
 
 el('prev').onclick = e => { e.preventDefault(); pindah(D.prev); };
 el('next').onclick = e => { e.preventDefault(); pindah(D.next); };
+// href awal panah dibangun ulang dengan KONTEKS (templat menaruhnya tanpa
+// konteks): klik-tengah / buka-tab-baru pun tetap dalam subset yang sama.
+perbaruiNav('prev', D.prev);
+perbaruiNav('next', D.next);
 window.addEventListener('resize', () => {
   // resizeEvent -> adjust_scale() di AnyLabeling: selama bukan zoom manual,
   // gambar dipaskan ulang. Tanpa ini, membuka/menutup panel membuat gambar
