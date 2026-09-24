@@ -1076,7 +1076,30 @@
     const fase = (nyala.join(', ') || 'semuanya dimatikan')
       + (mati.length
         ? `<span class="wz-fase-mati">mati: ${mati.join(', ')}</span>` : '');
+    // Baris Kelas: fakta persis dari pilihan di langkah 2, supaya pratinjau
+    // menyebut kelas apa yang benar-benar masuk versi dan mana yang jadi latar.
+    // Jumlah yang bertahan dihitung dari pilihannya sendiri (dibuang & digabung
+    // sama-sama menghilangkan satu kelas), jadi selalu tepat.
+    const daftarK = (sumber && sumber.daftar_kelas) || [];
+    const uk = resep.pra.ubah_kelas || {};
+    const petaK = uk.peta || {};
+    const namaK = uk.nama || {};
+    const latarK = daftarK.filter((k) => petaK[k.i] === null);
+    const gabungK = daftarK.filter((k) => typeof petaK[k.i] === 'number');
+    const renameK = daftarK.filter((k) => namaK[k.i] !== undefined);
+    let kelasTinjau = '';
+    if (daftarK.length) {
+      const sisa = daftarK.length - latarK.length - gabungK.length;
+      const det = [];
+      if (latarK.length) det.push(`${latarK.map((k) => k.nama).join(', ')} &rarr; latar`);
+      if (gabungK.length) det.push(`${gabungK.length} digabung`);
+      if (renameK.length) det.push(`${renameK.length} diganti nama`);
+      const teks = det.length ? `${sisa} dari ${daftarK.length} kelas · ${det.join(' · ')}`
+                              : `${daftarK.length} kelas, semua dipakai`;
+      kelasTinjau = `<div><span>Kelas</span><b>${teks}</b></div>`;
+    }
     t.innerHTML =
+      kelasTinjau +
       `<div><span>Preprocessing</span><b>${daftar('pra').join(', ') || '-'}</b></div>` +
       `<div><span>Augmentasi</span><b>${daftar('aug').join(', ') || 'dimatikan'}</b></div>` +
       `<div><span>Salinan per gambar</span><b>${el('wz-salin').value}</b></div>` +

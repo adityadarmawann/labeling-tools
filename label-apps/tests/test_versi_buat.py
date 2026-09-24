@@ -483,6 +483,38 @@ def test_buang_kelas_jadi_latar_untuk_versi_ini_sumber_utuh(klien, lingkungan):
     assert (d / "classes.txt").read_text().split() == ["botol", "kaleng"]
 
 
+def test_perkiraan_ikut_modify_classes_akurat(klien, lingkungan):
+    """Pratinjau (langkah Buat) harus mencerminkan Modify Classes, bukan angka
+    sumber mentah: kelas yang dibuang lenyap dari hitungan kelas, gambarnya
+    jadi sampel negatif, tetapi daftar pemilih tetap memuat semua kelas asli."""
+    masuk(klien, "paul", PW_PAUL)
+    d = _ds(klien, n_botol=12, n_kaleng=8, n_negatif=6)   # 26 gbr, negatif asli 6
+    klien.post(f"/setsrc?path={d}")
+
+    polos = klien.post("/api/versi/estimasi?split=80,10,10",
+                       json={"resep": {}}).json()
+    assert polos["kelas"] == 2 and polos["negatif_sumber"] == 6, polos
+    kel = {k["nama"]: k["i"] for k in polos["daftar_kelas"]}
+
+    # Buang kaleng: persis payload panel Kelas.
+    r = klien.post("/api/versi/estimasi?split=80,10,10", json={"resep": {
+        "pra": {"ubah_kelas": {"aktif": True, "peta": {str(kel["kaleng"]): None}}}}}).json()
+    assert r["kelas"] == 1, r                       # tinggal botol
+    assert r["objek_sumber"] == 12, r               # 12 objek botol saja
+    # 6 negatif asli + 8 gambar kaleng yang kini tanpa objek.
+    assert r["negatif_sumber"] == 14, r
+    # Daftar pemilih TETAP dua kelas, dengan jumlah objek ASLI (kaleng 8).
+    dk = {k["nama"]: k["objek"] for k in r["daftar_kelas"]}
+    assert dk == {"botol": 12, "kaleng": 8}, dk
+
+    # Gabung kaleng->botol: nol negatif tambahan, kelas jadi satu, objek utuh.
+    r2 = klien.post("/api/versi/estimasi?split=80,10,10", json={"resep": {
+        "pra": {"ubah_kelas": {"aktif": True,
+                               "peta": {str(kel["kaleng"]): kel["botol"]}}}}}).json()
+    assert r2["kelas"] == 1 and r2["objek_sumber"] == 20, r2
+    assert r2["negatif_sumber"] == 6, r2            # tak ada gambar yang jadi kosong
+
+
 def test_ganti_nama_diabaikan_kalau_operasinya_mati(klien, lingkungan):
     """Saklar mati berarti mati. Nama baru yang tetap terpakai membuat saklarnya
     berbohong."""

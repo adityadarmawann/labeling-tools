@@ -1232,6 +1232,33 @@ class Pekerjaan:
 
 
 # ================================================================= perkiraan
+def _ubah_kelas_peta(resep: dict):
+    """Baca resep.pra.ubah_kelas -> (peta indeks->indeks|None, nama indeks->teks),
+    atau None kalau operasinya mati.
+
+    Dipakai perkiraan supaya angkanya SAMA dengan yang ditulis _rencana_kelas +
+    _pra_ubah_kelas saat versi dibangun: kelas yang dibuang (None) hilang, yang
+    digabung (angka) pindah, yang diganti nama terhitung di bawah nama barunya.
+    """
+    uk = ((resep.get("pra") or {}).get("ubah_kelas") or {})
+    if not uk.get("aktif"):
+        return None
+    peta, ganti = {}, {}
+    for k, v in (uk.get("peta") or {}).items():
+        try:
+            peta[int(k)] = None if v is None else int(v)
+        except (TypeError, ValueError):
+            pass
+    for k, v in (uk.get("nama") or {}).items():
+        teks = str(v).strip()
+        if teks:
+            try:
+                ganti[int(k)] = teks
+            except (TypeError, ValueError):
+                pass
+    return peta, ganti
+
+
 def perkirakan(items: list[dict], names: dict, resep: dict, peta: dict) -> dict:
     """
     Perkirakan jumlah gambar, objek, dan ukuran SEBELUM apa pun ditulis.
@@ -1248,11 +1275,41 @@ def perkirakan(items: list[dict], names: dict, resep: dict, peta: dict) -> dict:
     volume = (resep.get("volume") or {})
     buang_kosong = (pra.get("buang_kosong") or {}).get("aktif", False)
 
+    # Modify Classes ikut diperhitungkan supaya pratinjau di langkah Buat = hasil
+    # sebenarnya: kelas yang dibuang lenyap, gambar yang objeknya habis terbuang
+    # jadi sampel negatif (memindahkan train_obj->train_neg dan mengubah seluruh
+    # matematika augmentasi), yang digabung/diganti nama terhitung di bawah nama
+    # akhirnya. Semantiknya sama dengan _rencana_kelas di jalur build.
+    idx = export.peta_kelas(items, names)             # nama -> indeks
+    idx2nama = {i: n for n, i in idx.items()}
+    ubk = _ubah_kelas_peta(resep)                     # (peta, ganti) atau None
+
+    def _nama_akhir(label):
+        i = idx.get(str(label))
+        if i is None:
+            return None
+        if ubk is None:
+            return idx2nama.get(i, str(i))
+        pmeta, ganti = ubk
+        t = pmeta.get(i, i)
+        if t is None:
+            return None                               # dibuang -> jadi latar
+        return ganti.get(t, idx2nama.get(t, str(t)))
+
     n_split = {"train": 0, "valid": 0, "test": 0}
     train_obj = train_neg = neg_semua = 0
-    per_kelas: dict[str, int] = defaultdict(int)
+    per_kelas: dict[str, int] = defaultdict(int)       # HASIL (sesudah Modify)
+    per_kelas_asli: dict[str, int] = defaultdict(int)  # ASLI (untuk pemilih kelas)
     for it in items:
-        punya = bool(it.get("shapes"))
+        akhir = []
+        for sh in it.get("shapes") or []:
+            if sh.get("label") is None:
+                continue
+            per_kelas_asli[str(sh["label"])] += 1
+            fn = _nama_akhir(sh["label"])
+            if fn is not None:
+                akhir.append(fn)
+        punya = bool(akhir)                            # punya objek yang BERTAHAN
         if buang_kosong and not punya:
             continue
         s = peta.get(it["img"].name) or "train"
@@ -1264,9 +1321,8 @@ def perkirakan(items: list[dict], names: dict, resep: dict, peta: dict) -> dict:
                 train_obj += 1
             else:
                 train_neg += 1
-        for sh in it.get("shapes") or []:
-            if sh.get("label") is not None:
-                per_kelas[str(sh["label"])] += 1
+        for fn in akhir:
+            per_kelas[fn] += 1
 
     n = sum(n_split.values())
     tambah = 0
@@ -1310,14 +1366,14 @@ def perkirakan(items: list[dict], names: dict, resep: dict, peta: dict) -> dict:
             # Supaya langkah Buat bisa mengatakannya, bukan membiarkan orang
             # menemukan sendiri bahwa tiga fase yang tampak menyala diam saja.
             "ada_aug": punya_aug,
+            # objek & kelas SESUDAH Modify Classes — inilah yang akan masuk versi.
             "objek_sumber": sum(per_kelas.values()),
             "kelas": len(per_kelas),
-            # Nama DAN indeksnya. Popup Modify Classes memakai indeks (itu yang
-            # dibaca _pra_ubah_kelas) tetapi harus menampilkan nama, dan tanpa
-            # keduanya di satu tempat ia hanya bisa menampilkan angka telanjang.
-            "daftar_kelas": [{"i": i, "nama": n, "objek": per_kelas.get(n, 0)}
-                             for n, i in sorted(export.peta_kelas(items, names).items(),
-                                                key=lambda kv: kv[1])],
+            # Daftar kelas ASLI (indeks + nama + jumlah objek asli): dipakai
+            # panel "Kelas" untuk pemilihnya, jadi harus TETAP lengkap walau ada
+            # yang dibuang/digabung — indeks itu pula yang dibaca _pra_ubah_kelas.
+            "daftar_kelas": [{"i": i, "nama": n, "objek": per_kelas_asli.get(n, 0)}
+                             for n, i in sorted(idx.items(), key=lambda kv: kv[1])],
             # Dua angka, karena keduanya menjawab pertanyaan berbeda: yang
             # pertama "berapa sampel negatif yang kupunya", yang kedua "berapa
             # yang dipakai fase pemulihan porsi" (fase itu hanya menyentuh
