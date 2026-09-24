@@ -519,7 +519,14 @@ async def api_simpan(request: Request, sess: Session = Depends(current_session_a
     # membeku justru papan pemilik projek, satu-satunya orang yang membukanya
     # untuk melihat kemajuan orang lain.
     from ..session import tandai_berubah
-    tandai_berubah(sess.src)
+    # Sebutkan GAMBAR yang berubah, bukan None. tandai_berubah(src) tanpa gambar
+    # menandai perubahan "tak bisa disebut per berkas", yang MEMAKSA sesi mana
+    # pun — termasuk sesi ini sendiri pada perpindahan berikutnya — memindai
+    # ulang SELURUH folder di segarkan() (5,8 dtk pada projek 11 ribu gambar).
+    # Padahal yang berubah persis satu berkas: gambar inilah. Dengan menyebutnya,
+    # segarkan cuma memuat ulang satu item itu — dan sesi ini sudah punya
+    # bentuknya di memori, jadi ongkosnya nyaris nol.
+    tandai_berubah(sess.src, it["img"])
     # Sebagian terbuang tetap disebutkan. Diam soal itu membuat orang mengira
     # seluruh yang digambarnya tersimpan.
     return {"ok": True, "n": len(bentuk), "kurang_titik": kurang_titik,

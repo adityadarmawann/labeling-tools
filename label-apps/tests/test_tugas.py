@@ -2759,3 +2759,31 @@ def test_job_saring_status_dataset(klien, lingkungan):
     # Gabung dengan status anotasi: sudah dianotasi & belum di dataset.
     hg = klien.get(f"/tugas/{tid}?ds={d.name}&saring=sudah&dsf=belum").text
     assert hg.count('class="jb-ubin"') == 2
+
+
+def test_simpan_menandai_gambarnya_bukan_pindai_ulang_penuh(klien, lingkungan):
+    """Menyimpan satu gambar menandai perubahan PER BERKAS.
+
+    tandai_berubah(src) tanpa gambar menandai perubahan "tak bisa disebut per
+    berkas" (None), yang memaksa segarkan() memindai ulang SELURUH folder pada
+    perpindahan berikutnya — 5,8 dtk pada projek 11 ribu gambar — padahal yang
+    berubah persis satu berkas. Di sinilah dijaga: sesudah menyimpan, riwayat
+    perubahan menyebut gambar itu, bukan None.
+    """
+    from app.session import berubah_sejak, cap_sekarang
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = _projek(ruang, "simpan-cap", n=4)
+    klien.post(f"/setsrc?path={d}")
+    img = sorted(d.glob("*.jpg"))[1]
+
+    cap0 = cap_sekarang(d)
+    r = klien.post("/api/simpan", json={"path": str(img), "shapes": [
+        {"label": "botol", "shape_type": "polygon",
+         "points": [[2, 2], [30, 2], [30, 30]]}]}).json()
+    assert r["ok"], r
+    diub = berubah_sejak(d, cap0)
+    assert diub is not None, "menyimpan memaksa pindai ulang penuh (None)"
+    assert diub == {str(img.resolve())}, diub
