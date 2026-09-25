@@ -1273,12 +1273,18 @@
   }
 
   // Kalau halaman dibuka saat masih ada pekerjaan berjalan, susul saja.
+  // muatSumber() tidak jalan di jalur ini, jadi Nama versi + judul diisi dari
+  // nomor yang sudah dicatat pekerjaannya — kalau tidak, keduanya kosong.
   fetch('/api/versi/kemajuan').then((r) => r.json()).then((k) => {
     if (k && k.jalan) {
       wz.hidden = false;
       el('vs-mulai').hidden = true;
       wz.querySelector('.wz-langkah').hidden = true;
       el('wz-kerja').hidden = false;
+      if (k.nomor) {
+        el('wz-nama').value = 'v' + k.nomor;
+        el('wz-kerja-judul').textContent = `Membuat v${k.nomor}…`;
+      }
       pantauKerja();
     }
   }).catch(() => {});

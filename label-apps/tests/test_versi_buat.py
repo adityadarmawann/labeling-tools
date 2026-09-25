@@ -115,6 +115,26 @@ def test_perkiraan_dihitung_sebelum_apa_pun_ditulis(klien, lingkungan):
     assert not (d / ".versi").exists(), "perkiraan tidak boleh menulis apa pun"
 
 
+def test_kemajuan_membawa_nomor_untuk_resume_nama_versi(klien, lingkungan):
+    """Saat halaman Versi dibuka ulang selagi build jalan, Nama versi diisi dari
+    kemajuan.nomor (bukan dari muatSumber, yang tak dipanggil di jalur resume).
+    Kalau nomor hilang dari kemajuan, field itu kosong — bug di buat-versi.png.
+    """
+    masuk(klien, "paul", PW_PAUL)
+    d = _ds(klien, n_botol=8, n_kaleng=4, n_negatif=4)
+    klien.post(f"/setsrc?path={d}")
+    r = _mulai(klien, {"volume": {"per_gambar": 1}})
+    assert r.get("ok"), r
+    nomor = r["nomor"]
+    # Segera setelah mulai (build masih berjalan atau baru selesai), kemajuan
+    # harus menyebut nomor yang sama — itulah yang dibaca UI untuk isi "v{n}".
+    k = klien.get("/api/versi/kemajuan").json()
+    assert k.get("nomor") == nomor, k
+    _tunggu(klien, batas=180)
+    # Bahkan setelah selesai, nomornya tetap tercatat (dipakai reload terakhir).
+    assert klien.get("/api/versi/kemajuan").json().get("nomor") == nomor
+
+
 # ------------------------------------------------------------------- alur
 def test_versi_menghasilkan_berkas_dan_bisa_diunduh(klien, lingkungan):
     masuk(klien, "paul", PW_PAUL)
