@@ -471,6 +471,79 @@ def test_gabung_buang_dan_ganti_nama_kelas_benar_benar_terjadi(klien, lingkungan
     assert indeks == {kel["botol"]}, (indeks, kel)
 
 
+def test_buang_satu_kelas_tak_menghapus_objek_lain_di_frame_sama(klien, lingkungan):
+    """Dalam SATU frame ada dua objek (plastic-cup + tetra). Melepas centang
+    plastic-cup HANYA membuang poligon plastic-cup; tetra di frame yang sama
+    harus bertahan, dan frame itu TIDAK boleh jadi sampel negatif.
+
+    Ini kekhawatiran nyata: 1 foto sering berisi >1 objek. Kalau drop
+    membuang seluruh label per-gambar (bukan per-poligon), tetra ikut hilang.
+    """
+    masuk(klien, "paul", PW_PAUL)
+    d = _ruang(klien) / "vmulti"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "classes.txt").write_text("plastic-cup\ntetra\n")
+    rng = np.random.default_rng(9)
+
+    def _poli(x, y, w=70, h=80):
+        return [[x, y], [x + w, y], [x + w, y + h], [x, y + h]]
+
+    # 10 frame dua-objek (plastic-cup KIRI + tetra KANAN), 4 frame solo plastic-cup.
+    rencana = [("dua", i) for i in range(10)] + [("solo", i) for i in range(4)]
+    n_frame_dua = 0
+    for jenis, i in rencana:
+        im = (rng.random((240, 320, 3)) * 90 + 40).astype(np.uint8)
+        shapes = [{"label": "plastic-cup", "shape_type": "polygon",
+                   "points": _poli(30, 70)}]
+        if jenis == "dua":
+            shapes.append({"label": "tetra", "shape_type": "polygon",
+                           "points": _poli(200, 70)})
+            n_frame_dua += 1
+        nama = f"{jenis}{i:02d}"
+        cv2.imwrite(str(d / f"{nama}.jpg"), im)
+        (d / f"{nama}.json").write_text(json.dumps({
+            "version": "0.4.36", "flags": {}, "imagePath": f"{nama}.jpg",
+            "imageData": None, "imageHeight": 240, "imageWidth": 320,
+            "shapes": shapes}))
+    klien.post("/setsrc", params={"path": str(d)})
+
+    kel = {k["nama"]: k["i"] for k in klien.post(
+        "/api/versi/estimasi?split=100,0,0", json={"resep": {}}).json()["daftar_kelas"]}
+    # Lepas centang plastic-cup -> None. Semua augmentasi/fase dimatikan supaya
+    # yang dihitung murni label asli, bukan turunan augmentasi.
+    resep = {"pra": {"ubah_kelas": {"aktif": True,
+                                    "peta": {str(kel["plastic-cup"]): None}}},
+             "aug": False, "volume": {"per_gambar": 0},
+             "fase": {"crop_zoom": {"aktif": False}, "balans_skala": {"aktif": False},
+                      "balans_kelas": {"aktif": False}, "porsi_negatif": {"aktif": False}}}
+    assert _mulai(klien, resep, split="100,0,0").get("ok")
+    assert _tunggu(klien, batas=180).get("selesai")
+
+    isi = klien.get("/api/versi/isi", params={"nomor": 1}).json()["isi"]
+    # plastic-cup lenyap sebagai kelas; tetra bertahan, satu per frame dua-objek.
+    assert "plastic-cup" not in isi["per_kelas"], isi["per_kelas"]
+    assert isi["per_kelas"].get("tetra") == n_frame_dua, isi["per_kelas"]
+    # HANYA 4 frame solo yang jadi negatif; 10 frame dua-objek TIDAK, karena
+    # tetranya masih ada.
+    assert isi["negatif"] == 4, isi
+
+    # Bukti terkuat: buka label mentah sebuah frame dua-objek. Harus TEPAT satu
+    # baris (tetra), bukan nol (semua terhapus) dan bukan dua (plastic-cup ikut).
+    z = klien.get("/ekspor", params={"nomor": 1, "format": "yolo"})
+    assert z.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(z.content)) as zf:
+        lbl = next(n for n in zf.namelist()
+                   if n.endswith(".txt") and "/labels/" in n and "dua" in n)
+        baris = [b for b in zf.read(lbl).decode().split("\n") if b.strip()]
+    assert len(baris) == 1, (lbl, baris)
+    # Indeks yang tersisa harus dipadatkan ke 0 (tetra satu-satunya kelas versi ini).
+    assert int(float(baris[0].split()[0])) == 0, baris
+
+    # SUMBER tak tersentuh.
+    assert "plastic-cup" in (d / "dua00.json").read_text()
+    assert (d / "classes.txt").read_text().split() == ["plastic-cup", "tetra"]
+
+
 def test_buang_kelas_jadi_latar_untuk_versi_ini_sumber_utuh(klien, lingkungan):
     """Kelas yang dilepas centangnya di Langkah "Kelas" jadi LATAR versi ini:
     objeknya lenyap dari label, gambar yang isinya cuma kelas itu jadi sampel
