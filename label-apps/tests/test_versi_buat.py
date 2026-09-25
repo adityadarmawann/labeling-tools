@@ -112,6 +112,9 @@ def test_perkiraan_dihitung_sebelum_apa_pun_ditulis(klien, lingkungan):
     assert e["n"] > e["n_sumber"], "augmentasi menambah gambar"
     assert e["negatif_sumber"] == 10 and e["negatif_train"] > 0
     assert e["byte"] > 0 and "cukup" in e
+    # Disk kosong SELALU dikirim (bukan cuma saat kurang): langkah 6 kini selalu
+    # menampilkan sisa ruang sistem, bukan hanya sebagai peringatan.
+    assert e.get("disk_kosong", 0) > 0
     assert not (d / ".versi").exists(), "perkiraan tidak boleh menulis apa pun"
 
 

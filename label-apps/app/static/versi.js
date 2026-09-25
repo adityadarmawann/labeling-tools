@@ -1126,9 +1126,10 @@
     el('wz-perkira').innerHTML = keluhan + matiAug +
       `<b>${r.n.toLocaleString('id')}</b> gambar diperkirakan ` +
       `(${r.n_sumber.toLocaleString('id')} sumber + ${r.tambahan.toLocaleString('id')} hasil), ` +
-      `sekitar <b>${mb(r.byte)}</b> di disk.` +
-      (r.cukup ? '' : `<span class="split-warn"> Ruang disk tidak cukup, ` +
-        `tersisa ${mb(r.disk_kosong)}.</span>`) +
+      `sekitar <b>${mb(r.byte)}</b> di disk. ` +
+      `Disk sistem tersedia sekarang: <b>${mb(r.disk_kosong)}</b> kosong.` +
+      (r.cukup ? '' : `<span class="split-warn"> Ruang tidak cukup untuk ` +
+        `versi ini (perlu sisa cadangan di atas ukuran versinya).</span>`) +
       `<span class="halus">Perkiraan, bukan janji: berapa hasil augmentasi ` +
       `yang ditolak penjaga keterbacaan baru diketahui saat dijalankan.</span>`;
     el('wz-buat').disabled = !r.cukup;
