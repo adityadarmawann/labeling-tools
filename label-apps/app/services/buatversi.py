@@ -1388,6 +1388,25 @@ def ada_hasil(ds: Path, nomor: int) -> bool:
     return (dir_versi(ds, nomor) / "data.yaml").exists()
 
 
+def kelas_versi(ds: Path, nomor: int) -> list[str]:
+    """Daftar nama kelas sebuah versi, URUT indeks, dibaca dari data.yaml.
+
+    Inilah nama-nama yang benar-benar dilatih modelnya (sesudah Modify Classes:
+    yang digabung/dibuang/diganti nama sudah tercermin di data.yaml). Kosong
+    kalau versinya sudah dihapus. Pemanggil membekukannya ke rekaman training
+    supaya keterangan kelas tetap ada meski versinya belakangan dihapus.
+    """
+    yml = dir_versi(ds, nomor) / "data.yaml"
+    if not yml.exists():
+        return []
+    for baris in yml.read_text(encoding="utf-8").splitlines():
+        if baris.startswith("names:"):
+            isi = baris.split(":", 1)[1].strip().strip("[]")
+            return [n.strip().strip("'\"") for n in isi.split(",")
+                    if n.strip().strip("'\"")]
+    return []
+
+
 def items_hasil(ds: Path, nomor: int):
     """
     Baca berkas hasil sebuah versi jadi bentuk `item` yang dikenal export.py.

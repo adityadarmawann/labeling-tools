@@ -711,6 +711,22 @@
     }).join('');
   }
 
+  /* Kelas yang dikenal model ini, urut indeks (0..n-1) — persis urutan yang
+     dipakai label YOLO. Nomor indeks ditampilkan karena itulah yang muncul di
+     keluaran deteksi mentah. Kosong hanya kalau versinya sudah dihapus DAN
+     training ini dibuat sebelum daftar kelas mulai dibekukan. */
+  function blokKelas(kelas) {
+    if (!Array.isArray(kelas) || !kelas.length) {
+      return `<div class="tr-p-blok"><h4>Kelas model</h4>
+        <p class="tr-bantu">Daftar kelas tidak tersedia — versi sumbernya sudah dihapus.</p></div>`;
+    }
+    const cip = kelas.map((n, i) =>
+      `<span class="tr-kcip"><i>${i}</i>${esc(n)}</span>`).join('');
+    return `<div class="tr-p-blok">
+      <h4>Kelas model <small>(${kelas.length})</small></h4>
+      <div class="tr-kdaftar">${cip}</div></div>`;
+  }
+
   function blokKurva(kurva, t) {
     const titik = kurva.filter((k) => k.nilai !== null && k.nilai !== undefined);
     if (titik.length < 2) {
@@ -811,6 +827,7 @@
       ${w.pesan ? `<div class="tr-p-blok tr-warna">
         <h4>Warna: setelan latih mengikuti versinya</h4>
         <p class="tr-warna-pesan">${esc(w.pesan)}</p></div>` : ''}
+      ${blokKelas(t.kelas)}
       ${blokKurva(r.kurva || [], t)}
       ${blokGambar(r.gambar || [], t.nomor)}
       ${blokEvaluasi(r.evaluasi)}

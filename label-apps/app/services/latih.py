@@ -659,10 +659,18 @@ def status(ds, nomor: int) -> dict:
     persen_halus = (min(100.0, round((ep + frac) / epochs * 100, 1))
                     if epochs else persen)
 
+    # Kelas dibekukan sejak siapkan(). Training LAMA tak punya field ini; selama
+    # versinya belum dihapus, dibaca ulang dari data.yaml agar rincian tetap
+    # menampilkannya tanpa harus melatih ulang.
+    kelas = isi.get("kelas")
+    if not kelas and isi.get("versi"):
+        from . import buatversi
+        kelas = buatversi.kelas_versi(ds, int(isi["versi"]))
     out = {
         **{k: isi.get(k) for k in
            ("nomor", "nama", "catatan", "versi", "tugas", "bobot", "oleh",
             "dibuat", "selesai_pada", "galat", "par", "warna")},
+        "kelas": kelas or [],
         "keadaan": keadaan,
         "epoch": ep, "epochs": epochs, "persen": persen,
         "epoch_berjalan": epoch_berjalan, "persen_epoch": persen_epoch,
@@ -750,11 +758,17 @@ def siapkan(ds, *, nama: str, versi_nomor: int, tugas: str, bobot: str,
     par_bersih.update(mw.par_latih(mode))
     if tugas not in TUGAS:
         raise ValueError(f"tugas harus salah satu dari {TUGAS}")
+    # Daftar kelas DIBEKUKAN di sini, sama alasannya dengan warna: versinya bisa
+    # dihapus belakangan, dan keterangan "model ini kenal kelas apa saja" harus
+    # tetap terbaca sesudah itu. Ini nama sesudah Modify Classes, urut indeks.
+    from . import buatversi
+    kelas = buatversi.kelas_versi(ds, int(versi_nomor))
     isi = {
         "nomor": n,
         "nama": " ".join((nama or "").split())[:MAKS_NAMA] or f"Latihan {n}",
         "catatan": " ".join((catatan or "").split())[:MAKS_CATATAN],
         "versi": int(versi_nomor),
+        "kelas": kelas,
         "tugas": tugas,
         "bobot": bobot,
         "par": par_bersih,

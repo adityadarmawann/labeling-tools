@@ -262,6 +262,54 @@ def test_siapkan_membekukan_periksa_warna(tmp_path):
     assert di_disk["warna"]["pesan"]
 
 
+def _tulis_versi_yaml(ds, nomor, nama_kelas):
+    """data.yaml versi minimal, persis bentuk yang ditulis buatversi."""
+    d = ds / ".versi" / f"v{nomor}"
+    (d / "train" / "images").mkdir(parents=True, exist_ok=True)
+    (d / "data.yaml").write_text(
+        "path: .\ntrain: train/images\nval: valid/images\n"
+        f"nc: {len(nama_kelas)}\n"
+        "names: [" + ", ".join(f"'{n}'" for n in nama_kelas) + "]\n",
+        encoding="utf-8")
+
+
+def test_kelas_versi_dibaca_urut_indeks_dari_data_yaml(tmp_path):
+    from app.services import buatversi
+    _tulis_versi_yaml(tmp_path, 2, ["botol", "kaleng", "tetra"])
+    assert buatversi.kelas_versi(tmp_path, 2) == ["botol", "kaleng", "tetra"]
+    # Versi yang tak ada -> kosong, bukan meledak.
+    assert buatversi.kelas_versi(tmp_path, 99) == []
+
+
+def test_siapkan_membekukan_daftar_kelas(tmp_path):
+    """Rincian training harus bisa menyebut kelas apa saja yang dikenal model,
+    dan tetap bisa sesudah versinya dihapus. Maka daftarnya dibekukan saat
+    siapkan, sama seperti setelan warna."""
+    _tulis_versi_yaml(tmp_path, 4, ["plastic-cup", "tetra"])
+    isi = latih.siapkan(tmp_path, nama="x", versi_nomor=4, tugas="segment",
+                        bobot="y.pt", par={"epochs": 5}, oleh="uji")
+    assert isi["kelas"] == ["plastic-cup", "tetra"]
+    # Beku: hapus versinya, rekaman training tetap menyimpan kelasnya.
+    import shutil
+    shutil.rmtree(tmp_path / ".versi" / "v4")
+    assert latih.baca(tmp_path, isi["nomor"])["kelas"] == ["plastic-cup", "tetra"]
+
+
+def test_status_isi_kelas_untuk_training_lama_tanpa_field(tmp_path):
+    """Training yang dibuat sebelum kelas mulai dibekukan tak punya field itu.
+    Selama versinya masih ada, status membacanya ulang dari data.yaml agar
+    rincian tetap menampilkannya."""
+    _tulis_versi_yaml(tmp_path, 6, ["a", "b", "c"])
+    isi = latih.siapkan(tmp_path, nama="lama", versi_nomor=6, tugas="detect",
+                        bobot="y.pt", par={"epochs": 3}, oleh="uji")
+    # Simulasikan rekaman lama: buang field kelas dari disk.
+    rek = latih.baca(tmp_path, isi["nomor"])
+    del rek["kelas"]
+    latih._tulis(tmp_path, isi["nomor"], rek)
+    s = latih.status(tmp_path, isi["nomor"])
+    assert s["kelas"] == ["a", "b", "c"]
+
+
 def test_nama_kosong_diberi_nama_bawaan(tmp_path):
     isi = latih.siapkan(tmp_path, nama="   ", versi_nomor=1, tugas="segment",
                         bobot="y.pt", par={}, oleh="uji")

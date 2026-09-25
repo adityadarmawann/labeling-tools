@@ -2833,6 +2833,17 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
        padding:3px 7px; background:var(--sunk); border-radius:5px}
 .tr-kv i{font-style:normal; color:var(--ink-dim)}
 .tr-kv b{font-variant-numeric:tabular-nums}
+.tr-p-blok h4 small{font-size:11px; color:var(--ink-dim); text-transform:none;
+                    letter-spacing:0}
+/* Kelas model: cip berindeks. Indeksnya (kotak kecil di kiri) sengaja terlihat
+   karena itulah angka yang keluar dari deteksi mentah. */
+.tr-kdaftar{display:flex; flex-wrap:wrap; gap:6px}
+.tr-kcip{display:inline-flex; align-items:center; gap:6px; font-size:12px;
+         padding:3px 9px 3px 3px; background:var(--sunk); border-radius:12px;
+         border:1px solid var(--line)}
+.tr-kcip i{font-style:normal; font-variant-numeric:tabular-nums; font-size:11px;
+           min-width:17px; text-align:center; padding:2px 4px; border-radius:9px;
+           background:var(--line); color:var(--ink-dim)}
 .tr-grafik{width:100%; border-radius:8px; border:1px solid var(--line)}
 /* Log dibuat menggulir sendiri, bukan memanjangkan panelnya: yang dicari
    orang di log hampir selalu baris terakhir. */
