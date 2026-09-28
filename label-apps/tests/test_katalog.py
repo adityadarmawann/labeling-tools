@@ -44,7 +44,21 @@ def test_buang_katalog_menyisakan_yang_asli(tmp_path):
     a = _tulis(tmp_path, "web1.jpg", 255)
     b = _tulis(tmp_path, "web2.jpg", 255)
     c = _tulis(tmp_path, "asli1.jpg", 45)
-    items = [{"img": a}, {"img": b}, {"img": c}]
+    obj = [{"label": "botol"}]                        # ada objek
+    items = [{"img": a, "shapes": obj}, {"img": b, "shapes": obj},
+             {"img": c, "shapes": obj}]
     tersisa, dibuang = katalog.buang_katalog(items)
     assert dibuang == 2
     assert [it["img"].name for it in tersisa] == ["asli1.jpg"]
+
+
+def test_sampel_negatif_berlatar_putih_tak_pernah_dibuang(tmp_path):
+    """Latar putih + label kosong = sampel negatif DISENGAJA. Filter katalog
+    tak boleh menyapunya walau bingkainya putih — ini yang paling penting."""
+    neg = _tulis(tmp_path, "latar.jpg", 255)          # putih penuh, TANPA objek
+    web = _tulis(tmp_path, "web.jpg", 255)            # putih penuh, ADA objek
+    items = [{"img": neg, "shapes": []},              # negatif
+             {"img": web, "shapes": [{"label": "botol"}]}]
+    tersisa, dibuang = katalog.buang_katalog(items)
+    assert dibuang == 1                                # hanya yang ber-objek
+    assert [it["img"].name for it in tersisa] == ["latar.jpg"]

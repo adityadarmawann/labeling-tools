@@ -84,11 +84,20 @@ def adalah_katalog(fp: Path, ambang: float = AMBANG) -> bool:
 def buang_katalog(items: list, *, ambang: float = AMBANG) -> tuple[list, int]:
     """Sisakan item yang BUKAN katalog. Kembalikan (tersisa, jumlah_dibuang).
 
-    Item tanpa kunci "img" atau yang gambarnya tak terbaca selalu disisakan."""
+    SAMPEL NEGATIF TAK PERNAH DIBUANG. Gambar tanpa objek (shapes kosong) itu
+    sampel negatif yang DISENGAJA — dan latar putih/kosong justru negatif yang
+    berharga (mengajari model menolak ruang kosong). Kalau tidak dijaga, filter
+    ini akan menyapu negatif berlatar terang: pada dataset botol-kaleng-tetra,
+    388 dari 3.227 negatif punya bingkai putih. Katalog yang dibuang hanya foto
+    PRODUK (ada objek) di latar putih polos.
+
+    Item tanpa kunci "img" atau yang gambarnya tak terbaca juga selalu disisakan.
+    """
     tersisa, dibuang = [], 0
     for it in items:
         img = it.get("img")
-        if img is not None and adalah_katalog(img, ambang):
+        punya_objek = bool(it.get("shapes"))
+        if punya_objek and img is not None and adalah_katalog(img, ambang):
             dibuang += 1
             continue
         tersisa.append(it)
