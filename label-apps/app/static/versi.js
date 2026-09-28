@@ -387,8 +387,10 @@
     if (!r || !r.ok) return;
     const batch = r.batch || {}, tag = r.tag || {};
     const nb = Object.keys(batch).length, nt = Object.keys(tag).length;
-    if (!nb && !nt) { el('wz-filter').hidden = true; return; }
+    // Panel selalu tampil: opsi "buang katalog" berlaku walau tak ada batch/tag.
     el('wz-filter').hidden = false;
+    const kat = el('wz-buang-katalog');
+    if (kat) kat.onchange = () => muatSumber();
     const esc = (s) => String(s).replace(/[&<>"]/g, (c) =>
       ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
     el('wz-filter-batch').innerHTML = nb ? '<b class="wz-filter-jdl">Batch (yang dicentang ikut)</b>'
@@ -1079,6 +1081,7 @@
         .map((c) => c.dataset.batch),
       tag_buang: [...document.querySelectorAll('.wz-ft:checked')]
         .map((c) => c.dataset.tag),
+      buang_katalog: !!(el('wz-buang-katalog') && el('wz-buang-katalog').checked),
     };
     return resep;
   }

@@ -152,6 +152,28 @@ def test_filter_sumber_membuang_batch_dan_tag_tanpa_menyentuh_dataset(klien, lin
     assert len(list(d.glob("g*.jpg"))) == 20
 
 
+def test_filter_buang_katalog_otomatis(klien, lingkungan):
+    """Filter 'buang katalog' mendeteksi foto latar putih polos sendiri (tanpa
+    tag) dan mengeluarkannya dari versi. Dataset sumber tak diubah."""
+    import cv2
+    masuk(klien, "paul", PW_PAUL)
+    d = _ds(klien, n_botol=10, n_kaleng=0, n_negatif=0)   # 10 gambar asli (latar gelap)
+    # Timpa 3 gambar jadi "katalog": objek di tengah, latar putih penuh.
+    for i in range(3):
+        im = np.full((240, 320, 3), 255, np.uint8)        # putih penuh
+        im[90:150, 130:190] = 60                          # objek gelap kecil di tengah
+        cv2.imwrite(str(d / f"g{i:02d}.jpg"), im)
+    klien.post(f"/setsrc?path={d}")
+
+    e0 = klien.post("/api/versi/estimasi?split=80,10,10", json={"resep": {}}).json()
+    assert e0["n_sumber"] == 10, e0
+    e1 = klien.post("/api/versi/estimasi?split=80,10,10", json={"resep": {
+        "sumber": {"buang_katalog": True}}}).json()
+    assert e1["dibuang_saring"] == 3, e1
+    assert e1["n_sumber"] == 7, e1
+    assert len(list(d.glob("g*.jpg"))) == 10             # sumber utuh
+
+
 def test_kemajuan_membawa_nomor_untuk_resume_nama_versi(klien, lingkungan):
     """Saat halaman Versi dibuka ulang selagi build jalan, Nama versi diisi dari
     kemajuan.nomor (bukan dari muatSumber, yang tak dipanggil di jalur resume).

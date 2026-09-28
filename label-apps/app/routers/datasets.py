@@ -239,10 +239,18 @@ def _saring_sumber(items, ds, resep):
     s = (resep or {}).get("sumber") or {}
     bb = s.get("batch_buang") or []
     tb = s.get("tag_buang") or []
-    if not bb and not tb:
-        return items, 0
-    data = svc_tag.baca(ds)
-    return svc_tag.saring_buang(data, items, ds, batch_buang=bb, tag_buang=tb)
+    buang_kat = bool(s.get("buang_katalog"))
+    dibuang = 0
+    if bb or tb:
+        data = svc_tag.baca(ds)
+        items, n = svc_tag.saring_buang(data, items, ds, batch_buang=bb,
+                                        tag_buang=tb)
+        dibuang += n
+    if buang_kat:
+        from ..services import katalog
+        items, n = katalog.buang_katalog(items)
+        dibuang += n
+    return items, dibuang
 
 
 @router.get("/api/versi/sumber")
