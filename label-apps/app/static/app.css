@@ -2167,6 +2167,9 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
   color:var(--ink-dim);margin-bottom:6px}
 .wz-angka b{color:var(--ink);font-variant-numeric:tabular-nums}
 .wz-angka .wz-buang{color:var(--awas,#b45309);font-weight:600}
+.wz-angka .wz-buang-banyak{color:var(--bahaya,#b42318)}
+.wz-filter-awas{color:var(--bahaya,#b42318);font-weight:600;
+  background:var(--bahaya-lembut,#fdeceb);border-radius:6px;padding:6px 8px}
 /* Filter sumber: buang batch/tag tertentu untuk versi ini (sumber tak diubah). */
 .wz-filter{margin:2px 0 12px;border:1px solid var(--line);border-radius:8px;
   padding:8px 12px;background:var(--sunk)}

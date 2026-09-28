@@ -364,17 +364,30 @@
     sumber = r;
     el('wz-nama').value = 'v' + (r.nomor_berikut || (jumlahVersi() + 1));
     const buang = r.dibuang_saring || 0;
+    const asli = r.n_sumber + buang;                 // total sebelum filter
+    const frac = asli ? buang / asli : 0;
+    // Ambang peringatan: filter yang membuang lebih dari 40% dataset hampir
+    // pasti tak disengaja (mis. salah lepas centang batch besar). Diberitahu,
+    // bukan diblokir — subset kecil yang disengaja tetap boleh.
+    const banjir = frac > 0.4;
     el('wz-sumber').innerHTML =
       `<span><b>${r.n_sumber}</b> gambar</span>` +
       `<span><b>${r.objek_sumber}</b> objek</span>` +
       `<span><b>${r.kelas}</b> kelas</span>` +
       `<span><b>${r.negatif_sumber}</b> sampel negatif</span>` +
-      (buang ? `<span class="wz-buang">−${buang} dibuang filter</span>` : '');
+      (buang ? `<span class="wz-buang${banjir ? ' wz-buang-banyak' : ''}">`
+        + `−${buang} dibuang filter</span>` : '');
     el('wz-r1').textContent = `${r.n_sumber} gambar · ${r.kelas} kelas`
       + (buang ? ` · −${buang} filter` : '');
-    el('wz-filter-ket').textContent = buang
-      ? `${buang} gambar dibuang dari versi ini oleh filter (dataset sumber tetap utuh).`
-      : '';
+    const ket = el('wz-filter-ket');
+    ket.classList.toggle('wz-filter-awas', banjir);
+    ket.textContent = !buang ? ''
+      : banjir
+        ? `⚠ Filter membuang ${buang} gambar (${Math.round(frac * 100)}%) — `
+          + `dari ${asli} jadi ${r.n_sumber}. Pastikan ini disengaja: versi yang `
+          + `terlalu kecil bikin model lemah.`
+        : `${buang} gambar dibuang dari versi ini oleh filter `
+          + `(dataset sumber tetap utuh).`;
     gambarSplit();
     muatKelas();
   }
