@@ -152,6 +152,45 @@ def pasang(ds: Path, kunci_gambar_daftar: list[str], *, tambah=(), buang=(),
     return {"n": len(kunci_gambar_daftar), "tag": tambah, "batch": batch}
 
 
+def saring_buang(data: dict, items: list, ds, *,
+                 batch_buang=(), tag_buang=()) -> tuple[list, int]:
+    """Buang item yang batch-nya termasuk `batch_buang` ATAU punya salah satu
+    `tag_buang`. Dipakai version builder untuk mengecualikan foto web/katalog
+    tanpa menyentuh dataset sumber — filter cuma berlaku untuk versi itu.
+
+    Kembalikan (item_tersisa, jumlah_dibuang). Tanpa kriteria apa pun, item
+    dikembalikan apa adanya."""
+    bb = {str(b) for b in batch_buang if str(b).strip()}
+    tb = {bersihkan_tag(t) for t in tag_buang if bersihkan_tag(t)}
+    if not bb and not tb:
+        return items, 0
+    tersisa, dibuang = [], 0
+    for it in items:
+        r = untuk(data, kunci_gambar(ds, it["img"]))
+        if r["batch"] in bb or (tb & set(r["tag"])):
+            dibuang += 1
+            continue
+        tersisa.append(it)
+    return tersisa, dibuang
+
+
+def hitung_untuk_items(data: dict, items: list, ds) -> dict:
+    """Sama seperti hitung(), tetapi HANYA menghitung gambar yang ada di
+    `items` (isi dataset), bukan seluruh yang pernah ditandai. Itu yang benar
+    untuk panel filter version builder: batch/tag yang ditawarkan harus yang
+    memang ada di kumpulan yang akan jadi versi."""
+    tag: dict[str, int] = {}
+    batch: dict[str, int] = {}
+    for it in items:
+        r = untuk(data, kunci_gambar(ds, it["img"]))
+        if r["batch"]:
+            batch[r["batch"]] = batch.get(r["batch"], 0) + 1
+        for t in r["tag"]:
+            tag[t] = tag.get(t, 0) + 1
+    return {"tag": dict(sorted(tag.items())),
+            "batch": dict(sorted(batch.items()))}
+
+
 def hitung(data: dict) -> dict:
     """Berapa gambar per tag dan per nama unggahan, untuk saringan di grid."""
     tag: dict[str, int] = {}

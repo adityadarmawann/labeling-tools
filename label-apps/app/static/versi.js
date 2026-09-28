@@ -344,6 +344,7 @@
     resep.warna = { mode: 'tidak-ada' };      // paksa dianggap berubah
     terapkanModeWarna(false);
     gambarOperasi();
+    await muatFilter();
     await muatSumber();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -362,14 +363,45 @@
     }
     sumber = r;
     el('wz-nama').value = 'v' + (r.nomor_berikut || (jumlahVersi() + 1));
+    const buang = r.dibuang_saring || 0;
     el('wz-sumber').innerHTML =
       `<span><b>${r.n_sumber}</b> gambar</span>` +
       `<span><b>${r.objek_sumber}</b> objek</span>` +
       `<span><b>${r.kelas}</b> kelas</span>` +
-      `<span><b>${r.negatif_sumber}</b> sampel negatif</span>`;
-    el('wz-r1').textContent = `${r.n_sumber} gambar · ${r.kelas} kelas`;
+      `<span><b>${r.negatif_sumber}</b> sampel negatif</span>` +
+      (buang ? `<span class="wz-buang">−${buang} dibuang filter</span>` : '');
+    el('wz-r1').textContent = `${r.n_sumber} gambar · ${r.kelas} kelas`
+      + (buang ? ` · −${buang} filter` : '');
+    el('wz-filter-ket').textContent = buang
+      ? `${buang} gambar dibuang dari versi ini oleh filter (dataset sumber tetap utuh).`
+      : '';
     gambarSplit();
     muatKelas();
+  }
+
+  // Daftar batch & tag yang ada di isi dataset, untuk panel filter langkah 1.
+  // Dipanggil sekali saat wizard dibuka; centang batch = ikut, centang tag =
+  // dibuang. Tiap perubahan menghitung ulang perkiraan lewat muatSumber.
+  async function muatFilter() {
+    const r = await fetch('/api/versi/sumber').then((x) => x.json()).catch(() => null);
+    if (!r || !r.ok) return;
+    const batch = r.batch || {}, tag = r.tag || {};
+    const nb = Object.keys(batch).length, nt = Object.keys(tag).length;
+    if (!nb && !nt) { el('wz-filter').hidden = true; return; }
+    el('wz-filter').hidden = false;
+    const esc = (s) => String(s).replace(/[&<>"]/g, (c) =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    el('wz-filter-batch').innerHTML = nb ? '<b class="wz-filter-jdl">Batch (yang dicentang ikut)</b>'
+      + Object.entries(batch).map(([b, n]) =>
+        `<label class="wz-filter-baris"><input type="checkbox" class="wz-fb" checked
+          data-batch="${esc(b)}"> ${esc(b)} <i>${n}</i></label>`).join('') : '';
+    el('wz-filter-tag').innerHTML = nt ? '<b class="wz-filter-jdl">Tag (yang dicentang dibuang)</b>'
+      + Object.entries(tag).map(([t, n]) =>
+        `<label class="wz-filter-baris"><input type="checkbox" class="wz-ft"
+          data-tag="${esc(t)}"> ${esc(t)} <i>${n}</i></label>`).join('') : '';
+    el('wz-filter').querySelectorAll('.wz-fb, .wz-ft').forEach((c) => {
+      c.onchange = () => muatSumber();
+    });
   }
   const jumlahVersi = () => document.querySelectorAll('.vs-kartu').length;
 
@@ -1039,6 +1071,14 @@
       balans_skala: { aktif: el('wz-f-skala').checked },
       balans_kelas: { aktif: el('wz-f-kelas').checked },
       porsi_negatif: { aktif: el('wz-f-neg').checked },
+    };
+    // Filter sumber: batch yang centangnya DILEPAS dibuang; tag yang dicentang
+    // dibuang. Cuma berlaku untuk versi ini — dataset sumber tak tersentuh.
+    resep.sumber = {
+      batch_buang: [...document.querySelectorAll('.wz-fb:not(:checked)')]
+        .map((c) => c.dataset.batch),
+      tag_buang: [...document.querySelectorAll('.wz-ft:checked')]
+        .map((c) => c.dataset.tag),
     };
     return resep;
   }

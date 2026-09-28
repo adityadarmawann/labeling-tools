@@ -118,6 +118,40 @@ def test_perkiraan_dihitung_sebelum_apa_pun_ditulis(klien, lingkungan):
     assert not (d / ".versi").exists(), "perkiraan tidak boleh menulis apa pun"
 
 
+def test_filter_sumber_membuang_batch_dan_tag_tanpa_menyentuh_dataset(klien, lingkungan):
+    """Filter batch/tag di wizard versi membuang gambar dari VERSI itu saja —
+    dataset sumber (.tag.json, gambar, label) tak berubah. Ini yang dipakai
+    untuk mengecualikan foto web/katalog tanpa merusak dataset."""
+    from app.services import tag as svc_tag
+    masuk(klien, "paul", PW_PAUL)
+    d = _ds(klien, n_botol=12, n_kaleng=8, n_negatif=0)   # 20 gambar
+    klien.post(f"/setsrc?path={d}")
+
+    # Tandai 5 gambar sebagai batch "web" + 3 lain diberi tag "katalog".
+    kunci = lambda nm: svc_tag.kunci_gambar(d, d / nm)
+    svc_tag.pasang(d, [kunci(f"g{i:02d}.jpg") for i in range(5)], batch="web")
+    svc_tag.pasang(d, [kunci(f"g{i:02d}.jpg") for i in range(5, 8)], tambah=["katalog"])
+    sebelum = (d / ".tag.json").read_text()
+
+    # Tanpa filter: 20 gambar.
+    e0 = klien.post("/api/versi/estimasi?split=80,10,10", json={"resep": {}}).json()
+    assert e0["n_sumber"] == 20, e0
+
+    # Buang batch "web" (5) + tag "katalog" (3) => 12 tersisa.
+    e1 = klien.post("/api/versi/estimasi?split=80,10,10", json={"resep": {
+        "sumber": {"batch_buang": ["web"], "tag_buang": ["katalog"]}}}).json()
+    assert e1["n_sumber"] == 12, e1
+    assert e1["dibuang_saring"] == 8, e1
+
+    # Endpoint daftar batch/tag untuk panel filter.
+    s = klien.get("/api/versi/sumber").json()
+    assert s["batch"].get("web") == 5 and s["tag"].get("katalog") == 3, s
+
+    # SUMBER TAK BERUBAH: .tag.json sama persis, tak ada file yang dihapus.
+    assert (d / ".tag.json").read_text() == sebelum
+    assert len(list(d.glob("g*.jpg"))) == 20
+
+
 def test_kemajuan_membawa_nomor_untuk_resume_nama_versi(klien, lingkungan):
     """Saat halaman Versi dibuka ulang selagi build jalan, Nama versi diisi dari
     kemajuan.nomor (bukan dari muatSumber, yang tak dipanggil di jalur resume).

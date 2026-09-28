@@ -230,6 +230,36 @@ async def _muat_bahan(sess, settings):
     return (items, names, hitung), None
 
 
+def _saring_sumber(items, ds, resep):
+    """Terapkan filter batch/tag dari resep['sumber'] ke daftar item.
+
+    Ini yang membuang foto web/katalog untuk versi TERTENTU tanpa mengubah
+    dataset: filternya hidup di resep versi, bukan di berkas sumber. Kembalikan
+    (items, dibuang)."""
+    s = (resep or {}).get("sumber") or {}
+    bb = s.get("batch_buang") or []
+    tb = s.get("tag_buang") or []
+    if not bb and not tb:
+        return items, 0
+    data = svc_tag.baca(ds)
+    return svc_tag.saring_buang(data, items, ds, batch_buang=bb, tag_buang=tb)
+
+
+@router.get("/api/versi/sumber")
+async def versi_sumber(sess: Session = Depends(current_session_api),
+                       settings: Settings = Depends(get_settings)):
+    """Batch & tag yang ADA di isi dataset — untuk panel filter di wizard versi.
+    Cuma yang benar-benar ada di kumpulan versi, bukan semua yang pernah ditandai."""
+    bahan, galat = await _muat_bahan(sess, settings)
+    if galat:
+        return galat
+    items, _, _ = bahan
+    data = await asyncio.to_thread(svc_tag.baca, sess.src)
+    ringkas = await asyncio.to_thread(svc_tag.hitung_untuk_items, data, items,
+                                      sess.src)
+    return {"ok": True, "total": len(items), **ringkas}
+
+
 @router.get("/api/versi/katalog")
 async def versi_katalog(sess: Session = Depends(current_session_api)):
     """Daftar operasi untuk kedua popup. Dibaca sekali saat wizard dibuka."""
@@ -327,6 +357,11 @@ async def versi_estimasi(request: Request, split: str = "", belah: str = "",
         return galat
     items, names, _ = bahan
     resep = (await bodi_json(request)).get("resep") or {}
+    items, dibuang_saring = await asyncio.to_thread(_saring_sumber, items,
+                                                    sess.src, resep)
+    if not items:
+        return {"ok": False,
+                "error": "filter batch/tag membuang semua gambar — longgarkan filternya"}
     rasio = split or "8:1:1"
     rencana = _rencana(sess, belah)
     bagian = await asyncio.to_thread(export.bagi_split, items,
@@ -335,6 +370,7 @@ async def versi_estimasi(request: Request, split: str = "", belah: str = "",
     e = await asyncio.to_thread(buatversi.perkirakan, items, names, resep, peta)
     kosong = shutil.disk_usage(sess.src).free
     return {"ok": True, **e, "berencana": bool(rencana),
+            "dibuang_saring": dibuang_saring,
             "rasio_pesan": export.periksa_rasio(rasio),
             "nomor_berikut": await asyncio.to_thread(versi.nomor_berikut, sess.src),
             "disk_kosong": kosong,
@@ -355,6 +391,11 @@ async def versi_mulai(request: Request, split: str = "", catatan: str = "",
         return galat
     items, names, hitung = bahan
     resep = (await bodi_json(request)).get("resep") or {}
+    items, _dibuang = await asyncio.to_thread(_saring_sumber, items,
+                                              sess.src, resep)
+    if not items:
+        return {"ok": False,
+                "error": "filter batch/tag membuang semua gambar — longgarkan filternya"}
     rasio = split or "8:1:1"
     rencana = _rencana(sess, belah)
     bagian = await asyncio.to_thread(export.bagi_split, items,
