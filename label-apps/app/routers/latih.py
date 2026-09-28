@@ -182,6 +182,76 @@ async def mulai(request: Request,
     return {"ok": True, "dibuat": dibuat}
 
 
+@router.post("/api/latih/lanjut")
+async def lanjut(request: Request,
+                 sess: Session = Depends(current_session_api),
+                 settings: Settings = Depends(get_settings)):
+    """Training LANJUTAN: mulai training baru dengan bobot awal dari best.pt /
+    last.pt sebuah training yang sudah ada, mewarisi seluruh setelannya (versi,
+    tugas, hsv, mode warna) dan hanya mengganti jumlah epoch.
+
+    Titik awalnya bobot training sumber di projek ini sendiri — bukan path bebas
+    dari klien — jadi tak ada berkas .pt sembarang yang bisa dimuat lewat sini.
+    """
+    if not sess.src:
+        return {"ok": False, "error": "belum ada projek terbuka"}
+    d = Path(sess.src)
+    tdata = svc_tugas.baca_projek(d, settings.uploads_root)
+    if not svc_tugas.boleh_kelola(tdata, sess.user):
+        return {"ok": False, "error": "hanya pemilik projek yang boleh melatih"}
+    siap, alasan = svc.siap_latih()
+    if not siap:
+        return {"ok": False, "error": alasan}
+
+    body = await bodi_json(request)
+    dari = int(body.get("dari") or 0)
+    jenis = "last" if str(body.get("jenis") or "best").lower() == "last" else "best"
+    epochs = int(body.get("epochs") or 0)
+
+    from ..services import buatversi
+
+    sumber = await asyncio.to_thread(svc.baca, d, dari)
+    if sumber is None:
+        return {"ok": False, "error": f"training L{dari} tidak ada"}
+    bobot = await asyncio.to_thread(svc.bobot_training, d, dari, jenis)
+    if bobot is None:
+        return {"ok": False,
+                "error": f"training L{dari} belum punya {jenis}.pt untuk dilanjutkan"}
+    # Versi sumbernya harus masih bisa dilatih (data.yaml-nya ada) — kelasnya
+    # harus cocok dengan bobot yang dilanjutkan.
+    versi_nomor = int(sumber.get("versi") or 0)
+    if not (buatversi.dir_versi(d, versi_nomor) / "data.yaml").exists():
+        return {"ok": False,
+                "error": f"versi v{versi_nomor} (sumber L{dari}) tak punya data.yaml, "
+                         "jadi tak bisa dilanjutkan"}
+
+    # Warisi par sumber apa adanya, ganti hanya epochs. Semua yang lain —
+    # imgsz, lr, hsv, batch — dibiarkan sama supaya lanjutan benar-benar
+    # menyambung setelan yang sama, bukan training baru yang menyaru.
+    par = dict(sumber.get("par") or {})
+    if epochs:
+        par["epochs"] = epochs
+    nama = str(body.get("nama") or "").strip() or f"{sumber.get('nama') or f'L{dari}'} lanjutan"
+    catatan = str(body.get("catatan") or "").strip() \
+        or f"Lanjutan dari L{dari} ({jenis}.pt, epoch {sumber.get('par',{}).get('epochs','?')})"
+    try:
+        isi = await asyncio.to_thread(
+            svc.siapkan, d, nama=nama, versi_nomor=versi_nomor,
+            tugas=str(sumber.get("tugas") or "segment"), bobot=str(bobot),
+            par=par, oleh=sess.user, catatan=catatan,
+            warna=sumber.get("warna") or {}, lanjut_dari=dari)
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
+    try:
+        await asyncio.to_thread(svc.jalankan, d, isi["nomor"])
+    except Exception as e:                           # noqa: BLE001
+        _log.exception("gagal meluncurkan training lanjutan")
+        await asyncio.to_thread(svc.perbarui, d, isi["nomor"],
+                                keadaan="gagal", galat=str(e)[:200])
+        return {"ok": False, "error": str(e)[:200]}
+    return {"ok": True, "nomor": isi["nomor"], "dari": dari}
+
+
 @router.post("/api/latih/batal")
 async def batal(nomor: int = 0, sess: Session = Depends(current_session_api),
                 settings: Settings = Depends(get_settings)):

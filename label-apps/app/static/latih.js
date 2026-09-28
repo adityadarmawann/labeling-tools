@@ -431,6 +431,10 @@
         <button class="chip chip-utama" type="button" data-rinci="${t.nomor}">Rincian</button>
         ${t.punya_bobot && bolehKelola ? `<button class="chip" type="button"
             data-uji="${t.nomor}">Uji produksi</button>` : ''}
+        ${t.punya_bobot && bolehKelola ? `<button class="chip" type="button"
+            data-lanjut="${t.nomor}" data-nama="${esc(t.nama)}"
+            data-epochs="${t.epochs || 400}"
+            title="Latih lagi mulai dari bobot training ini">Lanjutkan</button>` : ''}
         ${t.punya_bobot ? `<span class="tr-unduh">Unduh
           <a class="chip" href="/latih/bobot?nomor=${t.nomor}&jenis=best" download
              title="Bobot dengan metrik terbaik selama training">best.pt</a>
@@ -504,6 +508,10 @@
         // hasilnya muncul di tempat ia akan dibaca, bukan hilang di daftar.
         setTimeout(() => bukaRincian(Number(b.dataset.uji)), 2500);
       };
+    });
+    document.querySelectorAll('[data-lanjut]').forEach((b) => {
+      b.onclick = () => bukaLanjut(Number(b.dataset.lanjut), b.dataset.nama,
+                                   Number(b.dataset.epochs) || 400);
     });
     document.querySelectorAll('[data-hapus]').forEach((b) => {
       b.onclick = async () => {
@@ -822,6 +830,7 @@
                 : `${angka(t.epoch)} / ${angka(t.epochs)}`)}</dd></div>
         <div><dt>Lama</dt><dd>${durasi(t.detik)}</dd></div>
         <div><dt>Sumber</dt><dd>v${t.versi}</dd></div>
+        ${t.lanjut_dari ? `<div><dt>Lanjutan dari</dt><dd>L${t.lanjut_dari}</dd></div>` : ''}
         <div><dt>Oleh</dt><dd>${esc(t.oleh || '?')}</dd></div>
       </div>
       ${w.pesan ? `<div class="tr-p-blok tr-warna">
@@ -843,6 +852,48 @@
         <h4>Log</h4>
         <pre class="tr-log">${esc(r.log || '(kosong)')}</pre>
       </div>`;
+  }
+
+  // ---- Training lanjutan: latih lagi mulai dari bobot sebuah training ----
+  let lanjutDari = 0;
+  function bukaLanjut(nomor, nama, epochs) {
+    lanjutDari = nomor;
+    $('tr-lanjut-judul').textContent = `Lanjutkan L${nomor}`;
+    $('tr-lanjut-ket').textContent =
+      `Training baru dimulai dari bobot L${nomor}. Setelannya (versi, hsv, mode `
+      + `warna) diwarisi apa adanya — hanya jumlah epoch yang diganti.`;
+    $('tr-lanjut-epochs').value = epochs || 400;
+    $('tr-lanjut-nama').value = '';
+    $('tr-lanjut-nama').placeholder = `otomatis: '${nama || ('L' + nomor)} lanjutan'`;
+    $('tr-lanjut-jenis').value = 'best';
+    $('tr-lanjut').hidden = false;
+  }
+  function tutupLanjut() { $('tr-lanjut').hidden = true; lanjutDari = 0; }
+  if ($('tr-lanjut')) {
+    $('tr-lanjut-batal').onclick = tutupLanjut;
+    // Klik latar gelap (bukan dialognya) menutup.
+    $('tr-lanjut').addEventListener('click', (e) => {
+      if (e.target === $('tr-lanjut')) tutupLanjut();
+    });
+    $('tr-lanjut-jalan').onclick = async () => {
+      if (!lanjutDari) return;
+      const btn = $('tr-lanjut-jalan');
+      btn.disabled = true; btn.textContent = 'Meluncurkan…';
+      const payload = {
+        dari: lanjutDari,
+        jenis: $('tr-lanjut-jenis').value,
+        epochs: Number($('tr-lanjut-epochs').value) || 400,
+        nama: $('tr-lanjut-nama').value.trim(),
+      };
+      const j = await ambil('/api/latih/lanjut', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }).catch(() => null);
+      btn.disabled = false; btn.textContent = 'Jalankan lanjutan';
+      if (!j || !j.ok) { alert((j && j.error) || 'gagal memulai lanjutan'); return; }
+      tutupLanjut();
+      muatDaftar();
+    };
   }
 
   // ============================================================

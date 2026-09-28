@@ -2825,6 +2825,19 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
   border-bottom:1px solid var(--line);
 }
 .tr-panel-isi{padding:14px 16px; overflow:auto}
+/* Dialog training lanjutan: kotak kecil, bukan panel lebar. */
+.tr-dialog{
+  background:var(--panel); border-radius:12px; width:min(440px,100%);
+  padding:0 16px 16px; box-shadow:0 18px 50px rgba(var(--bayang),.35);
+}
+.tr-dialog .tr-panel-atas{margin:0 -16px 4px}
+.tr-dialog .tr-bantu{margin:8px 0 14px; font-size:12px; color:var(--ink-dim)}
+.tr-dl-baris{display:flex; flex-direction:column; gap:5px; margin:0 0 12px;
+             font-size:12px; color:var(--ink-dim)}
+.tr-dl-baris select,.tr-dl-baris input{
+  height:34px; padding:0 10px; border:1px solid var(--line2); border-radius:7px;
+  background:var(--panel); color:var(--ink); font-size:13px}
+.tr-dl-aksi{display:flex; justify-content:flex-end; margin-top:4px}
 .tr-p-blok{margin:0 0 18px}
 .tr-p-blok h4{margin:0 0 8px; font-size:12px; text-transform:uppercase;
               letter-spacing:.05em; color:var(--ink-faint)}

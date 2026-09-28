@@ -184,6 +184,34 @@
     </div>
   </div>
 
+  {#- Dialog training lanjutan: melanjutkan sebuah training dengan bobot
+      best/last-nya sebagai titik awal, mewarisi setelan sumber, ganti epoch. -#}
+  <div class="tr-tirai" id="tr-lanjut" hidden>
+    <div class="tr-dialog" role="dialog" aria-label="Training lanjutan">
+      <div class="tr-panel-atas">
+        <b id="tr-lanjut-judul">Training lanjutan</b>
+        <span class="spacer"></span>
+        <button class="chip" type="button" id="tr-lanjut-batal">Batal</button>
+      </div>
+      <p class="tr-bantu" id="tr-lanjut-ket"></p>
+      <label class="tr-dl-baris">Titik awal bobot
+        <select id="tr-lanjut-jenis">
+          <option value="best">best.pt — metrik terbaik</option>
+          <option value="last">last.pt — epoch terakhir</option>
+        </select>
+      </label>
+      <label class="tr-dl-baris">Jumlah epoch
+        <input type="number" id="tr-lanjut-epochs" min="1" max="2000" value="400">
+      </label>
+      <label class="tr-dl-baris">Nama (opsional)
+        <input type="text" id="tr-lanjut-nama" maxlength="60" placeholder="otomatis: '… lanjutan'">
+      </label>
+      <div class="tr-dl-aksi">
+        <button class="wz-tbl wz-tbl-pri" type="button" id="tr-lanjut-jalan">Jalankan lanjutan</button>
+      </div>
+    </div>
+  </div>
+
   {#- Kaca pembesar. Ubin galeri lebarnya 132px dan poligon val tidak terbaca
       di sana; ubin itu memang cuma indeks. Panah kiri/kanan berpindah antar
       gambar dalam kelompok yang sama, jadi poligon sebenarnya dan tebakan

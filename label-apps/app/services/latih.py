@@ -379,6 +379,14 @@ def berkas_latih(ds, nomor: int) -> Path:
     return _dir(ds) / f"L{int(nomor)}.json"
 
 
+def bobot_training(ds, nomor: int, jenis: str = "best") -> Path | None:
+    """Berkas bobot hasil sebuah training (best.pt / last.pt), untuk dipakai
+    sebagai titik awal training lanjutan. None kalau belum ada."""
+    j = "last" if str(jenis).lower() == "last" else "best"
+    p = dir_latih(ds, nomor) / "weights" / f"{j}.pt"
+    return p if p.exists() else None
+
+
 def nomor_berikut(ds) -> int:
     d = _dir(ds)
     if not d.is_dir():
@@ -669,7 +677,7 @@ def status(ds, nomor: int) -> dict:
     out = {
         **{k: isi.get(k) for k in
            ("nomor", "nama", "catatan", "versi", "tugas", "bobot", "oleh",
-            "dibuat", "selesai_pada", "galat", "par", "warna")},
+            "dibuat", "selesai_pada", "galat", "par", "warna", "lanjut_dari")},
         "kelas": kelas or [],
         "keadaan": keadaan,
         "epoch": ep, "epochs": epochs, "persen": persen,
@@ -732,7 +740,7 @@ def _saring_par(minta: dict) -> tuple[dict, list[str]]:
 
 def siapkan(ds, *, nama: str, versi_nomor: int, tugas: str, bobot: str,
             par: dict, oleh: str, catatan: str = "",
-            warna: dict | None = None) -> dict:
+            warna: dict | None = None, lanjut_dari: int | None = None) -> dict:
     """Catat satu training baru. Belum dijalankan."""
     n = nomor_berikut(ds)
     par_bersih, galat = _saring_par(par)
@@ -769,6 +777,9 @@ def siapkan(ds, *, nama: str, versi_nomor: int, tugas: str, bobot: str,
         "catatan": " ".join((catatan or "").split())[:MAKS_CATATAN],
         "versi": int(versi_nomor),
         "kelas": kelas,
+        # Training lanjutan: nomor training sumber yang bobotnya jadi titik awal.
+        # None untuk training biasa (dari bobot pra-latih).
+        "lanjut_dari": int(lanjut_dari) if lanjut_dari else None,
         "tugas": tugas,
         "bobot": bobot,
         "par": par_bersih,

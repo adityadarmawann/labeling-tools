@@ -485,6 +485,68 @@ def test_mode_tidak_disebut_memakai_bawaan(tmp_path):
     assert isi["par"]["hsv_h"] == mw.par_latih(mw.BAWAAN)["hsv_h"]
 
 
+def _versi_siap(d, nomor=1, kelas=("a",)):
+    """Versi tiruan yang cukup untuk rute latih: data.yaml + rekaman."""
+    from app.services import buatversi, versi as svc_versi, mode_warna as mw
+    dv = buatversi.dir_versi(d, nomor)
+    dv.mkdir(parents=True, exist_ok=True)
+    (dv / "data.yaml").write_text(
+        f"nc: {len(kelas)}\nnames: [" + ",".join(f"'{k}'" for k in kelas) + "]\n")
+    svc_versi.buat(d, "paul", "8:1:1", [], {}, {"split": {}, "kelas": len(kelas)},
+                   "", resep=mw.tulis_ke_resep({}, mw.BENTUK), nomor=nomor)
+
+
+def test_lanjut_mewarisi_setelan_sumber_dan_mengganti_epoch(klien, lingkungan,
+                                                            monkeypatch, server_siap):
+    """Training lanjutan: bobot awal = best.pt training sumber, setelan lain
+    (versi, hsv, mode warna) diwarisi, hanya epoch yang diganti, dan garis
+    keturunan (lanjut_dari) tercatat."""
+    masuk(klien, "paul", PW_PAUL)
+    d = _projek(klien, lingkungan)
+    _versi_siap(d, 1)
+    # Training sumber L1 + bobot palsu.
+    src = latih.siapkan(d, nama="sirsak-v16", versi_nomor=1, tugas="segment",
+                        bobot="pra.pt", par={"epochs": 100}, oleh="paul",
+                        warna={"mode": "bentuk"})
+    w = latih.dir_latih(d, src["nomor"]) / "weights"
+    w.mkdir(parents=True, exist_ok=True)
+    (w / "best.pt").write_bytes(b"x"); (w / "last.pt").write_bytes(b"x")
+
+    monkeypatch.setattr(latih, "jalankan", lambda ds, n: {})
+    r = klien.post("/api/latih/lanjut",
+                   json={"dari": src["nomor"], "jenis": "best", "epochs": 400}).json()
+    assert r["ok"] is True, r
+    baru = latih.baca(d, r["nomor"])
+    assert baru["lanjut_dari"] == src["nomor"]
+    assert baru["versi"] == 1
+    assert baru["par"]["epochs"] == 400                 # diganti
+    assert baru["par"]["hsv_h"] == 0.030                # diwarisi (mode bentuk)
+    assert baru["bobot"].endswith(f"L{src['nomor']}/weights/best.pt")
+    assert baru["warna"]["mode"] == "bentuk"
+
+
+def test_lanjut_tanpa_bobot_ditolak(klien, lingkungan, monkeypatch, server_siap):
+    """Sumber yang belum punya best/last.pt tak bisa dilanjutkan."""
+    masuk(klien, "paul", PW_PAUL)
+    d = _projek(klien, lingkungan)
+    _versi_siap(d, 1)
+    src = latih.siapkan(d, nama="x", versi_nomor=1, tugas="segment",
+                        bobot="pra.pt", par={"epochs": 10}, oleh="paul")
+    monkeypatch.setattr(latih, "jalankan", lambda ds, n: {})
+    r = klien.post("/api/latih/lanjut",
+                   json={"dari": src["nomor"], "jenis": "best", "epochs": 50}).json()
+    assert r["ok"] is False and "best.pt" in r["error"]
+
+
+def test_bobot_training_menemukan_best_dan_last(lingkungan):
+    d = lingkungan["ruang"] / "bt"; d.mkdir(parents=True, exist_ok=True)
+    assert latih.bobot_training(d, 1, "best") is None
+    w = latih.dir_latih(d, 1) / "weights"; w.mkdir(parents=True)
+    (w / "best.pt").write_bytes(b"x")
+    assert latih.bobot_training(d, 1, "best").name == "best.pt"
+    assert latih.bobot_training(d, 1, "last") is None   # last belum ada
+
+
 def test_mode_boleh_dipilih_per_percobaan(klien, lingkungan, monkeypatch,
                                          server_siap):
     """Satu antrean bisa membandingkan dua mode dari versi yang SAMA.
