@@ -2859,6 +2859,64 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
   height:34px; padding:0 10px; border:1px solid var(--line2); border-radius:7px;
   background:var(--panel); color:var(--ink); font-size:13px}
 .tr-dl-aksi{display:flex; justify-content:flex-end; margin-top:4px}
+
+/* ============================================================ Kamus parameter */
+/* Badge "?" kecil di sebelah nama parameter */
+.km-tanya{display:inline-flex; align-items:center; justify-content:center;
+  width:15px; height:15px; margin-left:5px; padding:0; border-radius:50%;
+  border:none; background:var(--line2); color:var(--ink-dim);
+  font-size:10px; font-weight:700; line-height:1; cursor:pointer;
+  vertical-align:middle; transition:background .12s, color .12s}
+.km-tanya:hover{background:var(--aksi,#0f766e); color:#fff}
+/* Popover satu parameter */
+.km-pop{position:absolute; z-index:80; width:min(280px,90vw);
+  background:var(--panel); border:1px solid var(--line); border-radius:10px;
+  box-shadow:0 10px 34px rgba(var(--bayang),.30); padding:11px 13px;
+  font-size:12.5px; animation:km-muncul .12s ease}
+@keyframes km-muncul{from{opacity:0; transform:translateY(-4px)} to{opacity:1}}
+.km-pop-atas{display:flex; align-items:center; gap:6px; margin-bottom:6px}
+.km-pop-atas b{font-size:13px; color:var(--ink)}
+.km-dot{width:9px; height:9px; border-radius:50%; background:var(--km,#607d8b);
+  flex:0 0 auto}
+.km-grup{margin-left:auto; font-size:10.5px; color:var(--ink-faint)}
+.km-arti{margin:0 0 9px; color:var(--ink-dim); line-height:1.5}
+.km-cip{display:flex; flex-wrap:wrap; gap:6px}
+.km-c{display:inline-flex; flex-direction:column; gap:1px; font-size:11px;
+  padding:3px 9px; background:var(--sunk); border-radius:7px; color:var(--ink);
+  font-variant-numeric:tabular-nums}
+.km-c i{font-style:normal; font-size:9.5px; color:var(--ink-faint);
+  text-transform:uppercase; letter-spacing:.04em}
+.km-tip{margin:9px 0 0; padding:6px 9px; font-size:11.5px; line-height:1.45;
+  color:var(--ink-dim); background:var(--bahaya-lembut,#fdf3e0); border-radius:7px;
+  border-left:3px solid var(--awas,#f9a825)}
+/* Modal daftar penuh */
+.km-tirai{position:fixed; inset:0; background:rgba(var(--tirai),.55); z-index:80;
+  display:grid; place-items:center; padding:20px; animation:km-muncul .12s ease}
+.km-panel{background:var(--panel); border-radius:14px; width:min(720px,100%);
+  max-height:88vh; display:flex; flex-direction:column;
+  box-shadow:0 20px 56px rgba(var(--bayang),.4)}
+.km-panel-atas{display:flex; align-items:center; gap:10px; padding:13px 16px;
+  border-bottom:1px solid var(--line)}
+.km-panel-atas b{font-size:14px}
+.km-cari{flex:1; height:32px; padding:0 12px; border:1px solid var(--line2);
+  border-radius:8px; background:var(--sunk); color:var(--ink); font-size:13px}
+.km-isi{padding:14px 16px; overflow:auto}
+.km-seksi{margin:0 0 18px}
+.km-seksi h3{margin:0 0 9px; font-size:12px; text-transform:uppercase;
+  letter-spacing:.04em; color:var(--km,#607d8b);
+  border-left:3px solid var(--km,#607d8b); padding-left:8px}
+.km-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr));
+  gap:9px}
+.km-kartu{border:1px solid var(--line); border-radius:9px; padding:9px 11px;
+  background:var(--panel)}
+.km-kartu-nama{font-size:12.5px; font-weight:600; color:var(--ink);
+  margin-bottom:4px}
+.km-kartu-nama code{font-size:10.5px; font-weight:400; color:var(--ink-faint);
+  background:var(--sunk); padding:1px 5px; border-radius:5px}
+.km-kartu-arti{font-size:11.5px; color:var(--ink-dim); line-height:1.45;
+  margin-bottom:7px}
+.km-catatan{margin:6px 0 0; padding:10px 12px; font-size:12px; line-height:1.55;
+  color:var(--ink-dim); background:var(--sunk); border-radius:9px}
 .tr-p-blok{margin:0 0 18px}
 .tr-p-blok h4{margin:0 0 8px; font-size:12px; text-transform:uppercase;
               letter-spacing:.05em; color:var(--ink-faint)}

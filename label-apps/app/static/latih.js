@@ -104,9 +104,12 @@
     const p = BAHAN.preset[kunci];
     const b = BAHAN.batas[kunci];
     const langkah = Number.isInteger(p) ? 1 : (p < 0.01 ? 0.0001 : 0.01);
-    return `<label class="tr-p" title="${esc(jelas || label)}">
-      <span class="tr-p-nama">${esc(label)}</span>
-      <input type="number" data-par="${esc(kunci)}" value="${p}"
+    const adaKamus = window.KAMUS && window.KAMUS[kunci];
+    return `<label class="tr-p" data-kamus="${esc(kunci)}" title="${esc(jelas || label)}">
+      <span class="tr-p-nama">${esc(label)}${adaKamus
+        ? `<button type="button" class="km-tanya" data-kamus-key="${esc(kunci)}"
+             aria-label="Penjelasan ${esc(kunci)}">?</button>` : ''}</span>
+      <input type="number" data-par="${esc(kunci)}" value="${p}" data-bawaan="${p}"
              ${b ? `min="${b[0]}" max="${b[1]}"` : ''} step="${langkah}">
       ${satuan ? `<span class="tr-p-satuan">${esc(satuan)}</span>` : ''}
     </label>`;
