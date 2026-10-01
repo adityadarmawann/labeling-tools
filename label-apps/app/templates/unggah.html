@@ -69,8 +69,9 @@
 
     <div class="drop ug-drop" id="ug-drop">
       <span class="ug-drop-ikon" aria-hidden="true">&uarr;</span>
-      <b class="ug-drop-judul">Tarik gambar, folder dataset, atau berkas
-        <span class="mono">.zip</span> ke sini</b>
+      <b class="ug-drop-judul">Tarik gambar, folder dataset, berkas
+        <span class="mono">.zip</span>{% if not berisi %}, atau video{% endif %}
+        ke sini</b>
       <span class="ug-drop-atau">atau pilih sendiri</span>
       <span class="ug-drop-tombol">
         <button class="cta" type="button" id="ug-pilih-berkas">Pilih berkas</button>
@@ -98,9 +99,10 @@
        pernah memengaruhinya karena input file memang tak terlihat. #}
     <input id="ug-folder" type="file" webkitdirectory multiple hidden>
     {# Daftar ini harus sama dengan UP_EXT di app.js dan dengan
-       IMG_EXT + ANN_EXT + META_EXT + ARSIP_EXT di app/config.py. #}
+       IMG_EXT + ANN_EXT + META_EXT + ARSIP_EXT di app/config.py. Video
+       (VIDEO_EXT) hanya ditawarkan pada projek image yang masih kosong. #}
     <input id="ug-berkas" type="file" multiple hidden
-           accept=".jpg,.jpeg,.png,.bmp,.webp,.tif,.tiff,.json,.txt,.yaml,.yml,.zip">
+           accept=".jpg,.jpeg,.png,.bmp,.webp,.tif,.tiff,.json,.txt,.yaml,.yml,.zip{% if not berisi %},.mp4,.mov,.webm,.mkv,.avi,.m4v{% endif %}">
 
     <div class="ug-bawah">
       <section class="panel ug-format">
@@ -131,6 +133,14 @@
             <b>Arsip</b>
             <span><span class="mono">.zip</span> &middot; dibongkar sendiri di
               server</span>
+          </div>
+          {# Projek image boleh menerima video: diekstrak jadi frame di server,
+             keluarannya tetap gambar. Hanya ditawarkan pada projek kosong,
+             sama seperti arsip. #}
+          <div class="ug-format-grup">
+            <b>Video</b>
+            <span><span class="mono">.mp4 .mov .webm</span> &middot; diekstrak
+              jadi frame gambar</span>
           </div>
           {% endif %}
         </div>
@@ -199,13 +209,34 @@
       <div class="ug-bilah">
         <div class="ug-bilah-ket">
           <b>Tarik berkas lain ke sini untuk menambah</b>
-          <span class="mono">{% if berisi %}.jpg .png .json .txt{% else %}.jpg .png .json .txt data.yaml .zip{% endif %}</span>
+          <span class="mono">{% if berisi %}.jpg .png .json .txt{% else %}.jpg .png .json .txt data.yaml .zip .mp4{% endif %}</span>
         </div>
         <span class="spacer"></span>
         <button class="chip" type="button" id="ug-tambah-berkas">Pilih berkas</button>
         <button class="chip" type="button" id="ug-tambah-folder">Pilih folder</button>
         <button class="chip aksi" type="button" id="ug-simpan">
           Simpan dan lanjutkan &rarr;</button>
+      </div>
+
+      {# Pilihan kerapatan ekstraksi video. Disembunyikan sampai ada video yang
+         distaging (ditangani unggah.js). Videonya sendiri tidak tampil sebagai
+         ubin — hanya diringkas di sini — karena ia bukan gambar yang bisa
+         digambar sebagai thumbnail. #}
+      <div class="ug-bilah ug-video-opsi" id="ug-video-opsi" hidden>
+        <div class="ug-bilah-ket ug-video-ket">
+          <b><span id="ug-video-n">0</span> video &rarr; diekstrak jadi frame</b>
+          <span id="ug-preset-hint">Sedang — seimbang (video 1 mnt &asymp; 60 gambar).</span>
+        </div>
+        <span class="spacer"></span>
+        <div class="seg" id="ug-preset" role="group"
+             aria-label="Kerapatan ekstraksi frame video">
+          <label class="seg-opt">
+            <input type="radio" name="ug-preset" value="jarang"> Jarang</label>
+          <label class="seg-opt" data-on>
+            <input type="radio" name="ug-preset" value="sedang" checked> Sedang</label>
+          <label class="seg-opt">
+            <input type="radio" name="ug-preset" value="rapat"> Rapat</label>
+        </div>
       </div>
 
       <div class="ug-kisi-bungkus" id="ug-kisi-bungkus" tabindex="0"

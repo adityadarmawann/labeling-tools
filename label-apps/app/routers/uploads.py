@@ -14,10 +14,10 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from ..config import ARSIP_EXT, Settings, get_settings
+from ..config import ARSIP_EXT, VIDEO_EXT, Settings, get_settings
 from ..deps import current_session, current_session_api, is_local
 from ..security import safe_relpath, safe_slug
-from ..services import arsip, impor, projek, riwayat, scanner, tambah
+from ..services import arsip, ekstraksi, impor, projek, riwayat, scanner, tambah
 from ..session import Session
 from ..templating import templates
 
@@ -149,7 +149,13 @@ async def upload(request: Request, ds: str = "", name: str = "",
     # Arsip diizinkan di SINI saja, bukan di dalam isi arsip: `arsip.bongkar`
     # memanggil safe_relpath tanpa izin itu, sehingga zip di dalam zip
     # dilewati dan pembongkarannya tidak pernah berlapis.
-    fn = safe_relpath(name, arsip=True)
+    #
+    # Video hanya diizinkan ke projek IMAGE: ia diunggah utuh lalu diekstrak
+    # jadi frame lewat /ekstrak, dan videonya dibuang. Projek video (nanti)
+    # belum punya jalur unggah tersendiri, jadi video ke sana ditolak dulu.
+    d = sess.upload_dir(ds)
+    boleh_video = projek.jenis_projek(d) == "image"
+    fn = safe_relpath(name, arsip=True, video=boleh_video)
     if not fn:
         return {"ok": False, "error": "nama atau jenis berkas tidak didukung"}
 
@@ -163,7 +169,6 @@ async def upload(request: Request, ds: str = "", name: str = "",
     if total > batas:
         return {"ok": False, "error": f"lebih dari {sebutan}"}
 
-    d = sess.upload_dir(ds)
     await _mulai_kurasi(d, settings)
     dest = d / fn
     # Penjagaan berlapis: walau safe_relpath sudah membuang `..`, tujuan akhirnya
@@ -204,8 +209,9 @@ async def upload(request: Request, ds: str = "", name: str = "",
         tmp.unlink(missing_ok=True)
         return {"ok": False, "error": str(e)[:90]}
 
+    sfx = Path(fn).suffix.lower()
     return {"ok": True, "name": fn, "bytes": written,
-            "arsip": Path(fn).suffix.lower() in ARSIP_EXT}
+            "arsip": sfx in ARSIP_EXT, "video": sfx in VIDEO_EXT}
 
 
 @router.post("/unzip")
@@ -251,6 +257,50 @@ async def unzip(ds: str = "", name: str = "",
     return {"ok": True, "n": hasil["ditulis"], "dilewati": hasil["dilewati"],
             "bytes": hasil["bytes"], "contoh_dilewati": hasil["contoh_dilewati"],
             "arsip_dihapus": True}
+
+
+@router.post("/ekstrak")
+async def ekstrak_video(ds: str = "", name: str = "", preset: str = "sedang",
+                        sess: Session = Depends(current_session_api),
+                        settings: Settings = Depends(get_settings)):
+    """
+    Ekstrak video yang sudah terunggah menjadi frame gambar, di tempat.
+
+    Kembaran /unzip untuk video: /upload menaruh videonya utuh, lalu rute ini
+    memotongnya jadi gambar dan membuang videonya setelah frame-nya selamat.
+    Hanya untuk projek IMAGE — projek video menyimpan videonya apa adanya, dan
+    jalur itu belum ada.
+
+    `preset` mengatur kerapatan: "jarang"/"sedang"/"rapat" (lihat ekstraksi).
+    """
+    fn = safe_relpath(name, video=True)
+    if not fn or Path(fn).suffix.lower() not in VIDEO_EXT:
+        return {"ok": False, "error": "yang diminta bukan berkas video"}
+
+    d = sess.upload_dir(ds)
+    if projek.jenis_projek(d) != "image":
+        return {"ok": False, "error": "ekstraksi video hanya untuk projek image"}
+    await _mulai_kurasi(d, settings)
+    vp = d / fn
+    if not vp.is_file():
+        return {"ok": False, "error": "videonya tidak ada di folder unggahan"}
+
+    try:
+        hasil = await asyncio.to_thread(
+            ekstraksi.ekstrak, vp, vp.parent, ekstraksi.sah_preset(preset),
+            vp.stem)
+    except ekstraksi.EkstrakTolak as e:
+        return {"ok": False, "error": str(e)[:140]}
+    except Exception as e:                       # cv2 bisa melempar macam-macam
+        return {"ok": False, "error": f"gagal mengekstrak: {str(e)[:90]}"}
+
+    # Videonya dibuang setelah frame-nya selamat — menyimpan salinan mentahnya
+    # cuma menghabiskan disk dan tak pernah terbaca sebagai bagian dataset.
+    vp.unlink(missing_ok=True)
+    return {"ok": True, "n": hasil["ditulis"], "buram": hasil["buram"],
+            "duplikat": hasil["duplikat"], "durasi": hasil["durasi"],
+            "target": hasil["target"], "preset": hasil["preset"],
+            "video_dihapus": True}
 
 
 @router.get("/api/impor/survei")

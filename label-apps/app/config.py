@@ -28,6 +28,11 @@ META_EXT = (".yaml", ".yml")
 SAMPAH_GAMBAR = "_sampah-gambar"
 # Arsip yang boleh diunggah lalu dibongkar di server.
 ARSIP_EXT = (".zip",)
+# Video yang boleh diunggah ke projek IMAGE lalu diekstrak jadi frame (lihat
+# services/ekstraksi.py). Keluarannya tetap gambar; videonya dibuang setelah
+# frame-nya selamat, persis seperti arsip pada /unzip. Projek video (nanti)
+# menyimpan videonya apa adanya — jalur itu belum ada.
+VIDEO_EXT = (".mp4", ".mov", ".webm", ".mkv", ".avi", ".m4v")
 
 PREFIX = "LABELAPP_"
 
@@ -67,6 +72,9 @@ class Settings:
     # sementara batas per-gambar sengaja tetap kecil supaya salah seret tidak
     # mengirim berkas raksasa.
     max_zip_mb: int = 4096
+    # Video (diekstrak jadi frame) punya batas sendiri: satu klip bisa jauh
+    # lebih besar dari satu gambar, tapi tak sebesar ekspor dataset penuh.
+    max_video_mb: int = 2048
     # Perlindungan zip bomb: total isi setelah dibongkar dibatasi sekian kali
     # ukuran arsipnya. Ekspor dataset berisi JPEG yang sudah termampatkan,
     # jadi rasionya mendekati 1 — nilai 20 sudah sangat longgar.
@@ -109,10 +117,17 @@ class Settings:
     def max_zip_bytes(self) -> int:
         return self.max_zip_mb * 1024 * 1024
 
+    @property
+    def max_video_bytes(self) -> int:
+        return self.max_video_mb * 1024 * 1024
+
     def batas_untuk(self, nama: str) -> tuple[int, str]:
         """Batas ukuran unggahan untuk sebuah nama berkas -> (byte, keterangan)."""
-        if Path(nama).suffix.lower() in ARSIP_EXT:
+        sfx = Path(nama).suffix.lower()
+        if sfx in ARSIP_EXT:
             return self.max_zip_bytes, f"{self.max_zip_mb} MB (arsip)"
+        if sfx in VIDEO_EXT:
+            return self.max_video_bytes, f"{self.max_video_mb} MB (video)"
         return self.max_upload_bytes, f"{self.max_upload_mb} MB"
 
 
@@ -144,6 +159,7 @@ def get_settings() -> Settings:
         datasets_root=datasets_root,
         default_src=_path("DEFAULT_SRC"),
         max_upload_mb=max(1, _int("MAX_UPLOAD_MB", 80)),
+        max_video_mb=max(1, _int("MAX_VIDEO_MB", 2048)),
         max_zip_mb=max(1, _int("MAX_ZIP_MB", 4096)),
         anylabeling=_get("ANYLABELING") or "anylabeling",
         open_mode="dir" if _get("OPEN_MODE") == "dir" else "file",

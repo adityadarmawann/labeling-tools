@@ -31,6 +31,13 @@
   // IMG_EXT + ANN_EXT + META_EXT + ARSIP_EXT di app/config.py.
   const GAMBAR_EXT = ['.jpg', '.jpeg', '.png', '.bmp', '.webp', '.tif', '.tiff'];
   const adalahGambar = (n) => GAMBAR_EXT.some(e => n.toLowerCase().endsWith(e));
+  // Video hanya diterima di projek IMAGE yang masih kosong: ia diunggah utuh
+  // lalu diekstrak jadi frame di server (/ekstrak), videonya dibuang. Harus
+  // sama dengan VIDEO_EXT di app/config.py. Projek berisi (BERISI) memakai
+  // /tambah yang menempatkan berkas mengikuti tata letaknya — ekstraksi yang
+  // menaruh frame di akar tidak cocok di sana, jadi video ditolak di situ.
+  const VIDEO_EXT = ['.mp4', '.mov', '.webm', '.mkv', '.avi', '.m4v'];
+  const adalahVideo = (n) => VIDEO_EXT.some(e => n.toLowerCase().endsWith(e));
   const stem = (n) => {
     const dasar = n.split('/').pop();
     const t = dasar.lastIndexOf('.');
@@ -39,7 +46,7 @@
 
   /* Satu daftar untuk semua yang dipilih, dikunci nama relatifnya supaya
      memilih folder yang sama dua kali tidak menggandakan isinya. */
-  const berkas = new Map();        // nama -> {file, nama, gambar, arsip}
+  const berkas = new Map();        // nama -> {file, nama, gambar, arsip, video}
   const tag = [];
   let batal = false;
 
@@ -83,18 +90,25 @@
     let arsipDitolak = 0;
     for (const f of daftarFile) {
       const nama = namaKirim(f);
-      if (!UP_EXT.some(e => nama.toLowerCase().endsWith(e))) { ditolak++; continue; }
+      // Video hanya sah pada projek image yang kosong; di luar itu ia bukan
+      // format yang didukung di halaman ini.
+      const bolehVideo = !BERISI && adalahVideo(nama);
+      if (!UP_EXT.some(e => nama.toLowerCase().endsWith(e)) && !bolehVideo) {
+        ditolak++; continue;
+      }
       // Membongkar arsip ke dalam dataset yang sudah terbagi akan menumpahkan
       // isinya di akar, di luar train/valid/test. Ditolak di sini, bukan
       // dibiarkan gagal belakangan setelah berkasnya terlanjur naik.
       if (BERISI && adalahArsip(nama)) { arsipDitolak++; continue; }
       if (berkas.has(nama)) continue;
       berkas.set(nama, { file: f, nama, gambar: adalahGambar(nama),
-                         arsip: adalahArsip(nama) });
+                         arsip: adalahArsip(nama), video: adalahVideo(nama) });
       baru++;
     }
     if (!berkas.size) {
-      toast('Tidak ada gambar, anotasi, data.yaml, atau .zip di pilihan itu');
+      toast(BERISI
+        ? 'Tidak ada gambar, anotasi, atau data.yaml di pilihan itu'
+        : 'Tidak ada gambar, anotasi, data.yaml, .zip, atau video di pilihan itu');
       return;
     }
     if (ditolak) toast(ditolak + ' berkas dilewati karena formatnya tidak didukung');
@@ -248,11 +262,20 @@
     }
 
     const arsip = [...berkas.values()].filter(b => b.arsip).length;
+    const video = [...berkas.values()].filter(b => b.video).length;
     const ket = document.querySelector('.ug-bilah-ket b');
     if (ket) {
-      ket.textContent = arsip
-        ? `${semua.length} gambar dan ${arsip} arsip .zip siap diunggah`
-        : `${semua.length} gambar siap diunggah`;
+      const bagian = [`${semua.length} gambar`];
+      if (arsip) bagian.push(`${arsip} arsip .zip`);
+      if (video) bagian.push(`${video} video`);
+      ket.textContent = bagian.join(' dan ') + ' siap diunggah';
+    }
+    // Panel pilihan kerapatan hanya relevan kalau ada video yang akan diekstrak.
+    const opsi = $('ug-video-opsi');
+    if (opsi) {
+      opsi.hidden = video === 0;
+      const n = $('ug-video-n');
+      if (n) n.textContent = String(video);
     }
   }
 
@@ -345,6 +368,13 @@
     });
   }
 
+  // Preset kerapatan ekstraksi video yang sedang dipilih; "sedang" kalau
+  // panelnya belum ada (tak ada video) atau tak ada yang tercentang.
+  function presetDipilih() {
+    const c = document.querySelector('input[name="ug-preset"]:checked');
+    return c ? c.value : 'sedang';
+  }
+
   // Nama berkas yang SUDAH berhasil, bertahan lintas percobaan: "Coba lagi
   // sisanya" tidak mengirim ulang yang sudah masuk.
   const berhasil = new Set();
@@ -377,6 +407,8 @@
     const byteTotal = semua.reduce((s, b) => s + (b.file.size || 0), 0) || 1;
     let byteKirim = 0, selesai = 0, gagal = 0;
     const arsip = [];
+    const video = [];
+    const preset = presetDipilih();
     const t0 = Date.now();
 
     const lukisBilah = (byteSekarang, ke) => {
@@ -415,8 +447,11 @@
 
       selesai++;
       byteKirim += (b.file.size || 0);
-      if (j.ok) { berhasil.add(b.nama); if (j.arsip) arsip.push(j.name); }
-      else { gagal++; if (gagal <= 2) toast(b.nama + ': ' + j.error); }
+      if (j.ok) {
+        berhasil.add(b.nama);
+        if (j.arsip) arsip.push(j.name);
+        if (j.video) video.push(j.name);
+      } else { gagal++; if (gagal <= 2) toast(b.nama + ': ' + j.error); }
       lukisBilah(0, selesai);
     }
 
@@ -431,6 +466,26 @@
                              '&name=' + encodeURIComponent(nama));
         if (!j.ok) { pr.gagal('Gagal membongkar: ' + j.error); return; }
       } catch (e) { pr.gagal('Gagal menghubungi server saat membongkar'); return; }
+    }
+
+    // Video diekstrak jadi frame SETELAH terunggah utuh, satu per satu. Frame
+    // masuk ke projek dan videonya dibuang server; di sini cukup menunggu dan
+    // melaporkan jumlahnya. Satu video gagal tidak menghentikan sisanya.
+    let frameTotal = 0, videoGagal = 0;
+    for (let i = 0; i < video.length; i++) {
+      const nama = video[i];
+      pr.taktentu(`Mengekstrak frame dari ${nama}… (${i + 1}/${video.length})`);
+      try {
+        const j = await post('/ekstrak?ds=' + encodeURIComponent(PROJEK)
+          + '&name=' + encodeURIComponent(nama)
+          + '&preset=' + encodeURIComponent(preset));
+        if (j.ok) {
+          frameTotal += (j.n || 0);
+          const buang = (j.buram || 0) + (j.duplikat || 0);
+          toast(`${nama}: ${j.n} frame`
+            + (buang ? ` (${buang} buram/duplikat dibuang)` : ''));
+        } else { videoGagal++; toast('Gagal mengekstrak ' + nama + ': ' + j.error); }
+      } catch (e) { videoGagal++; toast('Gagal menghubungi server saat mengekstrak'); }
     }
 
     pr.taktentu('Memindai isi dataset…');
@@ -456,10 +511,15 @@
 
     // Jelas menyebut "selesai" dan jumlahnya: keluhan aslinya justru tidak
     // tahu unggahannya tuntas atau belum.
+    const ekstra = frameTotal
+      ? ` · ${frameTotal.toLocaleString('id-ID')} frame dari video`
+        + (videoGagal ? `, ${videoGagal} video gagal` : '')
+      : (videoGagal ? ` · ${videoGagal} video gagal diekstrak` : '');
     const pesan = gagal
       ? `Selesai — ${(berhasil.size).toLocaleString('id-ID')} terkirim, `
         + `${gagal} gagal · ${(buka.n || 0).toLocaleString('id-ID')} gambar di dataset`
-      : `Selesai — ${(buka.n || 0).toLocaleString('id-ID')} gambar di dataset`;
+        + ekstra
+      : `Selesai — ${(buka.n || 0).toLocaleString('id-ID')} gambar di dataset` + ekstra;
     pr.selesai(pesan);
     $('ug-batal').hidden = true;
     $('ug-coba-lagi').hidden = true;
@@ -605,6 +665,26 @@
       }
       gambarUlang();
     });
+
+    // Pilihan kerapatan ekstraksi video (hanya tampil saat ada video).
+    const segPreset = $('ug-preset');
+    if (segPreset) {
+      const HINT = {
+        jarang: 'Jarang — paling sedikit frame (video 1 mnt ≈ 30 gambar).',
+        sedang: 'Sedang — seimbang (video 1 mnt ≈ 60 gambar).',
+        rapat: 'Rapat — paling rapat (video 1 mnt ≈ 100 gambar).',
+      };
+      const tandaiPreset = () => {
+        const c = segPreset.querySelector('input:checked');
+        for (const l of segPreset.querySelectorAll('.seg-opt')) {
+          l.toggleAttribute('data-on', c && l.contains(c));
+        }
+        const h = $('ug-preset-hint');
+        if (h && c) h.textContent = HINT[c.value] || '';
+      };
+      segPreset.addEventListener('change', tandaiPreset);
+      tandaiPreset();
+    }
 
     const ti = $('ug-tag-input');
     ti.addEventListener('keydown', (e) => {

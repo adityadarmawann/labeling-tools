@@ -17,7 +17,7 @@ import re
 import secrets
 from pathlib import Path
 
-from .config import ANN_EXT, ARSIP_EXT, IMG_EXT, META_EXT
+from .config import ANN_EXT, ARSIP_EXT, IMG_EXT, META_EXT, VIDEO_EXT
 
 ITERATIONS = 200_000
 COOKIE_NAME = "labelapp_sid"
@@ -47,7 +47,7 @@ MAKS_DALAM = 6          # kedalaman subfolder yang diterima saat unggah folder
 MAKS_KOMPONEN = 80      # panjang nama subfolder
 
 
-def safe_filename(s: str, arsip: bool = False) -> str:
+def safe_filename(s: str, arsip: bool = False, video: bool = False) -> str:
     """
     Ambil nama berkas saja dari kiriman klien, buang seluruh komponen path,
     dan tolak ekstensi di luar daftar. Mengembalikan "" kalau tidak layak.
@@ -56,6 +56,10 @@ def safe_filename(s: str, arsip: bool = False) -> str:
     arsip hanya boleh masuk lewat unggahan berkas tunggal yang memang akan
     dibongkar, bukan lewat isi arsip itu sendiri — kalau tidak, satu zip bisa
     memuat zip lain dan pembongkarannya jadi berlapis tanpa batas.
+
+    `video=True` ikut mengizinkan ekstensi video, dan sama sengaja mati secara
+    bawaan: video hanya boleh masuk ke projek IMAGE untuk diekstrak jadi frame,
+    bukan sebagai isi folder/arsip yang diunggah massal.
 
     Nama yang kepanjangan dipotong pada BATANGnya, ekstensinya dipertahankan.
     Memotong nama secara buta ikut memakan ekstensi, dan berkasnya lalu tertolak
@@ -67,7 +71,8 @@ def safe_filename(s: str, arsip: bool = False) -> str:
     base = re.sub(r"[^A-Za-z0-9._-]+", "-", base).strip("-.")
     if not base or base.startswith("."):
         return ""
-    boleh = IMG_EXT + ANN_EXT + META_EXT + (ARSIP_EXT if arsip else ())
+    boleh = (IMG_EXT + ANN_EXT + META_EXT
+             + (ARSIP_EXT if arsip else ()) + (VIDEO_EXT if video else ()))
     sfx = Path(base).suffix
     if sfx.lower() not in boleh:
         return ""
@@ -76,7 +81,7 @@ def safe_filename(s: str, arsip: bool = False) -> str:
     return base
 
 
-def safe_relpath(s: str, arsip: bool = False) -> str:
+def safe_relpath(s: str, arsip: bool = False, video: bool = False) -> str:
     """
     Path relatif dari unggahan folder -> path yang aman, subfoldernya utuh.
 
@@ -105,7 +110,7 @@ def safe_relpath(s: str, arsip: bool = False) -> str:
         return ""
     # Komponen terakhir diserahkan utuh ke safe_filename: hanya fungsi itu yang
     # tahu mana ekstensinya, jadi hanya di sana pemotongan boleh terjadi.
-    berkas = safe_filename(bagian[-1], arsip=arsip)
+    berkas = safe_filename(bagian[-1], arsip=arsip, video=video)
     if not berkas:
         return ""
     # `k` sudah dibersihkan dari '-' dan '.' di ujungnya dan diawali karakter

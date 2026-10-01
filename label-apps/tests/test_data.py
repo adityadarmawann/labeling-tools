@@ -16,7 +16,7 @@ def test_unggah_berkas_normal(klien, lingkungan):
     masuk(klien, "anggi", PW_ANGGI)
     r = klien.put("/upload?ds=batch-1&name=foto.png", content=b"x" * 500)
     assert r.json() == {"ok": True, "name": "foto.png", "bytes": 500,
-                        "arsip": False}
+                        "arsip": False, "video": False}
     assert (lingkungan["roots"] / "_unggahan" / "anggi" / "batch-1" / "foto.png").exists()
 
 
