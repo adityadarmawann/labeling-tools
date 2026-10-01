@@ -34,48 +34,50 @@
     </div>
   </div>
 
-  {# Dua daftar yang tampil serupa tapi berperilaku beda: satu bisa dikelola,
-     satu hanya bisa dibaca. Sebagai tab, keduanya jelas dua SUMBER, dan
-     status hanya-baca ditempel di kartunya sendiri — bukan diserahkan ke
-     judul panel, yang justru hal pertama yang berhenti dibaca orang. #}
-  {# Dua tingkat tab. ATAS: sumbernya — projek sendiri vs yang dibagikan orang
-     lain (dulu tab "Diundang") vs folder dataset bersama server. BAWAH: jenis
-     medianya — Image vs Video — berlaku untuk My Project maupun Sharing. #}
-  <div class="palat">
-    <div class="seg ptab" id="ptab-atas">
-      <label class="seg-opt" data-on>
-        <input type="radio" name="ptab-atas" value="mine" checked>
-        My Project <b id="n-mine"></b></label>
-      <label class="seg-opt">
-        <input type="radio" name="ptab-atas" value="sharing">
-        Sharing Project <b id="n-sharing"></b></label>
-      {% if datasets_root %}
-      <label class="seg-opt">
-        <input type="radio" name="ptab-atas" value="bersama">
-        Dataset bersama <b>{{ datasets | length }}</b></label>
-      {% endif %}
-    </div>
-    <span class="spacer"></span>
-    <input class="cari-nama" type="search" id="projek-cari"
-           placeholder="Cari projek…" autocomplete="off"
-           aria-label="Cari projek berdasarkan nama">
-    <select class="chip" id="projek-urut" aria-label="Urutan projek">
-      <option value="diubah">Terakhir diubah</option>
-      <option value="nama">Nama (A→Z)</option>
-      <option value="besar">Gambar terbanyak</option>
-      <option value="label">Paling banyak dilabeli</option>
-    </select>
-    <span class="phitung" id="projek-hitung" aria-live="polite" hidden></span>
-  </div>
+  {# SATU kendali, dua tingkat, dibungkus satu permukaan lengket supaya terbaca
+     sebagai kelompok — bukan dua bilah bertumpuk yang berdiri sendiri.
+     UTAMA (menonjol): sumbernya — projek sendiri vs yang dibagikan orang lain.
+     ANAK (lebih kalem): jenis medianya — Image vs Video.
 
-  <div class="palat palat-sub" id="ptab-sub-wrap">
-    <div class="seg ptab" id="ptab-sub">
-      <label class="seg-opt" data-on>
-        <input type="radio" name="ptab-sub" value="image" checked>
-        Image Project <b id="n-sub-image"></b></label>
-      <label class="seg-opt">
-        <input type="radio" name="ptab-sub" value="video">
-        Video Project <b id="n-sub-video"></b></label>
+     Dulu "Dataset bersama" jadi tab atas ketiga di samping Sharing, padahal
+     keduanya menjawab hal yang sama ("yang dibagikan ke saya") dan folder
+     bersama itu cuma hanya-baca tanpa video. Sekarang folder bersama pindah
+     KE DALAM Sharing → Image, dengan keterangan hanya-baca di tiap kartunya. #}
+  <div class="palat">
+    <div class="palat-baris palat-utama">
+      <div class="seg ptab ptab-utama" id="ptab-atas"
+           role="tablist" aria-label="Sumber projek">
+        <label class="seg-opt" data-on>
+          <input type="radio" name="ptab-atas" value="mine" checked>
+          My Project <b id="n-mine"></b></label>
+        <label class="seg-opt">
+          <input type="radio" name="ptab-atas" value="sharing">
+          Sharing Project <b id="n-sharing"></b></label>
+      </div>
+      <span class="spacer"></span>
+      <input class="cari-nama" type="search" id="projek-cari"
+             placeholder="Cari projek…" autocomplete="off"
+             aria-label="Cari projek berdasarkan nama">
+      <select class="chip" id="projek-urut" aria-label="Urutan projek">
+        <option value="diubah">Terakhir diubah</option>
+        <option value="nama">Nama (A→Z)</option>
+        <option value="besar">Gambar terbanyak</option>
+        <option value="label">Paling banyak dilabeli</option>
+      </select>
+    </div>
+
+    <div class="palat-baris palat-anak">
+      <div class="seg ptab ptab-anak" id="ptab-sub"
+           role="tablist" aria-label="Jenis media">
+        <label class="seg-opt" data-on>
+          <input type="radio" name="ptab-sub" value="image" checked>
+          Image <b id="n-sub-image"></b></label>
+        <label class="seg-opt">
+          <input type="radio" name="ptab-sub" value="video">
+          Video <b id="n-sub-video"></b></label>
+      </div>
+      <span class="spacer"></span>
+      <span class="phitung" id="projek-hitung" aria-live="polite" hidden></span>
     </div>
   </div>
 
@@ -90,24 +92,37 @@
   <div class="pgrid" id="grid-tamu-video" hidden></div>
 
   {% if datasets_root %}
-  <div class="pgrid" id="grid-bersama" hidden>
-    {%- for r in datasets %}
-    <div class="pcard bersama">
-      <span class="psampul kosong" aria-hidden="true">▤</span>
-      <div class="pisi">
-        <a class="pnama pnama-link" href="#" data-path="{{ r.path }}"
-          >{{ r.nama }}<span class="plabel">hanya baca</span></a>
-        <div class="pmeta">{% if r.lebih %}≥{% endif %}{{ r.jumlah }} gambar</div>
-        <div class="pmeta halus">folder bersama · tidak bisa diganti nama atau dibuang</div>
-      </div>
+  {# Folder server hanya-baca, kini BAGIAN dari Sharing → Image (bukan tab atas
+     tersendiri lagi). Memang sesuatu yang "dibagikan ke saya", dan tak punya
+     jenis video — jadi tempatnya di bawah kartu projek undangan di sub-tab
+     Image. Statusnya ditegaskan di subjudul DAN di tiap kartu, supaya tetap
+     jelas walau orang melewati subjudulnya. #}
+  <section class="pbersama" id="grid-bersama" hidden
+           aria-label="Folder bersama hanya baca">
+    <div class="pbagi">
+      <h3>Folder bersama <span class="plabel">hanya baca</span></h3>
+      <p>Folder di server yang dibagikan untuk semua. Bisa dibuka dan dilihat,
+        tetapi tidak bisa diubah, diganti nama, atau dibuang dari sini.</p>
     </div>
-    {%- endfor %}
-    {% if not datasets %}
-    <div class="pkosong"><b>Belum ada dataset bersama</b>
-      Belum ada subfolder berisi gambar di
-      <span class="mono">{{ datasets_root }}</span>.</div>
-    {% endif %}
-  </div>
+    <div class="pgrid">
+      {%- for r in datasets %}
+      <div class="pcard bersama" data-nama="{{ r.nama }}">
+        <span class="psampul kosong" aria-hidden="true">▤</span>
+        <div class="pisi">
+          <a class="pnama pnama-link" href="#" data-path="{{ r.path }}"
+            >{{ r.nama }}<span class="plabel">hanya baca</span></a>
+          <div class="pmeta">{% if r.lebih %}≥{% endif %}{{ r.jumlah }} gambar</div>
+          <div class="pmeta halus">folder bersama · tidak bisa diganti nama atau dibuang</div>
+        </div>
+      </div>
+      {%- endfor %}
+      {% if not datasets %}
+      <div class="pkosong"><b>Belum ada folder bersama</b>
+        Belum ada subfolder berisi gambar di
+        <span class="mono">{{ datasets_root }}</span>.</div>
+      {% endif %}
+    </div>
+  </section>
   {% endif %}
 
   <details id="sampah-lipat" class="catatan-lipat lipat-blok" hidden>

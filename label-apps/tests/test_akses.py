@@ -57,8 +57,11 @@ def test_dua_akun_punya_dataset_sendiri(aplikasi, lingkungan):
     assert "ds-beta" in hb and "ds-alpha" not in hb
     assert ha.count('class="card"') == 4
     assert hb.count('class="card"') == 3
-    assert "<b>paul</b>" in ha
-    assert "<b>anggi</b>" in hb
+    # Nama akun kini tampil di pil identitas kepala (gugus .whoami), bukan lagi
+    # kalimat "masuk sebagai <b>…</b>". Yang dijaga sama: tiap akun melihat
+    # NAMANYA SENDIRI, bukan nama akun lain.
+    assert 'class="whoami-nama">paul</span>' in ha
+    assert 'class="whoami-nama">anggi</span>' in hb
 
 
 def test_akun_tidak_bisa_melihat_gambar_dataset_akun_lain(aplikasi, lingkungan):

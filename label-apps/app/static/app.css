@@ -76,6 +76,33 @@ header{position:sticky;top:0;z-index:20;background:rgba(var(--header),.94);
     calc(22px + env(safe-area-inset-right,0px)) 0
     calc(22px + env(safe-area-inset-left,0px))}
 .top{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+
+/* ---------------------------------------------------------------- brand mark
+   Dulu kepala halaman cuma teks "HIGOLAB-DEV" menggantung sendiri di pojok.
+   Sekarang didahului satu lambang: ubin teal dengan bingkai tipis di dalamnya
+   — motif kotak anotasi, inti pekerjaan alat ini. Digambar murni dari token
+   lewat ::before, jadi SATU aturan memasangnya di SEMUA halaman tanpa menyentuh
+   tiap templat, dan ikut berganti warna di tema gelap tanpa penyesuaian. */
+header h1{display:inline-flex;align-items:center;gap:9px}
+header h1::before{content:"";flex:0 0 auto;width:25px;height:25px;
+  border-radius:8px;background:var(--aksi);
+  box-shadow:inset 0 0 0 2px var(--aksi), inset 0 0 0 4px var(--aksi-ink)}
+
+/* ------------------------------------------------------------- gugus akun
+   "masuk sebagai devuser / Tema / Keluar" dulu tiga potong lepas yang sejajar
+   baseline tanpa saling berhubungan. Sekarang identitasnya jadi satu pil
+   beravatar, lalu pemilih tema & Keluar sebagai chip di sampingnya — satu
+   kelompok yang rapi di ujung kanan kepala. Hook #tema & /logout tak berubah.
+   Namespace .whoami sendiri — BUKAN .akun-* yang sudah dipakai daftar "kelola
+   akun"; nama yang sama akan saling mewarisi gaya di dua tempat yang beda. */
+.whoami{display:inline-flex;align-items:center;gap:8px;
+  padding:3px 11px 3px 4px;border:1px solid var(--line);border-radius:999px;
+  background:var(--panel)}
+.whoami-ava{flex:0 0 auto;width:23px;height:23px;border-radius:50%;
+  display:grid;place-items:center;background:var(--aksi);color:var(--aksi-ink);
+  font-size:11px;font-weight:700;line-height:1}
+.whoami-nama{font-size:12.5px;font-weight:600;color:var(--ink-dim);
+  max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* iOS Safari mem-ZOOM otomatis saat fokus input ber-font <16px (dan tak zoom-out
    lagi). Di layar sentuh/sempit, paksa semua input ke 16px. Hanya berlaku
    mobile — tampilan desktop tak tersentuh. */
@@ -1035,6 +1062,19 @@ input:focus{outline:0;border-color:var(--ok)}
 .pcard.bersama{background:var(--raised)}
 .pcard.bersama:hover{background:var(--hover)}
 
+/* Seksi "Folder bersama (hanya baca)" di dalam Sharing → Image: subjudul +
+   keterangan sebaris, lalu grid kartunya. Dipisah dari kartu projek undangan
+   di atasnya dengan jarak + label — bukan garis — supaya terbaca sebagai
+   lanjutan daftar yang sama, bukan panel yang lain sama sekali. */
+.pbersama{margin-top:22px}
+.pbagi{margin:0 2px}
+.pbagi h3{display:flex;align-items:center;gap:8px;
+  font-size:13.5px;font-weight:600;color:var(--ink)}
+.pbagi h3 .plabel{margin-left:0}
+.pbagi p{margin-top:4px;font-size:12px;line-height:1.5;
+  color:var(--ink-dim);max-width:640px}
+.pbersama .pgrid{margin-top:12px}
+
 /* Dipakai dua tempat: grid kartu projek (butuh grid-column) dan halaman
    Versi (butuh dipusatkan). Batas ukurnya milik kotaknya, bukan atribut
    style di templat — di kolom isi selebar 1680px, 660px tanpa margin auto
@@ -1054,10 +1094,19 @@ input:focus{outline:0;border-color:var(--ok)}
 
 /* Lengket supaya cari dan urut tetap terjangkau saat projeknya banyak.
    58px = tinggi header. Ukur ulang kalau isi header berubah. */
+/* Dulu DUA bilah .palat bertumpuk — tab sumber lalu tab media — masing-masing
+   lengket sendiri dengan garisnya sendiri; terbaca sebagai dua kontrol kaku
+   yang kebetulan berdempet. Sekarang SATU permukaan kartu lengket memuat dua
+   baris: baris utama (sumber + cari + urut) dan baris anak (jenis media +
+   pencacah). Satu kendali, dua tingkat. */
 .palat{position:sticky;top:58px;z-index:15;
-  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
-  margin:10px -8px 0;padding:9px 8px;background:var(--ground);
-  box-shadow:0 1px 0 var(--line)}
+  display:flex;flex-direction:column;gap:9px;
+  margin:14px 0 0;padding:10px 12px;
+  background:var(--panel);border:1px solid var(--line);border-radius:12px;
+  box-shadow:0 1px 2px rgba(var(--bayang),.05)}
+.palat-baris{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+/* Baris anak dipisah garis tipis, bukan jarak besar: tetap satu permukaan. */
+.palat-anak{padding-top:9px;border-top:1px solid var(--line)}
 .palat .spacer{flex:1 1 12px}
 .palat .cari-nama{flex:0 1 260px;min-width:150px}
 /* .seg dibuat untuk dalam menu (margin:0 14px); di bilah alat marginnya
@@ -1067,6 +1116,23 @@ input:focus{outline:0;border-color:var(--ok)}
 .ptab .seg-opt b{margin-left:6px;font-size:10.5px;font-weight:600;
   color:var(--ink-faint);font-variant-numeric:tabular-nums}
 .ptab .seg-opt[data-on] b{color:var(--aksi)}
+
+/* Tab sumber (utama): segmented control penuh, sedikit lebih berisi — inilah
+   pilihan terpenting di halaman. */
+.ptab-utama .seg-opt{padding:6px 16px;font-size:13px}
+
+/* Tab media (anak): tingkat di bawah sumber, jadi sengaja lebih kalem — pil
+   datar di atas latar bening, bukan segmented control kedua yang menuntut
+   perhatian setara. Hierarki sumber>media langsung terbaca. Discoped ke .pick
+   supaya .seg di tempat lain tak ikut berubah. */
+.pick .ptab-anak{background:transparent;border:0;padding:0;gap:4px}
+.pick .ptab-anak .seg-opt{padding:5px 12px;border-radius:7px;font-size:12px;
+  color:var(--ink-faint)}
+.pick .ptab-anak .seg-opt:hover{color:var(--ink)}
+.pick .ptab-anak .seg-opt[data-on]{background:var(--sunk);color:var(--ink);
+  box-shadow:inset 0 0 0 1px var(--line)}
+.pick .ptab-anak .seg-opt b{color:var(--ink-faint)}
+.pick .ptab-anak .seg-opt[data-on] b{color:var(--aksi)}
 /* Hanya muncul saat ada saringan aktif. Angka yang selalu berbunyi
    "4 dari 4" tidak pernah dibaca. */
 .phitung{flex:0 0 auto;font-size:11.5px;color:var(--ink-dim);
@@ -1116,14 +1182,18 @@ input:focus{outline:0;border-color:var(--ok)}
 /* ------------------------------------------------------------ layar sempit */
 @media (max-width:720px){
   /* Bilah lengket di bawah header yang juga lengket menyisakan terlalu
-     sedikit tinggi untuk kartunya sendiri. */
-  .palat{position:static;box-shadow:none;border-bottom:1px solid var(--line)}
+     sedikit tinggi untuk kartunya sendiri — di layar sempit kartunya tetap
+     kartu, hanya tak lagi lengket. */
+  .palat{position:static}
   .palat .cari-nama{flex:1 1 100%}
-  .ptab{flex:1 1 100%}
-  .ptab .seg-opt{flex:1}
+  /* Tab sumber melebar penuh; tab media tetap pil kecil berdampingan. */
+  .ptab-utama{flex:1 1 100%}
+  .ptab-utama .seg-opt{flex:1}
   .lanjut-path{display:none}
   .psampul{width:56px;height:56px}
   .pcard{min-height:0}
+  /* Pil akun bisa menyempit; namanya yang mengalah lebih dulu, bukan tombolnya. */
+  .whoami-nama{max-width:92px}
 }
 
 /* -------------------------------------------------------------- tema gelap
@@ -1840,10 +1910,15 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
    tertinggal itu bagian dari keputusannya. */
 .bg-ubin[data-luar]{opacity:.25}
 
-.bg-panel{flex:0 0 320px;background:var(--panel);border:1px solid var(--line);
-  border-radius:10px;padding:16px 15px 18px;
+.bg-panel{flex:0 0 330px;background:var(--panel);border:1px solid var(--line);
+  border-radius:12px;padding:17px 17px 19px;
+  box-shadow:0 1px 2px rgba(var(--bayang),.05);
   position:sticky;top:64px}
-.bg-panel-judul{margin:0 0 12px;font-size:14px}
+/* Judul bagian diberi garis bawah tipis supaya "Anggota projek" / "Bagi tugas"
+   terbaca sebagai kepala bagian yang berdiri sendiri — bukan baris pertama
+   yang melebur ke daftar di bawahnya. */
+.bg-panel-judul{margin:0 0 13px;padding-bottom:11px;font-size:14px;
+  border-bottom:1px solid var(--line)}
 .bg-jumlah{display:flex;gap:9px;align-items:center}
 .bg-jumlah input{width:96px}
 .bg-dari{font-size:12px;color:var(--ink-faint);white-space:nowrap}
@@ -1873,8 +1948,10 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
 .bg-orang-n{flex:0 0 auto;font-size:11px;color:var(--aksi);font-weight:600;
   white-space:nowrap}
 
-.bg-undang{margin-top:10px;padding:11px;background:var(--sunk);
-  border-radius:8px}
+/* Kotak undang/atur: diberi tepi sendiri supaya terbaca sebagai formulir yang
+   dibuka DI DALAM panel, bukan sekadar blok latar yang menyatu dengannya. */
+.bg-undang{margin-top:12px;padding:13px 13px 14px;background:var(--sunk);
+  border:1px solid var(--line);border-radius:10px}
 .bg-undang .row{gap:6px}
 .bg-tautan{display:flex;gap:6px;align-items:center;margin-top:8px}
 .bg-tautan .mono{flex:1 1 auto;min-width:0;font-size:10.5px;

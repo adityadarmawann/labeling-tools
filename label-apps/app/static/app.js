@@ -1102,10 +1102,11 @@ const Progres = (() => {
   const gridVideo = document.getElementById('projek-grid-video');
   const gridTamuImg = document.getElementById('grid-tamu-image');
   const gridTamuVid = document.getElementById('grid-tamu-video');
+  // Folder server hanya-baca. Dulu tab atas tersendiri; sekarang sebuah seksi
+  // yang hanya muncul DI DALAM Sharing → Image.
   const gridBersama = document.getElementById('grid-bersama');
-  const subWrap = document.getElementById('ptab-sub-wrap');
-  // Dua tingkat: sumber (My/Sharing/Bersama) dan jenis media (Image/Video).
-  let topTab = 'mine';                    // 'mine' | 'sharing' | 'bersama'
+  // Dua tingkat: sumber (My/Sharing) dan jenis media (Image/Video).
+  let topTab = 'mine';                    // 'mine' | 'sharing'
   let subTab = 'image';                   // 'image' | 'video'
   const note = document.getElementById('projek-note');
   const cari = document.getElementById('projek-cari');
@@ -1139,20 +1140,16 @@ const Progres = (() => {
   // supaya muat(), render(), dan perpindahan tab tak pernah berbeda soal apa
   // yang tampil (dulu bug: muat() memunculkan kembali grid yang disembunyikan).
   function tampilkanGrid() {
-    const mine = topTab === 'mine', sharing = topTab === 'sharing',
-          bersama = topTab === 'bersama';
+    const mine = topTab === 'mine', sharing = topTab === 'sharing';
     grid.hidden = !(mine && subTab === 'image');
     if (gridVideo) gridVideo.hidden = !(mine && subTab === 'video');
     if (gridTamuImg) gridTamuImg.hidden = !(sharing && subTab === 'image');
     if (gridTamuVid) gridTamuVid.hidden = !(sharing && subTab === 'video');
-    if (gridBersama) gridBersama.hidden = !bersama;
-    if (subWrap) subWrap.hidden = bersama;        // jenis tak relevan di bersama
-    // Cari & urut berlaku untuk daftar projek (My & Sharing), bukan folder
-    // dataset bersama yang read-only.
-    cari.disabled = bersama;
-    urut.disabled = bersama;
+    // Folder bersama (hanya-baca) hidup DI DALAM Sharing → Image, setelah kartu
+    // projek yang mengundang. Tak punya jenis video, jadi cuma di sub-tab Image.
+    if (gridBersama) gridBersama.hidden = !(sharing && subTab === 'image');
     const q = (cari.value || '').trim();
-    document.getElementById('projek-hitung').hidden = bersama || !q;
+    document.getElementById('projek-hitung').hidden = !q;
   }
 
   async function muat() {
@@ -1298,8 +1295,24 @@ const Progres = (() => {
       ? src.filter(isVideo) : src.filter(p => !isVideo(p))).length;
     const tampilAktif = (sharing ? (subTab === 'video' ? tVid : tImg)
                                  : (subTab === 'video' ? vidRows : imgRows)).length;
-    hit.hidden = !q || topTab === 'bersama';
+    hit.hidden = !q;
     hit.textContent = q ? `menampilkan ${tampilAktif} dari ${totalAktif}` : '';
+
+    // Folder bersama ikut daftar server-rendered (statis), jadi disaring di DOM,
+    // bukan digambar ulang. Subjudulnya ikut hilang kalau pencarian menyisakan
+    // nol — supaya tak ada judul menggantung tanpa kartu di bawahnya.
+    if (gridBersama) {
+      const kartu = gridBersama.querySelectorAll('.pcard.bersama');
+      if (kartu.length) {
+        let tampak = 0;
+        kartu.forEach(c => {
+          const ok = !q || (c.dataset.nama || '').toLowerCase().includes(q);
+          c.hidden = !ok; if (ok) tampak++;
+        });
+        const bagi = gridBersama.querySelector('.pbagi');
+        if (bagi) bagi.hidden = !!q && !tampak;
+      }
+    }
   }
 
   function gambarSampah(isi) {
@@ -1544,9 +1557,9 @@ const Progres = (() => {
     tandai();
   }
 
-  // Tab ATAS (My / Sharing / Dataset bersama) dan BAWAH (Image / Video).
-  // Keduanya cuma mengubah keadaan lalu memanggil tampilkanGrid() + render();
-  // satu sumber kebenaran soal apa yang terlihat & hitungannya.
+  // Tab ATAS (My / Sharing) dan ANAK (Image / Video). Keduanya cuma mengubah
+  // keadaan lalu memanggil tampilkanGrid() + render(); satu sumber kebenaran
+  // soal apa yang terlihat & hitungannya.
   segPasang(document.getElementById('ptab-atas'), v => {
     topTab = v;
     tampilkanGrid();
