@@ -214,3 +214,54 @@ def test_labeler_spesifik_simpan_hanya_dalam_scope(klien, aplikasi, lingkungan):
     assert simpan(g[0]).get("ok") is True          # dalam scope
     r = simpan(g[1])                               # luar scope
     assert r.get("ok") is False and "ditugaskan" in (r.get("error") or "")
+
+
+def test_editor_unggah_ke_sharing_labeler_ditolak(klien, aplikasi, lingkungan):
+    """Editor projek sharing boleh menambah media ke folder pemiliknya;
+    Labeler yang sama ditolak."""
+    import pathlib
+
+    from conftest import klien_baru
+    from tests.test_data import masuk, PW_ANGGI, PW_PAUL
+
+    masuk(klien, "paul", PW_PAUL)
+    klien.post("/api/projek/baru?nama=shared-kosong&jenis=image")
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = ruang / "shared-kosong"
+
+    # anggi sebagai EDITOR -> boleh unggah ke projek milik paul.
+    tugas.undang(d, "paul", "anggi", peran="editor")
+    anggi = klien_baru(aplikasi, "anggi", PW_ANGGI)
+    r = anggi.put("/upload?ds=paul/shared-kosong&name=foto.png",
+                  content=b"x" * 200).json()
+    assert r["ok"] is True and r["video"] is False, r
+    assert (d / "foto.png").exists()               # mendarat di folder paul
+
+    # Turunkan anggi jadi Labeler -> unggah ditolak, berkas tak mendarat.
+    tugas.undang(d, "paul", "anggi", peran="pelabel", akses="semua")
+    r2 = anggi.put("/upload?ds=paul/shared-kosong&name=foto2.png",
+                   content=b"x" * 200).json()
+    assert r2["ok"] is False and "berhak" in (r2.get("error") or "")
+    assert not (d / "foto2.png").exists()
+
+
+def test_editor_tambah_ke_sharing_berisi(klien, aplikasi, lingkungan):
+    """Editor boleh menambah ke projek sharing yang SUDAH berisi (lewat
+    /tambah pada dataset yang terbuka)."""
+    import pathlib
+
+    from conftest import klien_baru
+    from tests.test_data import masuk, PW_ANGGI, PW_PAUL
+    from tests.test_projek import _projek as buat_projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = buat_projek(ruang, "shared-isi", n=2, label=False)
+    tugas.undang(d, "paul", "anggi", peran="editor")
+    blob = sorted(d.glob("*.jpg"))[0].read_bytes()      # gambar nyata
+
+    anggi = klien_baru(aplikasi, "anggi", PW_ANGGI)
+    anggi.get("/?ds=paul/shared-isi")                   # buka -> sess.src
+    r = anggi.put("/tambah?name=tambahan.jpg", content=blob).json()
+    assert r["ok"] is True, r
+    assert (d / "tambahan.jpg").exists()

@@ -17,13 +17,44 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from ..config import ARSIP_EXT, VIDEO_EXT, Settings, get_settings
 from ..deps import current_session, current_session_api, is_local
 from ..security import safe_relpath, safe_slug
-from ..services import arsip, ekstraksi, impor, projek, riwayat, scanner, tambah
+from ..services import (arsip, ekstraksi, impor, projek, riwayat, scanner,
+                        tambah, tugas)
 from ..session import Session
 from ..templating import templates
 
 router = APIRouter(tags=["uploads"])
 
 CHUNK = 256 * 1024
+
+
+def _folder_unggah(sess: Session, settings: Settings, ds: str):
+    """Folder tujuan unggah + pengecekan izin -> (Path|None, pesan_error).
+
+    Mendukung dua bentuk `ds`, sama seperti membuka projek:
+      "nama"        projek milik akun ini
+      "owner/nama"  projek milik orang lain yang mengundang akun ini
+
+    Projek yang SUDAH ada hanya boleh ditambahi oleh yang berhak mengunggah —
+    pemilik atau Editor (tugas.boleh_unggah). Inilah yang membuat Editor sebuah
+    projek sharing bisa menambah media ke projek pemiliknya, sementara Labeler
+    (yang hanya melihat/melabeli) ditolak di sini, bukan dibiarkan menulis ke
+    folder orang lain.
+
+    Yang menjaga projek orang lain bukan penolakan di sini, melainkan cek
+    boleh_unggah: Labeler sebuah projek sharing teratasi lewat temukan tapi
+    gagal boleh_unggah -> ditolak, jadi ia tak bisa menulis ke folder
+    pemiliknya. Yang BUKAN anggota tak teratasi temukan sama sekali, lalu jatuh
+    ke upload_dir yang membelokkan bentuk "owner/nama" ke folder sendiri
+    (gagal terlihat, tak pernah menyentuh folder orang lain) — dan bentuk
+    "nama" biasa dibuat di ruang kerja sendiri, jalur "buat projek lalu unggah".
+    """
+    d = projek.temukan(settings.uploads_root, sess.user, ds)
+    if d is not None:
+        tdata = tugas.baca_projek(d, settings.uploads_root)
+        if not tugas.boleh_unggah(tdata, sess.user):
+            return None, "kamu tidak berhak mengunggah ke projek ini"
+        return d, ""
+    return sess.upload_dir(ds), ""
 
 
 @router.get("/unggah", response_class=HTMLResponse)
@@ -55,8 +86,12 @@ async def halaman_unggah(request: Request, ds: str = "",
     # Tamu boleh melihat dan melabeli, tidak menambah gambar. Dikatakan di
     # halamannya, bukan dibiarkan jadi unggahan yang dijawab berhasil lalu
     # mendarat entah di mana.
+    # Dulu owner-only; kini Editor projek sharing pun boleh menambah media.
+    # Pengelolaan lain (ganti nama, bagi tugas, anggota) tetap owner-only lewat
+    # boleh_kelola — yang dilonggarkan hanya mengunggah.
     pemilik = projek.pemilik_dari(settings.uploads_root, d)
-    boleh_unggah = pemilik == sess.user
+    tdata = await asyncio.to_thread(tugas.baca_projek, d, settings.uploads_root)
+    boleh_unggah = tugas.boleh_unggah(tdata, sess.user)
     pr = await asyncio.to_thread(projek.konteks, d, settings.uploads_root, sess.user)
     berisi = pr["jumlah"] > 0
     return templates.TemplateResponse(request, "unggah.html", {
@@ -153,7 +188,9 @@ async def upload(request: Request, ds: str = "", name: str = "",
     # Video hanya diizinkan ke projek IMAGE: ia diunggah utuh lalu diekstrak
     # jadi frame lewat /ekstrak, dan videonya dibuang. Projek video (nanti)
     # belum punya jalur unggah tersendiri, jadi video ke sana ditolak dulu.
-    d = sess.upload_dir(ds)
+    d, err = _folder_unggah(sess, settings, ds)
+    if err:
+        return {"ok": False, "error": err}
     boleh_video = projek.jenis_projek(d) == "image"
     fn = safe_relpath(name, arsip=True, video=boleh_video)
     if not fn:
@@ -230,7 +267,9 @@ async def unzip(ds: str = "", name: str = "",
     if not fn or Path(fn).suffix.lower() not in ARSIP_EXT:
         return {"ok": False, "error": "yang diminta bukan berkas arsip"}
 
-    d = sess.upload_dir(ds)
+    d, err = _folder_unggah(sess, settings, ds)
+    if err:
+        return {"ok": False, "error": err}
     await _mulai_kurasi(d, settings)
     zp = d / fn
     if not zp.is_file():
@@ -277,7 +316,9 @@ async def ekstrak_video(ds: str = "", name: str = "", preset: str = "sedang",
     if not fn or Path(fn).suffix.lower() not in VIDEO_EXT:
         return {"ok": False, "error": "yang diminta bukan berkas video"}
 
-    d = sess.upload_dir(ds)
+    d, err = _folder_unggah(sess, settings, ds)
+    if err:
+        return {"ok": False, "error": err}
     if projek.jenis_projek(d) != "image":
         return {"ok": False, "error": "ekstraksi video hanya untuk projek image"}
     await _mulai_kurasi(d, settings)
@@ -393,6 +434,14 @@ async def impor_dari_server(path: str = "", ds: str = "",
 def _siap_ditambahi(sess: Session, settings: Settings) -> str:
     if sess.src is None:
         return "belum ada dataset yang dibuka"
+    # Pemilik atau Editor boleh menambah ke projek yang sedang dibuka, walau
+    # foldernya milik owner lain (projek sharing). boleh_unggah yang menjamin
+    # haknya. Dataset yang dibuka langsung dari folder server tidak punya
+    # pemilik yang cocok -> boleh_unggah False -> jatuh ke aturan ruang kerja,
+    # yang memang menolaknya (folder sumber hanya dibaca).
+    tdata = tugas.baca_projek(sess.src, settings.uploads_root)
+    if tugas.boleh_unggah(tdata, sess.user):
+        return ""
     return tambah.boleh_ditambahi(sess.src,
                                   settings.uploads_root / safe_slug(sess.user))
 
@@ -515,10 +564,13 @@ async def tambah_dari_server(path: str = "",
 
 
 @router.post("/useupload")
-async def use_upload(ds: str = "", sess: Session = Depends(current_session_api)):
+async def use_upload(ds: str = "", sess: Session = Depends(current_session_api),
+                     settings: Settings = Depends(get_settings)):
     """Buka folder hasil unggahan sebagai dataset yang sedang diperiksa."""
-    d = sess.upload_dir(ds)
-    if not d.is_dir():
+    # Resolve lewat temukan supaya projek sharing (owner/nama) ikut terbuka,
+    # bukan dibelokkan ke ruang sendiri oleh upload_dir.
+    d = projek.temukan(settings.uploads_root, sess.user, ds)
+    if d is None or not d.is_dir():
         return {"ok": False, "error": "folder unggahan belum ada"}
     # Sama seperti /impor: kalau yang diunggah ternyata ekspor bersplit
     # (train/valid/test dari laptop atau di dalam zip), split-nya dicopot
