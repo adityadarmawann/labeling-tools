@@ -15,7 +15,11 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const isi = $('bg-isi');
-  if (!isi) return;
+  // #bg-isi membungkus KEDUA cabang (pemilik & non-pemilik), jadi keberadaannya
+  // tak cukup. Panel anggota hanya ada untuk pemilik; tanpa #bg-tambah-orang
+  // skrip ini tak punya apa pun untuk dikerjakan (dan dulu malah melempar
+  // TypeError saat non-pemilik membuka /bagi lewat tautan langsung).
+  if (!isi || !$('bg-tambah-orang')) return;
 
   const PEMILIK = isi.dataset.pemilik || '';
 
@@ -277,7 +281,9 @@
   $('bg-tambah-orang').onclick = () => {
     const k = $('bg-undang');
     if (k.hidden) { resetForm(); k.hidden = false; $('bg-email').focus(); }
-    else { k.hidden = true; }
+    // Tutup juga membereskan mode (kalau tadi sedang Atur anggota), supaya
+    // buka berikutnya tak mewarisi "Simpan"/scope anggota sebelumnya.
+    else { k.hidden = true; resetForm(); }
   };
   $('bg-undang-batal').onclick = () => { $('bg-undang').hidden = true; resetForm(); };
   $('bg-peran').addEventListener('change', perbaruiFormPeran);

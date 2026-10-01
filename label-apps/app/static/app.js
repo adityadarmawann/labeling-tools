@@ -1477,6 +1477,15 @@ const Progres = (() => {
   grid.addEventListener('click', onKartuClick);
   if (gridVideo) gridVideo.addEventListener('click', onKartuClick);
 
+  // Kartu Sharing video dibuka lewat tautan biasa (bukan onKartuClick), jadi
+  // penjaga "video belum siap" harus dipasang terpisah di sini — kalau tidak,
+  // projek video milik orang lain bisa dibuka padahal yang sendiri diblokir.
+  if (gridTamuVid) gridTamuVid.addEventListener('click', ev => {
+    if (!ev.target.closest('.pcard')) return;
+    ev.preventDefault();
+    toast('Pelabelan video sedang disiapkan — projek ini belum bisa dibuka.');
+  });
+
   isiSampah.addEventListener('click', async ev => {
     const pulih = ev.target.closest('[data-pulih]');
     if (pulih) {
