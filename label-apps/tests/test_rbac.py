@@ -179,3 +179,38 @@ def test_undangan_email_polos_jadi_warisan(tmp_path):
     tugas.pakai_undangan(d, tok, "andi")
     a = tugas.baca(d, "own")["anggota"]["andi"]
     assert a["peran"] == "pelabel" and "akses" not in a
+
+
+# ------------------------------------------------- end-to-end lewat HTTP
+
+def test_labeler_spesifik_simpan_hanya_dalam_scope(klien, aplikasi, lingkungan):
+    """Rantai penuh: batch gambar -> tolak_tulis -> scope, lewat /api/simpan."""
+    import pathlib
+
+    from conftest import klien_baru
+    from tests.test_data import masuk, PW_ANGGI, PW_PAUL
+    from tests.test_projek import _projek as buat_projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = buat_projek(ruang, "scoped", n=2, label=False)
+    klien.post(f"/setsrc?path={d}")
+    g = sorted(str(q) for q in d.glob("*.jpg"))
+
+    # Pemilik memberi batch berbeda ke tiap gambar, lalu menambah anggi sebagai
+    # labeler spesifik yang hanya berhak atas 'dataset-a'. (Rute UI peran dibuat
+    # di langkah berikut; di sini scope-nya disetel lewat service.)
+    klien.post("/api/tag/pasang", json={"paths": [g[0]], "batch": "dataset-a"})
+    klien.post("/api/tag/pasang", json={"paths": [g[1]], "batch": "dataset-b"})
+    tugas.undang(d, "paul", "anggi", peran="pelabel", akses="spesifik",
+                 batch=["dataset-a"])
+
+    anggi = klien_baru(aplikasi, "anggi", PW_ANGGI)
+    anggi.get("/?ds=paul/scoped")
+    simpan = lambda p: anggi.post("/api/simpan", json={"path": p, "shapes": [
+        {"label": "x", "shape_type": "rectangle",
+         "points": [[1, 1], [5, 5]]}]}).json()
+
+    assert simpan(g[0]).get("ok") is True          # dalam scope
+    r = simpan(g[1])                               # luar scope
+    assert r.get("ok") is False and "ditugaskan" in (r.get("error") or "")

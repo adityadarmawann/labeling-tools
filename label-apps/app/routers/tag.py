@@ -98,7 +98,13 @@ async def pasang(request: Request,
     if tambah is None or buang is None:
         return {"ok": False, "error": "daftar tag harus berupa larik atau satu teks"}
 
-    tolak = [k for k in kunci if not svc_tugas.boleh_labeli(tdata, sess.user, k)]
+    # Scope labeler spesifik dicek terhadap batch gambar yang BERLAKU sekarang:
+    # labeler yang hanya berhak atas batch tertentu tak bisa memindahkan gambar
+    # di luar jatahnya ke dalam/luar scope-nya. Batch dibaca sekali di sini.
+    tagcur = await asyncio.to_thread(svc.baca, sess.src)
+    tolak = [k for k in kunci
+             if not svc_tugas.boleh_labeli(
+                 tdata, sess.user, k, svc.untuk(tagcur, k).get("batch", ""))]
     if tolak:
         return {"ok": False, "error": (
             f"{len(tolak)} gambar ditugaskan ke orang lain; hanya pelabelnya "
