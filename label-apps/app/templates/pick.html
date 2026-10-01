@@ -41,8 +41,11 @@
   <div class="palat">
     <div class="seg ptab" id="ptab">
       <label class="seg-opt" data-on>
-        <input type="radio" name="sumberdata" value="milik" checked>
-        Projekmu <b id="n-milik"></b></label>
+        <input type="radio" name="sumberdata" value="image" checked>
+        Image Projek <b id="n-image"></b></label>
+      <label class="seg-opt">
+        <input type="radio" name="sumberdata" value="video">
+        Video Projek <b id="n-video"></b></label>
       {#- Tab ini hanya muncul kalau memang ada yang mengundang. Tab kosong
           permanen di halaman pertama membuat orang mengira ada yang belum
           dimuat. Angkanya diisi JavaScript bersama daftarnya. -#}
@@ -74,6 +77,7 @@
   <div class="jalur-status"><p class="upnote" id="projek-note"></p></div>
 
   <div class="pgrid" id="projek-grid" hidden></div>
+  <div class="pgrid" id="projek-grid-video" hidden></div>
   <div class="pgrid" id="grid-tamu" hidden></div>
 
   {% if datasets_root %}

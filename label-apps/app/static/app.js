@@ -1099,6 +1099,8 @@ const Progres = (() => {
 (() => {
   const grid = document.getElementById('projek-grid');
   if (!grid) return;
+  const gridVideo = document.getElementById('projek-grid-video');
+  let tabAktif = 'image';                 // 'image' | 'video' | 'tamu' | 'bersama'
   const note = document.getElementById('projek-note');
   const cari = document.getElementById('projek-cari');
   const urut = document.getElementById('projek-urut');
@@ -1112,13 +1114,18 @@ const Progres = (() => {
   let semua = [];
 
 
+  const isVideo = p => p.jenis === 'video';
+
   function hitung(tampil) {
     const q = (cari.value || '').trim();
     const hit = document.getElementById('projek-hitung');
+    const nImg = semua.filter(p => !isVideo(p)).length;
+    const nVid = semua.filter(isVideo).length;
+    const ni = document.getElementById('n-image'); if (ni) ni.textContent = nImg;
+    const nv = document.getElementById('n-video'); if (nv) nv.textContent = nVid;
+    const total = tabAktif === 'video' ? nVid : nImg;
     hit.hidden = !q;
-    hit.textContent = q ? `menampilkan ${tampil} dari ${semua.length}` : '';
-    const nm = document.getElementById('n-milik');
-    if (nm) nm.textContent = semua.length;
+    hit.textContent = q ? `menampilkan ${tampil} dari ${total}` : '';
   }
 
   async function muat() {
@@ -1137,7 +1144,10 @@ const Progres = (() => {
     }
     pr.buang();
     semua = j.projek || [];
-    grid.hidden = false;
+    // Hormati tab yang sedang aktif (bukan selalu image): kalau tidak, memuat
+    // ulang daftar saat tab Video dibuka akan memunculkan kembali grid image.
+    grid.hidden = tabAktif !== 'image';
+    if (gridVideo) gridVideo.hidden = tabAktif !== 'video';
     gambarSampah(j.sampah || []);
     gambarTamu(j.tamu || []);
     render();
@@ -1185,26 +1195,7 @@ const Progres = (() => {
     }).join('');
   }
 
-  function render() {
-    const q = (cari.value || '').trim().toLowerCase();
-    let baris = semua.filter(p => !q || p.nama.toLowerCase().includes(q));
-    const cara = urut.value;
-    baris.sort((a, b) =>
-      cara === 'nama' ? a.nama.localeCompare(b.nama, 'id')
-      : cara === 'besar' ? b.jumlah - a.jumlah
-      : cara === 'label' ? b.anotasi - a.anotasi
-      : b.diubah - a.diubah);
-
-    if (!baris.length) {
-      grid.innerHTML = semua.length
-        ? '<div class="pkosong"><b>Tidak ada yang cocok</b>'
-          + 'Ubah kata pencarianmu.</div>'
-        : '<div class="pkosong"><b>Belum ada projek</b>'
-          + 'Buka "+ Projek baru" di atas untuk membuat yang pertama.</div>';
-      hitung(0);
-      return;
-    }
-    grid.innerHTML = baris.map(p => {
+  function kartuProjek(p) {
       const pct = p.jumlah ? Math.min(100, Math.round(p.anotasi / p.jumlah * 100)) : 0;
       return `
       <div class="pcard${p.dibuka ? ' dibuka' : ''}" data-nama="${esc(p.nama)}">
@@ -1237,11 +1228,35 @@ const Progres = (() => {
             Buang ke tempat sampah\u2026</button>
         </div>
       </div>`;
-    }).join('');
-    // #projek-note dipakai Progres sebagai wadahnya. Menulis penghitung ke
-    // sana berarti dua makna dalam satu kotak: memulai duplikasi menghapus
-    // angkanya, dan angkanya menolak muncul selama ada operasi berjalan.
-    hitung(baris.length);
+  }
+
+  function render() {
+    const q = (cari.value || '').trim().toLowerCase();
+    const cara = urut.value;
+    const urutkan = (arr) => arr.sort((a, b) =>
+      cara === 'nama' ? a.nama.localeCompare(b.nama, 'id')
+      : cara === 'besar' ? b.jumlah - a.jumlah
+      : cara === 'label' ? b.anotasi - a.anotasi
+      : b.diubah - a.diubah);
+    const cocok = p => !q || p.nama.toLowerCase().includes(q);
+    const imgRows = urutkan(semua.filter(p => !isVideo(p) && cocok(p)));
+    const vidRows = urutkan(semua.filter(p => isVideo(p) && cocok(p)));
+
+    // Grid Image Projek
+    grid.innerHTML = imgRows.length ? imgRows.map(kartuProjek).join('')
+      : (semua.some(p => !isVideo(p))
+          ? '<div class="pkosong"><b>Tidak ada yang cocok</b>Ubah kata pencarianmu.</div>'
+          : '<div class="pkosong"><b>Belum ada Projek Image</b>'
+            + 'Buka "+ Projek baru" di atas untuk membuat yang pertama.</div>');
+
+    // Grid Video Projek — empty-state ramah selama belum ada projek video
+    if (gridVideo) gridVideo.innerHTML = vidRows.length ? vidRows.map(kartuProjek).join('')
+      : (semua.some(isVideo)
+          ? '<div class="pkosong"><b>Tidak ada yang cocok</b>Ubah kata pencarianmu.</div>'
+          : '<div class="pkosong"><b>Kamu belum punya Projek Video</b>'
+            + 'Pelabelan video akan muncul di sini begitu fiturnya siap.</div>');
+
+    hitung(tabAktif === 'video' ? vidRows.length : imgRows.length);
   }
 
   function gambarSampah(isi) {
@@ -1469,17 +1484,20 @@ const Progres = (() => {
   }
 
   segPasang(document.getElementById('ptab'), v => {
-    const milik = v === 'milik';
-    grid.hidden = !milik || !semua.length && false;
+    tabAktif = v;
+    const img = v === 'image', vid = v === 'video', own = img || vid;
+    grid.hidden = !img;
+    if (gridVideo) gridVideo.hidden = !vid;
     const b = document.getElementById('grid-bersama');
     if (b) b.hidden = v !== 'bersama';
     const tm = document.getElementById('grid-tamu');
     if (tm) tm.hidden = v !== 'tamu';
-    // Cari dan urut hanya berlaku untuk projek sendiri; membiarkannya aktif
-    // tapi tak berpengaruh lebih membingungkan daripada meredupkannya.
-    cari.disabled = !milik;
-    urut.disabled = !milik;
-    document.getElementById('projek-hitung').hidden = !milik;
+    // Cari dan urut berlaku untuk projek sendiri (image & video), bukan untuk
+    // tab tamu/bersama; membiarkannya aktif tapi tak berpengaruh membingungkan.
+    cari.disabled = !own;
+    urut.disabled = !own;
+    document.getElementById('projek-hitung').hidden = !own;
+    render();   // segarkan empty-state & hitungan untuk tab aktif
   });
 
   /* Dialog "Projek baru": menanyakan nama, itu saja.
