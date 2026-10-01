@@ -916,9 +916,13 @@ def ada_aug(resep: dict) -> bool:
     return False
 
 
-def bangun_pipeline(resep: dict, sisi: tuple[int, int] | None = None):
+def bangun_pipeline(resep: dict, sisi: tuple[int, int] | None = None,
+                    lewati: set | None = None):
     """
     Susun albumentations.Compose dari resep.
+
+    `lewati` = kumpulan id augmentasi yang DILEWATI (mis. flip untuk pose, yang
+    ditangani manual pakai flip_idx). Kalau None, tak ada yang dilewati.
 
     `resep["aug"]` = {id: {aktif: bool, ...param}}. Yang tidak disebut memakai
     bawaan v14 dan dianggap AKTIF — sama seperti panel SAKLAR v14 yang seluruh
@@ -939,8 +943,11 @@ def bangun_pipeline(resep: dict, sisi: tuple[int, int] | None = None):
     aug = (resep or {}).get("aug") or {}
     if sisi is None:
         sisi = ukuran_keluaran(resep)
+    lewati = lewati or set()
     urut = []
     for oid, _saklar, bangun in AUG_V14:
+        if oid in lewati:
+            continue
         par = aug.get(oid)
         if par is not None and not par.get("aktif", True):
             continue
@@ -951,6 +958,8 @@ def bangun_pipeline(resep: dict, sisi: tuple[int, int] | None = None):
             p["sisi_hw"] = (int(sisi[0]), int(sisi[1]))
         urut.append(bangun(A, p))
     for oid, bangun in AUG_TAMBAHAN:
+        if oid in lewati:
+            continue
         par = aug.get(oid)
         if not par or not par.get("aktif"):
             continue                      # tambahan bawaannya MATI
@@ -1001,6 +1010,121 @@ def augmentasi_sekali(img_bgr, label, pipeline, rng=None):
     if not baru:
         return None
     return cv2.cvtColor(out, cv2.COLOR_RGB2BGR), baru
+
+
+# ================================================================= POSE AUG
+# Augmentasi untuk keypoint/pose — INILAH yang tak dimiliki ekspor Roboflow
+# polos (court user). Titik ikut ter-transform lewat albumentations (jalur
+# keypoint yang sama dengan poligon), tetapi dua hal ditangani khusus pose:
+# (1) horizontal flip memakai flip_idx untuk menukar identitas kiri<->kanan —
+#     tanpa itu, mirror mengajari model bahu-kiri sebagai bahu-kanan; (2) titik
+# yang keluar bingkai setelah transform jadi ABSEN (v=0), bukan dibuang dari
+# slot. Vertical flip dimatikan (merusak orientasi pose), sama seperti
+# train-court.py (flipud=0).
+
+def bangun_pipeline_pose(resep: dict, sisi: tuple[int, int] | None = None):
+    """Pipeline aug pose: sama dengan bangun_pipeline tapi TANPA flip (hflip
+    ditangani manual dengan flip_idx, vflip dimatikan)."""
+    return bangun_pipeline(resep, sisi, lewati={"flip_h", "flip_v"})
+
+
+def augmentasi_pose_sekali(img_bgr, instans, pipeline, flip_idx=None,
+                           p_flip: float = 0.5, rng=None):
+    """
+    Satu augmentasi pada gambar pose.
+
+    `instans` = [{"kelas": int, "kp": [(x, y, v), ...K]}] dengan x,y TERNORMALKAN
+    [0,1] dan v in {0,1,2}. Mengembalikan (img_bgr, instans_baru), atau None
+    kalau tak ada instance tersisa. flip_idx panjang K (identitas kalau None).
+    """
+    rng = rng if rng is not None else np.random.default_rng()
+    rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+
+    # 1. Horizontal flip MANUAL + flip_idx. Deep-copy kp dulu supaya input tak
+    #    termutasi bagi pemanggil.
+    instans = [{"kelas": it["kelas"], "kp": [tuple(t) for t in it["kp"]]}
+               for it in instans]
+    if flip_idx and len(flip_idx) and float(rng.random()) < p_flip:
+        rgb = np.ascontiguousarray(rgb[:, ::-1, :])
+        for inst in instans:
+            kp = inst["kp"]
+            K = len(kp)
+            baru_kp = list(kp)
+            for i in range(K):
+                j = flip_idx[i] if (i < len(flip_idx) and 0 <= flip_idx[i] < K) else i
+                x, y, v = kp[i]
+                baru_kp[j] = (1.0 - x, y, v)
+            inst["kp"] = baru_kp
+
+    h, w = rgb.shape[:2]
+    titik, milik = [], []
+    for ii, inst in enumerate(instans):
+        for si, (x, y, v) in enumerate(inst["kp"]):
+            if v >= 1:
+                titik.append((x * w, y * h))
+                milik.append((ii, si))
+
+    if pipeline is None:
+        out = rgb
+        ah, aw = h, w
+        pos = {milik[k]: titik[k] for k in range(len(titik))}
+    else:
+        hasil = pipeline(image=rgb, keypoints=titik,
+                         kp_label=list(range(len(titik))))
+        out = hasil["image"]
+        ah, aw = out.shape[:2]
+        # remove_invisible=False -> jumlah & urutan keypoint hasil = input.
+        pos = {milik[k]: hasil["keypoints"][k] for k in range(len(milik))}
+
+    baru = []
+    for ii, inst in enumerate(instans):
+        kp_out = []
+        for si, (x, y, v) in enumerate(inst["kp"]):
+            if v == 0 or (ii, si) not in pos:
+                kp_out.append((0.0, 0.0, 0))
+                continue
+            nx, ny = pos[(ii, si)]
+            nxn, nyn = nx / aw, ny / ah
+            if 0.0 <= nxn <= 1.0 and 0.0 <= nyn <= 1.0:
+                kp_out.append((float(nxn), float(nyn), int(v)))
+            else:
+                kp_out.append((0.0, 0.0, 0))          # keluar frame -> absen
+        if any(v >= 1 for _, _, v in kp_out):
+            baru.append({"kelas": inst["kelas"], "kp": kp_out})
+    if not baru:
+        return None
+    return cv2.cvtColor(out, cv2.COLOR_RGB2BGR), baru
+
+
+def _baris_pose(inst: dict, K: int):
+    """Satu instance pose -> baris YOLO-pose `cls cx cy w h (px py v)*K`.
+    bbox dari hull titik v>=1. None kalau tak ada titik terlihat."""
+    kp = inst["kp"]
+    vis = [(x, y) for (x, y, v) in kp if v >= 1]
+    if not vis:
+        return None
+    xs = [p[0] for p in vis]
+    ys = [p[1] for p in vis]
+    x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
+    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+    bw, bh = max(x1 - x0, 1e-6), max(y1 - y0, 1e-6)
+    bag = [str(int(inst["kelas"])),
+           f"{cx:.6f}", f"{cy:.6f}", f"{bw:.6f}", f"{bh:.6f}"]
+    for (x, y, v) in kp:
+        if v == 0:
+            bag += ["0.000000", "0.000000", "0"]
+        else:
+            bag += [f"{x:.6f}", f"{y:.6f}", str(int(v))]
+    return " ".join(bag)
+
+
+def tulis_label_pose(p: Path, instans: list[dict], K: int) -> int:
+    """Tulis berkas label YOLO-pose satu gambar. Kembalikan jumlah instance."""
+    p = Path(p)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    baris = [b for b in (_baris_pose(i, K) for i in instans) if b]
+    p.write_text("\n".join(baris) + ("\n" if baris else ""), encoding="utf-8")
+    return len(baris)
 
 
 # ================================================================= katalog
