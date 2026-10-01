@@ -168,8 +168,78 @@ def boleh_lihat(data: dict, akun: str) -> bool:
 
 
 def boleh_kelola(data: dict, akun: str) -> bool:
-    """Ganti nama, gabung, gandakan, buang, dan membagi tugas."""
+    """Ganti nama, gabung, gandakan, buang, membagi tugas, DAN kelola anggota.
+
+    Sengaja tetap PEMILIK saja, termasuk setelah peran Editor ada: Editor boleh
+    mengunggah dan melabeli, tetapi mengelola projek dan anggotanya tetap hak
+    pemilik. Satu pintu ini menjaga semua rute pengelolaan tetap owner-only
+    tanpa perlu disentuh satu per satu.
+    """
     return akun == data["pemilik"]
+
+
+# ------------------------------------------------------------ peran & akses
+#
+# Model akses anggota (keputusan desain): PERAN + SCOPE adalah penentu utama
+# siapa boleh apa. Papan "Bagi tugas" tetap ada sebagai alat pemilik, tetapi
+# anggota sharing tidak wajib ditugaskan per-gambar lebih dulu untuk mulai
+# melabeli — cukup perannya memberi hak itu.
+#
+#   Editor            : mengunggah media + melabeli SEMUA (tak mengelola)
+#   Labeler menyeluruh: melabeli SEMUA (akses="semua"), tak mengunggah
+#   Labeler spesifik  : melabeli hanya batch tertentu (akses="spesifik")
+#
+# Anggota LAMA (dibuat sebelum RBAC) tidak punya kolom `akses`. Mereka sengaja
+# dibiarkan berperilaku seperti dulu: hak labelnya hanya gambar yang ditugaskan
+# lewat papan. Jadi scope baru ini OPT-IN — hanya berlaku kalau pemilik memang
+# menyetelnya lewat UI anggota.
+PERAN_SAH = ("editor", "pelabel")
+PERAN_BAWAAN = "pelabel"
+AKSES_SAH = ("semua", "spesifik")
+AKSES_BAWAAN = "semua"
+
+
+def sah_peran(peran: str) -> str:
+    p = str(peran or "").strip().lower()
+    return p if p in PERAN_SAH else PERAN_BAWAAN
+
+
+def sah_akses(akses: str) -> str:
+    a = str(akses or "").strip().lower()
+    return a if a in AKSES_SAH else AKSES_BAWAAN
+
+
+def _bersih_batch(batch) -> list[str]:
+    """Daftar nama batch yang rapi & unik, urut, untuk scope labeler spesifik."""
+    if isinstance(batch, str):
+        batch = batch.split(",")
+    keluar, lihat = [], set()
+    for b in batch or []:
+        nama = " ".join(str(b or "").split())[:80]
+        if nama and nama not in lihat:
+            lihat.add(nama)
+            keluar.append(nama)
+    return sorted(keluar, key=str.lower)
+
+
+def peran_anggota(data: dict, akun: str) -> str:
+    """Peran seseorang di projek ini: 'pemilik', 'editor', 'pelabel', atau ''
+    (bukan anggota). Pemilik selalu menang."""
+    if akun == data["pemilik"]:
+        return "pemilik"
+    a = data["anggota"].get(akun)
+    if not a:
+        return ""
+    return sah_peran(a.get("peran"))
+
+
+def boleh_unggah(data: dict, akun: str) -> bool:
+    """Siapa yang boleh menambah media ke projek: pemilik atau Editor.
+
+    Labeler tidak pernah mengunggah — perannya melabeli yang sudah ada. Projek
+    warisan (belum ada berkas tugas/anggota) tetap milik pemilik foldernya, dan
+    hanya dia yang lolos di sini, sama seperti sebelum peran ada."""
+    return akun == data["pemilik"] or peran_anggota(data, akun) == "editor"
 
 
 def pelabel_gambar(data: dict, kunci: str) -> str:
@@ -180,25 +250,49 @@ def pelabel_gambar(data: dict, kunci: str) -> str:
     return ""
 
 
-def boleh_labeli(data: dict, akun: str, kunci: str) -> bool:
+def boleh_labeli(data: dict, akun: str, kunci: str, batch: str = "") -> bool:
     """
     Siapa yang boleh MENYUNTING label satu gambar.
 
-    Pemilik projek selalu boleh; ia yang bertanggung jawab atas isinya. Selain
-    itu hanya pelabel yang ditugaskan pada gambar itu. Gambar yang belum
-    ditugaskan ke siapa pun tetap milik pemiliknya sendiri.
+    Urutannya:
+      - Pemilik & Editor: selalu boleh (bertanggung jawab / berhak penuh atas
+        seluruh isi).
+      - Labeler "menyeluruh" (akses="semua"): boleh semua gambar.
+      - Labeler "spesifik" (akses="spesifik"): boleh kalau batch gambar ini ada
+        di scope-nya — ATAU gambar ini memang ditugaskan ke dia lewat papan
+        (penugasan eksplisit pemilik menang atas scope).
+      - Anggota LAMA tanpa kolom `akses`: perilaku warisan — hanya gambar yang
+        ditugaskan ke dia lewat papan.
+      - Projek yang belum diorganisasi sama sekali: siapa pun yang bisa membuka
+        boleh menyunting, persis seperti sebelum penugasan ada.
 
-    Anggota lain sengaja tidak boleh: mereka melihat pekerjaan satu sama lain
-    sebagai rujukan, dan dua orang yang menyunting gambar yang sama tanpa
-    saling tahu berakhir dengan yang terakhir menimpa yang pertama.
+    `batch` = nama batch gambar ini (dari .tag.json), hanya dipakai untuk
+    labeler spesifik. Pemanggil yang tidak menyediakannya (mis. pengecekan
+    kasar) membuat scope spesifik jatuh ke penugasan papan saja.
+
+    Anggota lain sengaja tidak boleh menimpa di luar haknya: dua orang yang
+    menyunting gambar yang sama tanpa saling tahu berakhir dengan yang terakhir
+    menimpa yang pertama.
     """
     if akun == data["pemilik"]:
+        return True
+    peran = peran_anggota(data, akun)
+    if peran == "editor":
         return True
     # Projek yang belum diorganisasi sama sekali berperilaku seperti sebelum
     # penugasan ada: siapa pun yang bisa membukanya boleh menyuntingnya.
     if not data["tugas"] and not data["anggota"]:
         return True
-    return pelabel_gambar(data, kunci) == akun
+    ditugaskan = pelabel_gambar(data, kunci) == akun
+    if peran == "pelabel":
+        akses = (data["anggota"].get(akun) or {}).get("akses")
+        if akses == "semua":
+            return True
+        if akses == "spesifik":
+            scope = (data["anggota"].get(akun) or {}).get("batch") or []
+            return ditugaskan or (bool(batch) and batch in scope)
+        # akses tak disetel (anggota lama): jatuh ke penugasan papan saja.
+    return ditugaskan
 
 
 def tolak_tulis(ds: Path, akun: str, gambar: Path) -> str:
@@ -212,13 +306,21 @@ def tolak_tulis(ds: Path, akun: str, gambar: Path) -> str:
 
     Kunci gambarnya memakai aturan yang sama dengan berkas tag, supaya satu
     gambar tidak punya dua nama di dua berkas pendamping.
+
+    Batch gambarnya ikut dibaca dari berkas tag dan diteruskan: labeler
+    spesifik berhak atas batch yang masuk scope-nya, dan tanpa batch itu
+    pengecekannya jatuh ke penugasan papan saja — menolak yang seharusnya boleh.
     """
-    return alasan_tolak(baca(ds), akun, kunci_gambar(ds, gambar))
+    from . import tag as _tag
+
+    kunci = kunci_gambar(ds, gambar)
+    batch = _tag.untuk(_tag.baca(ds), kunci).get("batch", "")
+    return alasan_tolak(baca(ds), akun, kunci, batch)
 
 
-def alasan_tolak(data: dict, akun: str, kunci: str) -> str:
+def alasan_tolak(data: dict, akun: str, kunci: str, batch: str = "") -> str:
     """Pesan yang bisa dibaca, atau "" kalau boleh."""
-    if boleh_labeli(data, akun, kunci):
+    if boleh_labeli(data, akun, kunci, batch):
         return ""
     siapa = pelabel_gambar(data, kunci)
     if siapa:
@@ -612,23 +714,80 @@ def _berkas_menyertai(it: dict) -> list[Path]:
 # ANGGOTA DAN TUGAS
 # ============================================================
 
-def undang(ds: Path, pemilik: str, akun: str) -> dict:
+def undang(ds: Path, pemilik: str, akun: str, peran: str = PERAN_BAWAAN,
+           akses: str | None = None, batch=None) -> dict:
+    """Tambahkan `akun` sebagai anggota dengan peran & scope-nya.
+
+    Anggota yang SUDAH ada diperbarui peran/scope-nya (bukan dibiarkan) supaya
+    satu pintu ini juga jadi cara mengubah hak akses dari UI undang.
+
+    `akses` sengaja OPT-IN: kalau None (undangan polos dari rute lama, tanpa
+    pilihan scope), kolom akses TIDAK disetel, dan labeler itu berperilaku
+    warisan — hanya gambar yang ditugaskan lewat papan. Scope menyeluruh/
+    spesifik hanya berlaku kalau pemilik memang memilihnya. Editor mengabaikan
+    akses/batch.
+    """
     if not akun or akun == pemilik:
         return {"anggota": []}
+    peran = sah_peran(peran)
     with _kunci:
         data = baca(ds, pemilik)
         data["pemilik"] = data["pemilik"] or pemilik
-        if akun not in data["anggota"]:
-            data["anggota"][akun] = {
-                "peran": "pelabel",
-                "sejak": datetime.now().strftime("%Y-%m-%d"),
-            }
+        a = data["anggota"].get(akun) or {
+            "sejak": datetime.now().strftime("%Y-%m-%d")}
+        a["peran"] = peran
+        if peran == "editor":
+            # Editor berhak penuh; scope labeler tak relevan — dibuang kalau ada
+            # sisa dari peran sebelumnya supaya berkasnya tak menyesatkan.
+            a.pop("akses", None)
+            a.pop("batch", None)
+        elif akses is not None:
+            a["akses"] = sah_akses(akses)
+            a["batch"] = _bersih_batch(batch) if a["akses"] == "spesifik" else []
+        data["anggota"][akun] = a
         _tulis(ds, data)
-    log.info("%r diundang ke projek %s oleh %r", akun, Path(ds).name, pemilik)
+    log.info("%r diundang/diatur ke projek %s oleh %r (peran %s)",
+             akun, Path(ds).name, pemilik, peran)
     return {"anggota": sorted(data["anggota"])}
 
 
-def undang_email(ds: Path, pemilik: str, email: str) -> dict:
+def atur_anggota(ds: Path, pemilik: str, akun: str, *, peran: str | None = None,
+                 akses: str | None = None, batch=None) -> dict:
+    """Ubah peran/scope anggota yang sudah ada, tanpa menyentuh yang lain.
+
+    Hanya menyentuh kolom yang diberikan; sisanya dibiarkan. Mengubah peran ke
+    Editor membuang scope labeler, dan mengubah akses ke "menyeluruh" membuang
+    daftar batch — supaya berkasnya tak menyimpan scope yang tak lagi berlaku.
+    """
+    with _kunci:
+        data = baca(ds, pemilik)
+        a = data["anggota"].get(akun)
+        if a is None:
+            return {"ok": False, "error": "orang itu bukan anggota projek ini"}
+        if peran is not None:
+            a["peran"] = sah_peran(peran)
+        if a.get("peran") == "editor":
+            a.pop("akses", None)
+            a.pop("batch", None)
+        else:
+            if akses is not None:
+                a["akses"] = sah_akses(akses)
+            if a.get("akses") == "spesifik":
+                if batch is not None:
+                    a["batch"] = _bersih_batch(batch)
+                a.setdefault("batch", [])
+            else:
+                a.pop("batch", None)
+        data["anggota"][akun] = a
+        _tulis(ds, data)
+    log.info("anggota %r di %s diatur (peran %s, akses %s) oleh %r",
+             akun, Path(ds).name, a.get("peran"), a.get("akses", "-"), pemilik)
+    return {"ok": True, "akun": akun, "peran": a.get("peran"),
+            "akses": a.get("akses", ""), "batch": a.get("batch", [])}
+
+
+def undang_email(ds: Path, pemilik: str, email: str, peran: str = PERAN_BAWAAN,
+                 akses: str | None = None, batch=None) -> dict:
     """
     Undangan untuk alamat surel, bukan akun.
 
@@ -636,9 +795,17 @@ def undang_email(ds: Path, pemilik: str, email: str) -> dict:
     rahasia; siapa pun yang membukanya sambil masuk sebagai akun mana pun akan
     bergabung ke projek ini. Karena itu ia sekali pakai dan panjang.
 
+    Peran & scope yang dipilih pemilik ikut disimpan di token dan diterapkan
+    saat undangannya dipakai — jadi orang yang masuk lewat tautan langsung
+    mendapat hak yang benar, bukan selalu labeler menyeluruh.
+
     Tokennya TIDAK memuat nama projek. Tautan yang menyebut nama projek sudah
     membocorkan isinya sebelum ada yang menerima undangannya.
     """
+    peran = sah_peran(peran)
+    # akses "" = tak dipilih (undangan polos) -> labeler warisan saat dipakai.
+    akses = sah_akses(akses) if (peran == "pelabel" and akses is not None) else ""
+    batch_scope = _bersih_batch(batch) if akses == "spesifik" else []
     email = " ".join(str(email or "").split())[:120].strip()
     # Lebih dari sekadar "ada @": '@' sendirian dan '<script>alert(1)</script>@x.com'
     # dulu diterima, lalu tersimpan sebagai undangan yang tidak mungkin sampai
@@ -663,6 +830,7 @@ def undang_email(ds: Path, pemilik: str, email: str) -> dict:
         data["undangan"][token] = {
             "email": email, "oleh": pemilik,
             "dibuat": datetime.now().strftime("%Y-%m-%d %H:%M"), "dipakai": "",
+            "peran": peran, "akses": akses, "batch": batch_scope,
         }
         _tulis(ds, data)
     log.info("undangan dibuat untuk %r di projek %s", email, Path(ds).name)
@@ -689,10 +857,17 @@ def pakai_undangan(ds: Path, token: str, akun: str) -> dict:
         u["dipakai"] = akun
         u["diterima"] = datetime.now().strftime("%Y-%m-%d %H:%M")
         if akun not in data["anggota"]:
-            data["anggota"][akun] = {
-                "peran": "pelabel", "sejak": datetime.now().strftime("%Y-%m-%d"),
-                "lewat": u.get("email", ""),
-            }
+            peran = sah_peran(u.get("peran"))
+            a = {"peran": peran,
+                 "sejak": datetime.now().strftime("%Y-%m-%d"),
+                 "lewat": u.get("email", "")}
+            # akses hanya disetel kalau pemilik memang memilihnya saat mengundang
+            # (token menyimpan "" kalau tidak) — kalau tidak, labeler warisan.
+            if peran == "pelabel" and u.get("akses"):
+                a["akses"] = sah_akses(u.get("akses"))
+                a["batch"] = (_bersih_batch(u.get("batch"))
+                              if a["akses"] == "spesifik" else [])
+            data["anggota"][akun] = a
         _tulis(ds, data)
     log.info("undangan diterima oleh %r di projek %s", akun, Path(ds).name)
     return {"ok": True, "pemilik": data["pemilik"], "nama": Path(ds).name}
