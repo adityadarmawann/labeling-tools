@@ -22,7 +22,7 @@ from fastapi import APIRouter, Depends, Request
 from ..config import SUMBER_VIDEO, VIDEO_EXT, Settings, get_settings
 from ..deps import bodi_json, current_session_api
 from ..security import safe_relpath, safe_slug
-from ..services import klip, projek, tugas, video_ingest
+from ..services import klip, klip_filter, projek, tugas, video_ingest
 from ..session import Session
 
 router = APIRouter(tags=["video"])
@@ -89,6 +89,49 @@ async def potong(request: Request, ds: str = "", name: str = "",
         return {"ok": False, "error": f"gagal memotong: {str(e)[:90]}"}
 
     return {"ok": True, **hasil}
+
+
+@router.post("/api/video/filter")
+async def filter_objek(request: Request, ds: str = "", batch: str = "",
+                       pratinjau: bool = True,
+                       sess: Session = Depends(current_session_api),
+                       settings: Settings = Depends(get_settings)):
+    """
+    Saring klip `klip/<batch>/` menurut kehadiran OBJEK sasaran (rencana C.3).
+
+    Konfig filter (metode/model/kelas/conf/min_frame/setiap/hsv — lihat
+    klip_filter.KONFIG_BAWAAN) dikirim sebagai bodi JSON; bodi kosong memakai
+    bawaan (metode "warna", bola oranye). `pratinjau=true` (bawaan) = DRY-RUN:
+    hanya menghitung berapa yang lolos, TAK memindah apa pun. `pratinjau=false`
+    = TERAPKAN: klip yang ditolak dipindah ke klip/_ditolak/<batch>/ (dipulihkan,
+    tak dihapus) dan laporan ditulis ke klip/<batch>/.filter.json.
+
+    Kerja berat (baca frame, inferensi) dilempar ke thread lewat to_thread
+    supaya event loop tak membeku. siap_filter diperiksa dulu: metode "yolo"
+    tanpa ultralytics/model menjawab pesan jelas, bukan jatuh senyap.
+    """
+    d, err = _projek_video(sess, settings, ds)
+    if err:
+        return {"ok": False, "error": err}
+
+    konfig = klip_filter.konfig_sah(await bodi_json(request))
+    siap, alasan = klip_filter.siap_filter(konfig["metode"], konfig.get("model"))
+    if not siap:
+        return {"ok": False, "error": alasan}
+
+    try:
+        if pratinjau:
+            hasil = await asyncio.to_thread(
+                klip_filter.pratinjau, d, batch, konfig)
+        else:
+            hasil = await asyncio.to_thread(
+                klip_filter.terapkan, d, batch, konfig)
+    except klip_filter.FilterTolak as e:
+        return {"ok": False, "error": str(e)[:160]}
+    except Exception as e:                        # noqa: BLE001
+        return {"ok": False, "error": f"gagal menyaring: {str(e)[:90]}"}
+
+    return hasil
 
 
 def _kunci_scrape(user: str, ds: str) -> str:
