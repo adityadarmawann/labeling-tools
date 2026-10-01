@@ -1336,17 +1336,18 @@ const Progres = (() => {
     return j;
   }
 
-  grid.addEventListener('click', async ev => {
+  const onKartuClick = async ev => {
     const kartu = ev.target.closest('.pcard');
     if (!kartu) return;
     const nama = kartu.dataset.nama;
+    const wadah = kartu.parentElement;          // grid image ATAU grid video
 
     if (ev.target.closest('.ptitik')) {
       ev.preventDefault();
       const m = kartu.querySelector('.pmenu');
       const buka = m.hidden;
-      grid.querySelectorAll('.pmenu').forEach(x => { x.hidden = true; });
-      grid.querySelectorAll('.ptitik').forEach(
+      wadah.querySelectorAll('.pmenu').forEach(x => { x.hidden = true; });
+      wadah.querySelectorAll('.ptitik').forEach(
         x => x.setAttribute('aria-expanded', 'false'));
       m.hidden = !buka;
       kartu.querySelector('.ptitik').setAttribute('aria-expanded', String(buka));
@@ -1360,8 +1361,13 @@ const Progres = (() => {
     kartu.querySelector('.pmenu').hidden = true;
 
     if (a === 'buka') {
-      const p = bukaLink ? bukaLink.dataset.buka
-                         : semua.find(x => x.nama === nama).path;
+      const proj = semua.find(x => x.nama === nama) || {};
+      // Projek video belum punya alur pelabelan — jangan dibuka dulu.
+      if (proj.jenis === 'video') {
+        toast('Pelabelan video sedang disiapkan — projek ini belum bisa dibuka.');
+        return;
+      }
+      const p = bukaLink ? bukaLink.dataset.buka : proj.path;
       const j = await kirim('/setsrc', {path: p}, 'Membuka projek');
       if (j && j.ok) location.href = '/';
       return;
@@ -1424,7 +1430,9 @@ const Progres = (() => {
                             'Memindahkan ke tempat sampah');
       if (j && j.ok) { toast(`"${j.nama}" masuk tempat sampah`); muat(); }
     }
-  });
+  };
+  grid.addEventListener('click', onKartuClick);
+  if (gridVideo) gridVideo.addEventListener('click', onKartuClick);
 
   isiSampah.addEventListener('click', async ev => {
     const pulih = ev.target.closest('[data-pulih]');
@@ -1532,13 +1540,25 @@ const Progres = (() => {
       const isian = document.getElementById('dsname');
       const nama = (isian.value || '').trim();
       if (!nama) { toast('Beri nama projeknya dulu'); isian.focus(); return; }
+      const jr = document.querySelector('input[name="projek-jenis"]:checked');
+      const jenis = jr && jr.value === 'video' ? 'video' : 'image';
       tombolBuat.disabled = true;
       const pr = Progres.mulai('Membuat projek ' + nama,
                                { di: document.getElementById('projek-baru-jalur') });
       pr.taktentu('Menyiapkan foldernya');
       try {
-        const j = await post('/api/projek/baru?nama=' + encodeURIComponent(nama));
+        const j = await post('/api/projek/baru?nama=' + encodeURIComponent(nama)
+                             + '&jenis=' + encodeURIComponent(jenis));
         if (!j.ok) { pr.gagal(j.error); tombolBuat.disabled = false; return; }
+        if (jenis === 'video') {
+          // Workflow pelabelan video masih disiapkan — jangan ke /unggah (image).
+          // Projeknya sudah dibuat dan akan muncul di tab Video setelah muat ulang.
+          pr.selesai('Projek video dibuat');
+          toast('Projek video "' + nama + '" dibuat. Pelabelan video sedang disiapkan.');
+          bukaDlg(false);
+          location.reload();
+          return;
+        }
         pr.selesai('Projek dibuat, membuka halaman unggah');
         location.href = '/unggah?ds=' + encodeURIComponent(j.nama);
       } catch (e) {
@@ -1552,6 +1572,15 @@ const Progres = (() => {
     });
   }
   document.getElementById('dlg-projek-tutup').onclick = () => bukaDlg(false);
+
+  // Pilihan jenis projek (Image/Video) di dialog "+ Projek baru".
+  segPasang(document.getElementById('dlg-jenis'), v => {
+    const ket = document.getElementById('dlg-jenis-ket');
+    if (ket) ket.textContent = v === 'video'
+      ? 'Projek video: pelabelan video sedang disiapkan — projeknya tetap dibuat '
+        + 'dan muncul di tab Video.'
+      : 'Projek image: unggah gambar (atau video yang otomatis diekstrak jadi frame).';
+  });
   // Klik pada tirainya menutup; klik di dalam kotaknya tidak.
   dlgProjek.addEventListener('click', ev => {
     if (ev.target === dlgProjek) bukaDlg(false);

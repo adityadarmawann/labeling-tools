@@ -126,6 +126,18 @@
       <p class="dlg-sub">Beri nama projeknya. Gambarnya diunggah di langkah
         berikutnya, di halaman projek itu sendiri.</p>
 
+      <label class="form-lbl">Jenis projek</label>
+      <div class="seg" id="dlg-jenis" style="margin:0 0 6px">
+        <label class="seg-opt" data-on>
+          <input type="radio" name="projek-jenis" value="image" checked>
+          &#128247; Image</label>
+        <label class="seg-opt">
+          <input type="radio" name="projek-jenis" value="video">
+          &#127909; Video</label>
+      </div>
+      <p class="dlg-sub" id="dlg-jenis-ket">Projek image: unggah gambar (atau
+        video yang otomatis diekstrak jadi frame).</p>
+
       {# Dialog ini dulu memuat seluruh pemilihan sumber: tarik-lepas dari
          laptop, salin dari folder server, dan dialog desktop. Semuanya pindah
          ke halaman Unggah data, yang punya ruang untuk memperlihatkan APA yang

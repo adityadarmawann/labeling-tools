@@ -194,11 +194,14 @@ async def sampul(path: str = "", sess: Session = Depends(current_session),
 
 
 @router.post("/api/projek/baru")
-async def baru(nama: str = "", sess: Session = Depends(current_session_api),
+async def baru(nama: str = "", jenis: str = "image",
+               sess: Session = Depends(current_session_api),
                settings: Settings = Depends(get_settings)):
-    """Projek kosong. Gambarnya diunggah belakangan, di halaman projek itu."""
+    """Projek kosong. Gambarnya diunggah belakangan, di halaman projek itu.
+
+    `jenis` = "image" (bawaan) atau "video" — menentukan jenis media projek."""
     root = _ruang(sess, settings)
-    return await asyncio.to_thread(_jawab, projek.buat, root, nama)
+    return await asyncio.to_thread(_jawab, projek.buat, root, nama, jenis)
 
 
 @router.post("/api/projek/ganti-nama")

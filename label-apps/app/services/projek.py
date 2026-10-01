@@ -21,6 +21,7 @@ Tiga aturan menjaganya:
 """
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import time
@@ -36,6 +37,28 @@ SAMPAH = "_sampah"
 
 # Folder yang tidak pernah muncul sebagai projek.
 _SEMBUNYI = {SAMPAH, "_unggahan"}
+
+# Jenis media projek: "image" (bawaan) atau "video". Disimpan di berkas
+# pendamping tersendiri supaya terpisah dari .tugas.json (yang lahir belakangan
+# saat ada undangan/penugasan); projek lama tanpa berkas ini = "image".
+BERKAS_JENIS = ".projek.json"
+JENIS_SAH = ("image", "video")
+JENIS_BAWAAN = "image"
+
+
+def jenis_projek(d: Path) -> str:
+    """Jenis media sebuah projek, dibaca dari .projek.json. Bawaan 'image'."""
+    try:
+        j = json.loads((Path(d) / BERKAS_JENIS).read_text(encoding="utf-8"))
+        v = str(j.get("jenis") or "").strip().lower()
+        return v if v in JENIS_SAH else JENIS_BAWAAN
+    except (OSError, ValueError):
+        return JENIS_BAWAAN
+
+
+def sah_jenis(jenis: str) -> str:
+    j = str(jenis or "").strip().lower()
+    return j if j in JENIS_SAH else JENIS_BAWAAN
 
 # Folder internal yang dilewati saat menelusuri ISI sebuah projek: keranjang
 # "Hapus dari projek". Isinya bukan data projek lagi, jadi _survei dan sidebar
@@ -601,6 +624,7 @@ def daftar(root: Path | None) -> list[dict]:
         # apa-apa.
         out.append({
             "nama": d.name, "path": str(d.resolve()),
+            "jenis": jenis_projek(d),
             "jumlah": s["gambar"], "anotasi": s["anotasi"], "lebih": s["lebih"],
             "kosong": s["gambar"] == 0,
             "diubah": s["diubah"], "usia": _usia(s["diubah"]),
@@ -613,21 +637,27 @@ def daftar(root: Path | None) -> list[dict]:
 # OPERASI
 # ============================================================
 
-def buat(root: Path, nama: str) -> dict:
+def buat(root: Path, nama: str, jenis: str = JENIS_BAWAAN) -> dict:
     """
-    Projek kosong, tanpa satu berkas pun.
+    Projek kosong, tanpa satu berkas pun selain penanda jenisnya.
 
     Membuat projek dan mengisinya dipisah karena itulah bentuk pekerjaannya:
     satu projek diisi berkali-kali, dari sumber yang berbeda, pada hari yang
     berbeda. Menyatukan keduanya memaksa orang menyiapkan seluruh gambarnya
     sebelum boleh memberi nama.
+
+    `jenis` ("image"/"video") menentukan jenis media projek dan disimpan di
+    .projek.json. Jenis tak bisa diganti setelah projek dibuat.
     """
+    jenis = sah_jenis(jenis)
     d = _folder(root, nama)
     if d.exists():
         raise Tolak(f"sudah ada projek bernama '{d.name}'")
     d.mkdir(parents=True)
-    log.info("projek dibuat: %r", d.name)
-    return {"nama": d.name, "path": str(d.resolve())}
+    (d / BERKAS_JENIS).write_text(
+        json.dumps({"jenis": jenis}, ensure_ascii=False), encoding="utf-8")
+    log.info("projek dibuat: %r (jenis %s)", d.name, jenis)
+    return {"nama": d.name, "path": str(d.resolve()), "jenis": jenis}
 
 
 def ganti_nama(root: Path, lama: str, baru: str) -> dict:
