@@ -14,7 +14,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from ..config import ARSIP_EXT, VIDEO_EXT, Settings, get_settings
+from ..config import ARSIP_EXT, SUMBER_VIDEO, VIDEO_EXT, Settings, get_settings
 from ..deps import current_session, current_session_api, is_local
 from ..security import safe_relpath, safe_slug
 from ..services import (arsip, ekstraksi, impor, projek, riwayat, scanner,
@@ -187,16 +187,24 @@ async def upload(request: Request, ds: str = "", name: str = "",
     # memanggil safe_relpath tanpa izin itu, sehingga zip di dalam zip
     # dilewati dan pembongkarannya tidak pernah berlapis.
     #
-    # Video hanya diizinkan ke projek IMAGE: ia diunggah utuh lalu diekstrak
-    # jadi frame lewat /ekstrak, dan videonya dibuang. Projek video (nanti)
-    # belum punya jalur unggah tersendiri, jadi video ke sana ditolak dulu.
+    # Video diterima dua projek, dengan nasib berbeda:
+    #   projek IMAGE : diunggah utuh ke akar, lalu diekstrak jadi frame lewat
+    #                  /ekstrak, dan videonya dibuang (perilaku lama, utuh).
+    #   projek VIDEO : mendarat utuh di _sumber/, TIDAK diekstrak & TIDAK
+    #                  dibuang — videonya sendiri asetnya, dipotong jadi klip
+    #                  belakangan lewat /api/video/potong (services/klip.py).
+    # Arsip (.zip) tetap hanya untuk projek image: projek video tak punya alur
+    # membongkar arsip, jadi di sana hanya ekstensi video yang diterima.
     d, err = _folder_unggah(sess, settings, ds)
     if err:
         return {"ok": False, "error": err}
-    boleh_video = projek.jenis_projek(d) == "image"
-    fn = safe_relpath(name, arsip=True, video=boleh_video)
+    projek_video = projek.jenis_projek(d) == "video"
+    fn = safe_relpath(name, arsip=not projek_video, video=True)
     if not fn:
         return {"ok": False, "error": "nama atau jenis berkas tidak didukung"}
+    sfx = Path(fn).suffix.lower()
+    if projek_video and sfx not in VIDEO_EXT:
+        return {"ok": False, "error": "projek video hanya menerima berkas video"}
 
     batas, sebutan = settings.batas_untuk(fn)
     try:
@@ -209,7 +217,10 @@ async def upload(request: Request, ds: str = "", name: str = "",
         return {"ok": False, "error": f"lebih dari {sebutan}"}
 
     await _mulai_kurasi(d, settings)
-    dest = d / fn
+    # Projek video menaruh videonya di folder internal _sumber/ (dilewati setiap
+    # penghitung gambar, lihat config.FOLDER_INTERNAL), bukan di akar — supaya
+    # ia tak terbaca sebagai "gambar" dan tak ikut terkurasi sebagai dataset.
+    dest = (d / SUMBER_VIDEO / fn) if projek_video else (d / fn)
     # Penjagaan berlapis: walau safe_relpath sudah membuang `..`, tujuan akhirnya
     # tetap diperiksa masih berada di dalam folder milik akun ini.
     try:
@@ -248,9 +259,14 @@ async def upload(request: Request, ds: str = "", name: str = "",
         tmp.unlink(missing_ok=True)
         return {"ok": False, "error": str(e)[:90]}
 
-    sfx = Path(fn).suffix.lower()
-    return {"ok": True, "name": fn, "bytes": written,
-            "arsip": sfx in ARSIP_EXT, "video": sfx in VIDEO_EXT}
+    hasil = {"ok": True, "name": fn, "bytes": written,
+             "arsip": sfx in ARSIP_EXT, "video": sfx in VIDEO_EXT}
+    # Projek video: beri tahu JS videonya mendarat di _sumber/ dan JANGAN
+    # memanggil /ekstrak (itu jalur projek image). Pemotongan jadi klip dipicu
+    # terpisah lewat /api/video/potong.
+    if projek_video and sfx in VIDEO_EXT:
+        hasil["sumber"] = f"{SUMBER_VIDEO}/{fn}"
+    return hasil
 
 
 @router.post("/unzip")

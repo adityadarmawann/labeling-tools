@@ -28,7 +28,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from ..config import ANN_EXT, IMG_EXT, SAMPAH_GAMBAR
+from ..config import ANN_EXT, FOLDER_INTERNAL, IMG_EXT
 from ..log import catat
 
 log = catat("labelapp.projek")
@@ -61,11 +61,12 @@ def sah_jenis(jenis: str) -> str:
     return j if j in JENIS_SAH else JENIS_BAWAAN
 
 # Folder internal yang dilewati saat menelusuri ISI sebuah projek: keranjang
-# "Hapus dari projek". Isinya bukan data projek lagi, jadi _survei dan sidebar
-# harus melewatinya persis seperti scanner (lihat scanner.tersembunyi) — kalau
-# tidak, gambar yang sudah dibuang tetap terhitung di sidebar sementara papan
-# yang memakai scanner tidak, dan lencananya jadi lebih besar dari isinya.
-_LEWATI_DALAM = {SAMPAH_GAMBAR}
+# "Hapus dari projek" (_sampah-gambar) dan folder projek video (_sumber, klip).
+# Isinya bukan gambar dataset, jadi _survei dan sidebar harus melewatinya persis
+# seperti scanner (lihat scanner.tersembunyi) — kalau tidak, gambar yang sudah
+# dibuang atau video/klip tetap terhitung di sidebar sementara papan yang
+# memakai scanner tidak, dan lencananya jadi lebih besar dari isinya.
+_LEWATI_DALAM = set(FOLDER_INTERNAL)
 
 # Batas penelusuran per folder. Tanpa ini, satu dataset 300 ribu berkas
 # membuat halaman daftar menggantung setiap kali dibuka.

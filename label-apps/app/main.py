@@ -20,7 +20,7 @@ from .config import get_settings
 from .deps import NeedsLogin, current_session, login_redirect
 from .session import Session
 from .routers import (admin, annotate, auth, datasets, latih, projek, review,
-                      tag, tugas, uploads)
+                      tag, tugas, uploads, video)
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -155,6 +155,7 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(datasets.router)
     app.include_router(uploads.router)
+    app.include_router(video.router)
     app.include_router(projek.router)
     app.include_router(tag.router)
     app.include_router(tugas.router)

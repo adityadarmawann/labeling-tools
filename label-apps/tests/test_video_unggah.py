@@ -1,9 +1,10 @@
 """
 Uji alur unggah video -> ekstrak frame pada projek IMAGE, lewat HTTP.
 
-Yang dijaga: video hanya diterima di projek image, /ekstrak memotongnya jadi
-gambar lalu membuang videonya, dan projek VIDEO menolak video (jalurnya belum
-ada) alih-alih menerimanya diam-diam.
+Yang dijaga: pada projek image, video diekstrak jadi gambar lalu videonya
+dibuang; /ekstrak tetap menolak projek video (jalur itu khusus image). Jalur
+projek VIDEO (video mendarat di _sumber/, tidak diekstrak) diuji terpisah di
+test_video_aksi_unggah.py.
 """
 from __future__ import annotations
 
@@ -71,17 +72,6 @@ def test_preset_tak_sah_jatuh_ke_bawaan(klien, lingkungan):
     r = klien.post("/ekstrak?ds=vid-preset&name=klip.mp4&preset=ngaco")
     j = r.json()
     assert j["ok"] and j["preset"] == "sedang", j
-
-
-def test_video_ke_projek_video_ditolak_di_upload(klien, lingkungan):
-    masuk(klien, "paul", PW_PAUL)
-    _buat_projek(klien, "vid-vid", "video")
-    data = _video_bytes(lingkungan["tmp"])
-
-    r = klien.put("/upload?ds=vid-vid&name=klip.mp4", content=data)
-    j = r.json()
-    # Projek video belum punya jalur unggah: ekstensi video tak diizinkan.
-    assert j["ok"] is False, j
 
 
 def test_ekstrak_pada_projek_video_ditolak(klien, lingkungan):

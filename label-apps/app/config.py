@@ -26,12 +26,27 @@ META_EXT = (".yaml", ".yml")
 # mana pun isi projek ditelusuri (scanner maupun sidebar) supaya gambar yang
 # sudah dibuang tidak ikut terhitung.
 SAMPAH_GAMBAR = "_sampah-gambar"
+# Folder internal projek VIDEO (lihat services/klip.py). Sama seperti
+# _sampah-gambar: ADA di dalam projek tapi ISINYA BUKAN gambar dataset, jadi
+# harus dilewati di SETIAP penghitung gambar (scanner + sidebar) — kalau tidak,
+# satu video yang diunggah atau ratusan klip hasil potong terbaca sebagai
+# "gambar" di kartu dan lencana sidebar.
+#   _sumber/  video mentah hasil unggah (tak diekstrak, tak dihapus)
+#   klip/     keluaran potongan per batch; klip/_ditolak hasil filter objek
+SUMBER_VIDEO = "_sumber"
+KLIP = "klip"
+KLIP_DITOLAK = "_ditolak"        # subfolder di dalam klip/ untuk klip tersaring
+KLIP_BURUK = "_bad"              # subfolder di dalam _sumber/ untuk klip cacat
+# Semua folder internal yang isinya bukan gambar dataset, untuk sekali lewat.
+# klip/_ditolak dan _sumber/_bad ikut terlewati karena induknya (klip, _sumber)
+# sudah ada di sini — penyaring menelusuri PER KOMPONEN path.
+FOLDER_INTERNAL = (SAMPAH_GAMBAR, SUMBER_VIDEO, KLIP)
 # Arsip yang boleh diunggah lalu dibongkar di server.
 ARSIP_EXT = (".zip",)
-# Video yang boleh diunggah ke projek IMAGE lalu diekstrak jadi frame (lihat
-# services/ekstraksi.py). Keluarannya tetap gambar; videonya dibuang setelah
-# frame-nya selamat, persis seperti arsip pada /unzip. Projek video (nanti)
-# menyimpan videonya apa adanya — jalur itu belum ada.
+# Video yang boleh diunggah ke projek IMAGE (diekstrak jadi frame lewat
+# services/ekstraksi.py; videonya dibuang setelah frame selamat) MAUPUN ke
+# projek VIDEO (disimpan utuh di _sumber/, dipotong jadi klip lewat
+# services/klip.py; videonya TIDAK dibuang).
 VIDEO_EXT = (".mp4", ".mov", ".webm", ".mkv", ".avi", ".m4v")
 
 PREFIX = "LABELAPP_"
