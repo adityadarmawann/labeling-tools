@@ -38,23 +38,20 @@
      satu hanya bisa dibaca. Sebagai tab, keduanya jelas dua SUMBER, dan
      status hanya-baca ditempel di kartunya sendiri — bukan diserahkan ke
      judul panel, yang justru hal pertama yang berhenti dibaca orang. #}
+  {# Dua tingkat tab. ATAS: sumbernya — projek sendiri vs yang dibagikan orang
+     lain (dulu tab "Diundang") vs folder dataset bersama server. BAWAH: jenis
+     medianya — Image vs Video — berlaku untuk My Project maupun Sharing. #}
   <div class="palat">
-    <div class="seg ptab" id="ptab">
+    <div class="seg ptab" id="ptab-atas">
       <label class="seg-opt" data-on>
-        <input type="radio" name="sumberdata" value="image" checked>
-        Image Projek <b id="n-image"></b></label>
+        <input type="radio" name="ptab-atas" value="mine" checked>
+        My Project <b id="n-mine"></b></label>
       <label class="seg-opt">
-        <input type="radio" name="sumberdata" value="video">
-        Video Projek <b id="n-video"></b></label>
-      {#- Tab ini hanya muncul kalau memang ada yang mengundang. Tab kosong
-          permanen di halaman pertama membuat orang mengira ada yang belum
-          dimuat. Angkanya diisi JavaScript bersama daftarnya. -#}
-      <label class="seg-opt" id="ptab-tamu" hidden>
-        <input type="radio" name="sumberdata" value="tamu">
-        Diundang <b id="n-tamu"></b></label>
+        <input type="radio" name="ptab-atas" value="sharing">
+        Sharing Project <b id="n-sharing"></b></label>
       {% if datasets_root %}
       <label class="seg-opt">
-        <input type="radio" name="sumberdata" value="bersama">
+        <input type="radio" name="ptab-atas" value="bersama">
         Dataset bersama <b>{{ datasets | length }}</b></label>
       {% endif %}
     </div>
@@ -71,6 +68,17 @@
     <span class="phitung" id="projek-hitung" aria-live="polite" hidden></span>
   </div>
 
+  <div class="palat palat-sub" id="ptab-sub-wrap">
+    <div class="seg ptab" id="ptab-sub">
+      <label class="seg-opt" data-on>
+        <input type="radio" name="ptab-sub" value="image" checked>
+        Image Project <b id="n-sub-image"></b></label>
+      <label class="seg-opt">
+        <input type="radio" name="ptab-sub" value="video">
+        Video Project <b id="n-sub-video"></b></label>
+    </div>
+  </div>
+
   {# Wadah tersendiri untuk Progres. Dulu elemen yang sama juga memegang
      teks "4 dari 4 projek", jadi memulai duplikasi menghapus angkanya dan
      angkanya menolak muncul selama ada operasi berjalan. #}
@@ -78,7 +86,8 @@
 
   <div class="pgrid" id="projek-grid" hidden></div>
   <div class="pgrid" id="projek-grid-video" hidden></div>
-  <div class="pgrid" id="grid-tamu" hidden></div>
+  <div class="pgrid" id="grid-tamu-image" hidden></div>
+  <div class="pgrid" id="grid-tamu-video" hidden></div>
 
   {% if datasets_root %}
   <div class="pgrid" id="grid-bersama" hidden>

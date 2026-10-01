@@ -298,3 +298,21 @@ def test_rute_undang_peran_atur_dan_calon(klien, lingkungan):
     baris = next(a for a in c["akun"] if a["akun"] == "anggi")
     assert baris["peran"] == "pelabel" and baris["akses"] == "spesifik"
     assert baris["batch_scope"] == ["dataset-a"]
+
+
+def test_tamu_bawa_jenis_dan_peran(klien, aplikasi, lingkungan):
+    """Kartu Sharing Project perlu jenis (buat sub-tab Image/Video) + peran."""
+    import pathlib
+
+    from conftest import klien_baru
+    from tests.test_data import masuk, PW_ANGGI, PW_PAUL
+
+    masuk(klien, "paul", PW_PAUL)
+    klien.post("/api/projek/baru?nama=tim-video&jenis=video")
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    tugas.undang(ruang / "tim-video", "paul", "anggi", peran="editor")
+
+    anggi = klien_baru(aplikasi, "anggi", PW_ANGGI)
+    tamu = anggi.get("/api/projek/daftar").json()["tamu"]
+    row = next(t for t in tamu if t["nama"] == "tim-video")
+    assert row["jenis"] == "video" and row["peran"] == "editor"

@@ -1100,7 +1100,13 @@ const Progres = (() => {
   const grid = document.getElementById('projek-grid');
   if (!grid) return;
   const gridVideo = document.getElementById('projek-grid-video');
-  let tabAktif = 'image';                 // 'image' | 'video' | 'tamu' | 'bersama'
+  const gridTamuImg = document.getElementById('grid-tamu-image');
+  const gridTamuVid = document.getElementById('grid-tamu-video');
+  const gridBersama = document.getElementById('grid-bersama');
+  const subWrap = document.getElementById('ptab-sub-wrap');
+  // Dua tingkat: sumber (My/Sharing/Bersama) dan jenis media (Image/Video).
+  let topTab = 'mine';                    // 'mine' | 'sharing' | 'bersama'
+  let subTab = 'image';                   // 'image' | 'video'
   const note = document.getElementById('projek-note');
   const cari = document.getElementById('projek-cari');
   const urut = document.getElementById('projek-urut');
@@ -1111,21 +1117,42 @@ const Progres = (() => {
     c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
   const n = v => (v || 0).toLocaleString('id-ID');
 
-  let semua = [];
-
+  let semua = [];          // projek sendiri (My Project)
+  let tamu = [];           // projek yang dibagikan ke aku (Sharing Project)
 
   const isVideo = p => p.jenis === 'video';
+  const setTeks = (id, v) => {
+    const el = document.getElementById(id); if (el) el.textContent = v;
+  };
 
-  function hitung(tampil) {
+  // Angka di badge tab. Sub-tab menghitung SUMBER yang sedang aktif (My atau
+  // Sharing), jadi "Image Project 3" berarti 3 di dalam tab atas yang terbuka.
+  function hitungTab() {
+    setTeks('n-mine', semua.length);
+    setTeks('n-sharing', tamu.length);
+    const src = topTab === 'sharing' ? tamu : semua;
+    setTeks('n-sub-image', src.filter(p => !isVideo(p)).length);
+    setTeks('n-sub-video', src.filter(isVideo).length);
+  }
+
+  // Grid mana yang terlihat, dihitung dari (topTab, subTab) di SATU tempat,
+  // supaya muat(), render(), dan perpindahan tab tak pernah berbeda soal apa
+  // yang tampil (dulu bug: muat() memunculkan kembali grid yang disembunyikan).
+  function tampilkanGrid() {
+    const mine = topTab === 'mine', sharing = topTab === 'sharing',
+          bersama = topTab === 'bersama';
+    grid.hidden = !(mine && subTab === 'image');
+    if (gridVideo) gridVideo.hidden = !(mine && subTab === 'video');
+    if (gridTamuImg) gridTamuImg.hidden = !(sharing && subTab === 'image');
+    if (gridTamuVid) gridTamuVid.hidden = !(sharing && subTab === 'video');
+    if (gridBersama) gridBersama.hidden = !bersama;
+    if (subWrap) subWrap.hidden = bersama;        // jenis tak relevan di bersama
+    // Cari & urut berlaku untuk daftar projek (My & Sharing), bukan folder
+    // dataset bersama yang read-only.
+    cari.disabled = bersama;
+    urut.disabled = bersama;
     const q = (cari.value || '').trim();
-    const hit = document.getElementById('projek-hitung');
-    const nImg = semua.filter(p => !isVideo(p)).length;
-    const nVid = semua.filter(isVideo).length;
-    const ni = document.getElementById('n-image'); if (ni) ni.textContent = nImg;
-    const nv = document.getElementById('n-video'); if (nv) nv.textContent = nVid;
-    const total = tabAktif === 'video' ? nVid : nImg;
-    hit.hidden = !q;
-    hit.textContent = q ? `menampilkan ${tampil} dari ${total}` : '';
+    document.getElementById('projek-hitung').hidden = bersama || !q;
   }
 
   async function muat() {
@@ -1144,13 +1171,10 @@ const Progres = (() => {
     }
     pr.buang();
     semua = j.projek || [];
-    // Hormati tab yang sedang aktif (bukan selalu image): kalau tidak, memuat
-    // ulang daftar saat tab Video dibuka akan memunculkan kembali grid image.
-    grid.hidden = tabAktif !== 'image';
-    if (gridVideo) gridVideo.hidden = tabAktif !== 'video';
+    tamu = j.tamu || [];
     gambarSampah(j.sampah || []);
-    gambarTamu(j.tamu || []);
-    render();
+    render();            // isi semua grid + hitungan
+    tampilkanGrid();     // lalu tentukan mana yang terlihat (hormati tab aktif)
   }
 
   /* Projek orang lain yang mengundang akun ini.
@@ -1162,20 +1186,15 @@ const Progres = (() => {
      Dibuka lewat ?ds=pemilik/nama, bukan lewat path folder. Path folder milik
      orang lain memang ditolak /setsrc — itulah penjagaan yang benar, dan
      jalan masuk yang sah untuk tamu adalah nama projeknya. */
-  function gambarTamu(daftar) {
-    const wadah = document.getElementById('grid-tamu');
-    const tab = document.getElementById('ptab-tamu');
-    if (!wadah || !tab) return;
-    if (!daftar.length) { tab.hidden = true; return; }
-    tab.hidden = false;
-    document.getElementById('n-tamu').textContent = daftar.length;
-    wadah.innerHTML = daftar.map(p => {
-      const pct = p.jumlah ? Math.min(100, Math.round(p.anotasi / p.jumlah * 100)) : 0;
-      const ds = encodeURIComponent(p.ds);
-      return `
-      <div class="pcard${p.dibuka ? ' dibuka' : ''}">
+  function kartuTamu(p) {
+    const pct = p.jumlah ? Math.min(100, Math.round(p.anotasi / p.jumlah * 100)) : 0;
+    const ds = encodeURIComponent(p.ds);
+    const peran = p.peran === 'editor' ? 'Editor'
+                : p.peran === 'pelabel' ? 'Labeler' : 'Anggota';
+    return `
+      <div class="pcard">
         <a class="psampul${p.sampul ? '' : ' kosong'}" href="/?ds=${ds}"
-           aria-label="Buka projek ${p.nama}"
+           aria-label="Buka projek ${esc(p.nama)}"
            tabindex="-1" aria-hidden="true">
           ${p.sampul ? `<img loading="lazy" alt="" src="/api/projek/sampul?path=`
                        + `${encodeURIComponent(p.sampul)}">` : '\u25a4'}
@@ -1183,16 +1202,16 @@ const Progres = (() => {
         <div class="pisi">
           <a class="pnama pnama-link" href="/?ds=${ds}">${esc(p.nama)}${
             p.tugasku ? `<span class="plabel plabel-tugas">${n(p.gambarku)} jatahmu</span>`
-                      : '<span class="plabel">belum ada jatahmu</span>'}</a>
-          <div class="pmeta">milik ${esc(p.pemilik)} &middot; ${n(p.jumlah)} gambar
-            &middot; ${n(p.anotasi)} dilabeli &middot; <b>${pct}%</b></div>
+                      : `<span class="plabel">${esc(peran)}</span>`}</a>
+          <div class="pmeta">milik ${esc(p.pemilik)} &middot; ${esc(peran)}
+            &middot; ${n(p.jumlah)} gambar &middot; ${n(p.anotasi)} dilabeli
+            &middot; <b>${pct}%</b></div>
           <div class="pbar" title="${n(p.anotasi)} dari ${n(p.jumlah)} gambar sudah dilabeli">
             <i style="width:${pct}%"></i></div>
           <div class="pmeta halus">
             <a href="/anotasi?ds=${ds}">Lihat tugas di Anotasi &rarr;</a></div>
         </div>
       </div>`;
-    }).join('');
   }
 
   function kartuProjek(p) {
@@ -1230,33 +1249,57 @@ const Progres = (() => {
       </div>`;
   }
 
+  const kosongCocok = () =>
+    '<div class="pkosong"><b>Tidak ada yang cocok</b>Ubah kata pencarianmu.</div>';
+  const kosongBox = (judul, pesan) =>
+    `<div class="pkosong"><b>${judul}</b>${pesan}</div>`;
+
   function render() {
     const q = (cari.value || '').trim().toLowerCase();
     const cara = urut.value;
-    const urutkan = (arr) => arr.sort((a, b) =>
+    const urutkan = (arr) => arr.slice().sort((a, b) =>
       cara === 'nama' ? a.nama.localeCompare(b.nama, 'id')
       : cara === 'besar' ? b.jumlah - a.jumlah
       : cara === 'label' ? b.anotasi - a.anotasi
       : b.diubah - a.diubah);
     const cocok = p => !q || p.nama.toLowerCase().includes(q);
+
+    // ---- My Project (projek sendiri)
     const imgRows = urutkan(semua.filter(p => !isVideo(p) && cocok(p)));
     const vidRows = urutkan(semua.filter(p => isVideo(p) && cocok(p)));
-
-    // Grid Image Projek
     grid.innerHTML = imgRows.length ? imgRows.map(kartuProjek).join('')
-      : (semua.some(p => !isVideo(p))
-          ? '<div class="pkosong"><b>Tidak ada yang cocok</b>Ubah kata pencarianmu.</div>'
-          : '<div class="pkosong"><b>Belum ada Projek Image</b>'
-            + 'Buka "+ Projek baru" di atas untuk membuat yang pertama.</div>');
-
-    // Grid Video Projek — empty-state ramah selama belum ada projek video
+      : (semua.some(p => !isVideo(p)) ? kosongCocok()
+         : kosongBox('Belum ada Projek Image',
+             'Buka "+ Projek baru" di atas untuk membuat yang pertama.'));
     if (gridVideo) gridVideo.innerHTML = vidRows.length ? vidRows.map(kartuProjek).join('')
-      : (semua.some(isVideo)
-          ? '<div class="pkosong"><b>Tidak ada yang cocok</b>Ubah kata pencarianmu.</div>'
-          : '<div class="pkosong"><b>Kamu belum punya Projek Video</b>'
-            + 'Pelabelan video akan muncul di sini begitu fiturnya siap.</div>');
+      : (semua.some(isVideo) ? kosongCocok()
+         : kosongBox('Kamu belum punya Projek Video',
+             'Pelabelan video akan muncul di sini begitu fiturnya siap.'));
 
-    hitung(tabAktif === 'video' ? vidRows.length : imgRows.length);
+    // ---- Sharing Project (projek yang mengundangku)
+    const tImg = urutkan(tamu.filter(p => !isVideo(p) && cocok(p)));
+    const tVid = urutkan(tamu.filter(p => isVideo(p) && cocok(p)));
+    if (gridTamuImg) gridTamuImg.innerHTML = tImg.length ? tImg.map(kartuTamu).join('')
+      : (tamu.some(p => !isVideo(p)) ? kosongCocok()
+         : kosongBox('Belum ada Projek Image yang dibagikan',
+             'Projek image milik orang lain yang mengundangmu muncul di sini.'));
+    if (gridTamuVid) gridTamuVid.innerHTML = tVid.length ? tVid.map(kartuTamu).join('')
+      : (tamu.some(isVideo) ? kosongCocok()
+         : kosongBox('Belum ada Projek Video yang dibagikan',
+             'Projek video milik orang lain yang mengundangmu muncul di sini.'));
+
+    hitungTab();
+
+    // Hitungan pencarian untuk kombinasi tab yang sedang aktif.
+    const hit = document.getElementById('projek-hitung');
+    const sharing = topTab === 'sharing';
+    const src = sharing ? tamu : semua;
+    const totalAktif = (subTab === 'video'
+      ? src.filter(isVideo) : src.filter(p => !isVideo(p))).length;
+    const tampilAktif = (sharing ? (subTab === 'video' ? tVid : tImg)
+                                 : (subTab === 'video' ? vidRows : imgRows)).length;
+    hit.hidden = !q || topTab === 'bersama';
+    hit.textContent = q ? `menampilkan ${tampilAktif} dari ${totalAktif}` : '';
   }
 
   function gambarSampah(isi) {
@@ -1469,6 +1512,7 @@ const Progres = (() => {
   document.addEventListener('click', ev => {
     if (!ev.target.closest('.pcard')) {
       grid.querySelectorAll('.pmenu').forEach(x => { x.hidden = true; });
+      if (gridVideo) gridVideo.querySelectorAll('.pmenu').forEach(x => { x.hidden = true; });
     }
   });
 
@@ -1491,21 +1535,18 @@ const Progres = (() => {
     tandai();
   }
 
-  segPasang(document.getElementById('ptab'), v => {
-    tabAktif = v;
-    const img = v === 'image', vid = v === 'video', own = img || vid;
-    grid.hidden = !img;
-    if (gridVideo) gridVideo.hidden = !vid;
-    const b = document.getElementById('grid-bersama');
-    if (b) b.hidden = v !== 'bersama';
-    const tm = document.getElementById('grid-tamu');
-    if (tm) tm.hidden = v !== 'tamu';
-    // Cari dan urut berlaku untuk projek sendiri (image & video), bukan untuk
-    // tab tamu/bersama; membiarkannya aktif tapi tak berpengaruh membingungkan.
-    cari.disabled = !own;
-    urut.disabled = !own;
-    document.getElementById('projek-hitung').hidden = !own;
-    render();   // segarkan empty-state & hitungan untuk tab aktif
+  // Tab ATAS (My / Sharing / Dataset bersama) dan BAWAH (Image / Video).
+  // Keduanya cuma mengubah keadaan lalu memanggil tampilkanGrid() + render();
+  // satu sumber kebenaran soal apa yang terlihat & hitungannya.
+  segPasang(document.getElementById('ptab-atas'), v => {
+    topTab = v;
+    tampilkanGrid();
+    render();
+  });
+  segPasang(document.getElementById('ptab-sub'), v => {
+    subTab = v;
+    tampilkanGrid();
+    render();
   });
 
   /* Dialog "Projek baru": menanyakan nama, itu saja.
@@ -1645,48 +1686,6 @@ const Progres = (() => {
     if (!j || !j.ok) { note.textContent = (j && j.error) || 'gagal memuat'; return; }
     semua = j.akun; nAdmin = j.n_admin;
     render();
-  }
-
-  /* Projek orang lain yang mengundang akun ini.
-
-     Kartunya sengaja lebih sedikit tombolnya: ganti nama, gandakan, gabung,
-     dan buang adalah hak pemilik projek, dan menampilkannya lalu ditolak
-     server lebih buruk daripada tidak menampilkannya sama sekali.
-
-     Dibuka lewat ?ds=pemilik/nama, bukan lewat path folder. Path folder milik
-     orang lain memang ditolak /setsrc — itulah penjagaan yang benar, dan
-     jalan masuk yang sah untuk tamu adalah nama projeknya. */
-  function gambarTamu(daftar) {
-    const wadah = document.getElementById('grid-tamu');
-    const tab = document.getElementById('ptab-tamu');
-    if (!wadah || !tab) return;
-    if (!daftar.length) { tab.hidden = true; return; }
-    tab.hidden = false;
-    document.getElementById('n-tamu').textContent = daftar.length;
-    wadah.innerHTML = daftar.map(p => {
-      const pct = p.jumlah ? Math.min(100, Math.round(p.anotasi / p.jumlah * 100)) : 0;
-      const jatah = p.tugasku
-        ? `<span class="plabel plabel-tugas">${p.gambarku} gambar jatahmu</span>`
-        : '<span class="plabel">belum ada jatahmu</span>';
-      return `
-      <div class="pcard${p.dibuka ? ' dibuka' : ''}">
-        <a class="psampul${p.sampul ? '' : ' kosong'}"
-           href="/?ds=${encodeURIComponent(p.ds)}" tabindex="-1"
-           aria-hidden="true">${
-          p.sampul ? `<img src="/api/projek/sampul?path=${encodeURIComponent(p.sampul)}" alt="">`
-                   : '▤'}</a>
-        <div class="pisi">
-          <a class="pnama" href="/?ds=${encodeURIComponent(p.ds)}">${esc(p.nama)}</a>
-          <span class="pmeta">milik ${esc(p.pemilik)} &middot; ${
-            p.jumlah.toLocaleString('id-ID')} gambar &middot; ${pct}% dilabeli</span>
-          <span class="pmeta">${jatah}</span>
-        </div>
-        <div class="paksi">
-          <a class="btn" href="/?ds=${encodeURIComponent(p.ds)}">Buka</a>
-          <a class="btn" href="/anotasi?ds=${encodeURIComponent(p.ds)}">Anotasi</a>
-        </div>
-      </div>`;
-    }).join('');
   }
 
   function render() {

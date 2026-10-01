@@ -468,6 +468,12 @@ def punya_tamu(uploads_root: Path, akun: str) -> list[dict]:
             out.append({"pemilik": folder_akun.name, "nama": d.name,
                         "path": str(d.resolve()),
                         "ds": f"{folder_akun.name}/{d.name}",
+                        # Jenis media untuk memisahkan tab Image/Video di sisi
+                        # Sharing, sama seperti projek sendiri.
+                        "jenis": jenis_projek(d),
+                        # Peran akun ini di projek itu (editor/pelabel) — dipakai
+                        # kartu sharing untuk menyebut hak aksesnya.
+                        "peran": tugas.peran_anggota(data, akun),
                         "jumlah": s["gambar"], "anotasi": s["anotasi"],
                         "sampul": str(s["sampul"]) if s["sampul"] else "",
                         "kosong": s["gambar"] == 0,
