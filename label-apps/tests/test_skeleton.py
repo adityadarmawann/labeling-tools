@@ -167,3 +167,39 @@ def test_label_page_bawa_template_dan_tombol_editor(klien, lingkungan):
     h = klien.get(f"/label?path={g[0]}").text
     assert "tutup" in h and "leher" in h            # template di #data-awal
     assert 'id="btn-skeleton-tpl"' in h             # tombol editor (pemilik)
+
+
+def test_pose_simpan_muat_round_trip(klien, lingkungan):
+    """Anotasi keypoint (titik + visibilitas + group_id + bbox) bertahan lewat
+    /api/simpan -> .json -> dibuka lagi. Menunggangi skema shape yang ada."""
+    import json
+    import pathlib
+
+    from tests.test_data import masuk, PW_PAUL
+    from tests.test_projek import _projek as buat_projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = buat_projek(ruang, "pose-rt", n=1, label=False)
+    klien.post(f"/setsrc?path={d}")
+    tugas.set_skeleton(d, {"kelas": "botol", "titik": ["a", "b"],
+                           "edge": [[0, 1]]}, pemilik="paul")
+    g = sorted(str(q) for q in d.glob("*.jpg"))[0]
+    pt = lambda nm, x, y, v: {"label": nm, "shape_type": "point",
+                              "points": [[x, y]], "group_id": 0,
+                              "flags": {"v": v}, "text": "", "titipan": {}}
+    shapes = [pt("a", 8, 8, 2), pt("b", 8, 18, 1),
+              {"label": "botol", "shape_type": "rectangle",
+               "points": [[4, 4], [18, 22]], "group_id": 0,
+               "flags": {}, "text": "", "titipan": {"kp_auto": True}}]
+    assert klien.post("/api/simpan", json={"path": g, "shapes": shapes}).json()["ok"]
+
+    # .json yang ditulis mempertahankan tipe, visibilitas, group_id, bbox.
+    data = json.loads(pathlib.Path(g).with_suffix(".json").read_text())
+    byl = {s["label"]: s for s in data["shapes"]}
+    assert byl["a"]["shape_type"] == "point" and byl["a"]["group_id"] == 0
+    assert byl["a"]["flags"]["v"] == 2 and byl["b"]["flags"]["v"] == 1
+    assert byl["botol"]["shape_type"] == "rectangle" and byl["botol"]["group_id"] == 0
+    # Dibuka lagi ke kanvas: keypoint + visibilitas ikut ke data awal.
+    h = klien.get(f"/label?path={g}").text
+    assert '"v"' in h and '"group_id"' in h
