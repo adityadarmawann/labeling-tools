@@ -229,6 +229,45 @@ async def set_jenis(ds: str = "", jenis: str = "",
     return {"ok": True, **r}
 
 
+@router.get("/api/tugas/skeleton")
+async def get_skeleton(ds: str = "", sess: Session = Depends(current_session_api),
+                       settings: Settings = Depends(get_settings)):
+    """Template skeleton (keypoint) projek — untuk kanvas & editor template.
+
+    Boleh dilihat SIAPA PUN anggota (pelabel perlu tahu nama/urutan keypoint
+    agar bisa melabeli), tapi hanya pemilik yang mengubahnya (POST)."""
+    d = svc_projek.temukan(settings.uploads_root, sess.user, ds)
+    if d is None:
+        return {"ok": False, "error": "projek tidak ada"}
+    data = await asyncio.to_thread(svc.baca_projek, d, settings.uploads_root)
+    if not svc.boleh_lihat(data, sess.user):
+        return {"ok": False, "error": "kamu bukan anggota projek ini"}
+    return {"ok": True, "skeleton": data.get("skeleton"),
+            "jenis": data.get("jenis_anotasi", ""),
+            "boleh_ubah": svc.boleh_kelola(data, sess.user)}
+
+
+@router.post("/api/tugas/skeleton")
+async def post_skeleton(request: Request, ds: str = "",
+                        sess: Session = Depends(current_session_api),
+                        settings: Settings = Depends(get_settings)):
+    """Tetapkan template skeleton projek (nama keypoint + edge + flip_idx).
+
+    Hanya pemilik. Jumlah & posisi keypoint ditentukan PER PROJEK di sini —
+    court 33 titik, botol 4 titik, dst. Menyimpan template berisi otomatis
+    menandai projek sebagai jenis 'kerangka'."""
+    d = svc_projek.temukan(settings.uploads_root, sess.user, ds)
+    if d is None:
+        return {"ok": False, "error": "projek tidak ada"}
+    data = await asyncio.to_thread(svc.baca_projek, d, settings.uploads_root)
+    if not svc.boleh_kelola(data, sess.user):
+        return {"ok": False, "error": "hanya pemilik projek yang mengubah ini"}
+    body = await bodi_json(request)
+    template = body.get("skeleton") if isinstance(body.get("skeleton"), dict) else body
+    r = await asyncio.to_thread(svc.set_skeleton, d, template, sess.user)
+    return {"ok": True, **r}
+
+
 @router.get("/tugas/{tid}", response_class=HTMLResponse)
 async def halaman_job(request: Request, tid: str, ds: str = "",
                       saring_q: str = Query("semua", alias="saring"),

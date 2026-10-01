@@ -69,7 +69,12 @@ def _p(ds: Path) -> Path:
 def kosong(pemilik: str = "") -> dict:
     return {"versi": VERSI, "pemilik": pemilik, "anggota": {},
             "tugas": {}, "dataset": [], "undangan": {},
-            "kurasi": False, "jenis_anotasi": "", "warisan": True}
+            "kurasi": False, "jenis_anotasi": "",
+            # Template skeleton (keypoint/pose) tingkat projek. Kosong = projek
+            # ini bukan projek keypoint. Lihat _sah_skeleton/set_skeleton.
+            "skeleton": {"kelas": "", "titik": [], "edge": [],
+                         "flip_idx": [], "warna": []},
+            "warisan": True}
 
 
 def baca(ds: Path, pemilik: str = "") -> dict:
@@ -113,6 +118,9 @@ def baca(ds: Path, pemilik: str = "") -> dict:
             # Lihat set_jenis() untuk alasan kenapa ini setelan, bukan tebakan
             # saja.
             "jenis_anotasi": (d.get("jenis_anotasi") or "").strip().lower(),
+            # Template skeleton disaring agar selalu konsisten (edge menunjuk
+            # indeks titik yang ada, flip_idx panjangnya = jumlah titik, dst).
+            "skeleton": _sah_skeleton(d.get("skeleton")),
             "warisan": False}
 
 
@@ -544,7 +552,94 @@ def gambar_konteks_job(items: list[dict], data: dict, ds: Path, tid: str, *,
     return keluar
 
 
-JENIS_ANOTASI = ("poligon", "kotak")
+JENIS_ANOTASI = ("poligon", "kotak", "kerangka")
+
+# Batas jumlah keypoint satu template — jauh di atas kebutuhan nyata (COCO
+# orang = 17, wajah/tangan ~21, lapangan court ~33), cuma penjaga dari data
+# rusak/ekstrem. Jumlah & nama keypoint SELALU ditentukan per projek, bukan
+# tetap: tiap objek (botol, kaleng, lapangan, orang) punya kerangkanya sendiri.
+MAKS_KEYPOINT = 200
+
+
+def _sah_skeleton(raw) -> dict:
+    """Template skeleton yang rapi & aman, dari data mentah .tugas.json.
+
+    Tak pernah melempar: apa pun yang rusak disederhanakan, tak dibuang mentah.
+    Dijaga konsisten sendiri — edge hanya menunjuk indeks titik yang ADA, dan
+    flip_idx hanya sah kalau panjangnya persis = jumlah titik dengan nilai di
+    dalam rentang; kalau tidak, flip_idx dikosongkan (artinya identitas / tanpa
+    tukar kiri-kanan saat flip horizontal).
+
+    Bentuknya: {kelas, titik:[nama...], edge:[[i,j]...], flip_idx:[...], warna:[...]}.
+    """
+    kosong = {"kelas": "", "titik": [], "edge": [], "flip_idx": [], "warna": []}
+    if not isinstance(raw, dict):
+        return kosong
+    # Setiap bidang HARUS list; apa pun selain itu (string, angka, null)
+    # diperlakukan kosong — iterasi string diam-diam akan memecah per huruf.
+    def _list(x):
+        return x if isinstance(x, list) else []
+    titik, lihat = [], set()
+    for t in _list(raw.get("titik"))[:MAKS_KEYPOINT]:
+        nama = " ".join(str(t or "").split())[:40]
+        # Nama keypoint harus unik: ia yang memetakan titik ke slot YOLO-pose.
+        if nama and nama not in lihat:
+            lihat.add(nama)
+            titik.append(nama)
+    K = len(titik)
+    edge = []
+    for e in _list(raw.get("edge")):
+        try:
+            i, j = int(e[0]), int(e[1])
+        except (TypeError, ValueError, IndexError):
+            continue
+        if 0 <= i < K and 0 <= j < K and i != j \
+                and [i, j] not in edge and [j, i] not in edge:
+            edge.append([i, j])
+    try:
+        flip = [int(x) for x in _list(raw.get("flip_idx"))]
+    except (TypeError, ValueError):
+        flip = []
+    if len(flip) != K or any(not (0 <= x < K) for x in flip):
+        flip = []
+    # Warna per keypoint (opsional); dipotong/diisi agar sepanjang titik.
+    warna = [str(c)[:9] for c in _list(raw.get("warna"))][:K]
+    kelas = " ".join(str(raw.get("kelas") or "").split())[:80]
+    return {"kelas": kelas, "titik": titik, "edge": edge,
+            "flip_idx": flip, "warna": warna}
+
+
+def skeleton_aktif(data: dict) -> bool:
+    """Projek ini projek keypoint: punya template skeleton berisi titik."""
+    sk = data.get("skeleton") or {}
+    return bool(sk.get("titik"))
+
+
+def set_skeleton(ds: Path, template, pemilik: str = "") -> dict:
+    """
+    Tetapkan template skeleton projek: nama keypoint, edge, flip_idx (per projek).
+
+    Jumlah & posisi keypoint berbeda tiap projek — inilah tempat owner
+    mendefinisikannya sekali, lalu dipakai ulang untuk tiap objek di tiap
+    gambar. Template disaring lewat _sah_skeleton sebelum disimpan.
+    """
+    bersih = _sah_skeleton(template)
+    with _kunci:
+        data = baca(ds, pemilik)
+        data["pemilik"] = data["pemilik"] or pemilik
+        data["skeleton"] = bersih
+        # Jenis anotasi diselaraskan: punya titik -> projek kerangka; template
+        # dikosongkan -> lepas dari kerangka (kembali ke tebakan otomatis),
+        # tapi jangan menimpa kalau owner sudah memilih poligon/kotak.
+        if bersih["titik"]:
+            data["jenis_anotasi"] = "kerangka"
+        elif data.get("jenis_anotasi") == "kerangka":
+            data["jenis_anotasi"] = ""
+        _tulis(ds, data)
+    log.info("skeleton %s: %d titik, %d edge, flip_idx %s", Path(ds).name,
+             len(bersih["titik"]), len(bersih["edge"]),
+             "ada" if bersih["flip_idx"] else "identitas")
+    return {"ok": True, "skeleton": bersih}
 
 
 def set_jenis(ds: Path, jenis: str, pemilik: str = "") -> dict:
