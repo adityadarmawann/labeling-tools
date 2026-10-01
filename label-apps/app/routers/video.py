@@ -24,8 +24,8 @@ from ..config import (KLIP, KLIP_BURUK, KLIP_DITOLAK, SUMBER_VIDEO, VIDEO_EXT,
                       Settings, get_settings)
 from ..deps import bodi_json, current_session, current_session_api
 from ..security import safe_relpath, safe_slug
-from ..services import (klip, klip_filter, klip_olah, klip_scan, klip_tag,
-                        projek, tugas, versi, video_ingest)
+from ..services import (export, klip, klip_filter, klip_olah, klip_scan,
+                        klip_tag, projek, tugas, versi, video_ingest)
 from ..session import Session
 from ..templating import templates
 
@@ -385,6 +385,22 @@ def _subset_pelabel(d, data: dict, user: str, pindai: dict, *,
     return keluar
 
 
+def _versi_aksi(d) -> list[dict]:
+    """Versi klip AKSI yang sudah dibangun (hasil.jenis == 'aksi'), untuk daftar
+    unduhan di halaman aksi.
+
+    versi.daftar sudah membuang peta/gambar yang bisa puluhan ribu baris; di sini
+    tinggal menyaring ke versi aksi saja (versi GAMBAR hidup di .versi/ yang sama
+    tapi ber-hasil berbeda) dan hanya membawa medan yang dipakai UI."""
+    out = []
+    for v in versi.daftar(d):
+        if (v.get("hasil") or {}).get("jenis") != "aksi":
+            continue
+        out.append({"nomor": v.get("nomor"), "n": v.get("n", 0),
+                    "kelas": v.get("kelas", 0), "jumlah": v.get("jumlah") or {}})
+    return out
+
+
 def _awal_aksi(d, data: dict, user: str, pindai: dict, *, job: str = "") -> dict:
     """Bahan yang dibutuhkan halaman/skrip aksi untuk merender: daftar kelas,
     kelas negatif, dan subset klip pelabel ini beserta labelnya (resumable)."""
@@ -433,7 +449,8 @@ async def halaman_aksi(request: Request, ds: str = "", job: str = "",
                                  sess.user)
     pindai = await asyncio.to_thread(klip_scan.pindai, d)
     awal = {"ds": pr["ds"], "job": job,
-            **_awal_aksi(d, tdata, sess.user, pindai, job=job)}
+            **_awal_aksi(d, tdata, sess.user, pindai, job=job),
+            "versi": await asyncio.to_thread(_versi_aksi, d)}
     return templates.TemplateResponse(request, "aksi.html", {
         "sess": sess, "pr": pr, "aktif": "aksi",
         "awal": awal,
@@ -655,3 +672,60 @@ async def aksi_versi_batal(ds: str = "",
     dibuang oleh pekerjaannya sendiri)."""
     klip_olah.minta_batal(_kunci_versi_aksi(sess.user, ds))
     return {"ok": True}
+
+
+# ============================================================
+# LANGKAH 8 — EKSPOR (unduh versi klip yang sudah dibangun)
+# ============================================================
+#
+# Padanan /ekspor gambar, untuk klip. Versi beku .versi/vN/ (dibangun Langkah 7)
+# dibungkus jadi arsip folder-per-kelas lewat export.zip_aksi. Tak ada splitting/
+# augmentasi di sini — semua sudah dibekukan saat build, jadi ekspor cuma
+# membungkus apa adanya (anti-bocor + valid-bersih ikut terbawa).
+
+
+@router.get("/api/aksi/versi/unduh")
+async def aksi_versi_unduh(ds: str = "", nomor: int = 0,
+                           sess: Session = Depends(current_session_api),
+                           settings: Settings = Depends(get_settings)):
+    """
+    Unduh satu versi klip aksi yang sudah dibangun sebagai arsip ZIP
+    (folder-per-kelas, train/valid) — Langkah 8.
+
+    Gerbang BACA, bukan unggah: ANGGOTA boleh mengunduh keluaran latih/ekspor
+    (pemilik "biarkan terbuka"), jadi _projek_aksi (boleh_lihat) yang dipakai —
+    bukan boleh_unggah seperti rute membangun versi. Bukan anggota ditolak.
+    Dikembalikan Response (bukan JSON {ok}): ini unduhan berkas, galatnya kode
+    status + teks — unduhan lampiran biasa (bukan sandbox artifact, ini aplikasi).
+    """
+    d, tdata, err = _projek_aksi(sess, settings, ds)
+    if err:
+        return Response(err, status_code=403,
+                        media_type="text/plain; charset=utf-8")
+    if nomor <= 0:
+        return Response("nomor versi tidak sah", status_code=404,
+                        media_type="text/plain; charset=utf-8")
+    # Versi harus TERDAFTAR dan memang versi AKSI: versi GAMBAR hidup di .versi/
+    # yang sama tetapi tata letaknya berbeda — menolaknya di sini (bukan di
+    # zip_aksi saja) memberi pesan yang jelas, bukan "MANIFES tak ada".
+    v = await asyncio.to_thread(versi.baca, d, nomor)
+    if v is None:
+        return Response(f"versi v{nomor} tidak ada", status_code=404,
+                        media_type="text/plain; charset=utf-8")
+    if (v.get("hasil") or {}).get("jenis") != "aksi":
+        return Response(f"versi v{nomor} bukan dataset klip aksi",
+                        status_code=404, media_type="text/plain; charset=utf-8")
+
+    try:
+        data = await asyncio.to_thread(export.zip_aksi,
+                                       klip_olah.dir_versi(d, nomor))
+    except ValueError as e:
+        # Terdaftar tetapi berkas hasilnya hilang (mis. sudah dibuang di disk).
+        return Response(str(e), status_code=404,
+                        media_type="text/plain; charset=utf-8")
+
+    berkas = f"{safe_slug(d.name) or 'projek'}-aksi-v{nomor}.zip"
+    return Response(data, media_type="application/zip", headers={
+        "Content-Disposition": f'attachment; filename="{berkas}"',
+        "Content-Length": str(len(data)),
+    })

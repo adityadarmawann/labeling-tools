@@ -45,6 +45,20 @@ FORMAT = {
 # Versi yang ditulis di berkas keluaran, sama dengan AnyLabeling 0.4.36.
 VERSI = "0.4.36"
 
+# Format ekspor KLIP AKSI — SENGAJA dipisah dari FORMAT di atas, bukan ditambahkan
+# ke dalamnya.
+#
+# FORMAT berisi format anotasi GAMBAR (YOLO/COCO/VOC/CreateML). Rute /ekspor dan
+# /api/ekspor/ringkasan memakainya sebagai daftar format yang sah, lalu
+# zip_dataset membelahnya. Klip aksi bukan salah satunya: ia bukan anotasi
+# per-gambar melainkan arsip folder-per-kelas dari sebuah versi yang SUDAH
+# dibangun (split + aug dibekukan di waktu build — Langkah 7), jadi tak ada
+# peta_kelas / bagi_split / rasio yang berlaku di sini. Menaruhnya di FORMAT
+# membuatnya muncul di dropdown ekspor gambar lalu jatuh ke "format tidak
+# dikenal" begitu zip_dataset mencoba membelahnya. Karena itu ia konstanta
+# tersendiri dengan pintunya sendiri (zip_aksi + rute /api/aksi/versi/unduh).
+FORMAT_AKSI = {"aksi-klip": "Klip aksi (folder per kelas, train/valid)"}
+
 
 def peta_kelas(items: list[dict], names: dict | None = None) -> dict[str, int]:
     """
@@ -299,6 +313,84 @@ def zip_yolo_pose(items: list[dict], nama_dataset: str, template: dict,
                    f"Gambar   : {len(items)}  (train {len(bagian['train'])}, "
                    f"valid {len(bagian['valid'])}, test {len(bagian['test'])})\n"
                    f"Instance : {n_inst}\n")
+    return buf.getvalue()
+
+
+# ============================================================ KLIP AKSI
+# Arsip sebuah versi klip aksi yang SUDAH DIBANGUN. Tak ada splitting/augmentasi
+# di sini — semuanya sudah dibekukan ke .versi/vN/ oleh klip_olah (Langkah 7).
+
+def zip_aksi(versi_dir) -> bytes:
+    """Satu versi klip aksi yang SUDAH DIBANGUN (.versi/vN/) -> ZIP folder-per-kelas.
+
+    Tata letaknya dipertahankan apa adanya dari versi beku itu — inilah arsip
+    siap-latih yang dibaca langsung ketiga backend aksi (VideoMAE/SlowFast/
+    PoseC3D):
+
+        train/<kelas>/*.mp4     ORI + _aug_ + _bal_
+        valid/<kelas>/*.mp4     ORI saja
+        aksi.yaml
+        MANIFES.json
+
+    Pembelahan anti-bocor PER VIDEO SUMBER dan augmentasinya sudah DIBEKUKAN saat
+    versi dibangun (klip_olah); tak ada yang dibelah ulang di sini, jadi tak ada
+    cara klip turunan bocor ke valid lewat ekspor. valid/ yang berisi hanya klip
+    asli dibawa apa adanya — bukan disaring di sini, melainkan sudah bersih sejak
+    dibangun (invarian #2 klip_olah), dan diverifikasi kembali di test_export_aksi.
+
+    Melempar ValueError kalau `versi_dir` bukan versi klip aksi (tak ada, atau
+    MANIFES.json-nya ber-jenis != "aksi") — jauh lebih baik daripada diam-diam
+    mengirim ZIP yang ternyata bukan dataset aksi.
+    """
+    vd = Path(versi_dir)
+    manifes = vd / "MANIFES.json"
+    if not vd.is_dir() or not manifes.is_file():
+        raise ValueError(
+            "versi klip aksi tak ditemukan — bangun dulu versinya di halaman "
+            "Label Aksi sebelum mengunduhnya")
+    try:
+        man = json.loads(manifes.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise ValueError("MANIFES.json versi ini rusak atau tak terbaca")
+    if man.get("jenis") != "aksi":
+        raise ValueError("versi ini bukan dataset klip aksi (MANIFES jenis != 'aksi')")
+
+    buf = io.BytesIO()
+    hitung = {"train": 0, "valid": 0}
+    # ZIP_STORED, bukan DEFLATE: isinya .mp4 yang sudah terkompres (H.264);
+    # mendeflate-nya lagi membakar CPU untuk penyusutan ~0. Berkas teks kecil
+    # (aksi.yaml/MANIFES/README) ikut disimpan apa adanya — ukurannya tak berarti.
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as z:
+        for split in ("train", "valid"):
+            sdir = vd / split
+            if not sdir.is_dir():
+                continue
+            for p in sorted(sdir.rglob("*")):
+                if p.is_file():
+                    z.write(p, p.relative_to(vd).as_posix())
+                    if p.suffix.lower() == ".mp4":
+                        hitung[split] += 1
+        for nama in ("aksi.yaml", "MANIFES.json"):
+            fp = vd / nama
+            if fp.is_file():
+                z.write(fp, nama)
+        # vd = <projek>/.versi/vN -> induk-induknya adalah folder projek.
+        nama_ds = vd.parent.parent.name or "dataset"
+        z.writestr("README.txt",
+                   f"{nama_ds} — dataset klip aksi\n"
+                   f"{'=' * 40}\n\n"
+                   "Diekspor dari HIGOLAB (classifier aksi video).\n"
+                   "Tata letak folder-per-kelas, dibaca langsung oleh\n"
+                   "VideoMAE / SlowFast / PoseC3D:\n\n"
+                   "    train/<kelas>/*.mp4   (asli + augmentasi + penyeimbang)\n"
+                   "    valid/<kelas>/*.mp4   (asli saja)\n"
+                   "    aksi.yaml             (daftar kelas + kelas negatif)\n"
+                   "    MANIFES.json          (asal-usul tiap klip keluaran)\n\n"
+                   f"Klip : train {hitung['train']}, valid {hitung['valid']}\n\n"
+                   "Pembelahan train/valid dibekukan PER VIDEO SUMBER saat versi\n"
+                   "dibangun (anti-bocor), dan valid hanya berisi klip asli.\n"
+                   "Keduanya tak bisa diubah lewat ekspor ini — resepnya ada di\n"
+                   "MANIFES.json.\n")
     return buf.getvalue()
 
 

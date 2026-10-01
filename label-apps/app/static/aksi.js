@@ -200,6 +200,41 @@ el('ak-replay').addEventListener('click', ulang);
 el('ak-skip').addEventListener('click', lewati);
 el('ak-hapus').addEventListener('click', hapus);
 
+// -- daftar versi terlatih (unduhan arsip klip) ------------------------------
+// Padanan tombol ekspor gambar, untuk klip: tiap versi beku .versi/vN/ jadi
+// satu tautan unduh arsip folder-per-kelas. Tampil untuk semua anggota (bukan
+// cuma pemilik); dirender dari data awal dan bertambah saat sebuah build selesai.
+const versiList = el('ak-versi-list');
+const versiJudul = el('ak-versi-judul');
+let versiData = (D.versi || []).map(v => ({ ...v }));
+function renderVersi() {
+  if (!versiList) return;
+  versiList.innerHTML = '';
+  if (versiJudul) versiJudul.hidden = !versiData.length;
+  versiData.forEach(v => {
+    const li = document.createElement('li');
+    const a = document.createElement('a');
+    a.className = 'chip ak-unduh';
+    // Unduhan <a href> biasa: ini aplikasi (bukan artifact sandbox), jadi
+    // lampiran langsung sudah benar. name tak perlu di-encode (angka nomor).
+    a.href = `/api/aksi/versi/unduh?ds=${EDS}&nomor=${v.nomor}`;
+    a.textContent = `Unduh v${v.nomor}`;
+    a.title = `Unduh arsip klip versi v${v.nomor} (folder per kelas, train/valid)`;
+    li.appendChild(a);
+    const j = v.jumlah || {};
+    if (v.n || j.train != null || j.valid != null) {
+      const s = document.createElement('span');
+      s.className = 'ak-versi-ket';
+      const sp = (j.train != null || j.valid != null)
+        ? ` · train ${j.train || 0} / valid ${j.valid || 0}` : '';
+      s.textContent = ` ${v.n || 0} klip · ${v.kelas || 0} kelas${sp}`;
+      li.appendChild(s);
+    }
+    versiList.appendChild(li);
+  });
+}
+renderVersi();
+
 // -- buat versi aksi (pemilik saja) -----------------------------------------
 // Membekukan klip berlabel jadi dataset aug+balanced di .versi/vN/. POST hanya
 // memulai; kemajuan di-poll (build bisa lama). Tombolnya cuma ada untuk pemilik
@@ -231,7 +266,16 @@ if (btnVersi) {
     tampilMaju(k);
     if (k.selesai || k.batal || k.galat) {
       berhenti();
-      if (k.selesai) toast(`Versi v${k.nomor || ''} dibuat`);
+      if (k.selesai) {
+        toast(`Versi v${k.nomor || ''} dibuat`);
+        // Versi baru langsung bisa diunduh tanpa muat ulang halaman.
+        if (k.nomor && !versiData.some(v => v.nomor === k.nomor)) {
+          const rk = k.ringkas || {};
+          versiData.unshift({ nomor: k.nomor, n: rk.n || 0,
+            kelas: rk.kelas || 0, jumlah: rk.jumlah || {} });
+          renderVersi();
+        }
+      }
     }
   }
 

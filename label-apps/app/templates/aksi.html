@@ -64,6 +64,13 @@
       <p class="halus ak-versi-maju" id="ak-versi-maju" hidden></p>
       {% endif %}
 
+      {#- Versi terlatih: unduhan arsip klip (folder per kelas, train/valid).
+          Tampil untuk SEMUA anggota (pemilik "biarkan terbuka" untuk keluaran
+          latih/ekspor), bukan hanya pemilik. Diisi aksi.js dari data awal, dan
+          bertambah sendiri begitu sebuah build selesai. -#}
+      <h3 class="ak-judul" id="ak-versi-judul" hidden>Versi terlatih</h3>
+      <ul class="ak-versi-list halus" id="ak-versi-list"></ul>
+
       <h3 class="ak-judul">Pintasan papan tik</h3>
       <ul class="ak-bantu halus">
         <li><kbd>1</kbd>&ndash;<kbd>9</kbd>,<kbd>0</kbd> pilih kelas</li>

@@ -3364,6 +3364,13 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
 .ak-titik.t-ds{background:var(--aksi)}
 .ak-saring{margin:6px 0 0}
 .ak-ke-dataset{width:100%;margin-top:4px;justify-content:center}
+/* Daftar unduhan versi terlatih: satu tautan unduh per versi + keterangan
+   jumlah klip. Dibangun dari token supaya selaras kedua tema. */
+.ak-versi-list{list-style:none;margin:4px 0 0;padding:0;display:flex;
+  flex-direction:column;gap:6px}
+.ak-versi-list li{display:flex;flex-direction:column;gap:2px}
+.ak-unduh{width:100%;justify-content:center}
+.ak-versi-ket{font-size:11.5px;color:var(--ink-dim)}
 .ak-bantu{list-style:none;margin:4px 0 0;padding:0;display:flex;
   flex-direction:column;gap:4px}
 .ak-bantu kbd,.ak-hot{font-family:ui-monospace,"SF Mono",Menlo,monospace;
