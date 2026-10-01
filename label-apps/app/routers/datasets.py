@@ -672,9 +672,20 @@ async def ekspor(format: str = "yolo-seg", gambar: int = 1, split: str = "",
         if r["tag"] or r["batch"]:
             tag_peta[it["img"].name] = r
 
-    data = await asyncio.to_thread(export.zip_dataset, items, nama, format,
-                                   bool(gambar), export.baca_rasio(split), names,
-                                   rencana_dipakai, tag_peta)
+    # Template keypoint projek untuk ekspor YOLO-pose (diabaikan format lain).
+    skeleton = None
+    if format == "yolo-pose":
+        tdata_sk = await asyncio.to_thread(tugas.baca_projek, sess.src,
+                                           settings.uploads_root)
+        skeleton = tdata_sk.get("skeleton")
+
+    try:
+        data = await asyncio.to_thread(
+            export.zip_dataset, items, nama, format, bool(gambar),
+            export.baca_rasio(split), names, rencana_dipakai, tag_peta, skeleton)
+    except ValueError as e:
+        return Response(str(e), status_code=409,
+                        media_type="text/plain; charset=utf-8")
     berkas = f"{nama}-{format}.zip"
     r = Response(data, media_type="application/zip", headers={
         "Content-Disposition": f'attachment; filename="{berkas}"',

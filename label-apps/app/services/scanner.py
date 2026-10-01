@@ -590,6 +590,12 @@ def read_json(jp: Path):
         # dilewati membuat group_id, catatan, dan flag SELURUH bentuk sesudahnya
         # menempel ke objek yang salah.
         shapes.append({"label": s.get("label"), "type": jenis, "idx": i,
+                       # group_id + flags ikut dibawa: ekspor keypoint/pose
+                       # mengelompokkan titik per instance lewat group_id dan
+                       # membaca visibilitas dari flags.v. Field tambahan ini
+                       # diabaikan jalur ekspor lain.
+                       "group_id": s.get("group_id"),
+                       "flags": s.get("flags") if isinstance(s.get("flags"), dict) else {},
                        "pts": np.array(untuk_menggambar(jenis, pts), np.float32),
                        "pts_asli": [[float(x), float(y)] for x, y in pts]})
     return shapes, W, H

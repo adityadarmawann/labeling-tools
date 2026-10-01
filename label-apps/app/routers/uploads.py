@@ -146,6 +146,8 @@ async def halaman_versi(request: Request, ds: str = "",
         "sess": sess, "projek": pr, "pr": pr, "aktif": "versi",
         "daftar": daftar,
         "boleh_kelola": svc_tugas.boleh_kelola(tdata, sess.user),
+        # Projek keypoint: tawarkan ekspor YOLO-pose di menu Ekspor.
+        "jenis_pose": svc_tugas.skeleton_aktif(tdata),
     })
 
 

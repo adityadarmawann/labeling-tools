@@ -22,6 +22,10 @@
       <span class="menu-catatan" id="unduh-pakai"></span>
       <a class="unduh" href="/ekspor?format=yolo-seg">YOLO segmentation (poligon)</a>
       <a class="unduh" href="/ekspor?format=yolo">YOLO detection (bounding box)</a>
+      {% if jenis_pose %}
+      <a class="unduh" href="/ekspor?format=yolo-pose"
+         title="Keypoint/skeleton: data.yaml dengan kpt_shape + flip_idx, label (x,y,v) per titik">YOLO pose (keypoint)</a>
+      {% endif %}
       <a class="unduh" href="/ekspor?format=coco">COCO (instances.json)</a>
       <a class="unduh" href="/ekspor?format=voc">Pascal VOC (.xml per gambar)</a>
       <a class="unduh" href="/ekspor?format=createml" title="Apple Create ML. Koordinatnya titik tengah kotak, sedangkan AnyLabeling menulis sudut kiri-atas. Yang AnyLabeling keliru.">CreateML (Apple)</a>

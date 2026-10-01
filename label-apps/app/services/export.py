@@ -36,6 +36,7 @@ log = catat("labelapp.export")
 FORMAT = {
     "yolo-seg": "YOLO segmentation (poligon)",
     "yolo": "YOLO detection (bounding box)",
+    "yolo-pose": "YOLO pose (keypoint/skeleton)",
     "coco": "COCO (satu instances.json)",
     "voc": "Pascal VOC (satu .xml per gambar)",
     "createml": "CreateML (Apple, satu _annotations.createml.json)",
@@ -155,6 +156,143 @@ def data_yaml(peta: dict[str, int], nama: str) -> str:
             "labeling-tools:\n"
             f"  dataset: {nama}\n"
             "  format: YOLO segmentation\n")
+
+
+# ============================================================ YOLO-POSE
+# Satu instance keypoint = beberapa shape ber-group_id sama: K titik `point`
+# (label = nama keypoint di template) + 1 rectangle (bbox). Ekspor memetakan
+# label titik -> slot tetap template, jadi urutan klik/sunting tak pernah
+# mengacak slot. Tiap instance SELALU K slot: yang absen/tak terisi di-pad
+# `0 0 0` (visibilitas 0), persis Roboflow/CVAT. Lihat invariant di memori.
+
+def _v_shape(s) -> int:
+    v = (s.get("flags") or {}).get("v")
+    return v if v in (0, 1, 2) else 2
+
+
+def _instansi_pose(it: dict, slot: dict[str, int]) -> dict:
+    """Kelompokkan shape satu gambar per instance: {gid: {rect, kp:{i: shape}}}."""
+    grup: dict = {}
+    for s in it["shapes"]:
+        gid = s.get("group_id")
+        if gid is None:
+            continue
+        inst = grup.setdefault(gid, {"rect": None, "kp": {}})
+        if s["type"] == "point":
+            nm = None if s["label"] is None else str(s["label"]).strip()
+            if nm in slot:
+                inst["kp"][slot[nm]] = s
+        elif s["type"] == "rectangle":
+            inst["rect"] = s
+    return grup
+
+
+def _bbox_pose(inst: dict, kp: dict, W: int, H: int):
+    """(cx, cy, w, h) ternormalisasi dari rectangle instance, atau hull titik
+    v>=1 kalau tak ada rectangle. Titik absen tak ikut menghitung."""
+    rect = inst.get("rect")
+    if rect is not None:
+        pts = rect["pts"].tolist()
+    else:
+        pts = [kp[i]["pts"].tolist()[0] for i in kp if _v_shape(kp[i]) >= 1]
+    if not pts:
+        return None
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+    xmin, xmax, ymin, ymax = min(xs), max(xs), min(ys), max(ys)
+    if xmax <= xmin or ymax <= ymin:
+        return None
+    return ((xmin + xmax) / (2 * W), (ymin + ymax) / (2 * H),
+            (xmax - xmin) / W, (ymax - ymin) / H)
+
+
+def baris_yolo_pose(it: dict, template: dict, cls_idx: int = 0) -> list[str]:
+    """Satu gambar -> baris YOLO-pose `cls cx cy w h (px py v)*K`, ternormalisasi."""
+    W, H = it["W"], it["H"]
+    titik = template.get("titik") or []
+    K = len(titik)
+    if not W or not H or K < 1:
+        return []
+    slot = {n: i for i, n in enumerate(titik)}
+    keluar = []
+    for inst in _instansi_pose(it, slot).values():
+        kp = inst["kp"]
+        if not kp:
+            continue
+        box = _bbox_pose(inst, kp, W, H)
+        if box is None:
+            continue
+        cx, cy, bw, bh = box
+        bagian = [str(cls_idx), f"{cx:.6f}", f"{cy:.6f}", f"{bw:.6f}", f"{bh:.6f}"]
+        for i in range(K):
+            s = kp.get(i)
+            v = _v_shape(s) if s is not None else 0
+            if s is None or v == 0:
+                bagian += ["0.000000", "0.000000", "0"]
+            else:
+                px, py = s["pts"].tolist()[0]
+                bagian += [f"{px / W:.6f}", f"{py / H:.6f}", str(v)]
+        keluar.append(" ".join(bagian))
+    return keluar
+
+
+def data_yaml_pose(template: dict, nama: str) -> str:
+    """data.yaml YOLO-pose: kpt_shape [K,3] + flip_idx + satu kelas objek."""
+    K = len(template.get("titik") or [])
+    flip = list(template.get("flip_idx") or list(range(K)))
+    kelas = (template.get("kelas") or "objek").replace("'", "''")
+    return ("train: ../train/images\n"
+            "val: ../valid/images\n"
+            "test: ../test/images\n"
+            "\n"
+            f"kpt_shape: [{K}, 3]\n"
+            f"flip_idx: {flip}\n"
+            "\n"
+            "nc: 1\n"
+            f"names: ['{kelas}']\n"
+            "\n"
+            "labeling-tools:\n"
+            f"  dataset: {nama}\n"
+            "  format: YOLO pose\n")
+
+
+def zip_yolo_pose(items: list[dict], nama_dataset: str, template: dict,
+                  sertakan_gambar: bool = True, rasio=RASIO_BAWAAN,
+                  rencana: dict | None = None) -> bytes:
+    """Dataset keypoint -> ZIP tata-letak YOLO-pose (sama seperti ekspor
+    Roboflow court): data.yaml(kpt_shape/flip_idx) + train/valid/test."""
+    bagian = bagi_split(items, rasio, rencana)
+    buf = io.BytesIO()
+    n_inst = 0
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("SPLIT-INFO.txt", catatan_split(
+            items, bagian, rencana, nama_dataset, "yolo-pose", rasio))
+        for split, daftar in bagian.items():
+            dipakai: dict[int, str] = {}
+            for it in daftar:
+                nm = _nama_unik(dipakai, it["img"].name)
+                dipakai[id(it)] = nm
+                batang = nm.rpartition(".")[0] or nm
+                baris = baris_yolo_pose(it, template)
+                n_inst += len(baris)
+                z.writestr(f"{split}/labels/{batang}.txt",
+                           "\n".join(baris) + ("\n" if baris else ""))
+                if sertakan_gambar:
+                    z.write(it["img"], f"{split}/images/{nm}")
+        for split in SPLIT:
+            for sub in ("images", "labels"):
+                z.writestr(f"{split}/{sub}/", "")
+        z.writestr("data.yaml", data_yaml_pose(template, nama_dataset))
+        titik = template.get("titik") or []
+        z.writestr("README.txt",
+                   f"{nama_dataset}\n{'=' * len(nama_dataset)}\n\n"
+                   "Diekspor dari labeling-tools (keypoint/pose).\n"
+                   f"Format   : YOLO pose, kpt_shape [{len(titik)}, 3]\n"
+                   f"Keypoint : {', '.join(titik)}\n"
+                   f"Gambar   : {len(items)}  (train {len(bagian['train'])}, "
+                   f"valid {len(bagian['valid'])}, test {len(bagian['test'])})\n"
+                   f"Instance : {n_inst}\n")
+    return buf.getvalue()
 
 
 def periksa_rasio(teks: str | None) -> str:
@@ -851,7 +989,7 @@ def tambah_tags_csv(data: bytes, tag_peta: dict) -> bytes:
 def zip_dataset(items: list[dict], nama: str, format: str,
                 sertakan_gambar: bool = True, rasio=RASIO_BAWAAN,
                 names: dict | None = None, rencana: dict | None = None,
-                tag_peta: dict | None = None) -> bytes:
+                tag_peta: dict | None = None, skeleton: dict | None = None) -> bytes:
     """Satu pintu untuk semua format."""
     if format in ("yolo", "yolo-seg"):
         # Lewat kata kunci, bukan posisi: urutan parameter kedua fungsi ini
@@ -859,6 +997,12 @@ def zip_dataset(items: list[dict], nama: str, format: str,
         # sebagai `rencana` tanpa satu pun kesalahan yang terlihat.
         return tambah_tags_csv(zip_yolo(items, nama, format == "yolo-seg", sertakan_gambar,
                         rasio, names=names, rencana=rencana), tag_peta)
+
+    if format == "yolo-pose":
+        if not (skeleton and skeleton.get("titik")):
+            raise ValueError("projek ini belum punya template keypoint untuk ekspor pose")
+        return tambah_tags_csv(zip_yolo_pose(items, nama, skeleton, sertakan_gambar,
+                        rasio, rencana=rencana), tag_peta)
 
     if format not in ("coco", "voc", "createml"):
         raise ValueError(f"format '{format}' tidak dikenal")
