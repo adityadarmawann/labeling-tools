@@ -123,6 +123,14 @@ class Settings:
     # dibatasi ke jaringan tepercaya — periksa `sudo ufw status verbose`,
     # dan pastikan bawaan incoming-nya deny.
     daftar_langsung: bool = False
+    # Scraper kata-kunci YouTube (projek video: kata kunci -> unduh massal lewat
+    # yt-dlp). MATI secara bawaan — persis seperti daftar_langsung, dan karena
+    # alasan yang sama: aplikasi ini ditutup dari internet (ufw membatasi port
+    # masuk), tetapi scraper membuka lalu lintas KELUAR ke YouTube dalam jumlah
+    # besar — tunduk pada rate-limit/ToS-nya, dan pantas dinyalakan hanya dengan
+    # sengaja. Tempel-URL satuan dan unggah berkas tidak tersentuh saklar ini;
+    # keduanya selalu boleh (lihat services/video_ingest.scraper_aktif).
+    scraper: bool = False
 
     @property
     def max_upload_bytes(self) -> int:
@@ -186,4 +194,5 @@ def get_settings() -> Settings:
         google_domain=_get("GOOGLE_DOMAIN"),
         daftar_sendiri=_bool("DAFTAR_SENDIRI", True),
         daftar_langsung=_bool("DAFTAR_LANGSUNG", False),
+        scraper=_bool("SCRAPER", False),
     )

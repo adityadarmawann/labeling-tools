@@ -28,6 +28,14 @@ osam==0.5.0
 albumentations==2.0.8
 shapely==2.1.2
 
+# Ingest video projek aksi: tempel-URL YouTube + scraper kata-kunci. Pure-python
+# (tak butuh GPU), jadi tinggal di venv CPU — ingest video tak pernah menuntut
+# GPU. Diimpor MALAS di dalam fungsi (services/video_ingest.py), jadi venv CPU
+# tetap mengimpor bersih tanpa ia, dan fitur ingest-nya mengatakan apa adanya
+# lewat siap_ingest() kalau paketnya belum ada. yt-dlp butuh pembaruan sering
+# (YouTube berubah), jadi versinya sengaja TIDAK dipaku.
+yt-dlp
+
 # Bilah keadaan mesin di halaman Training (RAM dan CPU). Dipakai lewat
 # try/except, jadi tanpa ini halamannya tetap jalan — cuma bilahnya berkata
 # "keadaan mesin tidak terbaca". Statistik GPU datang dari nvidia-ml-py yang

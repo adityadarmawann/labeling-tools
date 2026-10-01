@@ -14,6 +14,7 @@ kemajuan beruntun) menyusul di Langkah berikutnya. Yang dijaga sekarang: izin
 from __future__ import annotations
 
 import asyncio
+import threading
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
@@ -21,7 +22,7 @@ from fastapi import APIRouter, Depends, Request
 from ..config import SUMBER_VIDEO, VIDEO_EXT, Settings, get_settings
 from ..deps import bodi_json, current_session_api
 from ..security import safe_relpath, safe_slug
-from ..services import klip, projek, tugas
+from ..services import klip, projek, tugas, video_ingest
 from ..session import Session
 
 router = APIRouter(tags=["video"])
@@ -88,3 +89,98 @@ async def potong(request: Request, ds: str = "", name: str = "",
         return {"ok": False, "error": f"gagal memotong: {str(e)[:90]}"}
 
     return {"ok": True, **hasil}
+
+
+def _kunci_scrape(user: str, ds: str) -> str:
+    """Kunci kemajuan scrape, diturunkan dari user+ds — BUKAN dikirim peramban,
+    supaya satu sesi tak bisa mengintip kemajuan sesi lain dengan menebak kunci."""
+    return f"scrape:{user}:{ds}"
+
+
+@router.post("/api/video/url")
+async def ingest_url(ds: str = "", url: str = "",
+                     sess: Session = Depends(current_session_api),
+                     settings: Settings = Depends(get_settings)):
+    """
+    Unduh satu video YouTube ke `_sumber/` projek (tempel-URL, rencana C.1b).
+
+    Selalu tersedia selama siap_ingest() (yt-dlp + ffmpeg ada) — tak tunduk pada
+    saklar scraper. Host diverifikasi di services (anti-SSRF). Videonya TIDAK
+    dipotong di sini; pemotongan terpisah lewat /api/video/potong.
+    """
+    siap, alasan = video_ingest.siap_ingest()
+    if not siap:
+        return {"ok": False, "error": alasan}
+
+    d, err = _projek_video(sess, settings, ds)
+    if err:
+        return {"ok": False, "error": err}
+
+    dest = d / SUMBER_VIDEO
+    try:
+        hasil = await asyncio.to_thread(video_ingest.dari_url, url, dest)
+    except Exception as e:                        # noqa: BLE001
+        return {"ok": False, "error": f"gagal mengunduh: {str(e)[:90]}"}
+    return hasil
+
+
+@router.post("/api/video/scrape")
+async def ingest_scrape(ds: str = "", query: str = "", maks: int = 10,
+                        sess: Session = Depends(current_session_api),
+                        settings: Settings = Depends(get_settings)):
+    """
+    Scrape kata kunci YouTube -> unduh massal ke `_sumber/` (rencana C.1c).
+
+    DIGERBANG saklar scraper (LABELAPP_SCRAPER, MATI bawaan — lihat MEMORY
+    "label-apps tertutup dari internet"): kalau mati, menjawab pesan jelas
+    "scraper dimatikan", bukan diam-diam tak melakukan apa-apa. Kalau nyala,
+    berjalan di THREAD LATAR (unduh banyak video memakan menit; menahannya di
+    event loop membekukan seluruh server) dengan kemajuan yang di-poll lewat
+    GET /api/video/kemajuan.
+    """
+    if not video_ingest.scraper_aktif(settings):
+        return {"ok": False, "error": (
+            "scraper dimatikan di server ini — nyalakan dengan "
+            "LABELAPP_SCRAPER=1 kalau unduh massal dari YouTube memang "
+            "diinginkan (tempel-URL satuan dan unggah berkas tetap bisa)")}
+    siap, alasan = video_ingest.siap_ingest()
+    if not siap:
+        return {"ok": False, "error": alasan}
+
+    d, err = _projek_video(sess, settings, ds)
+    if err:
+        return {"ok": False, "error": err}
+
+    q = " ".join((query or "").split())
+    if not q:
+        return {"ok": False, "error": "kata kunci masih kosong"}
+    maks = video_ingest.sah_maks(maks)
+    dest = d / SUMBER_VIDEO
+    kunci = _kunci_scrape(sess.user, ds)
+
+    projek.bersihkan_maju(kunci)
+    projek.catat_maju(kunci, tahap="mulai", persen=0.0)
+
+    def _kerja() -> None:
+        try:
+            hasil = video_ingest.scrape(
+                q, maks, dest,
+                maju=lambda info: projek.catat_maju(kunci, **info))
+            projek.catat_maju(kunci, tahap="selesai", persen=1.0,
+                              **{k: v for k, v in hasil.items() if k != "ok"})
+        except Exception as e:                    # noqa: BLE001
+            projek.catat_maju(kunci, tahap="gagal", error=str(e)[:120])
+
+    threading.Thread(target=_kerja, daemon=True).start()
+    return {"ok": True, "mulai": True, "maks": maks}
+
+
+@router.get("/api/video/kemajuan")
+async def ingest_kemajuan(ds: str = "",
+                          sess: Session = Depends(current_session_api),
+                          settings: Settings = Depends(get_settings)):
+    """Kemajuan scrape yang sedang berjalan untuk projek ini (polling).
+
+    Kuncinya diturunkan dari user+ds di server, jadi satu akun hanya bisa
+    menengok kemajuan scrape-nya sendiri."""
+    return {"ok": True, **projek.kemajuan(_kunci_scrape(sess.user, ds))}
