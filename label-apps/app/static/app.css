@@ -2029,6 +2029,17 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
 .bg-menunggu{cursor:default;opacity:.85}
 .bg-menunggu:hover{background:transparent}
 
+/* Atur peran anggota + scope batch (RBAC). */
+.bg-atur{flex:0 0 auto;background:transparent;border:1px solid var(--garis);
+  border-radius:7px;cursor:pointer;color:var(--ink-faint);font-size:11px;
+  line-height:1;padding:3px 7px}
+.bg-atur:hover{color:var(--ink);border-color:var(--aksi)}
+.bg-scope-list{display:flex;flex-direction:column;gap:3px;margin:4px 0 2px;
+  max-height:160px;overflow:auto;padding:2px}
+.bg-scope-opt{font-size:12px}
+#bg-labeler-opsi{margin-top:4px}
+#bg-undang-nama{color:var(--ink);font-weight:600}
+
 /* Pelabel di halaman Lihat. Sebelumnya ia cap di sudut gambar tiap kartu
    grid; di sana ia menutupi bagian foto yang justru sedang diperiksa orang,
    dan kartu jadi ramai. Satu gambar satu halaman rinci, dan di situ ia punya

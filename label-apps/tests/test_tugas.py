@@ -416,7 +416,7 @@ def test_halaman_bagi_menolak_yang_bukan_pemilik(klien, aplikasi, lingkungan):
 
     lain = klien_baru(aplikasi, "anggi", PW_ANGGI)
     h = lain.get("/bagi?ds=paul/bagi-hak").text
-    assert "Hanya pemilik projek yang membagi tugas" in h
+    assert "Hanya pemilik projek yang mengelola anggota" in h
     assert 'id="bg-mulai"' not in h
 
     j = lain.get("/api/tugas/calon").json()

@@ -21,20 +21,11 @@
 
   {% if not boleh_kelola %}
   <div class="pkosong" style="max-width:640px">
-    <b>Hanya pemilik projek yang membagi tugas</b>
+    <b>Hanya pemilik projek yang mengelola anggota & tugas</b>
     Projek ini milik <b>{{ pemilik }}</b>. Kamu bisa melihat seluruh gambarnya
-    dan mengerjakan yang ditugaskan kepadamu.
+    dan mengerjakan yang menjadi bagianmu.
     <span style="display:block;margin-top:10px">
       <a href="/?ds={{ pr.ds | urlquote }}">Buka datasetnya</a></span>
-  </div>
-
-  {% elif not n_belum %}
-  <div class="pkosong" style="max-width:640px">
-    <b>Semua gambar sudah ditugaskan</b>
-    Tidak ada lagi yang menunggu dibagi di projek ini.
-    <span style="display:block;margin-top:10px">
-      <a href="/unggah?ds={{ pr.ds | urlquote }}">Unggah lagi</a> atau
-      <a href="/?ds={{ pr.ds | urlquote }}">buka datasetnya</a>.</span>
   </div>
 
   {% else %}
@@ -44,13 +35,16 @@
       <div class="bg-kepala">
         <div>
           <h2 class="bg-judul">Belum ditugaskan</h2>
-          <span class="bg-sub"><b id="bg-jumlah">{{ n_belum }}</b> gambar
+          <span class="bg-sub">
+            {%- if n_belum %}<b id="bg-jumlah">{{ n_belum }}</b> gambar
             menunggu dibagi{% if n_dipotong %} &middot; {{ n_dipotong }} di
-            antaranya tidak digambar di sini, tetap ikut dibagi{% endif %}</span>
+            antaranya tidak digambar di sini, tetap ikut dibagi{% endif %}
+            {%- else %}Tidak ada gambar yang menunggu dibagi{% endif %}</span>
         </div>
         <a class="chip" href="/unggah?ds={{ pr.ds | urlquote }}">Unggah lagi</a>
       </div>
 
+      {% if n_belum %}
       <div class="bg-kisi" id="bg-kisi">
         {%- for it in belum %}
         <figure class="bg-ubin" data-path="{{ it | pathmentah }}">
@@ -62,11 +56,77 @@
         </figure>
         {%- endfor %}
       </div>
+      {% else %}
+      {# Membagi gambar satu per satu ke orang itu alat pemilik yang opsional.
+         Dengan model peran, anggota tak wajib ditugaskan dulu untuk mulai
+         melabeli — jadi halaman ini tetap berguna walau tak ada yang menunggu
+         dibagi: di sinilah anggota & perannya dikelola. #}
+      <div class="pkosong" style="max-width:560px">
+        <b>Semua gambar sudah ditugaskan, atau projek masih kosong</b>
+        Kamu tetap bisa mengelola anggota & perannya di panel kanan. Anggota
+        tak harus ditugaskan gambar satu per satu — perannya yang menentukan
+        hak aksesnya.
+      </div>
+      {% endif %}
     </section>
 
     {# ---------------------------------------------------------- kanan #}
     <aside class="bg-panel">
-      <h3 class="bg-panel-judul">Bagikan ke anggota tim</h3>
+      <h3 class="bg-panel-judul">Anggota projek</h3>
+
+      <div class="bg-orang-kepala">
+        <span class="form-lbl" style="margin:0">Anggota &amp; peran</span>
+        <button class="chip" type="button" id="bg-tambah-orang">+ Anggota</button>
+      </div>
+      <div class="bg-orang" id="bg-orang">
+        <span class="halus">Memuat daftar anggota&hellip;</span>
+      </div>
+
+      {# Kotak tambah/atur anggota, tersembunyi sampai diminta. Dipakai ulang
+         untuk mengundang (akun baru) dan mengatur peran anggota yang sudah ada;
+         `bg-undang-kirim` membaca modenya. #}
+      <div class="bg-undang" id="bg-undang" hidden>
+        <div id="bg-undang-akun">
+          <label class="form-lbl" for="bg-email">Akun atau email</label>
+          <input type="text" id="bg-email" placeholder="rizky atau rizky@higo.id">
+        </div>
+        <div id="bg-undang-nama" class="form-lbl" hidden style="margin-top:0"></div>
+
+        <label class="form-lbl">Peran</label>
+        <div class="seg" id="bg-peran" role="group" aria-label="Peran anggota">
+          <label class="seg-opt" data-on>
+            <input type="radio" name="bg-peran" value="pelabel" checked> Labeler</label>
+          <label class="seg-opt">
+            <input type="radio" name="bg-peran" value="editor"> Editor</label>
+        </div>
+
+        <div id="bg-labeler-opsi">
+          <label class="form-lbl">Akses Labeler</label>
+          <div class="seg" id="bg-akses" role="group" aria-label="Akses labeler">
+            <label class="seg-opt" data-on>
+              <input type="radio" name="bg-akses" value="semua" checked> Menyeluruh</label>
+            <label class="seg-opt">
+              <input type="radio" name="bg-akses" value="spesifik"> Spesifik</label>
+          </div>
+          <div id="bg-scope" hidden>
+            <label class="form-lbl">Folder/batch yang boleh digarap</label>
+            <div class="bg-scope-list" id="bg-scope-list">
+              <span class="halus">Memuat daftar batch&hellip;</span>
+            </div>
+          </div>
+        </div>
+
+        <p class="halus" id="bg-peran-ket" style="margin:6px 0 0"></p>
+        <div class="row" style="margin-top:8px">
+          <button class="cta" type="button" id="bg-undang-kirim">Undang</button>
+          <button class="chip" type="button" id="bg-undang-batal" hidden>Batal</button>
+        </div>
+        <div class="jalur-status" id="bg-undang-jalur"></div>
+      </div>
+
+      {% if n_belum %}
+      <div class="bg-pisah"></div>
+      <h3 class="bg-panel-judul">Bagi tugas <span class="halus">(opsional)</span></h3>
 
       <label class="form-lbl" for="bg-n">Berapa gambar yang dibagikan</label>
       <div class="bg-jumlah">
@@ -90,30 +150,11 @@
       <textarea id="bg-catatan" rows="2"
         placeholder="mis. abaikan botol yang terpotong tepi gambar"></textarea>
 
-      <div class="bg-pisah"></div>
-
-      <div class="bg-orang-kepala">
-        <span class="form-lbl" style="margin:0">Pilih pelabel</span>
-        <button class="chip" type="button" id="bg-tambah-orang">+ Anggota</button>
-      </div>
-      <div class="bg-orang" id="bg-orang">
-        <span class="halus">Memuat daftar anggota&hellip;</span>
-      </div>
-
-      {# Kotak tambah anggota, tersembunyi sampai diminta. #}
-      <div class="bg-undang" id="bg-undang" hidden>
-        <label class="form-lbl" for="bg-email">Akun atau email</label>
-        <div class="row">
-          <input type="text" id="bg-email" placeholder="rizky atau rizky@higo.id">
-          <button class="cta" type="button" id="bg-undang-kirim">Undang</button>
-        </div>
-        <div class="jalur-status" id="bg-undang-jalur"></div>
-      </div>
-
       <p class="bg-acak-ket halus" id="bg-acak-ket"></p>
       <div class="jalur-status" id="bg-jalur"></div>
       <button class="cta bg-mulai" type="button" id="bg-mulai" disabled>
         Pilih pelabel dulu</button>
+      {% endif %}
     </aside>
   </div>
   {% endif %}
