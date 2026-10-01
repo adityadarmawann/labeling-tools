@@ -127,3 +127,43 @@ def test_rute_skeleton_pemilik_set_anggota_baca(klien, aplikasi, lingkungan):
     r2 = anggi.post("/api/tugas/skeleton?ds=paul/pose-uji",
                     json={"skeleton": {"titik": ["x"]}}).json()
     assert r2["ok"] is False and "pemilik" in r2["error"]
+
+
+def test_skeleton_tanpa_ds_pakai_projek_terbuka(klien, lingkungan):
+    """Dari kanvas /label, rute dipanggil tanpa ds -> pakai sess.src."""
+    import pathlib
+
+    from tests.test_data import masuk, PW_PAUL
+    from tests.test_projek import _projek as buat_projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = buat_projek(ruang, "pose-src", n=2, label=False)
+    klien.post(f"/setsrc?path={d}")
+    r = klien.post("/api/tugas/skeleton", json={"skeleton": {
+        "kelas": "x", "titik": ["a", "b"], "edge": [[0, 1]],
+        "flip_idx": [1, 0]}}).json()
+    assert r["ok"] and r["skeleton"]["titik"] == ["a", "b"]
+    g = klien.get("/api/tugas/skeleton").json()
+    assert g["ok"] and g["skeleton"]["flip_idx"] == [1, 0]
+
+
+def test_label_page_bawa_template_dan_tombol_editor(klien, lingkungan):
+    """Halaman /label menyertakan template keypoint di data awal + tombol editor
+    untuk pemilik."""
+    import pathlib
+
+    from tests.test_data import masuk, PW_PAUL
+    from tests.test_projek import _projek as buat_projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = buat_projek(ruang, "pose-label", n=2, label=False)
+    klien.post(f"/setsrc?path={d}")
+    tugas.set_skeleton(d, {"kelas": "botol",
+                           "titik": ["tutup", "leher", "dasar"],
+                           "edge": [[0, 1], [1, 2]]}, pemilik="paul")
+    g = sorted(str(q) for q in d.glob("*.jpg"))
+    h = klien.get(f"/label?path={g[0]}").text
+    assert "tutup" in h and "leher" in h            # template di #data-awal
+    assert 'id="btn-skeleton-tpl"' in h             # tombol editor (pemilik)

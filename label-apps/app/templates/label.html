@@ -296,6 +296,17 @@
               title="Sunting (V): pilih bentuk, geser titiknya">
         {{ ikon('sunting', 21) }}<span>Sunting</span></button>
 
+      {% if boleh_kelola %}
+      {#- Setel template keypoint/pose projek (pemilik). Menentukan nama &
+          urutan keypoint, edge, dan pasangan cermin kiri-kanan untuk flip —
+          sekali, lalu dipakai tiap objek. Mode menggambar keypoint-nya muncul
+          setelah template berisi. -#}
+      <span class="tool-sep"></span>
+      <button class="tool" type="button" id="btn-skeleton-tpl"
+              title="Setel template keypoint/pose untuk projek ini">
+        {{ ikon('titik', 21) }}<span>Keypoint</span></button>
+      {% endif %}
+
       {% if boleh_ubah %}
       {#- Tandai latar: BUKAN mode menggambar (tidak punya data-mode), tapi
           aksi sekali-klik — gambar ini sengaja dinyatakan tanpa objek, contoh
@@ -371,7 +382,9 @@
     "berkas": berkas,
     "prev": prev_path,
     "next": next_path,
-    "model": sam.default} | tojson }}
+    "model": sam.default,
+    "skeleton": skeleton,
+    "boleh_kelola": boleh_kelola} | tojson }}
 </script>
 <!-- Panduan. Dulu seluruh isinya berdesakan sebagai dua baris teks selebar
      layar di bar atas: semua ada di sana, tetapi tidak ada yang benar-benar
@@ -406,6 +419,50 @@
     <div class="dlg-tombol">
       <button type="button" class="btn" id="dlg-batal">Batal (buang bentuk)</button>
       <button type="button" class="btn pri" id="dlg-ok">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- Editor template keypoint/skeleton projek (pemilik). Form sederhana: nama
+     keypoint (satu per baris, urut = slot YOLO-pose), edge antar indeks, dan
+     pasangan cermin kiri-kanan untuk menghitung flip_idx. Disimpan ke
+     .tugas.json lewat /api/tugas/skeleton; jumlah & nama keypoint bebas per
+     projek. -->
+<div class="dlg" id="dlg-skel" hidden>
+  <div class="dlg-kotak" role="dialog" aria-modal="true"
+       aria-labelledby="skel-judul" style="max-width:560px">
+    <h3 id="skel-judul">Template keypoint projek</h3>
+    <p class="dlg-sub2" id="skel-ket">Tentukan sekali untuk projek ini; dipakai
+      tiap objek di tiap gambar. Jumlah &amp; nama keypoint bebas sesuai
+      objekmu.</p>
+
+    <label class="form-lbl2" for="skel-kelas">Kelas objek</label>
+    <input id="skel-kelas" type="text" autocomplete="off"
+           placeholder="mis. court, botol, orang">
+
+    <label class="form-lbl2" for="skel-titik">Keypoint — satu per baris, urut =
+      slot (0,1,2,…)</label>
+    <textarea id="skel-titik" rows="6" spellcheck="false"
+      placeholder="tutup&#10;leher&#10;badan&#10;dasar"></textarea>
+    <p class="dlg-sub2" id="skel-nomor"></p>
+
+    <label class="form-lbl2" for="skel-edge">Edge — hubungan antar indeks, satu
+      per baris "i-j" (opsional)</label>
+    <textarea id="skel-edge" rows="3" spellcheck="false"
+      placeholder="0-1&#10;1-2&#10;2-3"></textarea>
+
+    <label class="form-lbl2" for="skel-flip">Pasangan cermin kiri-kanan "i-j"
+      untuk flip horizontal (opsional)</label>
+    <textarea id="skel-flip" rows="2" spellcheck="false"
+      placeholder="mis. kiri_mata-kanan_mata: 1-2"></textarea>
+    <p class="dlg-sub2">Kosongkan kalau objek tak simetri — flip kiri-kanan
+      akan memakai pemetaan apa adanya (identitas).</p>
+
+    <p class="dlg-galat" id="skel-galat"></p>
+    <div class="dlg-tombol">
+      <button type="button" class="btn" id="skel-batal">Tutup</button>
+      <button type="button" class="btn" id="skel-hapus">Kosongkan template</button>
+      <button type="button" class="btn pri" id="skel-simpan">Simpan template</button>
     </div>
   </div>
 </div>

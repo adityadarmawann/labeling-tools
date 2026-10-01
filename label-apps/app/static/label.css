@@ -503,6 +503,21 @@ body[data-baca-saja] #btn-redo { opacity: .4; pointer-events: none; }
   color:var(--ink-dim); cursor:pointer}
 .dlg-galat{margin:0 0 10px; font-size:12px; color:var(--stop); min-height:0}
 .dlg-galat:empty{display:none}
+
+/* Editor template keypoint (#dlg-skel). */
+.form-lbl2{display:block; margin:10px 0 4px; font-size:12px; font-weight:600;
+  color:var(--ink)}
+.dlg-sub2{margin:2px 0 6px; font-size:11.5px; color:var(--ink-faint);
+  line-height:1.4}
+#dlg-skel .dlg-kotak{text-align:left}
+#dlg-skel input[type=text], #dlg-skel textarea{width:100%; box-sizing:border-box;
+  font:inherit; font-size:13px; padding:7px 9px; border:1px solid var(--garis);
+  border-radius:8px; background:var(--sunk); color:var(--ink)}
+#dlg-skel textarea{resize:vertical; font-family:ui-monospace,monospace;
+  line-height:1.5}
+#skel-nomor{font-family:ui-monospace,monospace; font-size:11px;
+  color:var(--ink-faint); margin:4px 0 0; word-break:break-word}
+
 .dlg-tombol{display:flex; gap:8px; justify-content:flex-end}
 .dlg-tombol .btn{font-size:12.5px; padding:7px 13px}
 

@@ -236,9 +236,10 @@ async def get_skeleton(ds: str = "", sess: Session = Depends(current_session_api
 
     Boleh dilihat SIAPA PUN anggota (pelabel perlu tahu nama/urutan keypoint
     agar bisa melabeli), tapi hanya pemilik yang mengubahnya (POST)."""
-    d = svc_projek.temukan(settings.uploads_root, sess.user, ds)
+    # ds kosong = projek yang SEDANG dibuka (dipakai dari kanvas /label).
+    d = svc_projek.temukan(settings.uploads_root, sess.user, ds) if ds else sess.src
     if d is None:
-        return {"ok": False, "error": "projek tidak ada"}
+        return {"ok": False, "error": "projek tidak ada / belum ada yang dibuka"}
     data = await asyncio.to_thread(svc.baca_projek, d, settings.uploads_root)
     if not svc.boleh_lihat(data, sess.user):
         return {"ok": False, "error": "kamu bukan anggota projek ini"}
@@ -256,9 +257,9 @@ async def post_skeleton(request: Request, ds: str = "",
     Hanya pemilik. Jumlah & posisi keypoint ditentukan PER PROJEK di sini —
     court 33 titik, botol 4 titik, dst. Menyimpan template berisi otomatis
     menandai projek sebagai jenis 'kerangka'."""
-    d = svc_projek.temukan(settings.uploads_root, sess.user, ds)
+    d = svc_projek.temukan(settings.uploads_root, sess.user, ds) if ds else sess.src
     if d is None:
-        return {"ok": False, "error": "projek tidak ada"}
+        return {"ok": False, "error": "projek tidak ada / belum ada yang dibuka"}
     data = await asyncio.to_thread(svc.baca_projek, d, settings.uploads_root)
     if not svc.boleh_kelola(data, sess.user):
         return {"ok": False, "error": "hanya pemilik projek yang mengubah ini"}

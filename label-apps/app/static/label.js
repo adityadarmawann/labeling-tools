@@ -3234,3 +3234,101 @@ muatView();
 })();
 pakaiKeepPrev();
 render();
+
+/* ============================================================ KEYPOINT
+   Editor template skeleton/keypoint projek (hanya pemilik — tombolnya cuma
+   dirender untuk boleh_kelola). Form sederhana: nama keypoint (urut = slot
+   YOLO-pose), edge, dan pasangan cermin kiri-kanan -> flip_idx. Disimpan ke
+   .tugas.json lewat /api/tugas/skeleton (ds kosong = projek yang dibuka).
+   Mode MENGGAMBAR keypoint menyusul di langkah berikut; di sini baru templat. */
+(() => {
+  const tombol = el('btn-skeleton-tpl');
+  if (!tombol) return;                       // bukan pemilik
+  const dlg = el('dlg-skel');
+  const baris = t => String(t || '').split('\n').map(s => s.trim()).filter(Boolean);
+
+  // flip_idx -> daftar pasangan "i-j" (hanya yang saling tukar, i<j).
+  function flipKePasangan(flip) {
+    const out = [];
+    for (let i = 0; i < flip.length; i++) {
+      if (flip[i] > i && flip[flip[i]] === i) out.push(i + '-' + flip[i]);
+    }
+    return out.join('\n');
+  }
+
+  function isiForm() {
+    const sk = D.skeleton || {};
+    el('skel-kelas').value = sk.kelas || '';
+    el('skel-titik').value = (sk.titik || []).join('\n');
+    el('skel-edge').value = (sk.edge || []).map(e => e[0] + '-' + e[1]).join('\n');
+    el('skel-flip').value = flipKePasangan(sk.flip_idx || []);
+    el('skel-galat').textContent = '';
+    nomori();
+  }
+
+  function nomori() {
+    const nama = baris(el('skel-titik').value);
+    el('skel-nomor').textContent = nama.length
+      ? nama.map((n, i) => i + '=' + n).join('   ')
+      : 'Belum ada keypoint.';
+  }
+
+  // "i-j" per baris -> [[i,j]] dengan i,j di [0,K); melempar kalau salah.
+  function parsePasangan(teks, K) {
+    const out = [];
+    for (const b of baris(teks)) {
+      const m = b.match(/^(\d+)\s*[-,:]\s*(\d+)$/);
+      if (!m) throw new Error('format harus "i-j", mis. 0-1 : ' + b);
+      const i = +m[1], j = +m[2];
+      if (i >= K || j >= K) throw new Error('indeks di luar jumlah keypoint: ' + b);
+      if (i === j) throw new Error('tak boleh menghubungkan titik ke dirinya: ' + b);
+      out.push([i, j]);
+    }
+    return out;
+  }
+
+  async function simpan(kosong) {
+    const galat = el('skel-galat');
+    galat.textContent = '';
+    try {
+      const titik = kosong ? [] : baris(el('skel-titik').value);
+      const K = titik.length;
+      if (!kosong) {
+        if (K < 2) throw new Error('minimal 2 keypoint');
+        if (new Set(titik).size !== K) throw new Error('nama keypoint harus unik');
+        if (!(el('skel-kelas').value || '').trim()) throw new Error('isi kelas objeknya');
+      }
+      const edge = kosong ? [] : parsePasangan(el('skel-edge').value, K);
+      const pasFlip = kosong ? [] : parsePasangan(el('skel-flip').value, K);
+      let flip_idx = [];
+      if (pasFlip.length) {                   // identitas lalu tukar tiap pasangan
+        flip_idx = Array.from({ length: K }, (_, i) => i);
+        for (const [i, j] of pasFlip) { flip_idx[i] = j; flip_idx[j] = i; }
+      }
+      const r = await fetch('/api/tugas/skeleton', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ skeleton: {
+          kelas: (el('skel-kelas').value || '').trim(),
+          titik, edge, flip_idx } }),
+      });
+      const j = await r.json();
+      if (!j.ok) { galat.textContent = j.error || 'gagal menyimpan'; return; }
+      D.skeleton = j.skeleton;
+      dlg.hidden = true;
+      // Muat ulang supaya mode menggambar keypoint ikut tersedia/hilang.
+      location.reload();
+    } catch (e) {
+      galat.textContent = e.message || String(e);
+    }
+  }
+
+  tombol.onclick = () => { isiForm(); dlg.hidden = false; el('skel-titik').focus(); };
+  el('skel-batal').onclick = () => { dlg.hidden = true; };
+  el('skel-simpan').onclick = () => simpan(false);
+  el('skel-hapus').onclick = () => {
+    if (confirm('Kosongkan template keypoint projek ini?\n\nAnotasi yang sudah '
+              + 'ada tidak dihapus, tapi projek lepas dari mode keypoint.')) simpan(true);
+  };
+  el('skel-titik').addEventListener('input', nomori);
+  dlg.addEventListener('click', ev => { if (ev.target === dlg) dlg.hidden = true; });
+})();

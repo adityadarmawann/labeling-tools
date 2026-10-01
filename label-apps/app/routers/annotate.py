@@ -232,6 +232,15 @@ async def halaman(request: Request, path: str = "",
     # yang jujur sejak dibuka tidak.
     tolak = tugas.tolak_tulis(sess.src, sess.user, it["img"]) if sess.src else ""
 
+    # Template skeleton (keypoint) projek + hak mengelolanya. Pelabel butuh
+    # nama/urutan keypoint untuk melabeli; hanya pemilik yang menyunting
+    # templatnya (editor dibuka dari kanvas kalau boleh_kelola).
+    tdata = (await asyncio.to_thread(tugas.baca_projek, sess.src,
+                                     settings.uploads_root)
+             if sess.src else tugas.kosong())
+    skeleton = tdata.get("skeleton") or {}
+    boleh_kelola = tugas.boleh_kelola(tdata, sess.user)
+
     # Berkas anotasi yang tidak bisa dibaca HARUS disebut di layar. Tanpa itu
     # kanvasnya terbuka dengan nol objek dan status "siap" — tidak ada satu pun
     # tanda bahwa berkasnya rusak — lalu orang melabeli dari nol dan
@@ -261,6 +270,9 @@ async def halaman(request: Request, path: str = "",
         "teks_gambar": mentah.get("image_text") or "",
         "berkas": berkas,
         "sam": autolabel.info(),
+        # Template keypoint projek + hak ubah (editor template owner-only).
+        "skeleton": skeleton,
+        "boleh_kelola": boleh_kelola,
     })
 
 
