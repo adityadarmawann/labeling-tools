@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block bodyclass %}berprojek{% endblock %}
+
+{#- Halaman pelabelan klip (classifier aksi video). Mencerminkan UX kanvas
+    gambar (label.html) tetapi dengan <video> alih-alih canvas: putar klip,
+    tekan angka kelas, panah kiri-kanan menyusuri subset penugasan ini, saring
+    belum/sudah. Resumable (label tiap klip tampil) dan aman banyak orang
+    (izin dicek per-klip di rutenya). Data awal ditanam sebagai JSON dan
+    dibaca aksi.js — persis pola data-awal di label.html. -#}
+
+{% block body %}
+<header>
+  <div class="top">
+    <h1>{{ nama_app() }}</h1>
+    {% include "_header.html" %}
+  </div>
+</header>
+
+<main>
+{% include "_sisi.html" %}
+<div class="sisi-isi" id="ak-isi" data-ds="{{ pr.ds }}">
+
+  <div class="ak-tata">
+    {# ---------------------------------------------------------- kiri: progres #}
+    <aside class="ak-samping">
+      <h3 class="ak-judul">Kemajuan</h3>
+      <div class="lajur ak-lajur" aria-hidden="true">
+        <i class="p-ok" id="ak-bar-ok"></i><i class="p-stop" id="ak-bar-stop"></i>
+      </div>
+      <p class="ak-angka"><b id="ak-n-total">0</b> klip untukmu</p>
+      <ul class="ak-daftar">
+        <li><span class="ak-titik t-ok"></span><b id="ak-n-label">0</b> sudah dilabeli</li>
+        <li><span class="ak-titik t-stop"></span><b id="ak-n-belum">0</b> belum</li>
+        <li><span class="ak-titik t-ds"></span><b id="ak-n-ds">0</b> sudah di dataset</li>
+      </ul>
+
+      {#- Saring belum/sudah, padanan tab di halaman job. Dikerjakan di peramban
+          atas subset yang sudah dimuat (sequential labeling, bukan grid besar);
+          begitu satu klip dilabeli di filter "belum", ia keluar dengan
+          sendirinya dan klip berikutnya yang belum maju. -#}
+      <div class="seg ak-saring" role="group" aria-label="Saring status label">
+        <button class="seg-opt" type="button" data-saring="semua"
+                {% if saring == 'semua' %}data-on{% endif %}>Semua</button>
+        <button class="seg-opt" type="button" data-saring="belum"
+                {% if saring == 'belum' %}data-on{% endif %}>Belum</button>
+        <button class="seg-opt" type="button" data-saring="sudah"
+                {% if saring == 'sudah' %}data-on{% endif %}>Sudah</button>
+      </div>
+
+      <button class="chip aksi ak-ke-dataset" type="button" id="ak-ke-dataset"
+              title="Masukkan semua klip yang sudah kamu labeli ke dataset">
+        Tambahkan berlabel ke dataset</button>
+
+      <h3 class="ak-judul">Pintasan papan tik</h3>
+      <ul class="ak-bantu halus">
+        <li><kbd>1</kbd>&ndash;<kbd>9</kbd>,<kbd>0</kbd> pilih kelas</li>
+        <li><kbd>&larr;</kbd> <kbd>&rarr;</kbd> klip sebelum / berikut</li>
+        <li><kbd>R</kbd> ulang putar &middot; <kbd>S</kbd> lewati</li>
+        <li><kbd>Backspace</kbd> hapus label</li>
+      </ul>
+    </aside>
+
+    {# ---------------------------------------------------------- kanan: pemutar #}
+    <section class="ak-utama">
+      <div class="ak-kepala">
+        <span class="ak-posisi" id="ak-posisi">0 / 0</span>
+        <span class="ak-nama" id="ak-nama" title=""></span>
+        <span class="spacer"></span>
+        <span class="ak-kini" id="ak-kini"></span>
+      </div>
+
+      <div class="ak-panggung">
+        {#- autoplay+loop+muted: klip aksi berdurasi ~1 detik, dan memutarnya
+            berulang otomatis itulah cara menilai geraknya tanpa menekan play
+            tiap kali — persis Replay di review_reclassify_v4. `controls` tetap
+            ada supaya bilah seek (yang butuh Range 206) bisa dipakai. -#}
+        <video id="ak-video" class="ak-video" autoplay loop muted playsinline
+               controls preload="auto"></video>
+        <div class="ak-kosong pkosong" id="ak-kosong" hidden>
+          <b>Tidak ada klip</b>
+          Belum ada klip untuk dilabeli pada saringan ini.
+        </div>
+      </div>
+
+      <div class="ak-baris">
+        <button class="chip" type="button" id="ak-prev" title="Klip sebelumnya (←)">&lsaquo; Sebelum</button>
+        <button class="chip" type="button" id="ak-replay" title="Ulang putar (R)">&#8635; Ulang</button>
+        <button class="chip" type="button" id="ak-skip" title="Lewati tanpa mengubah (S)">Lewati</button>
+        <button class="chip" type="button" id="ak-hapus" title="Hapus label klip ini (Backspace)">Hapus label</button>
+        <span class="spacer"></span>
+        <button class="chip" type="button" id="ak-next" title="Klip berikutnya (→)">Berikut &rsaquo;</button>
+      </div>
+
+      {#- Tombol kelas: real <button>, satu per kelas aksi, dengan pintasan
+          angka (1..9 lalu 0) untuk sepuluh kelas pertama. Diisi aksi.js supaya
+          warna & pintasannya konsisten dengan datanya. -#}
+      <div class="ak-kelas" id="ak-kelas" role="group" aria-label="Kelas aksi"></div>
+      {% if not awal.kelas %}
+      <p class="halus ak-nokelas">Projek ini belum punya daftar kelas aksi.
+        {% if boleh_kelola %}Setel dulu kelasnya sebelum melabeli klip.{% else %}
+        Minta pemilik projek menyetel kelasnya dulu.{% endif %}</p>
+      {% endif %}
+
+      <div class="jalur-status" id="ak-jalur"></div>
+    </section>
+  </div>
+</div>
+</main>
+
+<script id="ak-awal" type="application/json">{{ awal | tojson }}</script>
+{% endblock %}
+
+{% block skrip %}<script src="{{ statik('aksi.js') }}"></script>{% endblock %}

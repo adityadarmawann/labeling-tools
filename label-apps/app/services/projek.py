@@ -586,9 +586,27 @@ def konteks(d: Path, uploads_root: Path, aku: str) -> dict:
         n_dataset = sum(1 for k in data["dataset"] if k in ada)
     else:
         n_dataset = s["jumlah"]
+    # Jenis media + apakah classifier aksi aktif — dipakai sidebar untuk
+    # mengarahkan projek VIDEO aksi ke halaman Label Aksi (/aksi) alih-alih
+    # papan Anotasi gambar, tanpa mengubah projek image sama sekali.
+    jenis = jenis_projek(d)
+    aksi = svc_tugas.aksi_aktif(data)
+    # Lencana klip hanya dihitung untuk projek video+aksi (klip_scan menelusuri
+    # klip/). Projek image tak pernah menyentuh ini — dibungkus try supaya
+    # halaman projek tak gagal dimuat hanya karena folder klip rusak.
+    n_klip = klip_belum = 0
+    if jenis == "video" and aksi:
+        try:
+            from . import klip_scan
+            hk = klip_scan.hitung(d)
+            n_klip, klip_belum = hk["klip"], max(hk["klip"] - hk["berlabel"], 0)
+        except Exception:                        # noqa: BLE001
+            pass
     return {"nama": d.name, "path": str(d), **s, "pemilik": pemilik,
             "ds": d.name if pemilik == aku else f"{pemilik}/{d.name}",
             "n_dataset": n_dataset,
+            "jenis": jenis, "aksi": aksi,
+            "klip": n_klip, "klip_belum": klip_belum,
             # Yang dikelola halaman Anotasi: gambar yang belum masuk dataset.
             "belum": max(s["jumlah"] - n_dataset, 0),
             "versi": len(svc_versi.daftar(d)),

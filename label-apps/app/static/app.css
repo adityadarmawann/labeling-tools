@@ -3340,3 +3340,73 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
 .tr-lipat>summary{cursor:pointer; display:flex; flex-direction:column; gap:2px}
 .tr-lipat>summary b{font-size:12.5px}
 .tr-lipat>summary::marker{color:var(--ink-faint)}
+
+/* ================================================================ LABEL AKSI
+   Halaman pelabelan klip (classifier aksi video). Memakai ulang tata letak
+   berprojek (header + sidebar + .sisi-isi) dan token yang sama; yang di sini
+   hanya panggung <video> dan papan tombol kelas. Theme-correct: semua warna
+   dari token, tak ada nilai keras yang hanya benar di satu tema. */
+.ak-tata{display:flex;gap:20px;align-items:flex-start;max-width:1100px}
+.ak-samping{flex:0 0 230px;display:flex;flex-direction:column;gap:10px}
+.ak-utama{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:12px}
+.ak-judul{font-size:11px;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--ink-faint);margin:8px 0 2px;font-weight:600}
+.ak-lajur{margin:0}
+.ak-angka{margin:2px 0 0;font-size:12.5px;color:var(--ink-dim)}
+.ak-angka b{color:var(--ink);font-size:15px}
+.ak-daftar{list-style:none;margin:6px 0 0;padding:0;display:flex;
+  flex-direction:column;gap:5px;font-size:12px;color:var(--ink-dim)}
+.ak-daftar b{color:var(--ink)}
+.ak-titik{display:inline-block;width:8px;height:8px;border-radius:50%;
+  margin-right:7px;vertical-align:middle}
+.ak-titik.t-ok{background:var(--ok)}
+.ak-titik.t-stop{background:var(--stop)}
+.ak-titik.t-ds{background:var(--aksi)}
+.ak-saring{margin:6px 0 0}
+.ak-ke-dataset{width:100%;margin-top:4px;justify-content:center}
+.ak-bantu{list-style:none;margin:4px 0 0;padding:0;display:flex;
+  flex-direction:column;gap:4px}
+.ak-bantu kbd,.ak-hot{font-family:ui-monospace,"SF Mono",Menlo,monospace;
+  font-size:10.5px;background:var(--sunk);color:var(--ink-dim);
+  border:1px solid var(--line2);border-radius:4px;padding:1px 5px;
+  line-height:1.4}
+
+/* Kepala pemutar: posisi, nama berkas, label kini. */
+.ak-kepala{display:flex;align-items:center;gap:10px;min-height:22px}
+.ak-posisi{font-size:12px;color:var(--ink-faint);font-variant-numeric:tabular-nums}
+.ak-nama{font-size:12.5px;color:var(--ink-dim);overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;max-width:46%}
+.ak-kini{font-size:12px;font-weight:600;color:var(--aksi)}
+
+/* Panggung video: latar gelap di kedua tema (seperti canvas anotasi) supaya
+   klip apa pun kontras, dan berbingkai rapi. */
+.ak-panggung{background:var(--kanvas);border:1px solid var(--line);
+  border-radius:12px;overflow:hidden;display:flex;align-items:center;
+  justify-content:center;min-height:300px;position:relative}
+.ak-video{display:block;max-width:100%;max-height:60vh;width:auto;height:auto;
+  background:#000}
+.ak-panggung .ak-kosong{margin:0;padding:48px 16px}
+
+.ak-baris{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+
+/* Papan tombol kelas: satu per kelas, pintasan angka di pojok, warna kelas
+   sebagai aksen tepi kiri. data-on = label klip ini sekarang. */
+.ak-kelas{display:flex;flex-wrap:wrap;gap:8px}
+.ak-kls{position:relative;display:inline-flex;align-items:center;gap:8px;
+  padding:9px 13px 9px 12px;border:1px solid var(--line2);border-radius:9px;
+  background:var(--raised);color:var(--ink);font-size:13px;font-weight:500;
+  cursor:pointer;border-left:4px solid var(--w,var(--line2))}
+.ak-kls:hover{background:var(--hover)}
+.ak-kls:focus-visible{outline:2px solid var(--aksi);outline-offset:2px}
+.ak-kls[data-on]{background:var(--ok-lembut);border-color:var(--aksi);
+  color:var(--aksi);font-weight:700}
+.ak-kls .ak-hot{background:var(--panel)}
+.ak-kls[data-on] .ak-hot{background:var(--panel);color:var(--aksi);
+  border-color:var(--aksi)}
+.ak-nokelas{margin-top:8px}
+
+@media (max-width:900px){
+  .ak-tata{flex-direction:column}
+  .ak-samping{flex:1 1 auto;width:100%}
+  .ak-nama{max-width:100%}
+}

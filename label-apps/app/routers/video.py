@@ -18,14 +18,24 @@ import threading
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
-from ..config import SUMBER_VIDEO, VIDEO_EXT, Settings, get_settings
-from ..deps import bodi_json, current_session_api
+from ..config import (KLIP, KLIP_BURUK, KLIP_DITOLAK, SUMBER_VIDEO, VIDEO_EXT,
+                      Settings, get_settings)
+from ..deps import bodi_json, current_session, current_session_api
 from ..security import safe_relpath, safe_slug
-from ..services import klip, klip_filter, projek, tugas, video_ingest
+from ..services import (klip, klip_filter, klip_scan, klip_tag, projek, tugas,
+                        video_ingest)
 from ..session import Session
+from ..templating import templates
 
 router = APIRouter(tags=["video"])
+
+# Tipe MIME per ekstensi klip, supaya elemen <video> tahu codec yang disajikan.
+# Tanpa Content-Type yang benar, sebagian peramban menolak memutarnya.
+KLIP_MIME = {".mp4": "video/mp4", ".webm": "video/webm",
+             ".mkv": "video/x-matroska", ".mov": "video/quicktime",
+             ".avi": "video/x-msvideo", ".m4v": "video/x-m4v"}
 
 
 def _projek_video(sess: Session, settings: Settings, ds: str):
@@ -227,3 +237,338 @@ async def ingest_kemajuan(ds: str = "",
     Kuncinya diturunkan dari user+ds di server, jadi satu akun hanya bisa
     menengok kemajuan scrape-nya sendiri."""
     return {"ok": True, **projek.kemajuan(_kunci_scrape(sess.user, ds))}
+
+
+# ============================================================
+# LANGKAH 6 — PELABELAN KLIP (classifier aksi)
+# ============================================================
+#
+# Klip adalah "gambar"-nya projek video: unitnya kerja, kuncinya nama relatif
+# (klip/<batch>/<file>), dan RBAC + kurasi dataset dipakai ulang APA ADANYA
+# lewat kunci itu (tugas.boleh_labeli/di_dataset/masukkan). Tidak ada kode RBAC
+# baru di sini — hanya terjemahan HTTP, sama seperti router lain.
+
+
+def _projek_aksi(sess: Session, settings: Settings, ds: str, *,
+                 api: bool = True):
+    """(folder, data_tugas, pesan_error) untuk operasi pelabelan klip.
+
+    Gerbang BACA, bukan unggah: pelabel berhak melihat & melabeli klip walau
+    tak berhak mengunggah, jadi di sini cukup boleh_lihat (RBAC dipakai ulang).
+    Yang BUKAN anggota tak teratasi temukan sama sekali (None), persis seperti
+    rute gambar. Hak MENULIS label satu klip dicek terpisah per-klip lewat
+    tugas.boleh_labeli — karena labeler spesifik berhak atas sebagian klip saja.
+
+    Projek WAJIB video + classifier aksi aktif: tanpa itu tak ada daftar kelas
+    untuk melabeli, dan halaman/rutenya tak punya arti.
+    """
+    d = projek.temukan(settings.uploads_root, sess.user, ds)
+    if d is None:
+        return None, None, "projek tidak ada atau kamu bukan anggotanya"
+    tdata = tugas.baca_projek(d, settings.uploads_root)
+    if not tugas.boleh_lihat(tdata, sess.user):
+        return None, None, "kamu bukan anggota projek ini"
+    if projek.jenis_projek(d) != "video" or not tugas.aksi_aktif(tdata):
+        return None, None, "projek ini bukan classifier aksi video"
+    return d, tdata, ""
+
+
+def _batch_klip(d, rel: str) -> str:
+    """Batch sebuah klip = folder tepat di bawah klip/ (otoritatif dari tata
+    letak), dengan .klip.json sebagai cadangan — persis cara klip_scan.pindai.
+
+    Dipakai scope labeler spesifik (tugas.boleh_labeli): tanpa batch yang benar,
+    pengecekannya jatuh ke penugasan papan saja dan menolak yang seharusnya boleh.
+    """
+    from pathlib import Path as _P
+
+    bagian = _P(rel).parts
+    if len(bagian) >= 3 and bagian[0] == KLIP:
+        return bagian[1]
+    return klip_tag.untuk(d, rel).get("batch", "")
+
+
+def _resolve_klip(d, name: str):
+    """(Path|None, pesan_error): selesaikan `name` ke berkas klip DI DALAM
+    klip/ projek, dengan aman.
+
+    Setidaknya seketat penyajian gambar: `..`, path absolut, dan apa pun yang
+    keluar dari klip/ ditolak lewat resolve()+relative_to. Folder internal
+    (_ditolak hasil filter, _bad klip cacat) dan berkas bertitik ditolak juga —
+    bawaannya HANYA klip hidup yang disajikan/dilabeli, bukan yang sudah dibuang.
+    """
+    from pathlib import Path as _P
+
+    rel = (name or "").strip().lstrip("/")
+    if not rel:
+        return None, "klip tidak disebut"
+    base = (_P(d) / KLIP).resolve()
+    try:
+        target = (_P(d) / rel).resolve()
+        sisa = target.relative_to(base)
+    except (ValueError, OSError):
+        return None, "klip di luar folder klip projek"
+    if any(p.startswith(".") or p in (KLIP_DITOLAK, KLIP_BURUK)
+           for p in sisa.parts):
+        return None, "klip itu tidak tersedia untuk dilabeli"
+    if target.suffix.lower() not in VIDEO_EXT:
+        return None, "yang diminta bukan berkas klip"
+    if not target.is_file():
+        return None, "klipnya tidak ada di projek ini"
+    return target, ""
+
+
+def _range_klip(request: Request, path) -> Response:
+    """Sajikan berkas klip dengan dukungan HTTP Range (206) untuk <video>.
+
+    Elemen <video> meminta potongan byte (Range) untuk menyeek/scrub; tanpa 206
+    + Content-Range yang benar, bilah geser videonya tak berfungsi dan sebagian
+    peramban menolak memutar sama sekali. Permintaan tanpa Range dijawab 200
+    tetapi tetap mengiklankan Accept-Ranges supaya peramban tahu seek didukung.
+    """
+    size = path.stat().st_size
+    ctype = KLIP_MIME.get(path.suffix.lower(), "application/octet-stream")
+    dasar = {"Accept-Ranges": "bytes", "Cache-Control": "private, max-age=300"}
+    rng = (request.headers.get("range") or "").strip().lower()
+    if rng.startswith("bytes="):
+        spec = rng.split("=", 1)[1].split(",")[0].strip()
+        awal, _, akhir = spec.partition("-")
+        try:
+            if awal == "":
+                # bentuk suffix "bytes=-N": N byte terakhir.
+                n = int(akhir)
+                start, end = max(0, size - n), size - 1
+            else:
+                start = int(awal)
+                end = int(akhir) if akhir else size - 1
+        except ValueError:
+            return Response(status_code=416,
+                            headers={"Content-Range": f"bytes */{size}"})
+        if start >= size or start > end:
+            return Response(status_code=416,
+                            headers={"Content-Range": f"bytes */{size}"})
+        end = min(end, size - 1)
+        panjang = end - start + 1
+        with open(path, "rb") as f:
+            f.seek(start)
+            potongan = f.read(panjang)
+        return Response(potongan, status_code=206, media_type=ctype,
+                        headers={**dasar,
+                                 "Content-Range": f"bytes {start}-{end}/{size}",
+                                 "Content-Length": str(panjang)})
+    return Response(path.read_bytes(), media_type=ctype, headers=dasar)
+
+
+def _subset_pelabel(d, data: dict, user: str, pindai: dict, *,
+                    job: str = "") -> list[dict]:
+    """Klip TERURUT yang `user` BOLEH labeli — subset yang dirender halaman aksi.
+
+    RBAC dipakai ulang apa adanya: owner/editor/labeler-menyeluruh dapat semua,
+    labeler-spesifik hanya batch dalam scope-nya ATAU klip yang ditugaskan ke
+    dia lewat papan (tugas.boleh_labeli dengan kunci klip + batch). `job`
+    (opsional) mempersempit ke klip penugasan itu — padanan gambar_konteks_job
+    untuk klip, hanya tanpa severity (klip "berlabel" = labelnya tak kosong).
+    """
+    items = pindai["items"]
+    if job:
+        j = (data.get("tugas") or {}).get(job)
+        punya = set(j.get("gambar") or []) if j else set()
+        items = [it for it in items if it["rel"] in punya]
+    keluar = []
+    for it in items:
+        rel, batch = it["rel"], it["batch"]
+        if not tugas.boleh_labeli(data, user, rel, batch):
+            continue
+        keluar.append({"rel": rel, "label": it["label"], "batch": batch,
+                       "srcid": it["srcid"],
+                       "di_dataset": tugas.sudah_dimasukkan(data, rel)})
+    return keluar
+
+
+def _awal_aksi(d, data: dict, user: str, pindai: dict, *, job: str = "") -> dict:
+    """Bahan yang dibutuhkan halaman/skrip aksi untuk merender: daftar kelas,
+    kelas negatif, dan subset klip pelabel ini beserta labelnya (resumable)."""
+    ak = data.get("aksi") or {}
+    klips = _subset_pelabel(d, data, user, pindai, job=job)
+    return {
+        "kelas": list(ak.get("kelas") or []),
+        "warna": list(ak.get("warna") or []),
+        "negatif": ak.get("negatif") or "",
+        "klips": klips,
+        "n_label": sum(1 for k in klips if k["label"]),
+        "n_dataset": sum(1 for k in klips if k["di_dataset"]),
+        "boleh_kelola": tugas.boleh_kelola(data, user),
+    }
+
+
+@router.get("/aksi", response_class=HTMLResponse)
+async def halaman_aksi(request: Request, ds: str = "", job: str = "",
+                       saring: str = "semua",
+                       sess: Session = Depends(current_session),
+                       settings: Settings = Depends(get_settings)):
+    """
+    Halaman pelabelan klip: pemutar <video> + tombol kelas berpintasan angka.
+
+    Pengganti web multi-user dari review_reclassify_v4 (tkinter): putar klip,
+    tekan angka kelas / Skip / Hapus-label / Ulang, panah kiri-kanan menyusuri
+    subset penugasan ini. Resumable (label tiap klip tampil), aman banyak orang
+    (izin dicek per-klip di rute tulis). Klip yang BOLEH dilabeli pemakai ini
+    yang dirender (owner/editor/labeler-menyeluruh: semua; labeler-spesifik:
+    batch-nya), persis subset yang diizinkan boleh_labeli.
+    """
+    d = projek.temukan(settings.uploads_root, sess.user, ds)
+    if d is None:
+        return RedirectResponse("/pilih", status_code=303)
+    tdata = tugas.baca_projek(d, settings.uploads_root)
+    # Projek video non-aksi (atau image) tak punya daftar kelas klip: dialihkan
+    # ke papan anotasi gambar, bukan menampilkan halaman yang tombolnya kosong.
+    if projek.jenis_projek(d) != "video" or not tugas.aksi_aktif(tdata):
+        return RedirectResponse(f"/anotasi?ds={ds}", status_code=303)
+    # Projek dibuka di sesi ini supaya sidebar & pencabutan hak selaras dengan
+    # halaman lain. Projek video tak punya gambar jadi pemindaiannya nyaris nol.
+    if str(sess.src or "") != str(d):
+        await asyncio.to_thread(sess.load, d)
+
+    pr = await asyncio.to_thread(projek.konteks, d, settings.uploads_root,
+                                 sess.user)
+    pindai = await asyncio.to_thread(klip_scan.pindai, d)
+    awal = {"ds": pr["ds"], "job": job,
+            **_awal_aksi(d, tdata, sess.user, pindai, job=job)}
+    return templates.TemplateResponse(request, "aksi.html", {
+        "sess": sess, "pr": pr, "aktif": "aksi",
+        "awal": awal,
+        "saring": saring if saring in ("semua", "belum", "sudah") else "semua",
+        "boleh_kelola": tugas.boleh_kelola(tdata, sess.user),
+    })
+
+
+@router.get("/api/aksi/keterangan")
+async def aksi_keterangan(ds: str = "", job: str = "",
+                          sess: Session = Depends(current_session_api),
+                          settings: Settings = Depends(get_settings)):
+    """Subset klip pelabel + daftar kelas, sebagai JSON (dipakai aksi.js untuk
+    menyegarkan setelah melabeli tanpa memuat ulang halaman)."""
+    d, tdata, err = _projek_aksi(sess, settings, ds)
+    if err:
+        return {"ok": False, "error": err}
+    pindai = await asyncio.to_thread(klip_scan.pindai, d)
+    return {"ok": True, **_awal_aksi(d, tdata, sess.user, pindai, job=job)}
+
+
+@router.get("/klip")
+async def sajikan_klip(request: Request, ds: str = "", name: str = "",
+                       sess: Session = Depends(current_session_api),
+                       settings: Settings = Depends(get_settings)):
+    """
+    Sajikan byte satu klip dari klip/<batch>/..., dengan dukungan Range (206).
+
+    Digerbang persis seperti penyajian gambar: projek diselesaikan lewat temukan
+    (bukan anggota -> None) lalu boleh_lihat. Path diselesaikan AMAN di dalam
+    klip/ (menolak `..`, absolut, _ditolak/_bad). Dikembalikan Response, bukan
+    JSON {ok:false}: ini media untuk elemen <video>, galatnya kode status.
+    """
+    d = projek.temukan(settings.uploads_root, sess.user, ds)
+    if d is None:
+        return Response(status_code=404)
+    tdata = tugas.baca_projek(d, settings.uploads_root)
+    if not tugas.boleh_lihat(tdata, sess.user):
+        return Response(status_code=403)
+    target, err = _resolve_klip(d, name)
+    if err:
+        return Response(status_code=404)
+    return _range_klip(request, target)
+
+
+@router.post("/api/aksi/label")
+async def label_klip(ds: str = "", klip: str = "", label: str = "",
+                     sess: Session = Depends(current_session_api),
+                     settings: Settings = Depends(get_settings)):
+    """
+    Tetapkan label satu klip (atau "" untuk menghapusnya).
+
+    Penjaga sama persis dengan menyimpan anotasi gambar: izin dicek PER-KLIP
+    (tugas.alasan_tolak dengan kunci klip + batch-nya), jadi labeler spesifik
+    hanya bisa menulis batch dalam scope-nya dan tak bisa menimpa kerja orang.
+    `label` wajib salah satu kelas aksi projek; "" mengosongkan (klip kembali
+    belum-dilabeli, batch/srcid tetap — itu metadata asal, bukan keputusan).
+    """
+    d, tdata, err = _projek_aksi(sess, settings, ds)
+    if err:
+        return {"ok": False, "error": err}
+    # Klip WAJIB benar-benar ada di klip/ projek: tanpa ini rute jadi jalan
+    # menulis kunci sembarang ke .klip.json (persis alasan tag.py menyaring
+    # lewat sess.find). _resolve_klip juga menolak _ditolak/_bad & `..`.
+    target, err = _resolve_klip(d, klip)
+    if err:
+        return {"ok": False, "error": err}
+    rel = klip_tag.kunci_klip(d, target)
+    batch = _batch_klip(d, rel)
+
+    lab = " ".join((label or "").split())
+    kelas = (tdata.get("aksi") or {}).get("kelas") or []
+    if lab and lab not in kelas:
+        return {"ok": False,
+                "error": f"'{lab[:40]}' bukan kelas aksi projek ini"}
+
+    tolak = tugas.alasan_tolak(tdata, sess.user, rel, batch)
+    if tolak:
+        return {"ok": False, "error": tolak}
+
+    # srcid dipertahankan: dari sidecar kalau ada, kalau tidak ditebak dari nama
+    # (`<slug>_<srcid>_tNNNN`) — dipakai pembelahan anti-bocor per sumber nanti.
+    srcid = (klip_tag.untuk(d, rel).get("srcid")
+             or klip_scan._srcid_dari_nama(target.stem) or None)
+    r = await asyncio.to_thread(klip_tag.set_label, d, rel, lab,
+                                batch=batch or None, srcid=srcid)
+    h = await asyncio.to_thread(klip_scan.hitung, d)
+    # Angka proyek diberi nama tersendiri supaya tak menimpa "klip"/"berlabel"
+    # milik balasan ini (hitung() mengembalikan dua kunci bernama sama).
+    return {"ok": True, "klip": rel, "label": lab, "berlabel": r["berlabel"],
+            "n_klip": h["klip"], "n_berlabel": h["berlabel"]}
+
+
+@router.post("/api/aksi/dataset")
+async def aksi_ke_dataset(request: Request, ds: str = "",
+                          sess: Session = Depends(current_session_api),
+                          settings: Settings = Depends(get_settings)):
+    """
+    Masukkan borongan klip yang SUDAH dilabeli ke dataset (tombol "Tambah ke
+    dataset" di halaman aksi).
+
+    Memakai ulang tugas.masukkan apa adanya (kunci klip = kunci gambar). Yang
+    dimasukkan DISARING di server, bukan dipercaya dari peramban: tiap klip
+    harus benar-benar ada, sudah berlabel, dan BOLEH disunting pemakai ini
+    (boleh_labeli per-klip) — supaya "pilih semua" seorang pelabel tak menyeret
+    klip orang lain, dan klip belum-berlabel tak diam-diam masuk dataset.
+    """
+    d, tdata, err = _projek_aksi(sess, settings, ds)
+    if err:
+        return {"ok": False, "error": err}
+    # Folder dataset bersama tak punya pemilik/alur dataset — tapi projek video
+    # selalu di ruang unggahan (berpemilik), jadi ini sekadar jaga-jaga selaras
+    # dengan rute gambar.
+    if not tdata["pemilik"]:
+        return {"ok": False, "error": "projek ini tak punya alur dataset"}
+
+    body = await bodi_json(request)
+    minta = body.get("klip")
+    if not isinstance(minta, list) or not minta:
+        return {"ok": False, "error": "belum memilih klip yang dimasukkan"}
+
+    pindai = await asyncio.to_thread(klip_scan.pindai, d)
+    label_dari = {it["rel"]: it["label"] for it in pindai["items"]}
+    batch_dari = pindai["batch_dari"]
+    boleh, lihat = [], set()
+    for k in minta[:200_000]:
+        k = str(k)
+        if k in lihat or k not in label_dari or not label_dari[k]:
+            continue
+        if tugas.boleh_labeli(tdata, sess.user, k, batch_dari.get(k, "")):
+            lihat.add(k)
+            boleh.append(k)
+    if not boleh:
+        return {"ok": False, "error": "tidak ada klip berlabel milikmu yang "
+                                      "bisa dimasukkan di sini"}
+    r = await asyncio.to_thread(tugas.masukkan, d, boleh, tdata["pemilik"])
+    h = await asyncio.to_thread(klip_scan.hitung, d)
+    return {"ok": True, **r, **h}

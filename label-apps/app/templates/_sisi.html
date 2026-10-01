@@ -27,6 +27,17 @@
        {% if aktif == 'unggah' %}data-on aria-current="page"{% endif %}>
       <span class="sisi-ikon" aria-hidden="true">&uarr;</span>Unggah data</a>
 
+    {#- Projek VIDEO classifier aksi: klip adalah unit kerjanya, bukan gambar,
+        jadi menu "Anotasi" (papan + kanvas gambar) diganti "Label Aksi" yang
+        mengarah ke halaman pelabelan klip (/aksi). Projek image/video biasa
+        tak tersentuh — cabang ini additif, bukan mengubah yang lama. -#}
+    {% if pr.jenis == 'video' and pr.aksi %}
+    <a class="sisi-item" href="/aksi?ds={{ pr.ds | urlquote }}"
+       {% if aktif == 'aksi' %}data-on aria-current="page"{% endif %}>
+      <span class="sisi-ikon" aria-hidden="true">&#9658;</span>Label Aksi
+      {%- if pr.klip_belum %}<b class="sisi-angka"
+        title="{{ pr.klip_belum }} klip belum dilabeli">{{ pr.klip_belum }}</b>{% endif %}</a>
+    {% else %}
     {#- Lencananya menghitung gambar yang BELUM masuk dataset, bukan yang belum
         dilabeli: sebuah gambar bisa sudah dianotasi tapi belum dimasukkan, dan
         itu tetap pekerjaan tersisa di sini. Judulnya mengatakannya, supaya
@@ -37,6 +48,7 @@
       <span class="sisi-ikon" aria-hidden="true">&#9998;</span>Anotasi
       {%- if pr.belum %}<b class="sisi-angka"
         title="{{ pr.belum }} gambar belum masuk dataset — buka sebuah tugas lalu saring 'Belum di dataset' untuk memasukkannya">{{ pr.belum }}</b>{% endif %}</a>
+    {% endif %}
 
     <a class="sisi-item" href="/?ds={{ pr.ds | urlquote }}"
        {% if aktif == 'dataset' %}data-on aria-current="page"{% endif %}>
