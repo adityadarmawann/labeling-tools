@@ -379,6 +379,7 @@ if (trWrap) {
       a.href = `/aksi/latih/bobot?ds=${EDS}&nomor=${s.nomor}&jenis=best`;
       a.textContent = 'best.pt';
       li.appendChild(a);
+      pasangEval(li, s);     // tombol Evaluasi + panel hasil (confusion matrix)
     }
     if (s.keadaan === 'antre' || s.keadaan === 'jalan') {
       const b = document.createElement('button');
@@ -394,7 +395,115 @@ if (trWrap) {
     return li;
   }
 
+  // -- evaluasi (Langkah 10): confusion matrix + akurasi + pasangan tertukar --
+  // Tombol per run yang punya best.pt. Memulai eval (subproses terlepas, lajur
+  // GPU aksi), lalu memantau sampai selesai dan menampilkan gambar + angka.
+  // "Alat ukur harus diuji pada model buruk": vonis `tingkat` ikut ditampilkan,
+  // jadi model degenerat tampak sebagai "buruk", bukan diam-diam hijau.
+  const pollEval = {};     // nomor -> interval id
+
+  function pasangEval(li, s) {
+    const btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'chip';
+    btn.textContent = 'Evaluasi';
+    const panel = document.createElement('div');
+    panel.className = 'ak-eval halus'; panel.hidden = true;
+    li.appendChild(btn); li.appendChild(panel);
+    btn.addEventListener('click', () => jalankanEval(s.nomor, panel, btn));
+    // Tampilkan hasil yang sudah ada (tanpa menjalankan ulang).
+    muatEval(s.nomor, panel, btn);
+  }
+
+  async function muatEval(nomor, panel, btn) {
+    const r = await send(`/api/aksi/eval/kemajuan?ds=${EDS}&nomor=${nomor}`);
+    if (!r || !r.ok || !r.eval) return false;
+    renderEval(panel, r.eval, nomor, btn);
+    const jalan = r.eval.keadaan === 'antre' || r.eval.keadaan === 'jalan';
+    if (jalan && !pollEval[nomor]) {
+      pollEval[nomor] = setInterval(() => muatEval(nomor, panel, btn), 2000);
+    }
+    if (!jalan && pollEval[nomor]) {
+      clearInterval(pollEval[nomor]); pollEval[nomor] = null;
+      btn.disabled = false; btn.textContent = 'Evaluasi ulang';
+    }
+    return true;
+  }
+
+  async function jalankanEval(nomor, panel, btn) {
+    btn.disabled = true;
+    panel.hidden = false; panel.textContent = 'Memulai evaluasi...';
+    const r = await send(`/api/aksi/eval/mulai?ds=${EDS}&nomor=${nomor}`,
+      { method: 'POST' });
+    if (!r || !r.ok) {
+      panel.textContent = (r && r.error) || 'gagal memulai evaluasi';
+      btn.disabled = false; return;
+    }
+    if (!pollEval[nomor]) {
+      pollEval[nomor] = setInterval(() => muatEval(nomor, panel, btn), 2000);
+    }
+    muatEval(nomor, panel, btn);
+  }
+
+  function renderEval(panel, ev, nomor, btn) {
+    panel.hidden = false;
+    if (ev.keadaan === 'antre' || ev.keadaan === 'jalan') {
+      const m = ev.maju;
+      panel.textContent = 'Evaluasi ' + ev.keadaan
+        + (m ? ` — klip ${m.sudah}/${m.total}` : '...');
+      btn.disabled = true;
+      return;
+    }
+    panel.innerHTML = '';
+    if (ev.keadaan === 'gagal' || ev.keadaan === 'hilang') {
+      const p = document.createElement('p');
+      p.className = 'ak-eval-galat';
+      p.textContent = 'Evaluasi ' + ev.keadaan + (ev.galat ? ': ' + ev.galat : '');
+      panel.appendChild(p);
+      return;
+    }
+    const mk = ev.metrik || {};
+    // Vonis: warna dari `tingkat` supaya model buruk tak tampak baik.
+    const vonis = document.createElement('p');
+    vonis.className = 'ak-eval-vonis';
+    vonis.dataset.tingkat = mk.tingkat || '';
+    const ak = mk.akurasi != null ? (mk.akurasi * 100).toFixed(1) + '%' : '—';
+    const rk = mk.akurasi_rerata_kelas != null
+      ? (mk.akurasi_rerata_kelas * 100).toFixed(1) + '%' : '—';
+    vonis.innerHTML = `<b>${(mk.tingkat || '').toUpperCase()}</b> · `
+      + `akurasi ${ak} · rata-kelas ${rk}`;
+    panel.appendChild(vonis);
+    if (mk.pesan) {
+      const pz = document.createElement('p');
+      pz.className = 'ak-eval-pesan'; pz.textContent = mk.pesan;
+      panel.appendChild(pz);
+    }
+    // Pasangan paling sering tertukar — itu yang menuntun perbaikan berikutnya.
+    if ((mk.pasangan_bingung || []).length) {
+      const ul = document.createElement('ul');
+      ul.className = 'ak-eval-bingung';
+      mk.pasangan_bingung.slice(0, 5).forEach(b => {
+        const liB = document.createElement('li');
+        liB.textContent = `${b.dari} → ${b.ke}: ${b.jml}`
+          + (b.porsi != null ? ` (${(b.porsi * 100).toFixed(0)}%)` : '');
+        ul.appendChild(liB);
+      });
+      panel.appendChild(ul);
+    }
+    if (ev.punya_gambar) {
+      const img = document.createElement('img');
+      img.className = 'ak-eval-img'; img.alt = 'Confusion matrix';
+      img.loading = 'lazy';
+      // cache-bust supaya evaluasi ulang menampilkan gambar baru.
+      img.src = `/aksi/eval/gambar?ds=${EDS}&nomor=${nomor}&t=${Date.now()}`;
+      panel.appendChild(img);
+    }
+  }
+
   function renderRun(daftar) {
+    // Daftar dibangun ulang: hentikan poll eval lama (panel-panelnya kini
+    // terlepas) — tiap baris baru memasang kembali poll-nya sendiri.
+    for (const k in pollEval) { if (pollEval[k]) clearInterval(pollEval[k]); }
+    for (const k in pollEval) delete pollEval[k];
     daftarEl.innerHTML = '';
     (daftar || []).forEach(s => daftarEl.appendChild(barisRun(s)));
     const jalan = (daftar || []).some(

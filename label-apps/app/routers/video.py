@@ -24,8 +24,8 @@ from ..config import (KLIP, KLIP_BURUK, KLIP_DITOLAK, SUMBER_VIDEO, VIDEO_EXT,
                       Settings, get_settings)
 from ..deps import bodi_json, current_session, current_session_api
 from ..security import safe_relpath, safe_slug
-from ..services import (export, klip, klip_filter, klip_olah, klip_scan,
-                        klip_tag, latih_aksi, projek, tugas, versi,
+from ..services import (eval_aksi, export, klip, klip_filter, klip_olah,
+                        klip_scan, klip_tag, latih_aksi, projek, tugas, versi,
                         video_ingest)
 from ..session import Session
 from ..templating import templates
@@ -892,3 +892,86 @@ async def aksi_latih_bobot(ds: str = "", nomor: int = 0, jenis: str = "best",
     return Response(isi, media_type="application/octet-stream",
                     headers={"Content-Disposition":
                              f'attachment; filename="{nama}"'})
+
+
+# ============================================================
+# LANGKAH 10 — EVALUASI CLASSIFIER AKSI (confusion matrix + metrik)
+# ============================================================
+#
+# Padanan /api/latih/evaluasi untuk klip. Logikanya di services/eval_aksi.py +
+# eval_aksi_jalan.py (prediksi valid -> metrik murni numpy -> metrik.json +
+# confusion.png, subproses terlepas di LAJUR GPU AKSI yang sama dengan training).
+# Gerbang di sini:
+#   * MULAI: boleh_unggah (pemilik/Editor) — menjalankan kerja GPU, sama hak
+#     dengan memulai training. Menuntut training yang SUDAH punya best.pt.
+#   * KEMAJUAN/HASIL/GAMBAR: boleh_lihat — anggota boleh menengok hasil ukur
+#     (pemilik "biarkan terbuka"), seperti unduh bobot/versi.
+
+
+@router.post("/api/aksi/eval/mulai")
+async def aksi_eval_mulai(ds: str = "", nomor: int = 0,
+                          sess: Session = Depends(current_session_api),
+                          settings: Settings = Depends(get_settings)):
+    """Mulai evaluasi satu training aksi (subproses terlepas, lajur GPU aksi).
+
+    Hak sama dengan memulai training (boleh_unggah lewat _projek_video): eval
+    memakai GPU. Training WAJIB sudah selesai (punya best.pt). Penjaga mulai-ganda
+    menolak kalau evaluasi untuk nomor ini masih berjalan."""
+    d, err = _projek_video(sess, settings, ds)
+    if err:
+        return {"ok": False, "error": err}
+    tdata = await asyncio.to_thread(tugas.baca_projek, d, settings.uploads_root)
+    if not tugas.aksi_aktif(tdata):
+        return {"ok": False, "error": "projek ini belum punya daftar kelas aksi"}
+    if await asyncio.to_thread(latih_aksi.baca, d, nomor) is None:
+        return {"ok": False, "error": f"training A{nomor} tidak ada"}
+    try:
+        await asyncio.to_thread(eval_aksi.jalankan, d, nomor)
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
+    except Exception as e:                        # noqa: BLE001
+        return {"ok": False, "error": str(e)[:200]}
+    return {"ok": True, "nomor": nomor}
+
+
+@router.get("/api/aksi/eval/kemajuan")
+async def aksi_eval_kemajuan(ds: str = "", nomor: int = 0,
+                             sess: Session = Depends(current_session_api),
+                             settings: Settings = Depends(get_settings)):
+    """Keadaan + hasil evaluasi satu training (status dibaca dari disk)."""
+    d, tdata, err = _projek_aksi(sess, settings, ds)
+    if err:
+        return {"ok": False, "error": err}
+    return {"ok": True,
+            "eval": await asyncio.to_thread(eval_aksi.status, d, nomor)}
+
+
+@router.get("/api/aksi/eval/hasil")
+async def aksi_eval_hasil(ds: str = "", nomor: int = 0,
+                          sess: Session = Depends(current_session_api),
+                          settings: Settings = Depends(get_settings)):
+    """Metrik evaluasi mentah (sama isinya dengan kemajuan, dinamai eksplisit
+    seperti kontrak Langkah 10 — satu sumber, status dari disk)."""
+    d, tdata, err = _projek_aksi(sess, settings, ds)
+    if err:
+        return {"ok": False, "error": err}
+    return {"ok": True,
+            "eval": await asyncio.to_thread(eval_aksi.status, d, nomor)}
+
+
+@router.get("/aksi/eval/gambar")
+async def aksi_eval_gambar(ds: str = "", nomor: int = 0,
+                           sess: Session = Depends(current_session_api),
+                           settings: Settings = Depends(get_settings)):
+    """Sajikan confusion.png satu evaluasi. Gerbang BACA (anggota boleh —
+    "biarkan terbuka"), seperti /latih/grafik. Response gambar, galatnya kode
+    status."""
+    d, tdata, err = _projek_aksi(sess, settings, ds)
+    if err:
+        return Response(status_code=403)
+    p = latih_aksi.dir_latih(d, nomor) / "confusion.png"
+    if not p.exists():
+        return Response(status_code=404)
+    isi = await asyncio.to_thread(p.read_bytes)
+    return Response(isi, media_type="image/png",
+                    headers={"Cache-Control": "no-store"})
