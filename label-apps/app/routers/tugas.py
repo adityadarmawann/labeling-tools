@@ -452,11 +452,21 @@ async def calon(sess: Session = Depends(current_session_api),
     out = []
     for a, r in sorted(users.items()):
         anggota = a in data["anggota"] or a == data["pemilik"]
+        info = data["anggota"].get(a) or {}
+        # Peran & scope ikut supaya panel bisa menampilkan dan menyuntingnya.
+        peran = ("pemilik" if a == data["pemilik"]
+                 else svc.sah_peran(info.get("peran")) if a in data["anggota"]
+                 else "")
         out.append({"akun": a, "nama": (r.get("nama") or a),
                     "email": (r.get("email") or "") if anggota else "",
-                    "anggota": anggota})
+                    "anggota": anggota, "peran": peran,
+                    "akses": info.get("akses", ""),
+                    "batch_scope": info.get("batch", [])})
+    # Daftar batch yang ada di projek ini, untuk memilih scope Labeler spesifik.
+    batches = sorted(svc_tag.hitung(svc_tag.baca(sess.src))["batch"].keys())
     return {"ok": True, "akun": out, "pemilik": data["pemilik"],
             "anggota": sorted(data["anggota"]),
+            "batch_tersedia": batches,
             # Undangan yang belum dipakai ikut, supaya panelnya bisa
             # menampilkan dan membatalkannya. Tautan yang tidak bisa dicabut
             # berlaku selamanya, dan itu bukan yang dimaksud saat mengundang.
@@ -464,8 +474,15 @@ async def calon(sess: Session = Depends(current_session_api),
 
 
 @router.post("/api/tugas/undang")
-async def undang(akun: str = "", sess: Session = Depends(current_session_api),
+async def undang(akun: str = "", peran: str = "pelabel", akses: str = "",
+                 batch: str = "", sess: Session = Depends(current_session_api),
                  settings: Settings = Depends(get_settings)):
+    """Undang akun yang sudah ada, dengan peran & scope-nya.
+
+    `peran` = "editor" | "pelabel"; untuk pelabel, `akses` = "semua" |
+    "spesifik" dan `batch` daftar nama batch (dipisah koma) untuk scope
+    spesifik. `akses` kosong = undangan polos (labeler warisan, lihat service).
+    """
     data, galat = _siap(sess)
     if galat:
         return {"ok": False, "error": galat}
@@ -480,7 +497,8 @@ async def undang(akun: str = "", sess: Session = Depends(current_session_api),
         # "X jadi anggota" padahal tidak terjadi apa-apa.
         return {"ok": False, "error": "kamu pemilik projek ini, tidak perlu "
                                       "diundang"}
-    r = await asyncio.to_thread(svc.undang, sess.src, data["pemilik"], akun)
+    r = await asyncio.to_thread(svc.undang, sess.src, data["pemilik"], akun,
+                                peran, akses or None, batch)
     return {"ok": True, **r}
 
 
@@ -508,8 +526,32 @@ async def keluarkan_anggota(akun: str = "",
     return {"ok": True, **r}
 
 
+@router.post("/api/tugas/atur-anggota")
+async def atur_anggota(akun: str = "", peran: str = "", akses: str = "",
+                       batch: str = "",
+                       sess: Session = Depends(current_session_api)):
+    """Ubah peran/scope anggota yang sudah ada. Hanya pemilik projek.
+
+    `peran` kosong = jangan ubah peran; `akses` kosong = jangan ubah akses.
+    `batch` (dipisah koma) hanya berlaku saat aksesnya spesifik.
+    """
+    data, galat = _siap(sess)
+    if galat:
+        return {"ok": False, "error": galat}
+    if not svc.boleh_kelola(data, sess.user):
+        return {"ok": False, "error": "hanya pemilik projek yang bisa mengatur anggota"}
+    if akun == data["pemilik"]:
+        return {"ok": False, "error": "pengaturan ini untuk anggota, bukan pemilik"}
+    if akun not in data["anggota"]:
+        return {"ok": False, "error": f"'{akun[:40]}' bukan anggota projek ini"}
+    return await asyncio.to_thread(
+        svc.atur_anggota, sess.src, data["pemilik"], akun,
+        peran=peran or None, akses=akses or None, batch=batch)
+
+
 @router.post("/api/tugas/undang-email")
-async def undang_email(email: str = "", request: Request = None,
+async def undang_email(email: str = "", peran: str = "pelabel", akses: str = "",
+                       batch: str = "", request: Request = None,
                        sess: Session = Depends(current_session_api)):
     """
     Undangan untuk orang yang belum punya akun di sini.
@@ -540,11 +582,13 @@ async def undang_email(email: str = "", request: Request = None,
         # kebetulan belum mengisi email jadi anggota tanpa pernah diundang.
         surel_akun = str(rec.get("email") or "").strip().lower()
         if surel_akun and surel_akun == alamat.lower():
-            r = await asyncio.to_thread(svc.undang, sess.src, sess.user, akun)
+            r = await asyncio.to_thread(svc.undang, sess.src, sess.user, akun,
+                                        peran, akses or None, batch)
             return {"ok": True, "akun": akun, "sudah_terdaftar": True, **r}
 
     try:
-        r = await asyncio.to_thread(svc.undang_email, sess.src, sess.user, alamat)
+        r = await asyncio.to_thread(svc.undang_email, sess.src, sess.user,
+                                    alamat, peran, akses or None, batch)
     except ValueError as e:
         return {"ok": False, "error": str(e)}
     asal = str(request.base_url).rstrip("/") if request else ""

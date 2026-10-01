@@ -265,3 +265,36 @@ def test_editor_tambah_ke_sharing_berisi(klien, aplikasi, lingkungan):
     r = anggi.put("/tambah?name=tambahan.jpg", content=blob).json()
     assert r["ok"] is True, r
     assert (d / "tambahan.jpg").exists()
+
+
+def test_rute_undang_peran_atur_dan_calon(klien, lingkungan):
+    """Rute HTTP: undang dgn peran, atur-anggota ubah scope, calon sajikan
+    peran tiap anggota + daftar batch untuk scope picker."""
+    import pathlib
+
+    from tests.test_data import masuk, PW_PAUL
+    from tests.test_projek import _projek as buat_projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = buat_projek(ruang, "tim", n=2, label=False)
+    klien.post(f"/setsrc?path={d}")
+    g0 = sorted(str(q) for q in d.glob("*.jpg"))[0]
+    klien.post("/api/tag/pasang", json={"paths": [g0], "batch": "dataset-a"})
+
+    # Undang anggi sebagai Editor.
+    r = klien.post("/api/tugas/undang?akun=anggi&peran=editor").json()
+    assert r["ok"], r
+    assert tugas.baca(d, "paul")["anggota"]["anggi"]["peran"] == "editor"
+
+    # Ubah jadi Labeler spesifik (scope dataset-a).
+    r = klien.post("/api/tugas/atur-anggota?akun=anggi&peran=pelabel"
+                   "&akses=spesifik&batch=dataset-a").json()
+    assert r["ok"] and r["akses"] == "spesifik" and r["batch"] == ["dataset-a"], r
+
+    # calon menyertakan peran anggota + daftar batch tersedia.
+    c = klien.get("/api/tugas/calon").json()
+    assert c["ok"] and "dataset-a" in c["batch_tersedia"], c
+    baris = next(a for a in c["akun"] if a["akun"] == "anggi")
+    assert baris["peran"] == "pelabel" and baris["akses"] == "spesifik"
+    assert baris["batch_scope"] == ["dataset-a"]
