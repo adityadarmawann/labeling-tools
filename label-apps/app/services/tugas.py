@@ -73,7 +73,7 @@ def kosong(pemilik: str = "") -> dict:
             # Template skeleton (keypoint/pose) tingkat projek. Kosong = projek
             # ini bukan projek keypoint. Lihat _sah_skeleton/set_skeleton.
             "skeleton": {"kelas": "", "titik": [], "edge": [],
-                         "flip_idx": [], "warna": []},
+                         "flip_idx": [], "warna": [], "tata": []},
             "warisan": True}
 
 
@@ -604,9 +604,25 @@ def _sah_skeleton(raw) -> dict:
         flip = []
     # Warna per keypoint (opsional); dipotong/diisi agar sepanjang titik.
     warna = [str(c)[:9] for c in _list(raw.get("warna"))][:K]
+    # Tata letak default (relatif 0..1) untuk "drop-whole": jatuhkan semua K
+    # titik sekaligus, lalu labeler menyesuaikan. Hanya sah kalau lengkap K
+    # pasangan [x,y] di [0,1]; kalau tidak, dikosongkan (nanti dipola otomatis).
+    tata = []
+    raw_tata = _list(raw.get("tata"))
+    if len(raw_tata) == K:
+        ok = True
+        for t in raw_tata:
+            try:
+                x, y = float(t[0]), float(t[1])
+            except (TypeError, ValueError, IndexError):
+                ok = False
+                break
+            tata.append([min(1.0, max(0.0, x)), min(1.0, max(0.0, y))])
+        if not ok:
+            tata = []
     kelas = " ".join(str(raw.get("kelas") or "").split())[:80]
     return {"kelas": kelas, "titik": titik, "edge": edge,
-            "flip_idx": flip, "warna": warna}
+            "flip_idx": flip, "warna": warna, "tata": tata}
 
 
 def skeleton_aktif(data: dict) -> bool:

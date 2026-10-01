@@ -303,8 +303,32 @@
           setelah template berisi. -#}
       <span class="tool-sep"></span>
       <button class="tool" type="button" id="btn-skeleton-tpl"
-              title="Setel template keypoint/pose untuk projek ini">
+              title="Setel template keypoint/pose projek ini (nama titik, edge, flip)">
+        {{ ikon('titik', 21) }}<span>Template&nbsp;KP</span></button>
+      {% endif %}
+
+      {% if skeleton and skeleton.titik %}
+      {#- Palet menggambar keypoint — muncul untuk SIAPA PUN (pelabel juga) begitu
+          projek punya template. Mode 'pose' + aksi bantu (drop semua, lewati =
+          absen, rapikan bbox otomatis, jadikan tata letak default). -#}
+      <div class="palet-judul">Keypoint</div>
+      <button class="tool" data-mode="pose"
+              title="Keypoint (K): klik taruh titik berurut; Shift = occluded">
         {{ ikon('titik', 21) }}<span>Keypoint</span></button>
+      <button class="tool" type="button" id="btn-drop-tpl"
+              title="Drop semua titik template sekaligus, lalu geser di mode Sunting">
+        {{ ikon('titik', 21) }}<span>Drop semua</span></button>
+      <button class="tool" type="button" id="btn-lewati-kp"
+              title="Lewati: tandai keypoint sekarang sebagai ABSEN (v0)">
+        {{ ikon('titik', 21) }}<span>Lewati</span></button>
+      <button class="tool" type="button" id="btn-rapikan-bbox"
+              title="Rapikan bbox otomatis mengikuti keypoint tiap instance">
+        {{ ikon('kotak', 21) }}<span>Rapikan box</span></button>
+      {% if boleh_kelola %}
+      <button class="tool" type="button" id="btn-tata-default"
+              title="Jadikan susunan instance terakhir sebagai tata letak default (untuk Drop semua)">
+        {{ ikon('titik', 21) }}<span>Tata default</span></button>
+      {% endif %}
       {% endif %}
 
       {% if boleh_ubah %}

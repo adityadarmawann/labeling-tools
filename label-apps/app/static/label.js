@@ -219,6 +219,9 @@ function gambarSekarang() {
     if (perluFilter) g.filter = 'none';
   }
 
+  // Garis skeleton digambar DULU supaya titik keypoint menimpanya.
+  gambarSkeleton();
+
   S.shapes.forEach((s, i) => {
     if (terlihat(s)) gambarBentuk(s, S.terpilih.includes(i));
   });
@@ -297,8 +300,23 @@ function gambarBentuk(s, terpilih) {
   // digambar, bahkan saat bentuknya tidak terpilih (shape.py:187-189).
   if (s.shape_type === 'point') {
     const [x, y] = p[0];
-    bulatan(x, y, UKURAN_TITIK / 2 + (terpilih ? 1.5 : 0),
-            terpilih ? '#fff' : warna(s.label, 1), terpilih ? GARIS_PILIH : '#fff');
+    const r = UKURAN_TITIK / 2 + (terpilih ? 1.5 : 0);
+    // Keypoint pose (punya group_id) digambar menurut visibilitasnya: visible
+    // terisi, occluded cincin kosong, absen pudar sebagai hantu. Titik biasa
+    // (tanpa group) tetap seperti AnyLabeling.
+    const kp = s.group_id != null && s.flags && s.flags.v != null;
+    const v = kp ? vKp(s) : 2;
+    if (v === 0) {
+      g.save(); g.globalAlpha = 0.45;
+      bulatan(x, y, r, 'rgba(150,150,150,.5)', '#bbb');
+      g.restore();
+    } else if (v === 1) {
+      bulatan(x, y, r, terpilih ? '#fff' : 'rgba(0,0,0,0)',
+              terpilih ? GARIS_PILIH : warna(s.label, 1));
+    } else {
+      bulatan(x, y, r, terpilih ? '#fff' : warna(s.label, 1),
+              terpilih ? GARIS_PILIH : '#fff');
+    }
     gambarTeksBentuk(s, p);
     return;
   }
@@ -805,7 +823,7 @@ function jadwalkanAutosave() {
 const NAMA_MODE = { 'p+': '+Point', 'p-': '−Point', rect: '+Rect',
                     kotak: 'Rectangle manual', poly: 'Poligon manual',
                     circle: 'Circle', line: 'Line', linestrip: 'LineStrip',
-                    point: 'Point', edit: 'Sunting' };
+                    point: 'Point', pose: 'Keypoint', edit: 'Sunting' };
 // Mode menggambar -> tipe bentuk yang dihasilkannya.
 const JENIS_DARI_MODE = { poly: 'polygon', kotak: 'rectangle', circle: 'circle',
                           line: 'line', linestrip: 'linestrip', point: 'point' };
@@ -832,6 +850,9 @@ function setMode(m) {
   });
   wrap.dataset.mode = m;
   el('modeinfo').innerHTML = 'Mode: <b>' + NAMA_MODE[m] + '</b>';
+  // Masuk/keluar mode Keypoint: mulai instance baru, tampilkan petunjuk titik.
+  if (m === 'pose') { S.pose = null; petunjukPose(); }
+  else if (S.pose) S.pose = null;
   gambar();
 }
 
@@ -994,6 +1015,14 @@ function tikusTurun(ev) {
                     i: k, pts: S.shapes[k].points.map(p => [p[0], p[1]]) })) };
     }
     render();
+    return;
+  }
+
+  // Keypoint/pose: tiap klik menaruh keypoint BERIKUTNYA dari template ke
+  // instance yang sedang dikerjakan (Shift = occluded). bbox dibuat otomatis
+  // saat instance lengkap. Lihat MODE KEYPOINT di bawah berkas.
+  if (S.mode === 'pose') {
+    tempatKeypoint(kurungX(gx), kurungY(gy), ev.shiftKey ? 1 : 2);
     return;
   }
 
@@ -2038,6 +2067,11 @@ window.addEventListener('keydown', ev => {
   else if (k === 'c') bersihkanPrompt();
   else if (k === 'a') pindah(D.prev);
   else if (k === 'd') pindah(D.next);
+  else if (k === 'k' && poseProjek()) setMode('pose');
+  // Visibilitas keypoint terpilih/tersorot: 2 visible, 1 occluded, 0 absen.
+  else if (ev.key === '2' && poseProjek() && visibilitasKeypoint(2)) { /* ok */ }
+  else if (ev.key === '1' && poseProjek() && visibilitasKeypoint(1)) { /* ok */ }
+  else if (ev.key === '0' && poseProjek() && visibilitasKeypoint(0)) { /* ok */ }
   else if (ev.key === 'Enter') {
     // Enter mengakhiri bentuk bertitik-banyak apa pun yang sedang digambar.
     if (S.draft) tutupDraft(); else finishObject();
@@ -3331,4 +3365,195 @@ render();
   };
   el('skel-titik').addEventListener('input', nomori);
   dlg.addEventListener('click', ev => { if (ev.target === dlg) dlg.hidden = true; });
+})();
+
+/* ============================================================ MODE KEYPOINT
+   Menggambar instance keypoint/pose. Satu instance = 1 rectangle (bbox, auto)
+   + K titik `point` ber-group_id sama. Identitas keypoint = label titik = nama
+   di template; visibilitas di flags.v (2 visible, 1 occluded, 0 absen). Dua
+   cara menaruh: klik berurutan (tempatKeypoint) atau drop semua (dropTemplate).
+   bbox dihitung dari hull titik v>=1 (perbaruiBbox); box manual tak diganggu. */
+
+function skelTpl() { return D.skeleton || {}; }
+function poseProjek() { return (skelTpl().titik || []).length > 0; }
+function vKp(s) {
+  const v = s.flags && s.flags.v;
+  return (v === 0 || v === 1 || v === 2) ? v : 2;
+}
+function gidBaru() {
+  const ada = new Set(S.shapes.map(s => s.group_id).filter(v => v != null));
+  let g = 0; while (ada.has(g)) g++; return g;
+}
+function titikGrup(gid) {
+  return S.shapes.filter(s => s.group_id === gid && s.shape_type === 'point');
+}
+
+function petunjukPose() {
+  const info = el('modeinfo');
+  if (!info) return;
+  const t = skelTpl().titik || [];
+  info.textContent = (S.pose && S.pose.idx < t.length)
+    ? `Keypoint — taruh: ${t[S.pose.idx]} (${S.pose.idx + 1}/${t.length}) · `
+      + `Shift = occluded · tombol "Lewati" = absen`
+    : `Keypoint — klik objek untuk mulai instance baru (${t.length} titik)`;
+}
+
+function tempatKeypoint(x, y, v) {
+  const t = skelTpl().titik || [];
+  if (!t.length) { toast('Projek ini belum punya template keypoint'); return; }
+  if (!S.pose || S.pose.idx >= t.length) S.pose = { gid: gidBaru(), idx: 0 };
+  simpanUndo();
+  S.shapes.push({ label: t[S.pose.idx], shape_type: 'point', points: [[x, y]],
+                  group_id: S.pose.gid, flags: { v }, text: '', titipan: {} });
+  S.pose.idx++;
+  if (S.pose.idx >= t.length) { perbaruiBbox(S.pose.gid); S.pose = null; }
+  tandaiKotor(); petunjukPose(); render();
+}
+
+function lewatiTitik() {                 // keypoint sekarang = absen (v=0)
+  const t = skelTpl().titik || [];
+  if (S.mode !== 'pose' || !t.length) { toast('Masuk mode Keypoint dulu'); return; }
+  if (!S.pose || S.pose.idx >= t.length) S.pose = { gid: gidBaru(), idx: 0 };
+  simpanUndo();
+  S.shapes.push({ label: t[S.pose.idx], shape_type: 'point',
+                  points: [[kurungX(D.W / 2), kurungY(D.H / 2)]],
+                  group_id: S.pose.gid, flags: { v: 0 }, text: '', titipan: {} });
+  S.pose.idx++;
+  if (S.pose.idx >= t.length) { perbaruiBbox(S.pose.gid); S.pose = null; }
+  tandaiKotor(); petunjukPose(); render();
+}
+
+function perbaruiBbox(gid) {
+  if (gid == null) return;
+  let rect = S.shapes.find(s => s.group_id === gid && s.shape_type === 'rectangle');
+  // Box yang pernah diubah tangan (bukan kp_auto) tak diganggu.
+  if (rect && !(rect.titipan && rect.titipan.kp_auto)) return;
+  const pts = titikGrup(gid).filter(s => vKp(s) >= 1).map(s => s.points[0]);
+  if (!pts.length) return;
+  const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+  let x0 = Math.min(...xs), y0 = Math.min(...ys),
+      x1 = Math.max(...xs), y1 = Math.max(...ys);
+  const pad = Math.max(3, (x1 - x0 + y1 - y0) * 0.04);
+  const box = [[kurungX(x0 - pad), kurungY(y0 - pad)],
+               [kurungX(x1 + pad), kurungY(y1 + pad)]];
+  if (rect) rect.points = box;
+  else S.shapes.push({ label: skelTpl().kelas || 'objek', shape_type: 'rectangle',
+                       points: box, group_id: gid, flags: {}, text: '',
+                       titipan: { kp_auto: true } });
+}
+
+function rapikanBbox() {              // re-fit semua bbox auto ke keypoint-nya
+  const gids = new Set(titikGrupSemua());
+  gids.forEach(gid => perbaruiBbox(gid));
+  tandaiKotor(); render();
+  toast('Bbox dirapikan ke keypoint');
+}
+function titikGrupSemua() {
+  return S.shapes.filter(s => s.shape_type === 'point' && s.group_id != null)
+                 .map(s => s.group_id);
+}
+
+function dropTemplate() {
+  const t = skelTpl().titik || [];
+  if (!t.length) { toast('Projek ini belum punya template keypoint'); return; }
+  if (S.pose) { perbaruiBbox(S.pose.gid); S.pose = null; }
+  simpanUndo();
+  const gid = gidBaru();
+  const tata = (skelTpl().tata && skelTpl().tata.length === t.length) ? skelTpl().tata : null;
+  const cw = D.W * 0.4, ch = D.H * 0.4, ox = D.W * 0.3, oy = D.H * 0.3;
+  t.forEach((nama, i) => {
+    let x, y;
+    if (tata) { x = ox + tata[i][0] * cw; y = oy + tata[i][1] * ch; }
+    else { const a = (i / t.length) * Math.PI * 2;
+           x = D.W / 2 + Math.cos(a) * cw / 2; y = D.H / 2 + Math.sin(a) * ch / 2; }
+    S.shapes.push({ label: nama, shape_type: 'point',
+                    points: [[kurungX(x), kurungY(y)]], group_id: gid,
+                    flags: { v: 2 }, text: '', titipan: {} });
+  });
+  perbaruiBbox(gid);
+  tandaiKotor(); setMode('edit'); render();
+  toast('Template dijatuhkan — di mode Sunting geser tiap titik ke posisinya');
+}
+
+function visibilitasKeypoint(v) {
+  let idx = [...S.terpilih];
+  if (!idx.length && S.hover) idx = [S.hover.i];
+  let n = 0;
+  idx.forEach(i => {
+    const s = S.shapes[i];
+    if (s && s.shape_type === 'point' && s.group_id != null) {
+      s.flags = { ...(s.flags || {}), v };
+      perbaruiBbox(s.group_id);
+      n++;
+    }
+  });
+  if (n) { tandaiKotor(); render();
+           toast(`${n} keypoint → ${['absen', 'occluded', 'visible'][v]}`); }
+  return n > 0;
+}
+
+function jadikanTataDefault() {
+  const t = skelTpl().titik || [];
+  if (!t.length) { toast('Belum ada template'); return; }
+  const gids = [...new Set(titikGrupSemua())].reverse();
+  for (const gid of gids) {
+    const pts = titikGrup(gid);
+    const rect = S.shapes.find(s => s.group_id === gid && s.shape_type === 'rectangle');
+    if (pts.length !== t.length || !rect) continue;
+    const [x0, y0] = rect.points[0], [x1, y1] = rect.points[1];
+    const w = (x1 - x0) || 1, h = (y1 - y0) || 1;
+    const byName = {};
+    pts.forEach(s => { byName[s.label] = s.points[0]; });
+    const tata = t.map(n => {
+      const p = byName[n] || [x0, y0];
+      return [Math.min(1, Math.max(0, (p[0] - x0) / w)),
+              Math.min(1, Math.max(0, (p[1] - y0) / h))];
+    });
+    fetch('/api/tugas/skeleton', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ skeleton: { ...skelTpl(), tata } }),
+    }).then(r => r.json()).then(j => {
+      if (j.ok) { D.skeleton = j.skeleton; toast('Tata letak default disimpan dari instance ini'); }
+      else toast(j.error || 'gagal menyimpan tata');
+    });
+    return;
+  }
+  toast('Butuh satu instance LENGKAP (semua titik) untuk jadikan tata default');
+}
+
+function gambarSkeleton() {
+  if (!poseProjek()) return;
+  const edge = skelTpl().edge || [];
+  const titik = skelTpl().titik || [];
+  if (!edge.length) return;
+  const grup = new Map();
+  S.shapes.forEach(s => {
+    if (s.shape_type === 'point' && s.group_id != null && terlihat(s)) {
+      if (!grup.has(s.group_id)) grup.set(s.group_id, {});
+      grup.get(s.group_id)[s.label] = s;
+    }
+  });
+  g.save();
+  g.lineWidth = 2;
+  grup.forEach(byName => {
+    edge.forEach(([i, j]) => {
+      const a = byName[titik[i]], b = byName[titik[j]];
+      if (!a || !b || vKp(a) < 1 || vKp(b) < 1) return;   // lewati titik absen
+      g.strokeStyle = warna(titik[i], 0.85);
+      g.beginPath();
+      g.moveTo(keLayarX(a.points[0][0]), keLayarY(a.points[0][1]));
+      g.lineTo(keLayarX(b.points[0][0]), keLayarY(b.points[0][1]));
+      g.stroke();
+    });
+  });
+  g.restore();
+}
+
+/* Wiring tombol palet Keypoint (dirender server-side kalau projek pose). */
+(() => {
+  const w = (id, fn) => { const b = el(id); if (b) b.onclick = fn; };
+  w('btn-drop-tpl', dropTemplate);
+  w('btn-lewati-kp', lewatiTitik);
+  w('btn-rapikan-bbox', rapikanBbox);
+  w('btn-tata-default', jadikanTataDefault);
 })();
