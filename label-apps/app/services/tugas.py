@@ -74,6 +74,10 @@ def kosong(pemilik: str = "") -> dict:
             # ini bukan projek keypoint. Lihat _sah_skeleton/set_skeleton.
             "skeleton": {"kelas": "", "titik": [], "edge": [],
                          "flip_idx": [], "warna": [], "tata": []},
+            # Daftar kelas aksi tingkat projek (projek VIDEO sub-jenis aksi).
+            # Kosong = projek ini belum/ bukan classifier aksi. Padanan
+            # skeleton{} untuk klip; lihat _sah_aksi/set_aksi.
+            "aksi": {"kelas": [], "merge": {}, "warna": [], "negatif": ""},
             "warisan": True}
 
 
@@ -121,6 +125,9 @@ def baca(ds: Path, pemilik: str = "") -> dict:
             # Template skeleton disaring agar selalu konsisten (edge menunjuk
             # indeks titik yang ada, flip_idx panjangnya = jumlah titik, dst).
             "skeleton": _sah_skeleton(d.get("skeleton")),
+            # Daftar kelas aksi disaring sama ketatnya (nama unik, target merge
+            # ada di kelas, kelas negatif salah satu kelas yang ada).
+            "aksi": _sah_aksi(d.get("aksi")),
             "warisan": False}
 
 
@@ -661,6 +668,101 @@ def set_skeleton(ds: Path, template, pemilik: str = "") -> dict:
              len(bersih["titik"]), len(bersih["edge"]),
              "ada" if bersih["flip_idx"] else "identitas")
     return {"ok": True, "skeleton": bersih}
+
+
+# ============================================================
+# KELAS AKSI  (projek VIDEO sub-jenis aksi; padanan skeleton{})
+# ============================================================
+
+# Batas jumlah kelas aksi satu projek — jauh di atas kebutuhan nyata (acuan
+# basket 6-8 kelas), cuma penjaga dari data rusak/ekstrem. Jumlah & nama kelas
+# SELALU ditentukan per projek, bukan tetap: tiap classifier punya daftar
+# kelasnya sendiri (basket beda dari daur-ulang).
+MAKS_KELAS_AKSI = 200
+
+
+def _sah_aksi(raw) -> dict:
+    """Daftar kelas aksi yang rapi & aman, dari data mentah .tugas.json.
+
+    Tak pernah melempar: apa pun yang rusak disederhanakan, tak dibuang mentah.
+    Dijaga konsisten sendiri, persis _sah_skeleton:
+
+      - kelas    : nama UNIK & tak kosong (duplikat/kosong dibuang). Inilah yang
+                   memetakan klip ke indeks kelas saat ekspor/latih — nama ganda
+                   membuat dua kelas berbeda bertabrakan ke satu indeks.
+      - merge    : peta {nama_lama -> nama_kanonik}. TARGET-nya WAJIB salah satu
+                   `kelas` yang ada (merge ke kelas yang tak ada = klip hilang
+                   ke kelas hantu); sumber == target dibuang (tak ada gunanya).
+                   Diport dari MERGE_MAP aug-balance-v4.
+      - warna    : per kelas (opsional), dipotong/diisi sepanjang kelas.
+      - negatif  : kelas "tanpa-aksi" opsional; WAJIB salah satu `kelas` yang
+                   ada, kalau tidak dikosongkan. Label kosong = BELUM dilabeli,
+                   BUKAN negatif — negatif adalah kelas eksplisit (rencana G#11,
+                   MEMORY "sampel negatif label kosong").
+
+    Bentuk: {kelas:[...], merge:{...}, warna:[...], negatif:"<kelas>"|""}.
+    """
+    kosong = {"kelas": [], "merge": {}, "warna": [], "negatif": ""}
+    if not isinstance(raw, dict):
+        return kosong
+
+    def _list(x):
+        return x if isinstance(x, list) else []
+
+    def _nama(x):
+        return " ".join(str(x or "").split())[:80]
+
+    kelas, lihat = [], set()
+    for k in _list(raw.get("kelas"))[:MAKS_KELAS_AKSI]:
+        nama = _nama(k)
+        if nama and nama not in lihat:
+            lihat.add(nama)
+            kelas.append(nama)
+    kset = set(kelas)
+
+    merge = {}
+    raw_merge = raw.get("merge") if isinstance(raw.get("merge"), dict) else {}
+    for src, dst in raw_merge.items():
+        s, t = _nama(src), _nama(dst)
+        # Target WAJIB kelas yang ada; sumber tak boleh == target (lingkar
+        # kosong). Sumber sendiri TAK wajib ada di `kelas`: ia nama lama yang
+        # DIPETAKAN ke kelas kanonik, dan setelah merge memang tak lagi muncul.
+        if s and t and t in kset and s != t:
+            merge[s] = t
+
+    warna = [str(c)[:9] for c in _list(raw.get("warna"))][:len(kelas)]
+
+    negatif = _nama(raw.get("negatif"))
+    if negatif not in kset:
+        negatif = ""
+
+    return {"kelas": kelas, "merge": merge, "warna": warna, "negatif": negatif}
+
+
+def aksi_aktif(data: dict) -> bool:
+    """Projek ini classifier aksi: punya daftar kelas aksi berisi."""
+    ak = data.get("aksi") or {}
+    return bool(ak.get("kelas"))
+
+
+def set_aksi(ds: Path, template, pemilik: str = "") -> dict:
+    """
+    Tetapkan daftar kelas aksi projek (nama kelas + merge + kelas negatif).
+
+    Jumlah & nama kelas berbeda tiap projek — inilah tempat owner
+    mendefinisikannya sekali, lalu dipakai ulang untuk tiap klip. Template
+    disaring lewat _sah_aksi sebelum disimpan. Padanan set_skeleton; disimpan
+    lewat jalur baca/tulis yang sama.
+    """
+    bersih = _sah_aksi(template)
+    with _kunci:
+        data = baca(ds, pemilik)
+        data["pemilik"] = data["pemilik"] or pemilik
+        data["aksi"] = bersih
+        _tulis(ds, data)
+    log.info("aksi %s: %d kelas, %d merge, negatif %r", Path(ds).name,
+             len(bersih["kelas"]), len(bersih["merge"]), bersih["negatif"])
+    return {"ok": True, "aksi": bersih}
 
 
 def set_jenis(ds: Path, jenis: str, pemilik: str = "") -> dict:
