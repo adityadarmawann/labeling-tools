@@ -43,3 +43,6 @@ models/
 # Bobot model PyTorch/ultralytics
 *.pt
 *.pth
+
+# Folder referensi untuk development lanjutan — JANGAN di-commit/push
+action-labeler/
