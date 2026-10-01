@@ -299,6 +299,152 @@ if (btnVersi) {
   });
 }
 
+// -- latih model (Langkah 9, pemilik/Editor) --------------------------------
+// Pemilih backend hanya menawarkan yang pustakanya terpasang (siap_latih_aksi).
+// POST hanya memulai; kemajuan + daftar run di-poll dari server (status dibaca
+// dari disk, jadi bertahan melewati muat ulang / restart server).
+const trWrap = el('ak-latih');
+if (trWrap) {
+  const selBackend = el('ak-tr-backend');
+  const selVersi = el('ak-tr-versi');
+  const inEpochs = el('ak-tr-epochs');
+  const inBatch = el('ak-tr-batch');
+  const btnMulai = el('ak-tr-mulai');
+  const majuEl = el('ak-tr-maju');
+  const ketEl = el('ak-tr-ket');
+  const daftarEl = el('ak-tr-daftar');
+  const noSiap = el('ak-tr-nosiap');
+  let BACKEND = {};     // key -> {nama, siap, alasan, ket, par}
+  let pollTr = null;
+
+  function isiBackendPar() {
+    const b = BACKEND[selBackend.value];
+    if (!b) return;
+    ketEl.textContent = b.ket || '';
+    if (b.par) {
+      if (b.par.epochs != null) inEpochs.value = b.par.epochs;
+      if (b.par.batch != null) inBatch.value = b.par.batch;
+    }
+  }
+  selBackend.addEventListener('change', isiBackendPar);
+
+  async function muatBahan() {
+    const r = await send(`/api/aksi/latih/bahan?ds=${EDS}`);
+    if (!r || !r.ok) return;
+    BACKEND = r.backend || {};
+    // Hanya backend yang SIAP ditawarkan — yang tidak siap tak ditampilkan
+    // sebagai pilihan yang menuntun ke kegagalan.
+    const siap = Object.entries(BACKEND).filter(([, v]) => v.siap);
+    selBackend.innerHTML = '';
+    siap.forEach(([k, v]) => {
+      const o = document.createElement('option');
+      o.value = k; o.textContent = v.nama || k;
+      selBackend.appendChild(o);
+    });
+    selVersi.innerHTML = '';
+    (r.versi || []).forEach(v => {
+      const o = document.createElement('option');
+      o.value = v.nomor;
+      const j = v.jumlah || {};
+      o.textContent = `v${v.nomor} · ${v.n || 0} klip · ${v.kelas || 0} kelas`
+        + ((j.train != null || j.valid != null)
+          ? ` (train ${j.train || 0}/valid ${j.valid || 0})` : '');
+      selVersi.appendChild(o);
+    });
+    const adaSiap = siap.length > 0;
+    const adaVersi = (r.versi || []).length > 0;
+    trWrap.hidden = !adaSiap;
+    noSiap.hidden = adaSiap;
+    if (adaSiap) { isiBackendPar(); }
+    // Tak ada versi -> beri tahu, tombol dimatikan (tak ada yang bisa dilatih).
+    btnMulai.disabled = !(adaSiap && adaVersi);
+    if (adaSiap && !adaVersi) ketEl.textContent =
+      'Belum ada versi dataset aksi — buat versi dulu sebelum melatih.';
+  }
+
+  function barisRun(s) {
+    const li = document.createElement('li');
+    li.className = 'ak-tr-run';
+    const metr = s.terbaik && s.utama ? s.terbaik[s.utama] : null;
+    const bagian = [`A${s.nomor}`, s.backend_nama || s.backend || '',
+      `v${s.versi}`, s.keadaan];
+    if (s.epochs) bagian.push(`${s.epoch || 0}/${s.epochs}`);
+    if (metr != null) bagian.push(`acc ${(metr * 100).toFixed(1)}%`);
+    const sp = document.createElement('span');
+    sp.textContent = bagian.filter(Boolean).join(' · ');
+    li.appendChild(sp);
+    if (s.punya_bobot) {
+      const a = document.createElement('a');
+      a.className = 'chip ak-unduh';
+      a.href = `/aksi/latih/bobot?ds=${EDS}&nomor=${s.nomor}&jenis=best`;
+      a.textContent = 'best.pt';
+      li.appendChild(a);
+    }
+    if (s.keadaan === 'antre' || s.keadaan === 'jalan') {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'chip';
+      b.textContent = 'Hentikan';
+      b.addEventListener('click', async () => {
+        await send(`/api/aksi/latih/batal?ds=${EDS}&nomor=${s.nomor}`,
+          { method: 'POST' });
+        setTimeout(pantauTr, 500);
+      });
+      li.appendChild(b);
+    }
+    return li;
+  }
+
+  function renderRun(daftar) {
+    daftarEl.innerHTML = '';
+    (daftar || []).forEach(s => daftarEl.appendChild(barisRun(s)));
+    const jalan = (daftar || []).some(
+      s => s.keadaan === 'antre' || s.keadaan === 'jalan');
+    if (jalan) { majuEl.hidden = false; btnMulai.disabled = true; }
+    else { majuEl.hidden = true; }
+    return jalan;
+  }
+
+  async function pantauTr() {
+    const r = await send(`/api/aksi/latih/kemajuan?ds=${EDS}`);
+    if (!r || !r.ok) return;
+    const jalan = renderRun(r.daftar);
+    if (jalan) {
+      const aktif = (r.daftar || []).find(
+        s => s.keadaan === 'jalan' || s.keadaan === 'antre');
+      if (aktif) majuEl.textContent =
+        `${aktif.backend_nama || ''} ${aktif.keadaan} — epoch `
+        + `${aktif.epoch || 0}/${aktif.epochs || 0} (${aktif.persen || 0}%)`;
+    } else {
+      if (pollTr) { clearInterval(pollTr); pollTr = null; }
+      // selesai -> tombol boleh dipakai lagi (kalau masih ada versi).
+      btnMulai.disabled = !selVersi.value;
+    }
+  }
+
+  btnMulai.addEventListener('click', async () => {
+    if (!selBackend.value || !selVersi.value) { toast('Pilih backend & versi'); return; }
+    btnMulai.disabled = true;
+    majuEl.hidden = false; majuEl.textContent = 'Memulai...';
+    const r = await send(`/api/aksi/latih/mulai?ds=${EDS}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        versi: parseInt(selVersi.value, 10), backend: selBackend.value,
+        par: { epochs: parseInt(inEpochs.value, 10) || undefined,
+          batch: parseInt(inBatch.value, 10) || undefined },
+      }),
+    });
+    if (!r || !r.ok) {
+      toast((r && r.error) || 'gagal memulai'); majuEl.textContent = (r && r.error) || '';
+      btnMulai.disabled = false; return;
+    }
+    toast(`Training A${r.nomor} dimulai`);
+    if (!pollTr) pollTr = setInterval(pantauTr, 2000);
+    pantauTr();
+  });
+
+  muatBahan().then(pantauTr);
+}
+
 // -- papan tik ---------------------------------------------------------------
 document.addEventListener('keydown', e => {
   const t = e.target;

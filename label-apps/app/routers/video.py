@@ -25,7 +25,8 @@ from ..config import (KLIP, KLIP_BURUK, KLIP_DITOLAK, SUMBER_VIDEO, VIDEO_EXT,
 from ..deps import bodi_json, current_session, current_session_api
 from ..security import safe_relpath, safe_slug
 from ..services import (export, klip, klip_filter, klip_olah, klip_scan,
-                        klip_tag, projek, tugas, versi, video_ingest)
+                        klip_tag, latih_aksi, projek, tugas, versi,
+                        video_ingest)
 from ..session import Session
 from ..templating import templates
 
@@ -456,6 +457,8 @@ async def halaman_aksi(request: Request, ds: str = "", job: str = "",
         "awal": awal,
         "saring": saring if saring in ("semua", "belum", "sudah") else "semua",
         "boleh_kelola": tugas.boleh_kelola(tdata, sess.user),
+        # Latih model: pemilik/Editor (boleh_unggah), sama dengan membangun versi.
+        "boleh_latih": tugas.boleh_unggah(tdata, sess.user),
     })
 
 
@@ -729,3 +732,163 @@ async def aksi_versi_unduh(ds: str = "", nomor: int = 0,
         "Content-Disposition": f'attachment; filename="{berkas}"',
         "Content-Length": str(len(data)),
     })
+
+
+# ============================================================
+# LANGKAH 9 — PELATIHAN CLASSIFIER AKSI (3 backend)
+# ============================================================
+#
+# Padanan routers/latih.py, untuk klip. Logikanya di services/latih_aksi.py +
+# latih_aksi_jalan.py (registri + subproses terlepas + kunci GPU TERPISAH +
+# kemajuan dibaca dari disk). Di sini hanya terjemahan HTTP + gerbang:
+#   * MULAI/BATAL: boleh_unggah (pemilik/Editor) + jenis video + aksi aktif +
+#     backend yang pustakanya ADA (siap_latih_aksi) — persis seperti build versi.
+#   * KEMAJUAN/DAFTAR/UNDUH BOBOT: boleh_lihat — anggota boleh menengok & mengunduh
+#     keluaran latih (pemilik "biarkan terbuka"), bukan cuma pemilik.
+
+
+@router.get("/api/aksi/latih/bahan")
+async def aksi_latih_bahan(ds: str = "",
+                           sess: Session = Depends(current_session_api),
+                           settings: Settings = Depends(get_settings)):
+    """Semua bahan form latih aksi sekaligus: versi aksi yang siap, backend yang
+    terpasang (+ alasan yang tidak), dan parameter bawaan per backend.
+
+    Dikirim sekali, bukan tiga permintaan: form tak bisa digambar setengah, dan
+    menampilkan backend yang pustakanya kurang hanya menuntun orang ke kegagalan
+    beberapa detik kemudian — siap_latih_aksi memutuskannya di sini."""
+    d, tdata, err = _projek_aksi(sess, settings, ds)
+    if err:
+        return {"ok": False, "error": err}
+    daftar_versi = await asyncio.to_thread(_versi_aksi, d)
+    siap = await asyncio.to_thread(latih_aksi.siap_latih_aksi)
+    return {"ok": True, "versi": daftar_versi, "backend": siap,
+            "batas": {k: list(v) for k, v in latih_aksi.BATAS.items()},
+            "boleh_latih": tugas.boleh_unggah(tdata, sess.user)}
+
+
+@router.get("/api/aksi/latih/daftar")
+async def aksi_latih_daftar(ds: str = "",
+                            sess: Session = Depends(current_session_api),
+                            settings: Settings = Depends(get_settings)):
+    """Semua training aksi projek ini + statistik GPU/RAM (render awal + poll)."""
+    d, tdata, err = _projek_aksi(sess, settings, ds)
+    if err:
+        return {"ok": False, "error": err}
+    return {"ok": True,
+            "daftar": await asyncio.to_thread(latih_aksi.daftar, d),
+            "statistik": await asyncio.to_thread(latih_aksi.statistik)}
+
+
+# Padanan poll ringkas; namanya cocok dengan rencana C.9 ("kemajuan"). Isinya
+# sama dengan daftar (status dibaca dari disk, jadi satu sumber), supaya peramban
+# cukup memanggil satu rute selama training berjalan.
+@router.get("/api/aksi/latih/kemajuan")
+async def aksi_latih_kemajuan(ds: str = "",
+                              sess: Session = Depends(current_session_api),
+                              settings: Settings = Depends(get_settings)):
+    d, tdata, err = _projek_aksi(sess, settings, ds)
+    if err:
+        return {"ok": False, "error": err}
+    return {"ok": True,
+            "daftar": await asyncio.to_thread(latih_aksi.daftar, d),
+            "statistik": await asyncio.to_thread(latih_aksi.statistik)}
+
+
+@router.post("/api/aksi/latih/mulai")
+async def aksi_latih_mulai(request: Request, ds: str = "",
+                           sess: Session = Depends(current_session_api),
+                           settings: Settings = Depends(get_settings)):
+    """
+    Mulai satu training classifier aksi (subproses terlepas, lajur GPU sendiri).
+
+    Bodi JSON: {versi, backend: videomae|slowfast|posec3d, par: {epochs, batch}}.
+    Gerbang: boleh_unggah (pemilik/Editor, lewat _projek_video) + aksi aktif +
+    backend yang pustakanya ADA. Versi WAJIB sudah terbangun. Penjaga mulai-ganda
+    menolak kalau masih ada training aksi berjalan — satu kartu, satu lajur.
+    """
+    # boleh_unggah + jenis video.
+    d, err = _projek_video(sess, settings, ds)
+    if err:
+        return {"ok": False, "error": err}
+    tdata = await asyncio.to_thread(tugas.baca_projek, d, settings.uploads_root)
+    if not tugas.aksi_aktif(tdata):
+        return {"ok": False, "error": "projek ini belum punya daftar kelas aksi"}
+
+    body = await bodi_json(request)
+    backend = str(body.get("backend") or "").strip().lower()
+    if backend not in latih_aksi.BACKEND:
+        return {"ok": False,
+                "error": f"backend harus salah satu dari "
+                         f"{tuple(latih_aksi.BACKEND)}"}
+    # Kesiapan backend diperiksa DULU: tolak sebelum registri dibuat, bukan
+    # setelah subprosesnya jatuh di baris import (folder .latih tak terisi
+    # training yang tak pernah bisa jalan).
+    siap = await asyncio.to_thread(latih_aksi.siap_latih_aksi)
+    if not siap[backend]["siap"]:
+        return {"ok": False, "error": siap[backend]["alasan"]}
+
+    nomor_versi = int(body.get("versi") or 0)
+    v = await asyncio.to_thread(versi.baca, d, nomor_versi)
+    if v is None or (v.get("hasil") or {}).get("jenis") != "aksi":
+        return {"ok": False, "error": f"versi v{nomor_versi} bukan dataset klip "
+                                      "aksi yang terbangun"}
+    if not await asyncio.to_thread(latih_aksi.versi_aksi_siap, d, nomor_versi):
+        return {"ok": False,
+                "error": f"versi v{nomor_versi} belum terbangun (aksi.yaml / klip "
+                         "train tak ada) — bangun dulu versinya"}
+
+    if await asyncio.to_thread(latih_aksi.ada_yang_jalan, d):
+        return {"ok": False, "error": "masih ada training aksi yang berjalan — "
+                                      "tunggu atau hentikan dulu"}
+
+    try:
+        isi = await asyncio.to_thread(
+            latih_aksi.siapkan, d, versi_nomor=nomor_versi, backend=backend,
+            par=body.get("par") or {}, oleh=sess.user,
+            nama=str(body.get("nama") or ""), catatan=str(body.get("catatan") or ""))
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
+    try:
+        await asyncio.to_thread(latih_aksi.jalankan, d, isi["nomor"])
+    except Exception as e:                        # noqa: BLE001
+        await asyncio.to_thread(latih_aksi.perbarui, d, isi["nomor"],
+                                keadaan="gagal", galat=str(e)[:200])
+        return {"ok": False, "error": str(e)[:200]}
+    return {"ok": True, "nomor": isi["nomor"], "backend": backend}
+
+
+@router.post("/api/aksi/latih/batal")
+async def aksi_latih_batal(ds: str = "", nomor: int = 0,
+                           sess: Session = Depends(current_session_api),
+                           settings: Settings = Depends(get_settings)):
+    """Hentikan satu training aksi. Hak sama dengan memulainya (pemilik/Editor)."""
+    d, err = _projek_video(sess, settings, ds)
+    if err:
+        return {"ok": False, "error": err}
+    await asyncio.to_thread(latih_aksi.batalkan, d, nomor)
+    return {"ok": True}
+
+
+@router.get("/aksi/latih/bobot")
+async def aksi_latih_bobot(ds: str = "", nomor: int = 0, jenis: str = "best",
+                           sess: Session = Depends(current_session_api),
+                           settings: Settings = Depends(get_settings)):
+    """Unduh best.pt / last.pt satu training aksi.
+
+    Gerbang BACA (anggota boleh — "biarkan terbuka"), bukan unggah: pola yang
+    sama dengan unduh versi. Dikembalikan Response (unduhan lampiran), galatnya
+    kode status."""
+    d, tdata, err = _projek_aksi(sess, settings, ds)
+    if err:
+        return Response(status_code=403)
+    if jenis not in ("best", "last"):
+        return Response(status_code=400)
+    p = latih_aksi.dir_latih(d, nomor) / "weights" / f"{jenis}.pt"
+    if not p.exists():
+        return Response(status_code=404)
+    isi = await asyncio.to_thread(p.read_bytes)
+    nama = f"A{nomor}-{jenis}.pt"
+    return Response(isi, media_type="application/octet-stream",
+                    headers={"Content-Disposition":
+                             f'attachment; filename="{nama}"'})

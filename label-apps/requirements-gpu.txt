@@ -30,6 +30,26 @@
 torch
 torchvision
 
+# Backend classifier AKSI VIDEO (Langkah 9): VideoMAE & SlowFast.
+#   transformers  -> VideoMAEForVideoClassification + VideoMAEImageProcessor
+#   pytorchvideo  -> EncodedVideo (pembaca klip) + slowfast_r50 (hub)
+#   av            -> dekoder yang dipakai pytorchvideo untuk membaca .mp4
+#
+# PENTING: pytorchvideo RINGAN PERAWATAN dan memaku API torch lama — versinya
+# SENGAJA tak dipatok di sini (torch sendiri tak dipatok, terikat driver CUDA
+# mesinnya), jadi uji impornya terhadap torch yang benar-benar terpasang
+# SEBELUM mengandalkan backend videomae/slowfast. Kalau pytorchvideo gagal
+# diimpor, siap_latih_aksi() otomatis menyembunyikan kedua backend itu dari
+# form (find_spec saja tak cukup kalau pakai torch yang tak cocok — jalankan
+# satu training percobaan pendek di mesin GPU untuk memastikan).
+#
+# PoseC3D SENGAJA tak butuh tambahan apa pun di sini: ia memakai posec3d_model
+# standalone + ultralytics (sudah di bawah) — TANPA mmcv/mmaction2/mmpose, yang
+# notorius rapuh terhadap versi torch/CUDA (rencana G#1).
+transformers
+pytorchvideo
+av
+
 # MobileSAM (pelabelan otomatis) lewat CUDA. Terukur di mesin ini, klik
 # pertama pada gambar baru: 428,6 ms -> 48,1 ms (8,9x); encoder-nya sendiri
 # 465 -> 37,3 ms (12,5x). Ini latensi yang benar-benar ditunggu orang saat

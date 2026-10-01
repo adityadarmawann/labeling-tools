@@ -71,6 +71,34 @@
       <h3 class="ak-judul" id="ak-versi-judul" hidden>Versi terlatih</h3>
       <ul class="ak-versi-list halus" id="ak-versi-list"></ul>
 
+      {#- Latih model (Langkah 9): pemilik/Editor saja. Pemilih backend HANYA
+          menawarkan yang pustakanya terpasang di server ini (dari
+          siap_latih_aksi); versi = versi klip aksi yang sudah dibangun. POST
+          hanya memulai; kemajuan + daftar run di-poll. Checkpoint diunduh lewat
+          tautan di tiap run. Diisi aksi.js dari /api/aksi/latih/bahan. -#}
+      {% if boleh_latih %}
+      <h3 class="ak-judul">Latih model</h3>
+      <div class="ak-latih" id="ak-latih" hidden>
+        <label class="halus">Backend
+          <select id="ak-tr-backend"></select></label>
+        <p class="halus ak-tr-ket" id="ak-tr-ket"></p>
+        <label class="halus">Versi dataset
+          <select id="ak-tr-versi"></select></label>
+        <div class="ak-tr-par">
+          <label class="halus">Epoch <input type="number" id="ak-tr-epochs"
+                 min="1" max="1000" step="1"></label>
+          <label class="halus">Batch <input type="number" id="ak-tr-batch"
+                 min="1" max="64" step="1"></label>
+        </div>
+        <button class="chip aksi" type="button" id="ak-tr-mulai">Jalankan</button>
+        <p class="halus ak-tr-maju" id="ak-tr-maju" hidden></p>
+      </div>
+      <p class="halus ak-tr-nosiap" id="ak-tr-nosiap" hidden>
+        Server ini belum punya pustaka untuk melatih aksi (butuh venv GPU:
+        transformers / pytorchvideo / av / ultralytics).</p>
+      <ul class="ak-tr-daftar halus" id="ak-tr-daftar"></ul>
+      {% endif %}
+
       <h3 class="ak-judul">Pintasan papan tik</h3>
       <ul class="ak-bantu halus">
         <li><kbd>1</kbd>&ndash;<kbd>9</kbd>,<kbd>0</kbd> pilih kelas</li>
