@@ -44,6 +44,20 @@ def test_flip_idx_salah_panjang_jadi_identitas():
     assert sk2["flip_idx"] == []                        # nilai di luar rentang
 
 
+def test_flip_idx_wajib_involusi():
+    """flip_idx yang bukan involusi (tukar-balik) ditolak -> identitas, supaya
+    flip horizontal tak menukar identitas keypoint dengan salah."""
+    # [1,1] bukan involusi (slot 0 tak pernah tertukar balik).
+    assert tugas._sah_skeleton({"titik": ["a", "b"], "flip_idx": [1, 1]})["flip_idx"] == []
+    # siklus 3 bukan involusi.
+    assert tugas._sah_skeleton({"titik": ["a", "b", "c"],
+                                "flip_idx": [1, 2, 0]})["flip_idx"] == []
+    # involusi sah dipakai.
+    assert tugas._sah_skeleton({"titik": ["a", "b"], "flip_idx": [1, 0]})["flip_idx"] == [1, 0]
+    assert tugas._sah_skeleton({"titik": ["a", "b", "c"],
+                                "flip_idx": [0, 2, 1]})["flip_idx"] == [0, 2, 1]
+
+
 def test_sah_skeleton_data_rusak_jadi_kosong():
     assert tugas._sah_skeleton(None)["titik"] == []
     assert tugas._sah_skeleton("bukan dict")["titik"] == []

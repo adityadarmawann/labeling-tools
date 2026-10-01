@@ -1244,8 +1244,20 @@ class Pekerjaan:
                 x, y = s["pts"].tolist()[0]
                 rec[i] = (min(1.0, max(0.0, x / W)), min(1.0, max(0.0, y / H)), v)
                 ada = True
-            if ada:
-                out.append({"kelas": 0, "kp": rec})
+            if not ada:
+                continue
+            # Kotak tergambar (termasuk penyesuaian manual + padding dari kanvas)
+            # ikut dibawa untuk gambar ASLI, supaya bbox-nya sama dengan ekspor;
+            # salinan ter-augment tak membawanya (kotak dihitung ulang dari
+            # titik hasil transform).
+            box = None
+            rect = inst.get("rect")
+            if rect is not None:
+                rp = rect["pts"].tolist()
+                xs = [p[0] for p in rp]
+                ys = [p[1] for p in rp]
+                box = (min(xs) / W, min(ys) / H, max(xs) / W, max(ys) / H)
+            out.append({"kelas": 0, "kp": rec, "box": box})
         return out
 
     def _simpan_pose(self, split, nama, img, instans, K, sumber, asal):

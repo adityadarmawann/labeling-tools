@@ -1098,16 +1098,32 @@ def augmentasi_pose_sekali(img_bgr, instans, pipeline, flip_idx=None,
 
 def _baris_pose(inst: dict, K: int):
     """Satu instance pose -> baris YOLO-pose `cls cx cy w h (px py v)*K`.
-    bbox dari hull titik v>=1. None kalau tak ada titik terlihat."""
-    kp = inst["kp"]
-    vis = [(x, y) for (x, y, v) in kp if v >= 1]
-    if not vis:
-        return None
-    xs = [p[0] for p in vis]
-    ys = [p[1] for p in vis]
-    x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
+
+    bbox: pakai `inst["box"]` (kotak tergambar/manual, ternormalkan x0,y0,x1,y1)
+    kalau ada; kalau tidak, dari HULL titik v>=1 + sedikit padding. Selalu
+    dipaksa tepat K slot dan ukuran minimal (tak pernah kotak nol-luas) supaya
+    cocok dengan kpt_shape di data.yaml. None kalau tak ada titik terlihat."""
+    kp = list(inst["kp"])
+    if len(kp) < K:                              # jaga-jaga: selalu K slot
+        kp += [(0.0, 0.0, 0)] * (K - len(kp))
+    elif len(kp) > K:
+        kp = kp[:K]
+    box = inst.get("box")
+    if box:
+        x0, y0, x1, y1 = box
+    else:
+        vis = [(x, y) for (x, y, v) in kp if v >= 1]
+        if not vis:
+            return None
+        xs = [p[0] for p in vis]
+        ys = [p[1] for p in vis]
+        x0, y0, x1, y1 = min(xs), min(ys), max(xs), max(ys)
+        pad = max(0.01, (x1 - x0 + y1 - y0) * 0.04)
+        x0, y0, x1, y1 = x0 - pad, y0 - pad, x1 + pad, y1 + pad
+    x0 = min(1.0, max(0.0, x0)); y0 = min(1.0, max(0.0, y0))
+    x1 = min(1.0, max(0.0, x1)); y1 = min(1.0, max(0.0, y1))
     cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
-    bw, bh = max(x1 - x0, 1e-6), max(y1 - y0, 1e-6)
+    bw, bh = max(x1 - x0, 0.01), max(y1 - y0, 0.01)   # min-size, tak degenerate
     bag = [str(int(inst["kelas"])),
            f"{cx:.6f}", f"{cy:.6f}", f"{bw:.6f}", f"{bh:.6f}"]
     for (x, y, v) in kp:

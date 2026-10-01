@@ -600,7 +600,12 @@ def _sah_skeleton(raw) -> dict:
         flip = [int(x) for x in _list(raw.get("flip_idx"))]
     except (TypeError, ValueError):
         flip = []
-    if len(flip) != K or any(not (0 <= x < K) for x in flip):
+    # flip_idx WAJIB involusi (flip[flip[i]]==i): pemetaan cermin yang bukan
+    # involusi (mis. [1,1] atau siklus [1,2,0]) menukar identitas keypoint
+    # dengan salah saat flip horizontal -> melatih kiri sebagai kanan tanpa
+    # tanda. Yang tak memenuhi dikosongkan (identitas = tanpa tukar).
+    if (len(flip) != K or any(not (0 <= x < K) for x in flip)
+            or any(flip[flip[i]] != i for i in range(len(flip)))):
         flip = []
     # Warna per keypoint (opsional); dipotong/diisi agar sepanjang titik.
     warna = [str(c)[:9] for c in _list(raw.get("warna"))][:K]

@@ -44,9 +44,21 @@ def test_baris_yolo_pose_format_dan_pad_absen():
 def test_bbox_dari_hull_kalau_tanpa_rectangle():
     tpl = {"titik": ["a", "b"], "kelas": "x"}
     it = {"W": 100, "H": 100, "shapes": [_pt("a", 10, 10, 2), _pt("b", 30, 50, 2)]}
+    p = [float(x) for x in export.baris_yolo_pose(it, tpl)[0].split()[1:5]]
+    # hull (10,10)-(30,50): pusat tetap cx=0.2 cy=0.3; lebar/tinggi > hull
+    # mentah (0.2 x 0.4) karena ada sedikit padding supaya kotak tak kelewat
+    # ketat (sama seperti padding kanvas).
+    assert abs(p[0] - 0.2) < 1e-6 and abs(p[1] - 0.3) < 1e-6
+    assert p[2] > 0.2 and p[3] > 0.4
+
+
+def test_slot_hilang_dipad_dan_bbox_tak_degenerate():
+    # Hanya 1 titik terlihat -> kotak tetap punya luas minimal, slot absen pad.
+    tpl = {"titik": ["a", "b", "c"], "kelas": "x"}
+    it = {"W": 100, "H": 100, "shapes": [_pt("a", 50, 50, 2)]}
     p = export.baris_yolo_pose(it, tpl)[0].split()
-    # hull (10,10)-(30,50): cx=0.2 cy=0.3 w=0.2 h=0.4
-    assert p[1:5] == ["0.200000", "0.300000", "0.200000", "0.400000"]
+    assert float(p[3]) >= 0.01 and float(p[4]) >= 0.01   # tak nol-luas
+    assert len(p) == 5 + 3 * 3 and p[8:11] == ["0.000000", "0.000000", "0"]
 
 
 def test_slot_ikut_template_bukan_urutan_input():

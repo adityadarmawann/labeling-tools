@@ -188,22 +188,29 @@ def _instansi_pose(it: dict, slot: dict[str, int]) -> dict:
 
 
 def _bbox_pose(inst: dict, kp: dict, W: int, H: int):
-    """(cx, cy, w, h) ternormalisasi dari rectangle instance, atau hull titik
-    v>=1 kalau tak ada rectangle. Titik absen tak ikut menghitung."""
+    """(cx, cy, w, h) ternormalisasi dari rectangle instance (termasuk
+    penyesuaian manual), atau HULL titik v>=1 + padding kalau tak ada rectangle.
+    Titik absen tak ikut. Ukuran dijaga minimal supaya tak ada kotak nol-luas."""
     rect = inst.get("rect")
     if rect is not None:
         pts = rect["pts"].tolist()
+        xs = [p[0] for p in pts]
+        ys = [p[1] for p in pts]
+        xmin, xmax, ymin, ymax = min(xs), max(xs), min(ys), max(ys)
     else:
         pts = [kp[i]["pts"].tolist()[0] for i in kp if _v_shape(kp[i]) >= 1]
-    if not pts:
-        return None
-    xs = [p[0] for p in pts]
-    ys = [p[1] for p in pts]
-    xmin, xmax, ymin, ymax = min(xs), max(xs), min(ys), max(ys)
-    if xmax <= xmin or ymax <= ymin:
-        return None
-    return ((xmin + xmax) / (2 * W), (ymin + ymax) / (2 * H),
-            (xmax - xmin) / W, (ymax - ymin) / H)
+        if not pts:
+            return None
+        xs = [p[0] for p in pts]
+        ys = [p[1] for p in pts]
+        xmin, xmax, ymin, ymax = min(xs), max(xs), min(ys), max(ys)
+        pad = max(0.01 * max(W, H), (xmax - xmin + ymax - ymin) * 0.04)
+        xmin, ymin, xmax, ymax = xmin - pad, ymin - pad, xmax + pad, ymax + pad
+    xmin = min(W, max(0, xmin)); xmax = min(W, max(0, xmax))
+    ymin = min(H, max(0, ymin)); ymax = min(H, max(0, ymax))
+    cx, cy = (xmin + xmax) / (2 * W), (ymin + ymax) / (2 * H)
+    bw, bh = max((xmax - xmin) / W, 0.01), max((ymax - ymin) / H, 0.01)
+    return (cx, cy, bw, bh)
 
 
 def baris_yolo_pose(it: dict, template: dict, cls_idx: int = 0) -> list[str]:

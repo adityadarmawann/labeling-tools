@@ -166,12 +166,26 @@ def main() -> int:
 
         model.add_callback("on_fit_epoch_end", _lapor_epoch)
         if isi["tugas"] == "pose":
-            # Augmentasi aman-pose saat training: flip vertikal MATI (merusak
-            # orientasi keypoint) dan mosaic dikurangi (mosaik penuh merusak
-            # keypoint) — sama seperti train-court.py user. fliplr tetap aman
-            # karena data.yaml pose punya flip_idx. Tak menimpa setelan eksplisit.
-            par.setdefault("flipud", 0.0)
-            par.setdefault("mosaic", 0.5)
+            # Augmentasi aman-pose. flip VERTIKAL tak pernah aman untuk keypoint
+            # (tak ada padanan flip_idx vertikal) -> DIPAKSA mati. PRESET_V14
+            # sudah mengisi flipud=0.3, jadi harus di-ASSIGN, bukan setdefault
+            # (setdefault jadi no-op dan model dilatih terbalik ~30% augmentasi).
+            par["flipud"] = 0.0
+            # flip HORIZONTAL hanya aman kalau template punya pasangan cermin
+            # SUNGGUHAN (flip_idx bukan identitas); kalau identitas/kosong,
+            # mirror akan menukar kiri<->kanan tanpa menukar identitas keypoint,
+            # jadi fliplr dimatikan. YOLO memakai flip_idx dari data.yaml.
+            try:
+                import yaml as _yaml
+                _fi = (_yaml.safe_load(Path(yaml).read_text()) or {}).get("flip_idx") or []
+                if not _fi or _fi == list(range(len(_fi))):
+                    par["fliplr"] = 0.0
+            except Exception:                           # noqa: BLE001
+                par["fliplr"] = 0.0                      # ragu -> aman
+            # mosaic penuh merusak keypoint; preset v14 (0.3) sudah di bawah
+            # 0.5, biarkan — tapi jangan biarkan melebihi 0.5 kalau disetel.
+            if par.get("mosaic", 0.0) > 0.5:
+                par["mosaic"] = 0.5
         model.train(
             data=str(yaml),
             task=isi["tugas"],
