@@ -375,10 +375,12 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
         "hal": hal, "n_hal": n_hal, "n_tampil": n_tampil,
         "mulai": mulai_i + 1 if n_tampil else 0,
         "akhir": mulai_i + len(halaman),
-        # Yang boleh memindahkan ke dataset hanya pelabelnya sendiri dan
-        # pemilik projek. Sama persis dengan aturan menyunting labelnya.
+        # Yang boleh memindahkan ke dataset: pelabel job ini sendiri, pemilik,
+        # atau Editor (yang berhak melabeli SEMUA). Diselaraskan dengan rute
+        # /api/tugas/dataset supaya tombolnya tidak tersembunyi dari orang yang
+        # rutenya memang mengizinkan.
         "boleh_ubah": (sess.user == job.get("pelabel")
-                       or svc.boleh_kelola(data, sess.user)),
+                       or svc.boleh_unggah(data, sess.user)),
     })
     simpan_per(resp, per_q)
     return resp
@@ -894,26 +896,41 @@ async def ke_dataset(request: Request,
     if not kunci:
         return {"ok": False, "error": "tidak satu pun gambar itu ada di projek ini"}
 
-    # Diperiksa PER GAMBAR, dan yang boleh tetap diproses. Menolak seluruh
-    # daftar membuat "pilih semua" di halaman seorang pelabel menghasilkan nol
-    # dan sebuah pesan yang menghitung gambar orang lain — /api/latar sudah
-    # bekerja per gambar, dan ini yang membuat keduanya berbeda tanpa alasan.
-    boleh = [k for k in kunci if svc.boleh_labeli(data, sess.user, k)]
-    ditolak = len(kunci) - len(boleh)
-    if not boleh:
-        return {"ok": False, "error": f"{ditolak} gambar bukan tugasmu; "
-                                      f"hanya pelabelnya atau pemilik projek "
-                                      f"yang bisa memasukkannya ke dataset"}
-    kunci = boleh
-
     # Pemiliknya diambil dari data yang sudah dibaca lewat letak folder, bukan
     # dari akun pemanggil. Rute inilah satu-satunya penulis berkas tugas yang
     # penjaganya bukan boleh_kelola, jadi tanpa ini folder dataset bersama yang
     # belum berpemilik mencatat pemanggil pertamanya sebagai pemilik.
     pemilik = data["pemilik"]
-    if body.get("keluarkan"):
+    keluarkan = bool(body.get("keluarkan"))
+
+    if keluarkan:
+        # MENGELUARKAN dari dataset ikut membubarkan penugasannya (gambar balik
+        # ke "belum ditugaskan"). Itu kurasi + penugasan ulang, bukan pelabelan,
+        # jadi hanya pemilik atau Editor — bukan setiap pelabel yang kebetulan
+        # berhak menyunting gambarnya. Tanpa batas ini, labeler menyeluruh bisa
+        # menarik gambar keluar dari job orang lain se-projek.
+        if not svc.boleh_unggah(data, sess.user):
+            return {"ok": False, "error": "hanya pemilik atau Editor yang bisa "
+                                          "mengeluarkan gambar dari dataset"}
+        ditolak = 0
         r = await asyncio.to_thread(svc.keluarkan, sess.src, kunci, pemilik)
     else:
+        # MEMASUKKAN gambar yang sudah dilabeli adalah bagian dari pelabelan,
+        # jadi pelabel boleh memasukkan gambar yang BERHAK ia sunting — dicek
+        # per gambar DENGAN batch-nya, persis penjaga simpan (tolak_tulis), biar
+        # labeler spesifik tak salah ditolak atas gambar dalam scope-nya.
+        # Diperiksa per gambar supaya "pilih semua" di halaman seorang pelabel
+        # tidak jatuh ke nol gara-gara gambar orang lain.
+        tagdata = await asyncio.to_thread(svc_tag.baca, sess.src)
+        boleh = [k for k in kunci
+                 if svc.boleh_labeli(data, sess.user, k,
+                                     svc_tag.untuk(tagdata, k).get("batch", ""))]
+        ditolak = len(kunci) - len(boleh)
+        if not boleh:
+            return {"ok": False, "error": f"{ditolak} gambar bukan tugasmu; "
+                                          f"hanya pelabelnya atau pemilik projek "
+                                          f"yang bisa memasukkannya ke dataset"}
+        kunci = boleh
         # Hanya gambar yang SUDAH dianotasi — berlabel ATAU ditandai latar —
         # yang boleh masuk dataset. Yang belum dianotasi (severity "stop")
         # disingkirkan di sini, bukan sekadar ditanyakan di peramban: konfirmasi
@@ -958,36 +975,34 @@ async def hapus_gambar(request: Request,
     Buang sekumpulan gambar dari projek ke tempat sampah, bisa dipulihkan.
 
     Destruktif walau ke sampah: berkasnya benar-benar pindah dari folder yang
-    dipindai, jadi ia hilang dari grid, job, dan dataset seketika. Karena itu
-    penjaganya sama dengan menyunting label: pemilik projek, atau pelabel yang
-    memegang gambar itu — bukan siapa saja yang kebetulan bisa membuka projek.
+    dipindai, jadi ia hilang dari grid, job, dan dataset seketika. Menghapus
+    MEDIA adalah pengelolaan, bukan pelabelan — jadi hanya pemilik atau Editor,
+    bukan setiap pelabel yang kebetulan bisa menyunting label gambar itu. Labeler
+    yang "cuma label" tidak menghapus gambar orang (apalagi se-projek).
     """
     data, galat = _siap(sess)
     if galat:
         return {"ok": False, "error": galat}
+    if not svc.boleh_unggah(data, sess.user):
+        return {"ok": False, "error": "hanya pemilik atau Editor yang bisa "
+                                      "menghapus gambar dari projek"}
     body = await bodi_json(request)
     minta = _paths(body.get("gambar"))
     if minta is None:
         return {"ok": False, "error": "daftar gambar harus berupa larik"}
 
-    # Path -> item hasil pindai (yang memegang letak berkasnya di disk), lalu
-    # saring dengan hak per gambar. Yang bukan haknya dihitung ditolak, bukan
-    # menggagalkan seluruh daftar.
+    # Path -> item hasil pindai (yang memegang letak berkasnya di disk). Yang
+    # tak ada di projek dihitung ditolak, bukan menggagalkan seluruh daftar.
     boleh, ditolak = [], 0
     for p in minta:
         it = sess.find(p)
         if it is None:
             ditolak += 1
             continue
-        k = svc_tag.kunci_gambar(sess.src, it["img"])
-        if svc.boleh_labeli(data, sess.user, k):
-            boleh.append(it)
-        else:
-            ditolak += 1
+        boleh.append(it)
     if not boleh:
-        return {"ok": False, "error": f"{ditolak} gambar bukan tugasmu; hanya "
-                                      "pelabelnya atau pemilik projek yang bisa "
-                                      "menghapusnya"}
+        return {"ok": False,
+                "error": "tidak satu pun gambar itu ada di projek ini"}
 
     r = await asyncio.to_thread(svc.buang_gambar, sess.src, boleh, data["pemilik"])
     # Berkasnya sudah pindah dari disk; pindai ulang supaya sesi ini tidak lagi
