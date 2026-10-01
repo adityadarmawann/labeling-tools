@@ -73,3 +73,47 @@ def test_tulis_label_pose_format(tmp_path):
     assert parts[5:8] == ["0.200000", "0.300000", "2"]
     assert parts[8:11] == ["0.000000", "0.000000", "0"]   # absen di-pad
     assert parts[11:14] == ["0.500000", "0.600000", "1"]
+
+
+def test_bangun_versi_pose(tmp_path):
+    """Build versi projek pose: data.yaml kpt_shape/flip_idx + label pose +
+    augmentasi di train (aug-balancer keypoint-aware)."""
+    import cv2
+    from app.services import buatversi
+
+    d = tmp_path / "proj"
+    d.mkdir()
+    for i in range(2):
+        cv2.imwrite(str(d / f"img{i}.jpg"),
+                    (np.random.rand(60, 60, 3) * 255).astype(np.uint8))
+
+    def _item(i):
+        pt = lambda nm, x, y, v: {"label": nm, "type": "point", "group_id": 0,
+                                  "flags": {"v": v},
+                                  "pts": np.array([[x, y]], np.float32)}
+        return {"img": d / f"img{i}.jpg", "W": 60, "H": 60, "shapes": [
+            pt("a", 12, 12, 2), pt("b", 24, 36, 1),
+            {"label": "botol", "type": "rectangle", "group_id": 0, "flags": {},
+             "pts": np.array([[6, 6], [30, 42]], np.float32)}]}
+
+    items = [_item(0), _item(1)]
+    skel = {"kelas": "botol", "titik": ["a", "b"], "edge": [[0, 1]],
+            "flip_idx": [0, 1], "tata": []}
+    peta = {"img0": "train", "img1": "valid"}
+    resep = {"volume": {"per_gambar": 3}}      # train: asli + 2 aug
+    job = buatversi.Pekerjaan(d, 1, items, {}, resep, peta, kunci="t",
+                              jenis="kerangka", skeleton=skel)
+    r = job.jalankan()
+
+    dirv = buatversi.dir_versi(d, 1)
+    yaml = (dirv / "data.yaml").read_text()
+    assert "kpt_shape: [2, 3]" in yaml
+    assert "flip_idx: [0, 1]" in yaml
+    assert "names: ['botol']" in yaml
+    # train = img0 asli + augmentasinya (>1 berkas); valid = img1 asli (1).
+    train = list((dirv / "train" / "labels").glob("*.txt"))
+    valid = list((dirv / "valid" / "labels").glob("*.txt"))
+    assert len(train) >= 2 and len(valid) == 1, (len(train), len(valid))
+    p = sorted(train)[0].read_text().strip().split()
+    assert p[0] == "0" and len(p) == 5 + 2 * 3   # cls + bbox + K*3
+    assert r["jenis"] == "kerangka" and r["keypoint"] == 2

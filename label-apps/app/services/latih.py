@@ -201,7 +201,7 @@ BATAS: dict[str, tuple] = {
     "mask_ratio": (1, 8),
 }
 
-TUGAS = ("segment", "detect")
+TUGAS = ("segment", "detect", "pose")
 
 # Bobot awal yang boleh dipakai. Dicari di beberapa tempat supaya tidak
 # menuntut orang menyalin berkas dulu sebelum bisa melatih sekali pun.
@@ -213,7 +213,19 @@ BOBOT_UNDUH = (
     ("yolo26s-seg.pt", "segment", "YOLO26 small — segmentasi, lebih besar"),
     ("yolo26n.pt", "detect", "YOLO26 nano — deteksi kotak"),
     ("yolo26s.pt", "detect", "YOLO26 small — deteksi kotak"),
+    # Keypoint/pose. yolo26n-pose terbaru; yolov8*-pose sebagai cadangan yang
+    # pasti ada di rilis Ultralytics kalau yolo26-pose belum terbit.
+    ("yolo26n-pose.pt", "pose", "YOLO26 nano — keypoint/pose"),
+    ("yolov8n-pose.pt", "pose", "YOLOv8 nano — keypoint/pose (cadangan)"),
+    ("yolov8s-pose.pt", "pose", "YOLOv8 small — keypoint/pose"),
 )
+
+
+def tugas_bobot(stem: str) -> str:
+    """Tugas yang disiratkan nama berkas bobot Ultralytics."""
+    if "-pose" in stem:
+        return "pose"
+    return "segment" if "-seg" in stem else "detect"
 
 
 def dir_bobot() -> list[Path]:
@@ -240,8 +252,8 @@ def bobot_tersedia() -> list[dict]:
             keluar.append({
                 "nama": p.name, "path": str(p), "lokal": True,
                 "mb": round(p.stat().st_size / 1e6, 1),
-                # "-seg" di nama berkas Ultralytics menandai model segmentasi.
-                "tugas": "segment" if "-seg" in p.stem else "detect",
+                # "-seg"/"-pose" di nama berkas Ultralytics menandai tugasnya.
+                "tugas": tugas_bobot(p.stem),
                 "ket": f"berkas lokal di {d.name}/",
             })
     for nama, tugas, ket in BOBOT_UNDUH:

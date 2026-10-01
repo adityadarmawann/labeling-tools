@@ -165,6 +165,13 @@ def main() -> int:
                 pass
 
         model.add_callback("on_fit_epoch_end", _lapor_epoch)
+        if isi["tugas"] == "pose":
+            # Augmentasi aman-pose saat training: flip vertikal MATI (merusak
+            # orientasi keypoint) dan mosaic dikurangi (mosaik penuh merusak
+            # keypoint) — sama seperti train-court.py user. fliplr tetap aman
+            # karena data.yaml pose punya flip_idx. Tak menimpa setelan eksplisit.
+            par.setdefault("flipud", 0.0)
+            par.setdefault("mosaic", 0.5)
         model.train(
             data=str(yaml),
             task=isi["tugas"],

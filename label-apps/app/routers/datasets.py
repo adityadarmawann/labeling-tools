@@ -437,7 +437,8 @@ async def versi_mulai(request: Request, split: str = "", catatan: str = "",
                 return
             job = buatversi.Pekerjaan(ds, nomor, items, names, resep, peta,
                                       kunci=akun, batal=lambda: sess.versi_batal,
-                                      jenis=jenis_ds, pemilik=sess.user)
+                                      jenis=jenis_ds, pemilik=sess.user,
+                                      skeleton=_td.get("skeleton"))
             try:
                 hasil = job.jalankan(catatan)
             except buatversi.Dibatalkan:

@@ -373,7 +373,7 @@ def test_bahan_form_membawa_preset_dan_batas(klien, lingkungan):
     assert r["preset"]["hsv_h"] == 0.030
     assert r["batas"]["epochs"] == [1, 1000]
     assert r["bobot"], "harus selalu ada pilihan bobot"
-    assert r["tugas"] == ["segment", "detect"]
+    assert r["tugas"] == ["segment", "detect", "pose"]
 
 
 @pytest.fixture

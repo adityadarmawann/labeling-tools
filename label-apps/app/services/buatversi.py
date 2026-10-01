@@ -286,7 +286,8 @@ class Pekerjaan:
 
     def __init__(self, ds: Path, nomor: int, items: list[dict], names: dict,
                  resep: dict, peta_split: dict, *, kunci: str, seed: int = 42,
-                 batal=None, jenis: str = "", pemilik: str = ""):
+                 batal=None, jenis: str = "", pemilik: str = "",
+                 skeleton: dict | None = None):
         self.ds = Path(ds)
         self.nomor = nomor
         self.items = items
@@ -334,9 +335,15 @@ class Pekerjaan:
         # mask persegi yang tidak pernah digambar siapa pun. Lima bentuk
         # `point`, yang bahkan tidak punya luas, sudah cukup memicunya.
         self.jenis = (jenis or "").strip().lower()
-        if self.jenis not in ("poligon", "kotak"):
+        if self.jenis == "kerangka":
+            pass                               # projek keypoint/pose
+        elif self.jenis not in ("poligon", "kotak"):
             self.jenis = scanner.terapkan_jenis(list(items), "")
         self.segmentasi = self.jenis == "poligon"
+        # Projek pose: template skeleton (K keypoint + flip_idx). Build-nya lewat
+        # jalur tersendiri (_bangun_pose) dengan augmentasi keypoint-aware.
+        self.skeleton = skeleton if isinstance(skeleton, dict) else {}
+        self.pose = self.jenis == "kerangka" and bool(self.skeleton.get("titik"))
         # Gambar yang memuat bentuk tak sesuai TIDAK ikut ke versi, dan
         # dikembalikan ke "Belum ditugaskan" supaya ada orang yang benar-benar
         # membetulkannya. Diisi fase_pra.
@@ -1209,10 +1216,124 @@ class Pekerjaan:
         self.maju("tutup", 1, 1, ringkas=ringkas)
         return ringkas
 
+    # ------------------------------------------------------------- POSE
+    def _item_ke_pose(self, it: dict) -> list[dict]:
+        """Item hasil pindai -> instance pose [{kelas:0, kp:[(x,y,v)...K]}],
+        koordinat TERNORMALKAN. Titik v=0/absen jadi slot (0,0,0)."""
+        from . import export
+        W, H = it["W"], it["H"]
+        titik = self.skeleton.get("titik") or []
+        K = len(titik)
+        if not W or not H or K < 1:
+            return []
+        slot = {n: i for i, n in enumerate(titik)}
+        out = []
+        for inst in export._instansi_pose(it, slot).values():
+            kp = inst["kp"]
+            if not kp:
+                continue
+            rec = [(0.0, 0.0, 0)] * K
+            ada = False
+            for i in range(K):
+                s = kp.get(i)
+                if s is None:
+                    continue
+                v = export._v_shape(s)
+                if v == 0:
+                    continue
+                x, y = s["pts"].tolist()[0]
+                rec[i] = (min(1.0, max(0.0, x / W)), min(1.0, max(0.0, y / H)), v)
+                ada = True
+            if ada:
+                out.append({"kelas": 0, "kp": rec})
+        return out
+
+    def _simpan_pose(self, split, nama, img, instans, K, sumber, asal):
+        ip = self.dirv / split / "images" / f"{nama}.jpg"
+        ip.parent.mkdir(parents=True, exist_ok=True)
+        if not olah_gpu.simpan_jpeg(ip, img, MUTU_JPEG):
+            cv2.imwrite(str(ip), img, [int(cv2.IMWRITE_JPEG_QUALITY), MUTU_JPEG])
+        olah.tulis_label_pose(self.dirv / split / "labels" / f"{nama}.txt",
+                              instans, K)
+        self.manifes.append({"berkas": f"{split}/images/{nama}.jpg",
+                             "split": split, "asal": asal, "sumber": sumber})
+
+    def _bangun_pose(self, catatan: str = "") -> dict:
+        """Build versi untuk projek keypoint: augmentasi POSE-AWARE (flip_idx,
+        visibilitas, out-of-frame->absen) + volume per_gambar di train; valid/
+        test apa adanya. Inilah aug+balancer yang ekspor Roboflow polos tak
+        punya. bbox tiap instance dihitung otomatis dari titik v>=1."""
+        titik = self.skeleton.get("titik") or []
+        K = len(titik)
+        flip_idx = list(self.skeleton.get("flip_idx") or list(range(K)))
+        pipeline = olah.bangun_pipeline_pose(self.resep) if olah.ada_aug(self.resep) else None
+        per = max(1, int((self.resep.get("volume") or {}).get("per_gambar", 1)))
+        total = len(self.items)
+        for idx, it in enumerate(self.items):
+            self.cek()
+            if idx % 10 == 0:
+                self.maju("aug", idx, total)
+            img = cv2.imread(str(it["img"]))
+            if img is None:
+                continue
+            split = (self.peta.get(it["img"].name)
+                     or self.peta.get(it["img"].stem) or "train")
+            nama0 = it["img"].stem
+            instans = self._item_ke_pose(it)
+            # Original selalu ikut (termasuk gambar tanpa objek = negatif).
+            self._simpan_pose(split, nama0, img, instans, K, it["img"].name, "asli")
+            # Augmentasi HANYA di train, dan hanya kalau ada objeknya.
+            if split == "train" and pipeline is not None and instans:
+                for a in range(per - 1):
+                    self.cek()
+                    hasil = olah.augmentasi_pose_sekali(
+                        img, instans, pipeline, flip_idx, rng=self.np_rng)
+                    if hasil is None:
+                        continue
+                    aimg, ainst = hasil
+                    self._simpan_pose("train", f"{nama0}_aug{a + 1}", aimg, ainst,
+                                      K, it["img"].name, "aug")
+        self.maju("aug", total, total)
+
+        # data.yaml pose (kpt_shape/flip_idx) + MANIFES + ringkasan (hitung dari
+        # disk supaya angkanya pasti cocok dengan berkas yang benar-benar ada).
+        from . import export
+        (self.dirv / "data.yaml").write_text(
+            export.data_yaml_pose(self.skeleton, self.ds.name), encoding="utf-8")
+        (self.dirv / "MANIFES.json").write_text(json.dumps({
+            "versi": self.nomor, "resep": self.resep, "berkas": self.manifes,
+            "skeleton": self.skeleton,
+        }, ensure_ascii=False), encoding="utf-8")
+        jumlah, objek, negatif = {}, 0, 0
+        for s in SPLIT:
+            d = self.dirv / s / "labels"
+            berkas = sorted(d.glob("*.txt")) if d.exists() else []
+            jumlah[s] = len(berkas)
+            for p in berkas:
+                baris = [b for b in p.read_text().splitlines() if b.strip()]
+                if not baris:
+                    negatif += 1
+                objek += len(baris)
+        ringkas = {"n": sum(jumlah.values()), "jumlah": jumlah, "objek": objek,
+                   "kelas": 1, "per_kelas": {self.skeleton.get("kelas") or "objek": objek},
+                   "negatif": negatif, "byte": ukuran_versi(self.ds, self.nomor),
+                   "jenis": "kerangka", "keypoint": K,
+                   "dipulangkan": len(self.dipulangkan),
+                   "detik": round(time.time() - self._t0, 1)}
+        self.maju("tutup", 1, 1, ringkas=ringkas)
+        return ringkas
+
     # ------------------------------------------------------------- jalankan
     def jalankan(self, catatan: str = "") -> dict:
         buang_hasil(self.ds, self.nomor)
         self.dirv.mkdir(parents=True, exist_ok=True)
+        if self.pose:
+            try:
+                return self._bangun_pose(catatan)
+            except Dibatalkan:
+                buang_hasil(self.ds, self.nomor)
+                catat_maju(self.kunci, batal=True, fase_nama="Dibatalkan")
+                raise
         try:
             self.fase_pra()
             self.fase_aug()
