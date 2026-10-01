@@ -200,6 +200,61 @@ el('ak-replay').addEventListener('click', ulang);
 el('ak-skip').addEventListener('click', lewati);
 el('ak-hapus').addEventListener('click', hapus);
 
+// -- buat versi aksi (pemilik saja) -----------------------------------------
+// Membekukan klip berlabel jadi dataset aug+balanced di .versi/vN/. POST hanya
+// memulai; kemajuan di-poll (build bisa lama). Tombolnya cuma ada untuk pemilik
+// (dirender bersyarat di aksi.html), jadi elemennya bisa saja tak ada.
+const btnVersi = el('ak-buat-versi');
+if (btnVersi) {
+  const btnBatal = el('ak-batal-versi');
+  const majuEl = el('ak-versi-maju');
+  let poll = null;
+
+  function tampilMaju(k) {
+    majuEl.hidden = false;
+    if (k.galat) { majuEl.textContent = 'Gagal: ' + k.galat; return; }
+    if (k.batal) { majuEl.textContent = 'Dibatalkan.'; return; }
+    if (k.selesai) { majuEl.textContent = `Versi v${k.nomor || ''} selesai.`; return; }
+    const p = (k.persen != null) ? ` ${k.persen}%` : '';
+    majuEl.textContent = (k.fase_nama || 'Menyiapkan') + p;
+  }
+
+  function berhenti() {
+    if (poll) { clearInterval(poll); poll = null; }
+    btnVersi.disabled = false;
+    btnBatal.hidden = true;
+  }
+
+  async function pantau() {
+    const k = await send(`/api/aksi/versi/kemajuan?ds=${EDS}`);
+    if (!k || !k.ok) return;
+    tampilMaju(k);
+    if (k.selesai || k.batal || k.galat) {
+      berhenti();
+      if (k.selesai) toast(`Versi v${k.nomor || ''} dibuat`);
+    }
+  }
+
+  btnVersi.addEventListener('click', async () => {
+    btnVersi.disabled = true;
+    btnBatal.hidden = false;
+    majuEl.hidden = false;
+    majuEl.textContent = 'Memulai...';
+    const r = await send(`/api/aksi/versi/mulai?ds=${EDS}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resep: {} }),
+    });
+    if (!r.ok) { toast(r.error || 'gagal memulai'); majuEl.textContent = r.error || ''; berhenti(); return; }
+    poll = setInterval(pantau, 1000);
+    pantau();
+  });
+
+  btnBatal.addEventListener('click', async () => {
+    await send(`/api/aksi/versi/batal?ds=${EDS}`, { method: 'POST' });
+    btnBatal.hidden = true;
+  });
+}
+
 // -- papan tik ---------------------------------------------------------------
 document.addEventListener('keydown', e => {
   const t = e.target;

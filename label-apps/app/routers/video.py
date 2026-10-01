@@ -24,8 +24,8 @@ from ..config import (KLIP, KLIP_BURUK, KLIP_DITOLAK, SUMBER_VIDEO, VIDEO_EXT,
                       Settings, get_settings)
 from ..deps import bodi_json, current_session, current_session_api
 from ..security import safe_relpath, safe_slug
-from ..services import (klip, klip_filter, klip_scan, klip_tag, projek, tugas,
-                        video_ingest)
+from ..services import (klip, klip_filter, klip_olah, klip_scan, klip_tag,
+                        projek, tugas, versi, video_ingest)
 from ..session import Session
 from ..templating import templates
 
@@ -572,3 +572,86 @@ async def aksi_ke_dataset(request: Request, ds: str = "",
     r = await asyncio.to_thread(tugas.masukkan, d, boleh, tdata["pemilik"])
     h = await asyncio.to_thread(klip_scan.hitung, d)
     return {"ok": True, **r, **h}
+
+
+# ============================================================
+# LANGKAH 7 — AUGMENTASI + BALANCER + PEMBEKUAN VERSI KLIP
+# ============================================================
+#
+# Padanan /api/versi/mulai gambar, untuk klip. POST hanya MEMULAI (build bisa
+# berjam-jam pada ribuan klip; tak ada peramban/proxy yang menunggu selama itu),
+# lalu peramban memantau lewat GET /api/aksi/versi/kemajuan. Build jalan di
+# thread latar di bawah Giliran — sama polanya dengan scrape di berkas ini.
+
+
+def _kunci_versi_aksi(user: str, ds: str) -> str:
+    """Kunci kemajuan build versi klip, diturunkan dari user+ds DI SERVER —
+    bukan dikirim peramban, supaya satu sesi tak mengintip build sesi lain."""
+    return f"aksi-versi:{user}:{ds}"
+
+
+@router.post("/api/aksi/versi/mulai")
+async def aksi_versi_mulai(request: Request, ds: str = "", catatan: str = "",
+                           sess: Session = Depends(current_session_api),
+                           settings: Settings = Depends(get_settings)):
+    """
+    Mulai membangun satu versi klip beku (aug + balance) ke `.versi/vN/`.
+
+    Digerbang persis seperti operasi klip lain: boleh_unggah (pemilik/Editor) +
+    jenis video + classifier aksi aktif. Parameter aug/balance (varian, rasio_val,
+    cap, fps, ukuran) dikirim sebagai bodi JSON di bawah kunci "resep"; kosong
+    memakai bawaan (lihat klip_olah.resep_sah). Prasyarat ffmpeg diperiksa dulu.
+    """
+    siap, alasan = klip.siap_video()
+    if not siap:
+        return {"ok": False, "error": alasan}
+
+    # _projek_video sudah menjaga boleh_unggah + jenis video. Classifier aksi
+    # harus aktif: tanpa daftar kelas tak ada yang bisa dibekukan jadi versi.
+    d, err = _projek_video(sess, settings, ds)
+    if err:
+        return {"ok": False, "error": err}
+    tdata = await asyncio.to_thread(tugas.baca_projek, d, settings.uploads_root)
+    if not tugas.aksi_aktif(tdata):
+        return {"ok": False, "error": "projek ini belum punya daftar kelas aksi"}
+
+    kunci = _kunci_versi_aksi(sess.user, ds)
+    if klip_olah.kemajuan(kunci).get("jalan"):
+        return {"ok": False, "error": "masih ada pembuatan versi yang berjalan"}
+
+    resep = (await bodi_json(request)).get("resep") or {}
+    pindai = await asyncio.to_thread(klip_scan.pindai, d)
+    items = pindai["items"]
+    if not any(it["label"] for it in items):
+        return {"ok": False, "error": (
+            "belum ada klip berlabel — labeli klip dulu sebelum membuat versi")}
+
+    nomor = await asyncio.to_thread(versi.nomor_berikut, d)
+    aksi = tdata.get("aksi") or {}
+    oleh = sess.user
+
+    def _kerja():
+        klip_olah.jalankan_versi(d, nomor, items, aksi, resep,
+                                 kunci=kunci, oleh=oleh, catatan=catatan)
+
+    threading.Thread(target=_kerja, daemon=True).start()
+    return {"ok": True, "nomor": nomor, "mulai": True}
+
+
+@router.get("/api/aksi/versi/kemajuan")
+async def aksi_versi_kemajuan(ds: str = "",
+                              sess: Session = Depends(current_session_api),
+                              settings: Settings = Depends(get_settings)):
+    """Kemajuan build versi klip untuk projek ini (polling). Kuncinya
+    diturunkan dari user+ds di server, jadi hanya build sendiri yang terlihat."""
+    return {"ok": True, **klip_olah.kemajuan(_kunci_versi_aksi(sess.user, ds))}
+
+
+@router.post("/api/aksi/versi/batal")
+async def aksi_versi_batal(ds: str = "",
+                           sess: Session = Depends(current_session_api),
+                           settings: Settings = Depends(get_settings)):
+    """Hentikan build versi klip yang sedang berjalan (keluaran setengah jadi
+    dibuang oleh pekerjaannya sendiri)."""
+    klip_olah.minta_batal(_kunci_versi_aksi(sess.user, ds))
+    return {"ok": True}

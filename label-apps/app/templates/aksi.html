@@ -51,6 +51,19 @@
               title="Masukkan semua klip yang sudah kamu labeli ke dataset">
         Tambahkan berlabel ke dataset</button>
 
+      {#- Buat versi aksi: hanya pemilik. Membekukan klip berlabel jadi dataset
+          aug+balanced di .versi/vN/ (belah per video sumber, valid klip asli
+          saja, kelas diseimbangkan). POST hanya memulai; kemajuan di-poll. -#}
+      {% if boleh_kelola %}
+      <h3 class="ak-judul">Versi dataset</h3>
+      <button class="chip aksi ak-buat-versi" type="button" id="ak-buat-versi"
+              title="Bekukan klip berlabel jadi versi dataset (augmentasi + penyeimbang kelas)">
+        Buat versi aksi</button>
+      <button class="chip ak-batal-versi" type="button" id="ak-batal-versi" hidden
+              title="Hentikan pembuatan versi">Hentikan</button>
+      <p class="halus ak-versi-maju" id="ak-versi-maju" hidden></p>
+      {% endif %}
+
       <h3 class="ak-judul">Pintasan papan tik</h3>
       <ul class="ak-bantu halus">
         <li><kbd>1</kbd>&ndash;<kbd>9</kbd>,<kbd>0</kbd> pilih kelas</li>
