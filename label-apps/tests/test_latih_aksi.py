@@ -22,12 +22,12 @@ import importlib
 import importlib.util
 import json
 import shutil
-import sys
 
 import pytest
 
 from app.services import latih_aksi, versi
-from conftest import PW_ANGGI, PW_PAUL, klien_baru, masuk
+from conftest import (PW_ANGGI, PW_PAUL, klien_baru, masuk,
+                      pustaka_berat_saat_impor)
 
 
 # ============================================================
@@ -257,21 +257,24 @@ def test_runner_punya_penjaga_vram():
 def test_seluruh_modul_aksi_impor_tanpa_torch():
     """Trainer per backend WAJIB import-guard bersih: impor berat (torch/
     transformers/pytorchvideo/av/ultralytics) ada di dalam fungsi, bukan di
-    tingkat modul — itulah yang membuat server CPU bisa memuat seluruh aplikasi."""
-    for m in ("app.services.latih_aksi", "app.services.latih_aksi_jalan",
-              "app.services.latih_aksi_umum", "app.services.latih_aksi_videomae",
-              "app.services.latih_aksi_slowfast", "app.services.latih_aksi_posec3d",
-              "app.services.posec3d_model"):
-        importlib.import_module(m)
-    # Mengimpornya tak boleh menarik torch dkk ke dalam proses.
-    for berat in ("torch", "transformers", "pytorchvideo", "av"):
-        assert berat not in sys.modules, f"{berat} ikut terimpor di tingkat modul"
+    tingkat modul — itulah yang membuat server CPU bisa memuat seluruh aplikasi.
+
+    Diukur di proses bersih (lihat pustaka_berat_saat_impor): di venv GPU torch
+    sudah ada di sys.modules proses tes ini karena tes lain mengimpornya, jadi
+    memeriksa di tempat akan salah menuduh modul yang sebenarnya bersih.
+    """
+    tercemar = pustaka_berat_saat_impor(
+        ["app.services.latih_aksi", "app.services.latih_aksi_jalan",
+         "app.services.latih_aksi_umum", "app.services.latih_aksi_videomae",
+         "app.services.latih_aksi_slowfast", "app.services.latih_aksi_posec3d",
+         "app.services.posec3d_model"],
+        ["torch", "transformers", "pytorchvideo", "av"])
+    assert not tercemar, f"{tercemar} ikut terimpor di tingkat modul"
 
 
 def test_aplikasi_impor_tanpa_torch():
-    from app.main import create_app
-    create_app()
-    assert "torch" not in sys.modules
+    tercemar = pustaka_berat_saat_impor([], ["torch"], buat_app=True)
+    assert not tercemar, f"{tercemar} ikut terimpor saat create_app()"
 
 
 # ============================================================

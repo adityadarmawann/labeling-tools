@@ -21,13 +21,12 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
-import json
-import sys
 
 import pytest
 
 from app.services import eval_aksi, latih_aksi
-from conftest import PW_ANGGI, PW_PAUL, klien_baru, masuk
+from conftest import (PW_ANGGI, PW_PAUL, klien_baru, masuk,
+                      pustaka_berat_saat_impor)
 
 
 # ============================================================
@@ -169,13 +168,16 @@ def test_png_melempar_bersih_tanpa_matplotlib():
 
 def test_modul_eval_impor_tanpa_matplotlib_atau_torch():
     """Modul eval + aplikasi WAJIB impor tanpa menarik matplotlib/torch ke
-    proses server (impor berat ada DI DALAM fungsi)."""
-    importlib.import_module("app.services.eval_aksi")
-    importlib.import_module("app.services.eval_aksi_jalan")
-    from app.main import create_app
-    create_app()
-    for berat in ("matplotlib", "torch", "transformers", "pytorchvideo"):
-        assert berat not in sys.modules, f"{berat} ikut terimpor di tingkat modul"
+    proses server (impor berat ada DI DALAM fungsi).
+
+    Diukur di proses bersih (lihat pustaka_berat_saat_impor): sys.modules proses
+    tes ini bisa sudah tercemar torch/matplotlib oleh tes lain di venv GPU.
+    """
+    tercemar = pustaka_berat_saat_impor(
+        ["app.services.eval_aksi", "app.services.eval_aksi_jalan"],
+        ["matplotlib", "torch", "transformers", "pytorchvideo"],
+        buat_app=True)
+    assert not tercemar, f"{tercemar} ikut terimpor di tingkat modul"
 
 
 # ============================================================

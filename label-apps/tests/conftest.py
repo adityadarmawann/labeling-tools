@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -220,3 +221,28 @@ def klien_baru(aplikasi, nama: str, pw: str):
     from fastapi.testclient import TestClient
 
     return masuk(TestClient(aplikasi), nama, pw)
+
+
+def pustaka_berat_saat_impor(impor: list[str], berat: list[str],
+                             buat_app: bool = False) -> list[str]:
+    """Pustaka berat di `berat` yang IKUT tertarik ke sys.modules saat modul di
+    `impor` diimpor (opsional sekalian create_app()) — diukur di PROSES PYTHON
+    BARU venv ini.
+
+    Harus proses terpisah. Yang dijaga adalah impor-guard: pustaka berat
+    (torch/transformers/pytorchvideo/av/matplotlib) WAJIB diimpor DI DALAM
+    fungsi, bukan di tingkat modul — itulah yang membuat server CPU bisa memuat
+    seluruh aplikasi tanpa pustaka itu terpasang. Memeriksanya di proses tes
+    sendiri salah ukur: di venv GPU tes LAIN sudah menarik torch ke sys.modules,
+    jadi `'torch' in sys.modules` menilai pencemaran suite, bukan sifat modul.
+    Di proses bersih, yang terukur persis apakah MODUL ITU yang menariknya.
+    """
+    baris = ["import sys, importlib"]
+    baris += [f"importlib.import_module({m!r})" for m in impor]
+    if buat_app:
+        baris.append("from app.main import create_app; create_app()")
+    baris.append(f"print('\\n'.join(b for b in {berat!r} if b in sys.modules))")
+    p = subprocess.run([sys.executable, "-c", "\n".join(baris)],
+                       capture_output=True, text=True, cwd=str(ROOT))
+    assert p.returncode == 0, f"subproses impor gagal:\n{p.stdout}\n{p.stderr}"
+    return [b for b in p.stdout.splitlines() if b]
