@@ -141,11 +141,19 @@
 
       {#- Tombol kelas: real <button>, satu per kelas aksi, dengan pintasan
           angka (1..9 lalu 0) untuk sepuluh kelas pertama. Diisi aksi.js supaya
-          warna & pintasannya konsisten dengan datanya. -#}
-      <div class="ak-kelas" id="ak-kelas" role="group" aria-label="Kelas aksi"></div>
+          warna & pintasannya konsisten dengan datanya. Pemilik bisa menyetel/
+          mengubah daftar kelas lewat tombol di sebelahnya (editor #dlg-aksi). -#}
+      <div class="ak-kelas-baris">
+        <div class="ak-kelas" id="ak-kelas" role="group" aria-label="Kelas aksi"></div>
+        {% if boleh_kelola %}
+        <button class="chip" type="button" id="ak-set-kelas"
+                title="Setel/ubah daftar kelas aksi projek ini">&#9881; Kelas</button>
+        {% endif %}
+      </div>
       {% if not awal.kelas %}
       <p class="halus ak-nokelas">Projek ini belum punya daftar kelas aksi.
-        {% if boleh_kelola %}Setel dulu kelasnya sebelum melabeli klip.{% else %}
+        {% if boleh_kelola %}Klik <b>&#9881; Kelas</b> di atas untuk menyetelnya
+        dulu sebelum melabeli klip.{% else %}
         Minta pemilik projek menyetel kelasnya dulu.{% endif %}</p>
       {% endif %}
 
@@ -154,6 +162,42 @@
   </div>
 </div>
 </main>
+
+{#- Editor kelas aksi projek (pemilik). Daftar kelas (satu per baris, urut =
+    indeks kelas saat ekspor/latih) + kelas negatif opsional. Disimpan ke
+    .tugas.json lewat POST /api/tugas/aksi — jumlah & nama bebas per projek,
+    padanan editor template keypoint di kanvas gambar. -#}
+{% if boleh_kelola %}
+<div class="dlg" id="dlg-aksi" hidden>
+  <div class="dlg-kotak" role="dialog" aria-modal="true"
+       aria-labelledby="dlg-aksi-judul">
+    <button class="dlg-tutup" type="button" id="dlg-aksi-tutup"
+            aria-label="Tutup">&times;</button>
+    <h3 id="dlg-aksi-judul">Kelas aksi projek</h3>
+    <p class="dlg-sub">Tentukan daftar kelas aksi untuk projek ini — satu per
+      baris. Dipakai untuk melabeli tiap klip; jumlah &amp; nama bebas sesuai
+      projekmu. Urutannya = indeks kelas saat ekspor/latih.</p>
+
+    <label class="form-lbl" for="aksi-kelas">Kelas aksi — satu per baris</label>
+    <textarea id="aksi-kelas" rows="6" spellcheck="false"
+      placeholder="shoot&#10;pass&#10;dribble&#10;rebound"></textarea>
+
+    <label class="form-lbl" for="aksi-negatif">Kelas "tanpa-aksi" / negatif
+      (opsional)</label>
+    <input id="aksi-negatif" type="text" autocomplete="off"
+           placeholder="mis. idle — harus salah satu kelas di atas">
+    <p class="dlg-sub">Kelas negatif = contoh "tidak ada aksi" yang eksplisit
+      (bukan label kosong). Dipakai penyeimbang saat build versi. Kosongkan
+      kalau tak ada.</p>
+
+    <div class="jalur-status" id="aksi-kelas-jalur"></div>
+    <div class="row" style="margin-top:8px;gap:8px">
+      <button class="cta" type="button" id="aksi-kelas-simpan">Simpan kelas</button>
+      <button class="chip" type="button" id="aksi-kelas-batal">Batal</button>
+    </div>
+  </div>
+</div>
+{% endif %}
 
 <script id="ak-awal" type="application/json">{{ awal | tojson }}</script>
 {% endblock %}

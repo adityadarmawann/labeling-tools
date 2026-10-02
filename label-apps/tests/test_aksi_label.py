@@ -265,13 +265,27 @@ def test_aksi_keterangan_scope(klien, aplikasi, lingkungan):
     assert r["ok"] and {k["rel"] for k in r["klips"]} == {"klip/b1/a.mp4"}
 
 
-def test_aksi_bukan_projek_aksi_dialihkan(klien, lingkungan):
-    """Projek video tanpa kelas aksi (atau image) dialihkan ke /anotasi, bukan
-    halaman tombol kosong."""
+def test_aksi_projek_image_dialihkan_ke_anotasi(klien, lingkungan):
+    """Projek IMAGE yang nyasar ke /aksi dialihkan ke papan anotasi gambar."""
+    masuk(klien, "paul", PW_PAUL)
+    klien.post("/api/projek/baru?nama=img2&jenis=image")
+    r = klien.get("/aksi?ds=img2", follow_redirects=False)
+    assert r.status_code == 303 and "/anotasi" in r.headers["location"]
+
+
+def test_aksi_video_tanpa_kelas_render_editor_bukan_dialihkan(klien, lingkungan):
+    """Projek VIDEO tanpa kelas aksi TETAP merender /aksi untuk pemilik: di
+    sinilah ia menyetel kelasnya (tombol editor), bukan dialihkan pergi.
+
+    Regresi: dulu video tanpa kelas ikut dialihkan ke /anotasi, sehingga
+    pemilik tak pernah punya tempat mendefinisikan kelas aksi.
+    """
     masuk(klien, "paul", PW_PAUL)
     klien.post("/api/projek/baru?nama=vid&jenis=video")
     r = klien.get("/aksi?ds=vid", follow_redirects=False)
-    assert r.status_code == 303 and "/anotasi" in r.headers["location"]
+    assert r.status_code == 200, r.text[:200]
+    assert 'id="ak-set-kelas"' in r.text          # tombol editor kelas (pemilik)
+    assert "belum punya daftar kelas aksi" in r.text
 
 
 def test_anotasi_image_tak_regresi_dan_sidebar(klien, lingkungan):

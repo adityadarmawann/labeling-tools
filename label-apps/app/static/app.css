@@ -3416,7 +3416,11 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
 
 /* Papan tombol kelas: satu per kelas, pintasan angka di pojok, warna kelas
    sebagai aksen tepi kiri. data-on = label klip ini sekarang. */
-.ak-kelas{display:flex;flex-wrap:wrap;gap:8px}
+/* Baris kelas: tombol-tombol kelas mengalir, tombol "Kelas" (editor, pemilik)
+   menempel di ujung dan tak ikut menyusut. */
+.ak-kelas-baris{display:flex;align-items:flex-start;gap:8px}
+.ak-kelas{display:flex;flex-wrap:wrap;gap:8px;flex:1 1 auto;min-width:0}
+.ak-kelas-baris #ak-set-kelas{flex:0 0 auto}
 .ak-kls{position:relative;display:inline-flex;align-items:center;gap:8px;
   padding:9px 13px 9px 12px;border:1px solid var(--line2);border-radius:9px;
   background:var(--raised);color:var(--ink);font-size:13px;font-weight:500;

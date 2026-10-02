@@ -27,11 +27,12 @@
        {% if aktif == 'unggah' %}data-on aria-current="page"{% endif %}>
       <span class="sisi-ikon" aria-hidden="true">&uarr;</span>Unggah data</a>
 
-    {#- Projek VIDEO classifier aksi: klip adalah unit kerjanya, bukan gambar,
-        jadi menu "Anotasi" (papan + kanvas gambar) diganti "Label Aksi" yang
-        mengarah ke halaman pelabelan klip (/aksi). Projek image/video biasa
-        tak tersentuh — cabang ini additif, bukan mengubah yang lama. -#}
-    {% if pr.jenis == 'video' and pr.aksi %}
+    {#- Projek VIDEO: klip adalah unit kerjanya, bukan gambar, jadi menu
+        "Anotasi" (papan + kanvas gambar) diganti "Label Aksi" yang mengarah ke
+        /aksi — BERLAKU untuk SEMUA projek video, termasuk yang kelas aksinya
+        belum diset (di /aksi itulah pemilik menyetelnya). Projek image tak
+        tersentuh — cabang ini additif, bukan mengubah yang lama. -#}
+    {% if pr.jenis == 'video' %}
     <a class="sisi-item" href="/aksi?ds={{ pr.ds | urlquote }}"
        {% if aktif == 'aksi' %}data-on aria-current="page"{% endif %}>
       <span class="sisi-ikon" aria-hidden="true">&#9658;</span>Label Aksi

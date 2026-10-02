@@ -437,9 +437,12 @@ async def halaman_aksi(request: Request, ds: str = "", job: str = "",
     if d is None:
         return RedirectResponse("/pilih", status_code=303)
     tdata = tugas.baca_projek(d, settings.uploads_root)
-    # Projek video non-aksi (atau image) tak punya daftar kelas klip: dialihkan
-    # ke papan anotasi gambar, bukan menampilkan halaman yang tombolnya kosong.
-    if projek.jenis_projek(d) != "video" or not tugas.aksi_aktif(tdata):
+    # Projek GAMBAR yang nyasar ke sini -> papan anotasi gambar. Tapi projek
+    # VIDEO tetap dirender di sini WALAU kelas aksinya belum diset: justru di
+    # halaman inilah pemilik menyetel kelasnya (editor "Setel kelas aksi"), dan
+    # pelabel melihat pesan menunggu. Dulu video tanpa kelas ikut dialihkan ke
+    # /anotasi, sehingga pemilik tak pernah punya tempat mendefinisikan kelas.
+    if projek.jenis_projek(d) != "video":
         return RedirectResponse(f"/anotasi?ds={ds}", status_code=303)
     # Projek dibuka di sesi ini supaya sidebar & pencabutan hak selaras dengan
     # halaman lain. Projek video tak punya gambar jadi pemindaiannya nyaris nol.

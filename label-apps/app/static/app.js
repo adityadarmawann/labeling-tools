@@ -1418,9 +1418,12 @@ const Progres = (() => {
 
     if (a === 'buka') {
       const proj = semua.find(x => x.nama === nama) || {};
-      // Projek video belum punya alur pelabelan — jangan dibuka dulu.
+      // Projek video = classifier aksi: dibuka di halaman Label Aksi (/aksi),
+      // yang memuat projeknya sendiri lalu menampilkan editor kelas (pemilik)
+      // atau daftar klip. Tak lewat /setsrc karena projek video tak punya
+      // gambar — /setsrc memang untuk dataset gambar.
       if (proj.jenis === 'video') {
-        toast('Pelabelan video sedang disiapkan — projek ini belum bisa dibuka.');
+        location.href = '/aksi?ds=' + encodeURIComponent(proj.nama);
         return;
       }
       const p = bukaLink ? bukaLink.dataset.buka : proj.path;

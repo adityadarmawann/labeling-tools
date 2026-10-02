@@ -573,4 +573,49 @@ document.addEventListener('keydown', e => {
   }
 });
 
+// -- editor kelas aksi (pemilik) ---------------------------------------------
+// Tempat pemilik MENDEFINISIKAN/mengubah daftar kelas. Tanpa ini, projek video
+// baru tak punya cara menyetel kelas, dan halaman cuma menampilkan pesan "belum
+// ada kelas" tanpa jalan keluar. Tombol & dialog hanya ada untuk pemilik.
+(function editorKelas() {
+  const buka = el('ak-set-kelas');
+  const dlg = el('dlg-aksi');
+  if (!buka || !dlg) return;                 // non-pemilik: tombol/dialog absen
+  const taKelas = el('aksi-kelas');
+  const inNeg = el('aksi-negatif');
+  const simpan = el('aksi-kelas-simpan');
+  const tampil = v => {
+    dlg.hidden = !v;
+    if (v) {
+      taKelas.value = (D.kelas || []).join('\n');
+      inNeg.value = D.negatif || '';
+      setTimeout(() => taKelas.focus(), 30);
+    }
+  };
+  buka.addEventListener('click', () => tampil(true));
+  el('dlg-aksi-tutup').addEventListener('click', () => tampil(false));
+  el('aksi-kelas-batal').addEventListener('click', () => tampil(false));
+  dlg.addEventListener('click', e => { if (e.target === dlg) tampil(false); });
+
+  simpan.addEventListener('click', async () => {
+    const kelas = taKelas.value.split('\n').map(s => s.trim()).filter(Boolean);
+    if (!kelas.length) { toast('Isi minimal satu kelas aksi'); return; }
+    const negatif = (inNeg.value || '').trim();
+    if (negatif && !kelas.includes(negatif)) {
+      toast('Kelas negatif harus salah satu kelas di daftar'); return;
+    }
+    simpan.disabled = true;
+    const r = await send(`/api/tugas/aksi?ds=${EDS}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ aksi: { kelas, negatif } }),
+    });
+    simpan.disabled = false;
+    if (!r || !r.ok) { toast((r && r.error) || 'gagal menyimpan kelas'); return; }
+    // Muat ulang: begitu kelas ada, tombol kelas + pelabelan aktif dan pesan
+    // "belum ada kelas" hilang — lebih sederhana & tak bisa salah-sinkron
+    // dibanding merender ulang semua keadaan di tempat.
+    location.reload();
+  });
+})();
+
 render();
