@@ -241,6 +241,14 @@ function gambarSekarang() {
     if (perluFilter) g.filter = 'none';
   }
 
+  // Sorot instance pose DI BAWAH kursor (mode Sunting): bagian DALAM bbox-nya
+  // dicerahkan — padanan sorotan hover Roboflow. Digambar sesudah citra tetapi
+  // SEBELUM rangka & titik, supaya keduanya tetap tajam di atas area terang.
+  if (poseProjek() && S.mode === 'edit' && img.complete && img.naturalWidth) {
+    const gidS = gidSorotHover();
+    if (gidS != null) sorotInstanceDalamBbox(gidS);
+  }
+
   // Garis skeleton digambar DULU supaya titik keypoint menimpanya.
   gambarSkeleton();
 
@@ -350,8 +358,15 @@ function gambarBentuk(s, terpilih) {
 
   if (TERTUTUP.has(s.shape_type)) {
     jalur(p);
-    g.fillStyle = warna(s.label, terpilih ? 0.38 : 0.2);
-    g.fill();
+    // Kotak instance pose TIDAK dibanjiri warna — seperti Roboflow, bagian
+    // dalamnya dibiarkan bersih (disorot dengan mencerahkan saat hover). Banjir
+    // 0.2 itu persis yang bikin "ga enak dipandang" di pratinjau. Garisnya tetap
+    // digambar di bawah. Kotak/poligon biasa tetap diisi seperti dulu.
+    const poseBbox = s.shape_type === 'rectangle' && s.group_id != null && poseProjek();
+    if (!poseBbox) {
+      g.fillStyle = warna(s.label, terpilih ? 0.38 : 0.2);
+      g.fill();
+    }
   } else {
     // line dan linestrip TIDAK ditutup dan tidak diisi: jalurnya memang
     // terbuka (shape.py:176-185).
@@ -3641,6 +3656,53 @@ function kotakInstance(gid) {
   const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
   return { x0: Math.min(...xs), y0: Math.min(...ys),
            x1: Math.max(...xs), y1: Math.max(...ys) };
+}
+
+/* group_id instance pose yang kotaknya MEMUAT kursor — yang terkecil kalau
+   bertumpuk, supaya instance dalam selalu menang atas yang membungkusnya.
+   null kalau kursor tak di atas instance mana pun. Dipakai sorotan hover. */
+function gidSorotHover() {
+  if (!S.kursor) return null;
+  const [gx, gy] = S.kursor;
+  const gids = new Set();
+  S.shapes.forEach(s => { if (s.group_id != null && terlihat(s)) gids.add(s.group_id); });
+  let pilih = null, luasMin = Infinity;
+  gids.forEach(gid => {
+    const k = kotakInstance(gid);
+    if (!k) return;
+    const x0 = Math.min(k.x0, k.x1), x1 = Math.max(k.x0, k.x1);
+    const y0 = Math.min(k.y0, k.y1), y1 = Math.max(k.y0, k.y1);
+    if (gx >= x0 && gx <= x1 && gy >= y0 && gy <= y1) {
+      const luas = (x1 - x0) * (y1 - y0);
+      if (luas < luasMin) { luasMin = luas; pilih = gid; }
+    }
+  });
+  return pilih;
+}
+
+/* Cerahkan PIKSEL di dalam bbox instance — padanan sorotan hover Roboflow:
+   bagian dalam kotak "menyala". Citra digambar ulang terklip ke bbox dengan
+   brightness lebih tinggi, menumpang di atas kecerahan/kontras pilihan pengguna
+   (jadi tidak membatalkannya); di luar bbox tidak tersentuh. Dipanggil sebelum
+   rangka/titik, jadi keduanya tetap tajam di atas area terang. */
+function sorotInstanceDalamBbox(gid) {
+  const k = kotakInstance(gid);
+  if (!k) return;
+  const x0 = Math.min(k.x0, k.x1), x1 = Math.max(k.x0, k.x1);
+  const y0 = Math.min(k.y0, k.y1), y1 = Math.max(k.y0, k.y1);
+  const x = keLayarX(x0), y = keLayarY(y0);
+  const w = (x1 - x0) * S.zoom, h = (y1 - y0) * S.zoom;
+  if (w < 1 || h < 1) return;
+  g.save();
+  g.beginPath();
+  g.rect(x, y, w, h);
+  g.clip();
+  g.imageSmoothingEnabled = S.zoom < 4;
+  g.filter = `brightness(${(S.cerah * 1.3).toFixed(3)}) `
+           + `contrast(${S.kontras.toFixed(3)})`;
+  g.drawImage(img, S.panx, S.pany, D.W * S.zoom, D.H * S.zoom);
+  g.filter = 'none';
+  g.restore();
 }
 
 /*
