@@ -868,6 +868,90 @@ def buat_skeleton_dari_pose(ds: Path, pemilik: str = "") -> dict:
     return {"dibuat": True, "K": len(tpl["titik"]), "kelas": tpl["kelas"]}
 
 
+def _punya_manifes_dataset(ds: Path) -> bool:
+    """True kalau `ds` adalah ekspor dataset JADI (Roboflow/YOLO), ditandai
+    manifes `data.yaml` — di akar (tempatnya setelah ratakan_split) atau di satu
+    folder pembungkus (ekspor tanpa split yang belum diratakan).
+
+    Inilah batas yang memisahkan dua hal yang mudah tertukar: "mengunggah
+    dataset jadi" (anotasinya ikut, memang sudah diputuskan masuk) dari "projek
+    pelabelan biasa" (anotasinya dibuat di sini, dan yang memutuskan sebuah
+    gambar layak masuk dataset adalah orangnya — lewat tombol borongan — bukan
+    sistem yang menebak atas namanya). Projek pelabelan tak punya data.yaml,
+    jadi gerbang ini membiarkannya persis seperti dulu.
+    """
+    ds = Path(ds)
+    nama = ("data.yaml", "data.yml", "dataset.yaml")
+
+    def ada(folder: Path) -> bool:
+        return any((folder / n).is_file() for n in nama)
+
+    try:
+        if ada(ds):
+            return True
+        for sub in ds.iterdir():
+            if sub.is_dir() and not sub.name.startswith((".", "_")) and ada(sub):
+                return True
+    except OSError:
+        pass
+    return False
+
+
+def masuk_dataset_berlabel(ds: Path, pemilik: str = "") -> int:
+    """
+    FILTER otomatis sesudah impor: gambar yang SUDAH berlabel langsung MASUK
+    DATASET, tanpa perlu dibagi ke pelabel.
+
+    Kasus utamanya: dataset JADI yang diunggah LENGKAP (ekspor Roboflow/YOLO
+    berikut anotasi) — pekerjaannya sudah selesai, jadi membaginya ke pelabel
+    tak masuk akal; ia langsung jadi dataset dan ikut versi/latih. Gambar TANPA
+    anotasi (unggahan gambar mentah) TIDAK disentuh: ia tinggal di "Belum
+    ditugaskan" untuk dilabeli lebih dulu. Satu unggahan CAMPURAN pun terpilah
+    sendiri — yang berlabel ke dataset, yang mentah menunggu dilabeli.
+
+    HANYA berlaku untuk ekspor dataset jadi (ada manifes data.yaml). Tanpa
+    manifes, ini projek pelabelan biasa: tidak ada yang disentuh, isi dataset
+    tetap diputuskan orangnya lewat tombol borongan. Gerbang itu yang membuat
+    aturan lama ("tak satu pun rute menyelinapkan gambar ke dataset") tetap utuh
+    untuk projek pelabelan, sementara dataset jadi boleh langsung masuk.
+
+    "Berlabel" = severity != "stop", jadi gambar yang sengaja ditandai LATAR
+    (tanpa objek) ikut masuk — menandainya sudah keputusan yang diambil.
+    Idempoten (yang sudah di dataset dilewati; aman dipanggil ulang tiap impor).
+    Mengembalikan jumlah gambar yang BARU dimasukkan.
+    """
+    from . import scanner
+    from . import tag as _tag
+
+    ds = Path(ds)
+    # Gerbang manifes: projek pelabelan (tanpa data.yaml) dibiarkan utuh.
+    if not _punya_manifes_dataset(ds):
+        return 0
+    try:
+        items, _ = scanner.scan(ds)
+    except Exception as e:                            # noqa: BLE001
+        log.warning("auto-masuk dataset %s gagal memindai: %s", Path(ds).name, e)
+        return 0
+    semua, berlabel, batch_dari = set(), set(), {}
+    tag_all = _tag.baca(ds)
+    for it in items:
+        k = _tag.kunci_gambar(ds, it["img"])
+        semua.add(k)
+        if scanner.severity(it) != "stop":
+            berlabel.add(k)
+        b = _tag.untuk(tag_all, k)["batch"]
+        if b:
+            batch_dari[k] = b
+    data = baca(ds, pemilik)
+    kunci = belum_ditugaskan_siap(data, berlabel, semua, "", batch_dari)
+    if not kunci:
+        return 0
+    masukkan(ds, kunci, data["pemilik"] or pemilik)
+    log.info("auto-masuk dataset %s: %d gambar berlabel langsung jadi dataset",
+             Path(ds).name, len(kunci))
+    return len(kunci)
+
+
 # ============================================================
 # KELAS AKSI  (projek VIDEO sub-jenis aksi; padanan skeleton{})
 # ============================================================

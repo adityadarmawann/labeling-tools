@@ -1537,6 +1537,62 @@ def test_semua_jalur_penambah_gambar_tunduk_pada_aturan_yang_sama(klien,
     assert n_dataset("pintu-gabung") == (0, 3)
 
 
+def test_dataset_jadi_berlabel_masuk_sendiri_tapi_butuh_manifes(tmp_path):
+    """Satu-satunya pengecualian aturan di atas: ekspor dataset JADI.
+
+    Kalau yang diunggah adalah dataset lengkap (ekspor Roboflow/YOLO dengan
+    `data.yaml`), anotasinya ikut — "masuk dataset" sudah diputuskan di luar
+    sini, jadi tak masuk akal memintanya dibagi ke pelabel. Pembedanya adalah
+    manifes `data.yaml`: tanpa itu ini projek pelabelan biasa dan aturan lama
+    berlaku penuh (tak ada yang tersentuh). Yang mentah tetap menunggu dilabeli
+    meski manifesnya ada, dan panggilan ulang tidak menambah apa pun.
+    """
+    import cv2
+    import numpy as np
+
+    def _gbr(p):
+        p.parent.mkdir(parents=True, exist_ok=True)
+        cv2.imwrite(str(p), np.full((40, 60, 3), 127, np.uint8))
+
+    d = tmp_path / "court"
+    # Tata YOLO datar persis seperti hasil ratakan_split: images/ + labels/.
+    _gbr(d / "images" / "a.jpg")
+    (d / "labels").mkdir(parents=True, exist_ok=True)
+    (d / "labels" / "a.txt").write_text("0 0.5 0.5 0.2 0.2\n")
+    _gbr(d / "images" / "mentah.jpg")        # tanpa label -> mentah
+
+    # Tanpa manifes: gerbang menahan — projek pelabelan dibiarkan utuh.
+    assert tugas.masuk_dataset_berlabel(d, "paul") == 0
+    assert tugas.baca(d, "paul")["dataset"] == []
+
+    # Dengan data.yaml: hanya yang berlabel masuk; yang mentah tetap menunggu.
+    (d / "data.yaml").write_text("names: ['botol']\nnc: 1\n")
+    assert tugas.masuk_dataset_berlabel(d, "paul") == 1
+    masuk_set = set(tugas.baca(d, "paul")["dataset"])
+    assert "images/a.jpg" in masuk_set
+    assert "images/mentah.jpg" not in masuk_set
+
+    # Idempoten: dataset jadi yang sudah masuk tak dimasukkan dua kali.
+    assert tugas.masuk_dataset_berlabel(d, "paul") == 0
+
+
+def test_manifes_dataset_di_pembungkus_terdeteksi(tmp_path):
+    """Ekspor tanpa split kadang terbungkus satu folder dan data.yaml-nya tak
+
+    ikut terangkat ratakan_split (tak ada split untuk dipicu). Gerbang manifes
+    tetap harus mengenalinya, jadi penelusurannya turun satu tingkat.
+    """
+    d = tmp_path / "bungkus"
+    (d / "rf").mkdir(parents=True, exist_ok=True)
+    (d / "rf" / "data.yaml").write_text("names: ['x']\n")
+    assert tugas._punya_manifes_dataset(d) is True
+    # Folder internal (.versi/_sampah) tak boleh dihitung sebagai manifes.
+    d2 = tmp_path / "bersih"
+    (d2 / ".versi" / "v1").mkdir(parents=True, exist_ok=True)
+    (d2 / ".versi" / "v1" / "data.yaml").write_text("names: ['x']\n")
+    assert tugas._punya_manifes_dataset(d2) is False
+
+
 def test_pekerjaan_yang_dibagi_bisa_dibuka_di_kanvas(klien, lingkungan):
     """Halaman job satu-satunya jalan ke kanvas untuk gambar di luar dataset.
 

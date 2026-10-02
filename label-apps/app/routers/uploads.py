@@ -314,8 +314,15 @@ async def unzip(ds: str = "", name: str = "",
     # Ekspor YOLO-pose (data.yaml ber-kpt_shape): auto-buat template keypoint,
     # sekali, hanya kalau projek belum punya — supaya unggahan court langsung
     # bisa diedit sebagai keypoint. Idempoten & tak menimpa template manual.
-    await asyncio.to_thread(tugas.buat_skeleton_dari_pose, d,
-                            projek.pemilik_dari(settings.uploads_root, d))
+    _pemilik = projek.pemilik_dari(settings.uploads_root, d)
+    await asyncio.to_thread(tugas.buat_skeleton_dari_pose, d, _pemilik)
+    # Filter otomatis "dataset jadi -> langsung masuk dataset" SENGAJA tidak di
+    # sini: /unzip belum meratakan split, jadi kunci gambar masih bentuk
+    # `train/images/x.jpg`. /useupload yang menyusul MERATAKANNYA jadi
+    # `images/x.jpg` — kunci yang disimpan di sini akan jadi basi. Maka
+    # masuk_dataset_berlabel dijalankan di /useupload (sesudah ratakan_split),
+    # di atas kunci yang final. Projek berisi pun menolak .zip, jadi tiap
+    # unggahan .zip pasti lewat /useupload.
     return {"ok": True, "n": hasil["ditulis"], "dilewati": hasil["dilewati"],
             "bytes": hasil["bytes"], "contoh_dilewati": hasil["contoh_dilewati"],
             "arsip_dihapus": True}
@@ -443,8 +450,11 @@ async def impor_dari_server(path: str = "", ds: str = "",
     # begini, semua gambar berlabel langsung terbaca "sudah dianotasi".
     await asyncio.to_thread(tambah.ratakan_split, tujuan)
     # data.yaml bertahan di akar setelah ratakan_split, jadi pose masih terbaca.
-    await asyncio.to_thread(tugas.buat_skeleton_dari_pose, tujuan,
-                            projek.pemilik_dari(settings.uploads_root, tujuan))
+    _pemilik = projek.pemilik_dari(settings.uploads_root, tujuan)
+    await asyncio.to_thread(tugas.buat_skeleton_dari_pose, tujuan, _pemilik)
+    # FILTER otomatis: isi berlabel langsung masuk dataset (dataset jadi lengkap),
+    # isi mentah menunggu dilabeli.
+    await asyncio.to_thread(tugas.masuk_dataset_berlabel, tujuan, _pemilik)
 
     n = len(await asyncio.to_thread(sess.load, tujuan))
     peringatan = await asyncio.to_thread(scanner.periksa_kelengkapan, tujuan)
@@ -581,8 +591,10 @@ async def tambah_dari_server(path: str = "",
 
     # Dataset tujuan bisa jadi ekspor pose yang digabung; auto-buat template
     # kalau belum ada (guard di dalam menolak kalau sudah / bukan pose).
-    await asyncio.to_thread(tugas.buat_skeleton_dari_pose, tujuan,
-                            projek.pemilik_dari(settings.uploads_root, tujuan))
+    _pemilik = projek.pemilik_dari(settings.uploads_root, tujuan)
+    await asyncio.to_thread(tugas.buat_skeleton_dari_pose, tujuan, _pemilik)
+    # FILTER otomatis: isi berlabel yang baru ditambahkan langsung masuk dataset.
+    await asyncio.to_thread(tugas.masuk_dataset_berlabel, tujuan, _pemilik)
     n = len(await asyncio.to_thread(sess.load, tujuan))
     peringatan = await asyncio.to_thread(scanner.periksa_kelengkapan, tujuan)
     impor.catat_maju(sess.user, tahap="selesai")
@@ -608,8 +620,11 @@ async def use_upload(ds: str = "", sess: Session = Depends(current_session_api),
     await asyncio.to_thread(tambah.ratakan_split, d)
     # Unggahan folder ekspor pose (bukan zip, jadi tak lewat /unzip): auto-buat
     # template di sini juga. Idempoten — kalau /unzip sudah membuatnya, dilewati.
-    await asyncio.to_thread(tugas.buat_skeleton_dari_pose, d,
-                            projek.pemilik_dari(settings.uploads_root, d))
+    _pemilik = projek.pemilik_dari(settings.uploads_root, d)
+    await asyncio.to_thread(tugas.buat_skeleton_dari_pose, d, _pemilik)
+    # FILTER otomatis (sama seperti /unzip): isi berlabel langsung masuk dataset,
+    # isi mentah menunggu dilabeli. Jadi "Pilih folder" dataset jadi pun terpilah.
+    n_masuk = await asyncio.to_thread(tugas.masuk_dataset_berlabel, d, _pemilik)
     n = len(await asyncio.to_thread(sess.load, d))
     if not n:
         return {"ok": False, "error": "tidak ada gambar terbaca di unggahan itu"}
@@ -617,4 +632,4 @@ async def use_upload(ds: str = "", sess: Session = Depends(current_session_api),
     # tetap bisa dibuka, hanya ada yang perlu diketahui lebih dulu.
     peringatan = await asyncio.to_thread(scanner.periksa_kelengkapan, d)
     return {"ok": True, "dir": str(d), "n": n, "nama": d.name,
-            "peringatan": peringatan}
+            "peringatan": peringatan, "masuk_dataset": n_masuk}

@@ -535,6 +535,13 @@
       } catch (e) { toast('Gambar terunggah, tapi tagnya gagal disimpan'); }
     }
 
+    // Berapa gambar berlabel yang otomatis masuk dataset. Dihitung server di
+    // /useupload (sesudah split diratakan, di atas kunci final): nol kalau yang
+    // diunggah bukan dataset jadi (tak ada data.yaml) atau masih mentah.
+    const totalMasuk = buka.masuk_dataset || 0;
+    const nTotal = buka.n || 0;
+    const sisaMentah = Math.max(0, nTotal - totalMasuk);
+
     // Jelas menyebut "selesai" dan jumlahnya: keluhan aslinya justru tidak
     // tahu unggahannya tuntas atau belum.
     const ekstra = frameTotal
@@ -543,21 +550,43 @@
       : (videoGagal ? ` · ${videoGagal} video gagal diekstrak` : '');
     const pesan = gagal
       ? `Selesai — ${(berhasil.size).toLocaleString('id-ID')} terkirim, `
-        + `${gagal} gagal · ${(buka.n || 0).toLocaleString('id-ID')} gambar di dataset`
+        + `${gagal} gagal · ${nTotal.toLocaleString('id-ID')} gambar di dataset`
         + ekstra
-      : `Selesai — ${(buka.n || 0).toLocaleString('id-ID')} gambar di dataset` + ekstra;
+      : `Selesai — ${nTotal.toLocaleString('id-ID')} gambar di dataset` + ekstra;
     pr.selesai(pesan);
     $('ug-batal').hidden = true;
     $('ug-coba-lagi').hidden = true;
     $('ug-lanjut').hidden = false;
+
     const ket = $('ug-unggah-ket');
+    const lanjut = $('ug-lanjut');
+    // Mengarahkan langkah berikut sesuai isi unggahan:
+    //  - semua gambar sudah berlabel (ekspor Roboflow lengkap) -> sudah jadi
+    //    dataset, tak perlu dibagi; berikutnya buat Versi lalu latih.
+    //  - masih ada yang mentah (gambar polos / frame video) -> dibagi dulu ke
+    //    pelabel; yang berlabel sudah aman di dataset.
+    if (totalMasuk > 0 && sisaMentah === 0) {
+      lanjut.href = '/versi?ds=' + encodeURIComponent(PROJEK);
+      lanjut.textContent = 'Buat versi →';
+      ket.textContent = `${totalMasuk.toLocaleString('id-ID')} gambar sudah berlabel — `
+        + 'otomatis masuk dataset. Berikutnya: buat Versi lalu latih model.';
+    } else if (totalMasuk > 0) {
+      lanjut.href = '/bagi?ds=' + encodeURIComponent(PROJEK);
+      lanjut.textContent = 'Bagi tugas →';
+      ket.textContent = `${totalMasuk.toLocaleString('id-ID')} gambar berlabel otomatis masuk dataset; `
+        + `${sisaMentah.toLocaleString('id-ID')} gambar belum berlabel — bagi ke pelabel dulu.`;
+    } else {
+      lanjut.href = '/bagi?ds=' + encodeURIComponent(PROJEK);
+      lanjut.textContent = 'Bagi tugas →';
+      ket.textContent = 'Selesai. Berikutnya: bagi gambarnya ke anggota tim.';
+    }
+
     if ((buka.peringatan || []).length) {
       // Ditahan di layar, bukan ditoast: isinya justru yang menentukan apakah
-      // datasetnya benar, dan toast hilang sebelum sempat dibaca.
+      // datasetnya benar, dan toast hilang sebelum sempat dibaca. Diutamakan
+      // di atas arahan langkah karena menyangkut kebenaran dataset.
       ket.innerHTML = '<b>Perlu dicek:</b><br>'
         + buka.peringatan.map(p => '· ' + p).join('<br>');
-    } else {
-      ket.textContent = 'Selesai. Berikutnya: bagi gambarnya ke anggota tim.';
     }
   }
 
