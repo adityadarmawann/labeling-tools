@@ -1,0 +1,64 @@
+{# Tombol akun + menunya, DIPAKAI BERSAMA oleh dua kepala: kepala biasa
+   (_header.html di base.html) dan toolbar kanvas (label.html, yang berdiri
+   sendiri di luar base.html). Satu berkas supaya keduanya tak pernah lepas
+   sinkron — avatar, tema, Kelola akun, dan Keluar persis sama di mana pun.
+   Perilaku buka/tutup + papan ketik dipasang IIFE "menu akun" di app.js lewat
+   id #akun/#akun-tombol/#akun-menu; kedua halaman memuat app.js. #}
+<div class="akun" id="akun">
+  {# Tombol = pil identitas .whoami yang kini bisa diklik; caret ▾ menandai ia
+     membuka sesuatu. aria-haspopup=menu + aria-expanded memberi tahu pembaca
+     layar ini pembuka menu, bukan tautan. Span .whoami-nama DIJAGA apa adanya:
+     tiap akun harus melihat NAMANYA SENDIRI di kepala (test_akses). #}
+  <button class="whoami akun-tombol" id="akun-tombol" type="button"
+          aria-haspopup="menu" aria-expanded="false" aria-controls="akun-menu"
+          title="Masuk sebagai {{ sess.user }}">
+    <span class="whoami-ava" aria-hidden="true">{{ (sess.user or '?')[:1] | upper }}</span>
+    <span class="whoami-nama">{{ sess.user }}</span>
+    <span class="akun-caret" aria-hidden="true">&#9662;</span>
+  </button>
+
+  {# Menu meminjam bahasa titik-tiga kartu projek (.pmenu): panel bertepi,
+     role=menu, berisi <button>/<a> sungguhan. [hidden] saat tertutup supaya tak
+     terbaca pembaca layar maupun ikut urutan Tab. #}
+  <div class="pmenu akun-menu" id="akun-menu" role="menu"
+       aria-labelledby="akun-tombol" hidden>
+    {# Identitas dieja utuh (nama di tombol bisa terpotong ellipsis di layar
+       sempit, baris ini tidak) PLUS peran — tingkat akun (sess.admin). Peran
+       sengaja HANYA di sini, bukan di tombol: ia info "kamu siapa" yang relevan
+       saat menimbang "Kelola member", bukan hiasan tetap di kepala. #}
+    <div class="akun-kepala" role="presentation">
+      <span class="akun-kepala-nama">Masuk sebagai
+        <b class="akun-ident">{{ sess.user }}</b></span>
+      <span class="akun-peran" data-peran="{{ 'admin' if sess.admin else 'member' }}"
+        >{{ 'Admin' if sess.admin else 'Member' }}</span>
+    </div>
+    <span class="menu-pisah" role="separator"></span>
+
+    {# Tema: tiga pilihan saling-eksklusif = menuitemradio. Menggantikan
+       <select id="tema"> yang dulu ada di KEDUA kepala. Penanda aktif dipasang
+       JS tiap menu dibuka, dari nilai tersimpan (bawaan "sistem"); kliknya
+       memanggil pasangTema + menyimpan `labelapp_tema`. #}
+    <span class="menu-judul" role="presentation">Tema</span>
+    <button class="akun-item akun-tema" role="menuitemradio" aria-checked="false"
+            type="button" data-tema="system">
+      <span class="akun-cek" aria-hidden="true"></span>Sistem</button>
+    <button class="akun-item akun-tema" role="menuitemradio" aria-checked="false"
+            type="button" data-tema="light">
+      <span class="akun-cek" aria-hidden="true"></span>Terang</button>
+    <button class="akun-item akun-tema" role="menuitemradio" aria-checked="false"
+            type="button" data-tema="dark">
+      <span class="akun-cek" aria-hidden="true"></span>Gelap</button>
+
+    <span class="menu-pisah" role="separator"></span>
+    {# DUA hal berbeda, sengaja dipisah supaya tak lagi rancu:
+       - "Kelola akun" (/profil): profil DIRI SENDIRI — nama, surel, foto, sandi.
+         Untuk SEMUA orang. Di atas, karena inilah "akun"-mu.
+       - "Kelola member" (/akun): mengurus SEMUA akun anggota. KHUSUS admin;
+         menyembunyikannya bukan pengamanan (rutenya sendiri yang memeriksa),
+         semata agar anggota yang tak berhak tidak bingung.
+       (Kanvas kini ikut punya keduanya; dulu tak punya satu pun.) #}
+    <a class="akun-item" role="menuitem" href="/profil">Kelola akun</a>
+    {% if sess.admin %}<a class="akun-item" role="menuitem" href="/akun">Kelola member</a>{% endif %}
+    <a class="akun-item" role="menuitem" href="/logout">Keluar</a>
+  </div>
+</div>

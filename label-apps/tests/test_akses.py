@@ -57,9 +57,11 @@ def test_dua_akun_punya_dataset_sendiri(aplikasi, lingkungan):
     assert "ds-beta" in hb and "ds-alpha" not in hb
     assert ha.count('class="card"') == 4
     assert hb.count('class="card"') == 3
-    # Nama akun kini tampil di pil identitas kepala (gugus .whoami), bukan lagi
-    # kalimat "masuk sebagai <b>…</b>". Yang dijaga sama: tiap akun melihat
-    # NAMANYA SENDIRI, bukan nama akun lain.
+    # Nama akun tampil di TOMBOL akun kepala — pil .whoami yang kini membuka
+    # menu (Tema/Kelola akun/Keluar), bukan lagi potongan terpisah. Span
+    # .whoami-nama di dalam tombol itu sengaja dijaga apa adanya. Yang dijamin
+    # sama seperti dulu: tiap akun melihat NAMANYA SENDIRI di kepala, bukan nama
+    # akun lain.
     assert 'class="whoami-nama">paul</span>' in ha
     assert 'class="whoami-nama">anggi</span>' in hb
 

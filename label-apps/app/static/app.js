@@ -102,15 +102,106 @@ function pasangTema(nilai) {
   try { localStorage.setItem(KUNCI_TEMA, nilai); } catch (e) { /* mode privat */ }
 }
 
+// Nilai tema tersimpan, bawaan "sistem". Dipakai init <select> DAN menu akun,
+// jadi keduanya membaca sumber yang sama.
+function temaTersimpan() {
+  try { return localStorage.getItem(KUNCI_TEMA) || 'system'; } catch (e) { return 'system'; }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
-  const s = document.getElementById('tema');
-  if (!s) return;
-  let awal = 'system';
-  try { awal = localStorage.getItem(KUNCI_TEMA) || 'system'; } catch (e) { /* abai */ }
-  s.value = awal;
-  pasangTema(awal);
-  s.onchange = () => pasangTema(s.value);
+  // Terapkan tema tersimpan sekali saat muat, apa pun halamannya. Skrip dini di
+  // <head> (base.html DAN label.html) sudah memasang dark/light sebelum CSS
+  // melukis; yang ini menambah kasus "sistem" (melepas stempel) lalu
+  // menuliskannya kembali agar konsisten. Pemilihnya — tiga menuitemradio di
+  // menu akun, sama di KEDUA kepala — ditangani IIFE "menu akun" di bawah.
+  // Sudah tidak ada <select id="tema"> di mana pun.
+  pasangTema(temaTersimpan());
 });
+
+// ---------------------------------------------------------------- menu akun
+/*
+ * Satu tombol beridentitas di ujung kanan kepala membuka menu berisi Tema,
+ * Kelola akun, dan Keluar — menggantikan deret empat potong yang dulu melebar
+ * dan membungkus di layar sempit. Buka/tutupnya meniru titik-tiga kartu projek:
+ * klik membuka, klik-di-luar / Escape menutup, panah berpindah antar item. Ada
+ * di SETIAP halaman base.html (kecuali kanvas label), jadi dipasang tanpa syarat.
+ */
+(() => {
+  const akun = document.getElementById('akun');
+  if (!akun) return;
+  const tombol = document.getElementById('akun-tombol');
+  const menu = document.getElementById('akun-menu');
+  // Hanya yang benar-benar bisa difokus papan ketik — bukan kepala identitas
+  // maupun pemisah. role^="menuitem" menjaring menuitem DAN menuitemradio.
+  const items = () => [...menu.querySelectorAll('[role^="menuitem"]')];
+
+  function setBuka(mau) {
+    menu.hidden = !mau;
+    tombol.setAttribute('aria-expanded', String(mau));
+    if (mau) {
+      // Tandai tema aktif dari nilai tersimpan TIAP kali dibuka: pilihannya
+      // bisa berubah di tab/halaman lain, jadi tanda lama tak bisa dipercaya.
+      const kini = temaTersimpan();
+      menu.querySelectorAll('.akun-tema').forEach(b => {
+        b.setAttribute('aria-checked', String(b.dataset.tema === kini));
+      });
+    }
+  }
+
+  function tutup(fokusKembali) {
+    setBuka(false);
+    if (fokusKembali) tombol.focus();
+  }
+
+  // Klik tombol menoggel. stopPropagation supaya penutup "klik di luar" di
+  // bawah tidak langsung menutupnya lagi pada kejadian klik yang sama.
+  tombol.addEventListener('click', ev => {
+    ev.stopPropagation();
+    setBuka(menu.hidden);
+  });
+
+  // Klik item tema: ganti tema, pindahkan tanda centang, dan biarkan menu
+  // TETAP TERBUKA supaya perubahannya terlihat dan bisa dibanding cepat.
+  // Kelola akun / Keluar adalah <a href> biasa: kliknya menavigasi (sekaligus
+  // meninggalkan halaman), jadi tak perlu ditahan di sini.
+  menu.addEventListener('click', ev => {
+    const t = ev.target.closest('.akun-tema');
+    if (!t) return;
+    pasangTema(t.dataset.tema);
+    menu.querySelectorAll('.akun-tema').forEach(b => {
+      b.setAttribute('aria-checked', String(b === t));
+    });
+    t.focus();
+  });
+
+  // Klik di luar menutup TANPA merebut fokus.
+  document.addEventListener('click', ev => {
+    if (!menu.hidden && !akun.contains(ev.target)) tutup(false);
+  });
+
+  // Dari tombol: panah membuka lalu masuk ke item pertama/terakhir. Enter/Space
+  // sudah ditangani peramban sebagai klik (menoggel).
+  tombol.addEventListener('keydown', ev => {
+    if (ev.key !== 'ArrowDown' && ev.key !== 'ArrowUp') return;
+    ev.preventDefault();
+    if (menu.hidden) setBuka(true);
+    const list = items();
+    if (list.length) (ev.key === 'ArrowDown' ? list[0] : list[list.length - 1]).focus();
+  });
+
+  // Di dalam menu: Escape menutup + fokus balik ke tombol; panah berputar antar
+  // item; Home/End ke ujung; Tab keluar menutup menunya (fokus lanjut wajar).
+  menu.addEventListener('keydown', ev => {
+    const list = items();
+    const i = list.indexOf(document.activeElement);
+    if (ev.key === 'Escape') { ev.preventDefault(); tutup(true); }
+    else if (ev.key === 'ArrowDown') { ev.preventDefault(); list[(i + 1) % list.length].focus(); }
+    else if (ev.key === 'ArrowUp') { ev.preventDefault(); list[(i - 1 + list.length) % list.length].focus(); }
+    else if (ev.key === 'Home') { ev.preventDefault(); list[0].focus(); }
+    else if (ev.key === 'End') { ev.preventDefault(); list[list.length - 1].focus(); }
+    else if (ev.key === 'Tab') { tutup(false); }
+  });
+})();
 
 // ---------------------------------------------------------------- papan periksa
 

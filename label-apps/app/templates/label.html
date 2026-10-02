@@ -105,13 +105,11 @@
         title="Begitu tiap objek punya kelas, perubahan langsung tersimpan. Pratinjau SAM yang belum disahkan dengan F tidak ikut."> Simpan otomatis</label>
     </div>
   </div>
-  <select class="tbl tema" id="tema" title="Tema tampilan" aria-label="Tema tampilan">
-    <option value="system">Sistem</option>
-    <option value="light">Terang</option>
-    <option value="dark">Gelap</option>
-  </select>
-  <span class="who">{{ sess.user }}</span>
-  <a class="tbl" href="/logout" title="Keluar">Keluar</a>
+  {# Akun kanvas: dulu tiga potong lepas (select tema, nama tanpa avatar, Keluar)
+     dan TANPA "Kelola akun". Kini satu tombol beravatar + menu yang sama persis
+     dengan kepala biasa — dibawa dari _akun.html supaya keduanya tak lepas
+     sinkron. Membawa kanvas ke paritas: avatar + Kelola akun kini ada di sini. #}
+  {% include "_akun.html" %}
 </div>
 
 <div class="lab-wrap">

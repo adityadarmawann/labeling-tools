@@ -118,7 +118,12 @@ body.lab {
 /* Tombol latar di palet: sama bentuknya dengan alat lain, tapi saat gambarnya
    sudah latar ia MENYALA seperti mode aktif (data-on lewat .tool). */
 .tool-latar[data-on] { background: var(--aksi); color: var(--aksi-ink); }
-.tbl.tema { padding: 0 6px; color: var(--ink-dim); }
+/* Tombol akun di toolbar kanvas: pil .whoami (avatar+nama) yang sama dengan
+   kepala biasa, tingginya disamakan dengan tombol .tbl (34px) supaya tidak
+   tampak lebih pendek di antara mereka. Menu + perilakunya ikut dari app.css
+   (.akun-*), identik di kedua kepala. Dulu di sini ada <select class="tbl tema">
+   yang kini sudah tidak dipakai. */
+.lab-top .akun-tombol { height: 34px; }
 /* Tombol tanpa teks: tetap 34px supaya sasarannya sama besar dengan yang
    bertulisan, bukan sekadar sebesar ikonnya. */
 .tbl-ikon { width: 34px; padding: 0; justify-content: center; }
@@ -602,7 +607,11 @@ kbd{font-family:ui-monospace,"SF Mono",Menlo,monospace; font-size:10.5px;
  *    label.js: rel membuka laci di layar sempit). Backdrop menutupnya. */
 @media (max-width: 900px) {
   .lab-side { width: 220px; }
-  .lab-ukuran, .lab-top .who, .lab-pesan { display: none; }
+  .lab-ukuran, .lab-pesan { display: none; }
+  /* Di toolbar sempit tombol akun ciut jadi avatar+caret; namanya mengalah
+     (dulu .who yang disembunyikan di sini, kini span nama di dalam tombol). Menu
+     yang terbuka tetap mengeja nama + peran, jadi tak ada info yang hilang. */
+  .lab-top .akun-tombol .whoami-nama { display: none; }
   .lab-berkas { max-width: 30vw; }
 }
 @media (max-width: 620px) {
