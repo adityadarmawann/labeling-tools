@@ -311,6 +311,11 @@ async def unzip(ds: str = "", name: str = "",
     # sudah ada bentuk terbongkarnya hanya menghabiskan disk, dan berkas itu
     # tidak pernah ikut terbaca sebagai bagian dataset.
     zp.unlink(missing_ok=True)
+    # Ekspor YOLO-pose (data.yaml ber-kpt_shape): auto-buat template keypoint,
+    # sekali, hanya kalau projek belum punya — supaya unggahan court langsung
+    # bisa diedit sebagai keypoint. Idempoten & tak menimpa template manual.
+    await asyncio.to_thread(tugas.buat_skeleton_dari_pose, d,
+                            projek.pemilik_dari(settings.uploads_root, d))
     return {"ok": True, "n": hasil["ditulis"], "dilewati": hasil["dilewati"],
             "bytes": hasil["bytes"], "contoh_dilewati": hasil["contoh_dilewati"],
             "arsip_dihapus": True}
@@ -437,6 +442,9 @@ async def impor_dari_server(path: str = "", ds: str = "",
     # dulu supaya tidak dipertahankan dan membatalkan pembelahan itu. Datar
     # begini, semua gambar berlabel langsung terbaca "sudah dianotasi".
     await asyncio.to_thread(tambah.ratakan_split, tujuan)
+    # data.yaml bertahan di akar setelah ratakan_split, jadi pose masih terbaca.
+    await asyncio.to_thread(tugas.buat_skeleton_dari_pose, tujuan,
+                            projek.pemilik_dari(settings.uploads_root, tujuan))
 
     n = len(await asyncio.to_thread(sess.load, tujuan))
     peringatan = await asyncio.to_thread(scanner.periksa_kelengkapan, tujuan)
@@ -571,6 +579,10 @@ async def tambah_dari_server(path: str = "",
         impor.catat_maju(sess.user, tahap="gagal")
         return {"ok": False, "error": f"gagal menyalin: {str(e)[:90]}"}
 
+    # Dataset tujuan bisa jadi ekspor pose yang digabung; auto-buat template
+    # kalau belum ada (guard di dalam menolak kalau sudah / bukan pose).
+    await asyncio.to_thread(tugas.buat_skeleton_dari_pose, tujuan,
+                            projek.pemilik_dari(settings.uploads_root, tujuan))
     n = len(await asyncio.to_thread(sess.load, tujuan))
     peringatan = await asyncio.to_thread(scanner.periksa_kelengkapan, tujuan)
     impor.catat_maju(sess.user, tahap="selesai")
@@ -594,6 +606,10 @@ async def use_upload(ds: str = "", sess: Session = Depends(current_session_api),
     # (train/valid/test dari laptop atau di dalam zip), split-nya dicopot
     # supaya mesin versi yang membelahnya, bukan Roboflow.
     await asyncio.to_thread(tambah.ratakan_split, d)
+    # Unggahan folder ekspor pose (bukan zip, jadi tak lewat /unzip): auto-buat
+    # template di sini juga. Idempoten — kalau /unzip sudah membuatnya, dilewati.
+    await asyncio.to_thread(tugas.buat_skeleton_dari_pose, d,
+                            projek.pemilik_dari(settings.uploads_root, d))
     n = len(await asyncio.to_thread(sess.load, d))
     if not n:
         return {"ok": False, "error": "tidak ada gambar terbaca di unggahan itu"}

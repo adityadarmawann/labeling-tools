@@ -186,6 +186,125 @@ def baca_nama_kelas(src: Path) -> dict:
     return {}
 
 
+def _pose_dari_yaml(p: Path) -> dict:
+    """`kpt_shape`/`flip_idx` di data.yaml -> {"K":K, "flip_idx":[...]}.
+
+    {} kalau berkasnya bukan yaml pose (tak ada `kpt_shape` yang sah). Pembacaan
+    yaml-nya dijaga sama seperti _nama_dari_yaml: berkas rusak jadi {}, bukan
+    lemparan. `flip_idx` hanya dipakai kalau panjangnya persis K — selainnya
+    dikosongkan (nanti _sah_skeleton tetap memvalidasi involusinya).
+    """
+    try:
+        d = yaml.safe_load(Path(p).read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError):
+        return {}
+    if not isinstance(d, dict):
+        return {}
+    ks = d.get("kpt_shape")
+    if not (isinstance(ks, list) and len(ks) == 2):
+        return {}
+    try:
+        K = int(ks[0])
+    except (TypeError, ValueError):
+        return {}
+    if K < 1:
+        return {}
+    flip = d.get("flip_idx")
+    if isinstance(flip, list) and len(flip) == K:
+        try:
+            flip = [int(x) for x in flip]
+        except (TypeError, ValueError):
+            flip = []
+    else:
+        flip = []
+    return {"K": K, "flip_idx": flip}
+
+
+def baca_pose_template(src: Path) -> dict:
+    """
+    Spek pose dataset YOLO di `src`: {"K","flip_idx","names"} atau {} kalau bukan.
+
+    Menelusuri folder itu sendiri lalu naik dua tingkat, PERSIS baca_nama_kelas,
+    supaya ekspor Roboflow yang dibuka di salah satu split tetap menemukan
+    data.yaml di akarnya. `names` dibawa serta (dari baca_nama_kelas folder yang
+    sama) untuk menamai KELAS template. Nama KEYPOINT tidak ada di data.yaml pose
+    Roboflow — ia cuma mengapalkan kpt_shape+flip_idx — jadi nama slot asli tak
+    bisa dipulihkan dari impor murni-YOLO, dan itu keterbatasan yang didokumenkan,
+    bukan bug.
+    """
+    src = Path(src)
+    for folder in (src, src.parent, src.parent.parent):
+        for nama in ("data.yaml", "data.yml", "dataset.yaml"):
+            p = folder / nama
+            if p.is_file():
+                spec = _pose_dari_yaml(p)
+                if spec:
+                    spec["names"] = baca_nama_kelas(folder)
+                    return spec
+    return {}
+
+
+def nama_slot_keypoint(K: int) -> list:
+    """
+    Nama keypoint bawaan saat data.yaml tak membawa nama: nomor slot 1-based
+    berpad nol ("01".."33" untuk K=33, "1".."4" untuk K=4).
+
+    Satu sumber kebenaran, dipakai BERSAMA oleh pembaca pose (fallback saat
+    projek belum punya skeleton) dan pembuat template (tugas.template_dari_pose)
+    — supaya nama slot yang dipakai read_yolo sebelum skeleton lahir identik
+    dengan yang nanti disimpan di template.
+    """
+    w = len(str(K)) if K > 0 else 1
+    return [f"{i + 1:0{w}d}" for i in range(K)]
+
+
+def _skeleton_titik(src: Path) -> list:
+    """
+    Nama titik template skeleton projek, dibaca LANGSUNG dari .tugas.json.
+
+    Sejalan dengan jenis_projek(): pemindai tak tahu di mana akar unggahan, dan
+    untuk membaca satu medan ia memang tak perlu tahu. Disaring persis
+    _sah_skeleton (nama rapi, unik) supaya urutan slotnya sinkron dengan ekspor.
+    [] kalau projek ini bukan projek keypoint (atau berkasnya rusak/tak ada).
+    """
+    p = Path(src) / ".tugas.json"
+    if not p.is_file():
+        return []
+    try:
+        d = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    sk = d.get("skeleton") if isinstance(d, dict) else None
+    if not isinstance(sk, dict):
+        return []
+    out, lihat = [], set()
+    for t in sk.get("titik") or []:
+        nm = " ".join(str(t or "").split())[:40]
+        if nm and nm not in lihat:
+            lihat.add(nm)
+            out.append(nm)
+    return out
+
+
+def _kpt_dari_projek(src: Path) -> dict | None:
+    """
+    Spek keypoint untuk read_yolo: {"K","titik"} atau None kalau bukan pose.
+
+    Utamakan template skeleton projek (.tugas.json): itu nama slot yang dipakai
+    ekspor, TERMASUK kalau owner sudah menggantinya di editor. Kalau projek belum
+    punya skeleton (impor baru), jatuh ke kpt_shape data.yaml dataset dengan nama
+    slot bawaan. K tak diketahui -> None -> read_yolo byte-identik dengan dulu.
+    """
+    titik = _skeleton_titik(src)
+    if titik:
+        return {"K": len(titik), "titik": titik}
+    spec = baca_pose_template(src)
+    if spec:
+        K = int(spec["K"])
+        return {"K": K, "titik": nama_slot_keypoint(K)}
+    return None
+
+
 def _tulis_nama_kelas(src: Path, names: dict) -> None:
     """Simpan {indeks: nama} ke berkas kelas dataset — data.yaml kalau ada
     (dengan `nc` ikut diperbarui), kalau tidak classes.txt. Ditulis di TEMPAT
@@ -490,7 +609,11 @@ def jenis_projek(src) -> str:
     except (OSError, ValueError):
         return ""
     j = (d.get("jenis_anotasi") or "").strip().lower() if isinstance(d, dict) else ""
-    return j if j in ("poligon", "kotak") else ""
+    # "kerangka" ikut dikenali: projek keypoint menyimpan `point` + `rectangle`
+    # per instance, dan tanpa ini terapkan_jenis menebaknya "poligon" lalu
+    # menandai SETIAP titik & kotak pose sebagai "bentuk di dataset poligon" —
+    # temuan palsu di tiap gambar pose.
+    return j if j in ("poligon", "kotak", "kerangka") else ""
 
 
 def terapkan_jenis(items: list, jenis: str = "") -> str:
@@ -503,14 +626,16 @@ def terapkan_jenis(items: list, jenis: str = "") -> str:
     yang kebetulan ditemui.
     """
     j = (jenis or "").strip().lower()
-    if j not in ("poligon", "kotak"):
+    if j not in ("poligon", "kotak", "kerangka"):
         n_kotak = sum(1 for it in items for s in it.get("shapes") or []
                       if (s.get("type") or "polygon") == "rectangle")
         n_lain = sum(1 for it in items for s in it.get("shapes") or []
                      if (s.get("type") or "polygon") != "rectangle")
         j = "kotak" if n_kotak > n_lain else "poligon"
     if j != "poligon":
-        return j                      # tujuan kotak: tidak ada yang tak sesuai
+        # Tujuan kotak: tak ada yang tak sesuai. Tujuan kerangka: `point` &
+        # `rectangle` memang bentuk yang diharapkan — tak ada yang ditandai.
+        return j
     for it in items:
         tak = bentuk_tak_sesuai(it.get("shapes") or [], j)
         if not tak:
@@ -623,17 +748,64 @@ def bentuk_terlewat(mentah: dict) -> list[dict]:
     return out
 
 
-def read_yolo(tp: Path, W: int, H: int, names: dict):
-    """Baca satu berkas label YOLO, baik format bbox (5 kolom) maupun poligon."""
+def read_yolo(tp: Path, W: int, H: int, names: dict, kpt: dict | None = None):
+    """Baca satu berkas label YOLO: bbox (5 kolom), poligon, ATAU pose.
+
+    `kpt` = {"K":K, "titik":[nama...]} membuka cabang pose. Sebuah baris
+    diperlakukan POSE hanya kalau K DIKETAHUI dan jumlah kolomnya persis
+    `5 + 3K` (`cls cx cy w h` lalu `px py v` per titik). Kalau tidak, ia jatuh
+    ke logika bbox/poligon lama TANPA perubahan. Tanpa K (projek bukan keypoint)
+    perilakunya byte-identik dengan sebelum cabang ini ada — itulah yang menjaga
+    tiap dataset bbox/segmentasi tak tersentuh: poligon 51-titik (103 angka) sah
+    dan tak bisa dibedakan dari pose K=33 tanpa tahu K lebih dulu, jadi tak ada
+    tebakan dari isi; K-lah penentunya.
+    """
     shapes = []
     if not os.path.exists(tp):
         return shapes
-    for line in Path(tp).read_text().strip().splitlines():
+    K = None
+    titik: list = []
+    if isinstance(kpt, dict):
+        try:
+            k = int(kpt.get("K") or 0)
+        except (TypeError, ValueError):
+            k = 0
+        titik = list(kpt.get("titik") or [])
+        if k >= 1 and len(titik) >= k:
+            K = k
+    # gid = nomor baris berkas: satu instance pose = 1 rectangle + K point
+    # ber-group_id sama (skema yang dibaca _instansi_pose saat ekspor).
+    for gid, line in enumerate(Path(tp).read_text().strip().splitlines()):
         p = line.split()
         if len(p) < 5:
             continue
         cid = int(float(p[0]))
         v = [float(x) for x in p[1:]]
+        if K is not None and len(v) == 4 + 3 * K:
+            cx, cy, bw, bh = v[0], v[1], v[2], v[3]
+            rect = [[(cx - bw / 2) * W, (cy - bh / 2) * H],
+                    [(cx + bw / 2) * W, (cy + bh / 2) * H]]
+            # Kotak terimpor OTORITATIF: titipan BUKAN kp_auto, jadi perbaruiBbox/
+            # "Rapikan box" tak akan menggesernya, dan _bbox_pose ekspor memilih
+            # kotak ini apa adanya.
+            shapes.append({"label": names.get(cid, str(cid)), "type": "rectangle",
+                           "group_id": gid, "flags": {}, "titipan": {},
+                           "pts": np.array(untuk_menggambar("rectangle", rect), np.float32),
+                           "pts_asli": [[float(x), float(y)] for x, y in rect]})
+            cxp, cyp = cx * W, cy * H
+            for i in range(K):
+                px, py, vis = v[4 + 3 * i], v[5 + 3 * i], v[6 + 3 * i]
+                vis = int(vis)
+                # v0 (absen) ditulis 0,0 di berkas; ditaruh di PUSAT bbox supaya
+                # tak jadi hantu di pojok kiri-atas — posisinya tak penting,
+                # ekspor menulis ulang `0 0 0`. Titiknya TETAP ada (tak dihapus)
+                # supaya identitas/pemetaan slot utuh.
+                qx, qy = (px * W, py * H) if vis >= 1 else (cxp, cyp)
+                shapes.append({"label": str(titik[i]), "type": "point",
+                               "group_id": gid, "flags": {"v": vis}, "titipan": {},
+                               "pts": np.array([[qx, qy]], np.float32),
+                               "pts_asli": [[float(qx), float(qy)]]})
+            continue
         if len(v) == 4:
             # Baris 5 kolom = kotak. Dibaca sebagai `rectangle` 2 titik, BUKAN
             # poligon 4 titik: kalau ditandai poligon, menyimpannya kembali akan
@@ -816,17 +988,22 @@ def severity(it: dict) -> str:
     return "warn" if it["issues"] else "ok"
 
 
-def _scan_yolo(src: Path, names: dict | None = None):
+def _scan_yolo(src: Path, names: dict | None = None, kpt: dict | None = None):
     items = []
     if names is None:
         names = baca_nama_kelas(src)
+    # kpt resolusi-sendiri hanya kalau tak dioper: pemanggil split (scan) sudah
+    # memecahkannya di AKAR projek — di mana .tugas.json berada — karena src di
+    # sini bisa jadi folder split (train/) yang tak punya .tugas.json sendiri.
+    if kpt is None:
+        kpt = _kpt_dari_projek(src)
     for ip in sorted(p for p in (src / "images").iterdir() if p.suffix.lower() in IMG_EXT):
         d = dimensi(ip)
         if d is None:
             continue
         H, W = d
         tp = src / "labels" / (ip.stem + ".txt")
-        sh = read_yolo(tp, W, H, names)
+        sh = read_yolo(tp, W, H, names, kpt=kpt)
         _gabung_cadangan(ip, sh)
         items.append({"img": ip, "shapes": sh, "W": W, "H": H, "yolo": True,
                       "labels": tp, "ann": tp,
@@ -957,9 +1134,13 @@ def scan(src: Path):
         # Nama kelas dibaca SEKALI di akar, lalu dipakai untuk semua split,
         # supaya id kelas yang sama berarti kelas yang sama di seluruh dataset.
         names = baca_nama_kelas(src)
+        # kpt dipecahkan SEKALI di akar (di sinilah .tugas.json dan data.yaml
+        # pose berada), lalu dipakai untuk semua split — slot keypoint yang sama
+        # berarti titik yang sama di seluruh dataset, persis seperti names.
+        kpt = _kpt_dari_projek(src)
         items = []
         for d in splits:
-            bagian, _ = _scan_yolo(d, names)
+            bagian, _ = _scan_yolo(d, names, kpt)
             for it in bagian:
                 it["split"] = d.name
             items.extend(bagian)

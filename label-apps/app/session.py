@@ -153,6 +153,10 @@ class Session:
         # menaikkan `cap`.
         self._sidik: tuple[int, int, int] | None = None
         self.names: dict[int, str] = {}
+        # Template skeleton projek, dibaca sekali per load(). muat_ulang_item
+        # memakainya (lewat kpt_sesi) untuk membaca ulang SATU berkas pose —
+        # read_yolo butuh K + nama slot untuk mengelompokkan titiknya.
+        self.skeleton: dict = {}
         self.labelfile: Path | None = None
         self.thumbdir = settings.thumb_root / safe_slug(user)
         self.thumbdir.mkdir(parents=True, exist_ok=True)
@@ -183,6 +187,16 @@ class Session:
         # lebih baik memicu satu pemindaian berlebih daripada terlewat.
         self.cap = cap_sekarang(self.src)
         self.items, self.names = scanner.scan(self.src)
+        # Template skeleton projek untuk pembacaan-ulang per-item (pose). scan()
+        # di atas sudah mengelompokkan baris pose sendiri (membaca .tugas.json),
+        # jadi ini HANYA untuk jalur muat_ulang_item/annotate yang memanggil
+        # read_yolo langsung. Gagal baca = projek biasa, bukan keypoint.
+        try:
+            from .services import tugas
+            self.skeleton = (tugas.baca_projek(self.src, self.settings.uploads_root)
+                             .get("skeleton") or {})
+        except Exception:
+            self.skeleton = {}
         self._bangun_indeks()
         # Dicatat SESUDAH memindai: yang dijanjikan tanda tangan ini adalah
         # "isi folder saat items terakhir dibaca".
@@ -242,11 +256,18 @@ class Session:
             self._sidik = sidik_disk(self.src)
         return True
 
+    def kpt_sesi(self) -> dict | None:
+        """kpt {K,titik} untuk read_yolo dari template skeleton sesi; None kalau
+        projek ini bukan keypoint (lalu read_yolo berperilaku seperti biasa)."""
+        t = (self.skeleton or {}).get("titik") or []
+        return {"K": len(t), "titik": list(t)} if t else None
+
     def muat_ulang_item(self, it: dict) -> None:
         """Baca ulang anotasi SATU gambar dari disk."""
         try:
             if it.get("yolo"):
-                sh = scanner.read_yolo(it["labels"], it["W"], it["H"], self.names)
+                sh = scanner.read_yolo(it["labels"], it["W"], it["H"],
+                                       self.names, kpt=self.kpt_sesi())
                 scanner._gabung_cadangan(it["img"], sh)
                 it["shapes"] = sh
                 it["issues"] = scanner.inspect(sh, it["W"], it["H"], True)

@@ -671,6 +671,176 @@ def set_skeleton(ds: Path, template, pemilik: str = "") -> dict:
 
 
 # ============================================================
+# IMPOR YOLO-POSE  (auto-buat template dari ekspor Roboflow)
+# ============================================================
+
+# Warna keluarga cermin untuk template pose hasil impor. Diturunkan dari
+# flip_idx, bukan disetel tangan: tiap pasangan involusi (i<j) -> i KIRI (merah),
+# j KANAN (teal); titik yang memetakan ke dirinya sendiri (garis tengah/atas/
+# bawah court) -> TENGAH (kuning). Ini yang mereproduksi skeleton kiri-merah/
+# kanan-teal/tengah-kuning Roboflow otomatis, tanpa satu pun input manual.
+WARNA_KIRI = "#ef4444"
+WARNA_KANAN = "#14b8a6"
+WARNA_TENGAH = "#eab308"
+
+
+def _warna_cermin(K: int, flip: list) -> list:
+    """Warna per keypoint dari keluarga cermin flip_idx (lihat di atas)."""
+    if K <= 0:
+        return []
+    # Tanpa info cermin yang sah (flip kosong / salah panjang) semua jadi tengah:
+    # tak ada dasar untuk membedakan kiri dari kanan.
+    if not (isinstance(flip, list) and len(flip) == K):
+        return [WARNA_TENGAH] * K
+    warna = [WARNA_TENGAH] * K
+    for i in range(K):
+        j = flip[i]
+        if not (isinstance(j, int) and 0 <= j < K):
+            continue
+        # Hanya sisi KECIL pasangan yang mewarnai keduanya; sisi besar (j<i) dan
+        # titik swa-peta (j==i) dibiarkan — yang terakhir tetap tengah.
+        if i < j:
+            warna[i] = WARNA_KIRI
+            warna[j] = WARNA_KANAN
+    return warna
+
+
+def template_dari_pose(spec: dict) -> dict:
+    """
+    Bangun template skeleton dari spek pose data.yaml (scanner.baca_pose_template).
+
+    Nama keypoint = nomor slot 1-based berpad nol ("01".."33"): data.yaml pose
+    Roboflow TAK membawa nama keypoint (cuma kpt_shape+flip_idx), jadi nama asli
+    tak bisa dipulihkan saat impor murni-YOLO — owner menggantinya belakangan di
+    editor #dlg-skel kalau perlu. kelas dari names[0] data.yaml (atau "objek"),
+    flip dari berkas (divalidasi ulang sebagai involusi oleh _sah_skeleton),
+    warna dari keluarga cermin flip_idx, edge kosong (court Roboflow tak
+    mengapalkannya), tata diisi kemudian dari label terimpor (buat_skeleton_dari_pose).
+
+    Dibangun untuk lolos _sah_skeleton apa adanya: ia tetap pintu tunggalnya,
+    jadi template ini tak bisa dibedakan dari yang dibuat tangan dan sepenuhnya
+    bisa disunting di editor yang sama.
+    """
+    from . import scanner
+
+    spec = spec if isinstance(spec, dict) else {}
+    try:
+        K = int(spec.get("K") or 0)
+    except (TypeError, ValueError):
+        K = 0
+    titik = scanner.nama_slot_keypoint(K)
+    names = spec.get("names") if isinstance(spec.get("names"), dict) else {}
+    kelas = " ".join(str(names.get(0) or "").split()) or "objek"
+    flip = spec.get("flip_idx") or []
+    try:
+        flip = ([int(x) for x in flip]
+                if isinstance(flip, list) and len(flip) == K else [])
+    except (TypeError, ValueError):
+        flip = []
+    return {"kelas": kelas, "titik": titik, "edge": [],
+            "flip_idx": flip, "warna": _warna_cermin(K, flip), "tata": []}
+
+
+def _tata_dari_pose(items: list, titik: list) -> list:
+    """
+    Tata letak default (relatif 0..1 per slot) dari instance pose terimpor.
+
+    data.yaml pose tak membawa pose acuan, jadi "Drop semua" tanpa ini
+    menjatuhkan lingkaran yang tak berarti. Di sini tiap titik v>=1 dinormalkan
+    ke bbox instance-nya SENDIRI, lalu diambil MEDIAN per slot atas semua instance
+    (tahan terhadap satu-dua anotasi meleset). Slot yang tak pernah terlihat
+    jatuh ke instance pertama yang punya, lalu [0.5,0.5].
+    """
+    from statistics import median
+
+    K = len(titik)
+    if K == 0:
+        return []
+    slot = {n: i for i, n in enumerate(titik)}
+    kumpul: list = [[] for _ in range(K)]
+    pertama: list = [None] * K
+    for it in items:
+        grup: dict = {}
+        for s in it.get("shapes") or []:
+            gid = s.get("group_id")
+            if gid is None:
+                continue
+            g = grup.setdefault(gid, {"rect": None, "pts": {}})
+            if s.get("type") == "rectangle":
+                g["rect"] = s
+            elif s.get("type") == "point":
+                nm = None if s.get("label") is None else str(s["label"]).strip()
+                if nm in slot:
+                    g["pts"][slot[nm]] = s
+        for g in grup.values():
+            rect = g["rect"]
+            if rect is None or not g["pts"]:
+                continue
+            pts = rect["pts"].tolist()
+            xs = [q[0] for q in pts]
+            ys = [q[1] for q in pts]
+            x0, y0 = min(xs), min(ys)
+            w = (max(xs) - x0) or 1.0
+            h = (max(ys) - y0) or 1.0
+            for i, s in g["pts"].items():
+                if ((s.get("flags") or {}).get("v") or 0) < 1:
+                    continue                      # titik absen tak menata apa pun
+                px, py = s["pts"].tolist()[0]
+                nx = min(1.0, max(0.0, (px - x0) / w))
+                ny = min(1.0, max(0.0, (py - y0) / h))
+                kumpul[i].append((nx, ny))
+                if pertama[i] is None:
+                    pertama[i] = (nx, ny)
+    tata = []
+    for i in range(K):
+        if kumpul[i]:
+            tata.append([median(p[0] for p in kumpul[i]),
+                         median(p[1] for p in kumpul[i])])
+        elif pertama[i] is not None:
+            tata.append([pertama[i][0], pertama[i][1]])
+        else:
+            tata.append([0.5, 0.5])
+    return tata
+
+
+def buat_skeleton_dari_pose(ds: Path, pemilik: str = "") -> dict:
+    """
+    Auto-buat template skeleton saat dataset YOLO-pose diimpor.
+
+    Hanya kalau (a) ada data.yaml pose (kpt_shape) DAN (b) projek belum punya
+    skeleton — idempoten, TAK pernah menimpa template manual owner. Dibangun lalu
+    disimpan lewat set_skeleton yang SAMA dengan editor manual, lalu `tata`
+    diturunkan dari label terimpor dalam satu pas pindai (scanner.scan jalan
+    SETELAH skeleton tersimpan, supaya ia mengelompokkan baris pose dari
+    .tugas.json yang baru).
+
+    Dipanggil dari setiap pintu impor (bongkar arsip, buka unggahan, impor/
+    tambah dari server). Murah pada panggilan kedua dan seterusnya.
+    """
+    from . import scanner
+
+    spec = scanner.baca_pose_template(ds)
+    if not spec:
+        return {"dibuat": False, "alasan": "bukan dataset pose"}
+    if skeleton_aktif(baca(ds, pemilik)):
+        return {"dibuat": False, "alasan": "sudah punya skeleton"}
+    tpl = template_dari_pose(spec)
+    if not tpl["titik"]:
+        return {"dibuat": False, "alasan": "K tak sah"}
+    set_skeleton(ds, tpl, pemilik)
+    try:
+        items, _ = scanner.scan(ds)
+        tata = _tata_dari_pose(items, tpl["titik"])
+        if tata:
+            set_skeleton(ds, {**tpl, "tata": tata}, pemilik)
+    except Exception as e:                        # tata hiasan; jangan gagalkan impor
+        log.warning("tata pose %s gagal diturunkan: %s", Path(ds).name, e)
+    log.info("skeleton pose auto-dibuat di %s: K=%d, kelas=%r",
+             Path(ds).name, len(tpl["titik"]), tpl["kelas"])
+    return {"dibuat": True, "K": len(tpl["titik"]), "kelas": tpl["kelas"]}
+
+
+# ============================================================
 # KELAS AKSI  (projek VIDEO sub-jenis aksi; padanan skeleton{})
 # ============================================================
 

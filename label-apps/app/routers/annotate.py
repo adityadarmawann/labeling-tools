@@ -576,7 +576,8 @@ async def api_simpan(request: Request, sess: Session = Depends(current_session_a
     with sess.lock:
         try:
             if it.get("yolo"):
-                sh = scanner.read_yolo(it["labels"], it["W"], it["H"], sess.names)
+                sh = scanner.read_yolo(it["labels"], it["W"], it["H"], sess.names,
+                                       kpt=sess.kpt_sesi())
                 scanner._gabung_cadangan(it["img"], sh)
                 it["shapes"] = sh
                 it["issues"] = scanner.inspect(sh, it["W"], it["H"], True)
