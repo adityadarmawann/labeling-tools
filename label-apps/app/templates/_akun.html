@@ -58,6 +58,13 @@
       <span class="akun-cek" aria-hidden="true"></span>Gelap</button>
 
     <span class="menu-pisah" role="separator"></span>
+    {# "Tempat sampah" tinggal di sini, bukan lagi di samping "+ Projek baru".
+       Tautan ke /pilih#sampah supaya bekerja dari halaman mana pun (termasuk
+       kanvas): app.js di halaman projek melihat #sampah lalu membuka panelnya.
+       Kalau kosong, ia memberi tahu "tempat sampah kosong". #}
+    <a class="akun-item" role="menuitem" href="/pilih#sampah">Tempat sampah</a>
+
+    <span class="menu-pisah" role="separator"></span>
     {# DUA hal berbeda, sengaja dipisah supaya tak lagi rancu:
        - "Kelola akun" (/profil): profil DIRI SENDIRI — nama, surel, foto, sandi.
          Untuk SEMUA orang. Di atas, karena inilah "akun"-mu.

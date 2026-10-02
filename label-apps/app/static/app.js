@@ -1406,15 +1406,63 @@ const Progres = (() => {
     }
   }
 
+  // Panel dibuka sekali otomatis saat tiba lewat menu akun (/pilih#sampah).
+  // Flag supaya pemuatan ulang data (tiap operasi memanggil muat()) tidak
+  // menggulir layar balik ke sampah berkali-kali.
+  let sampahDisorotSekali = false;
+
+  function sorotSampah() {
+    if (lipatSampah.hidden) { toast('Tempat sampah kosong'); return; }
+    lipatSampah.open = true;
+    lipatSampah.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+  }
+
+  // Jumlah terpilih menyetir tombol borongan + keadaan "pilih semua"
+  // (tercentang/sebagian/kosong). Dipanggil tiap centang berubah dan tiap
+  // panel digambar ulang.
+  function perbaruiPilihSampah() {
+    const ceks = [...isiSampah.querySelectorAll('.sampah-cek')];
+    const pilih = ceks.filter(c => c.checked);
+    const tombol = document.getElementById('sampah-hapus-pilih');
+    if (tombol) {
+      tombol.disabled = !pilih.length;
+      tombol.textContent = pilih.length
+        ? `Hapus permanen terpilih (${pilih.length})`
+        : 'Hapus permanen terpilih';
+    }
+    const semua = document.getElementById('sampah-semua');
+    if (semua) {
+      semua.checked = ceks.length > 0 && pilih.length === ceks.length;
+      semua.indeterminate = pilih.length > 0 && pilih.length < ceks.length;
+    }
+  }
+
   function gambarSampah(isi) {
     lipatSampah.hidden = !isi.length;
-    const chip = document.getElementById('buka-sampah');
-    chip.hidden = !isi.length;
-    document.getElementById('sampah-n').textContent = isi.length || '';
-    if (!isi.length) return;
+    if (!isi.length) {
+      isiSampah.innerHTML = '';
+      // Diminta lewat menu tapi kosong: beri tahu, jangan diam.
+      if (!sampahDisorotSekali && location.hash === '#sampah') {
+        sampahDisorotSekali = true;
+        toast('Tempat sampah kosong');
+      }
+      return;
+    }
     judulSampah.textContent = `Tempat sampah (${isi.length})`;
-    isiSampah.innerHTML = isi.map(s => `
+    // Bilah borongan di atas: pilih semua + hapus-permanen terpilih. Per-baris
+    // "Kembalikan"/"Hapus permanen" tetap ada untuk tindakan satuan.
+    isiSampah.innerHTML =
+      `<div class="sampah-bar row" style="gap:8px;align-items:center;margin-bottom:8px">
+        <label class="row" style="gap:6px;align-items:center">
+          <input type="checkbox" id="sampah-semua"> Pilih semua</label>
+        <span class="spacer"></span>
+        <button class="chip chip-bahaya" id="sampah-hapus-pilih" type="button" disabled>
+          Hapus permanen terpilih</button>
+      </div>`
+      + isi.map(s => `
       <div class="row" style="gap:8px;align-items:center;margin-bottom:5px">
+        <input type="checkbox" class="sampah-cek" data-folder="${esc(s.folder)}"
+               aria-label="Pilih ${esc(s.nama)}">
         <span style="flex:1">${esc(s.nama)}
           <span class="halus">· dibuang ${esc(s.usia)}${s.ukuran ? ' · ' + esc(s.ukuran) : ''}</span></span>
         <button class="chip" data-pulih="${esc(s.folder)}">Kembalikan</button>
@@ -1425,6 +1473,11 @@ const Progres = (() => {
       + '<b>Kembalikan</b> mengembalikan projek utuh. '
       + '<b>Hapus permanen</b> menghapus berkasnya dari disk dan membebaskan '
       + 'ruang — tidak bisa dibatalkan.</div>';
+    perbaruiPilihSampah();
+    if (!sampahDisorotSekali && location.hash === '#sampah') {
+      sampahDisorotSekali = true;
+      sorotSampah();
+    }
   }
 
   /*
@@ -1593,7 +1646,55 @@ const Progres = (() => {
     toast('Pelabelan video sedang disiapkan — projek ini belum bisa dibuka.');
   });
 
+  // Centang berubah (pilih semua / per-baris) → perbarui tombol borongan.
+  isiSampah.addEventListener('change', ev => {
+    if (ev.target.id === 'sampah-semua') {
+      isiSampah.querySelectorAll('.sampah-cek')
+        .forEach(c => { c.checked = ev.target.checked; });
+    }
+    if (ev.target.id === 'sampah-semua' || ev.target.classList.contains('sampah-cek')) {
+      perbaruiPilihSampah();
+    }
+  });
+
   isiSampah.addEventListener('click', async ev => {
+    const borongan = ev.target.closest('#sampah-hapus-pilih');
+    if (borongan) {
+      ev.preventDefault();
+      const folders = [...isiSampah.querySelectorAll('.sampah-cek:checked')]
+        .map(c => c.dataset.folder);
+      if (!folders.length) return;
+      // Permanen & tak terbalikkan. Mengetik tiap nama tak masuk akal untuk
+      // banyak projek sekaligus, jadi konfirmasinya satu kata tegas: "HAPUS".
+      const jwb = prompt(
+        `HAPUS PERMANEN ${folders.length} projek dari disk?\n\n`
+        + 'Berkasnya dihapus betulan dan ruang disk dibebaskan — '
+        + 'TIDAK BISA dikembalikan lagi.\n\n'
+        + 'Ketik HAPUS untuk melanjutkan:');
+      if (jwb !== 'HAPUS') {
+        if (jwb !== null) toast('Dibatalkan — ketik HAPUS persis');
+        return;
+      }
+      // Satu bilah progres untuk seluruh rentetan, bukan satu per projek.
+      // Tiap folder lewat rute satuan yang sama (penjagaannya di sana): satu
+      // gagal tidak menghentikan sisanya.
+      const pr = Progres.mulai(`Menghapus permanen ${folders.length} projek`,
+                               {di: note});
+      let ok = 0, gagal = 0;
+      for (let i = 0; i < folders.length; i++) {
+        pr.taktentu(`Menghapus ${i + 1} dari ${folders.length}…`);
+        try {
+          const r = await (await fetch('/api/projek/hapus-permanen?'
+            + new URLSearchParams({folder: folders[i]}), {method: 'POST'})).json();
+          if (r && r.ok) ok++; else gagal++;
+        } catch (e) { gagal++; }
+      }
+      if (gagal) pr.gagal(`${ok} dihapus, ${gagal} gagal`);
+      else pr.selesai(`${ok} projek dihapus permanen`);
+      toast(`${ok} projek dihapus permanen${gagal ? `, ${gagal} gagal` : ''}`);
+      muat();
+      return;
+    }
     const pulih = ev.target.closest('[data-pulih]');
     if (pulih) {
       ev.preventDefault();
@@ -1745,10 +1846,13 @@ const Progres = (() => {
   document.addEventListener('keydown', ev => {
     if (ev.key === 'Escape' && !dlgProjek.hidden) bukaDlg(false);
   });
-  document.getElementById('buka-sampah').onclick = () => {
-    lipatSampah.open = true;
-    lipatSampah.scrollIntoView({block: 'nearest', behavior: 'smooth'});
-  };
+  // "Tempat sampah" kini dibuka dari menu akun lewat tautan /pilih#sampah.
+  // Dari halaman lain ia memuat halaman ini (gambarSampah menyorot sekali saat
+  // data pertama tiba); kalau SUDAH di sini, hash berubah tanpa muat ulang,
+  // jadi hashchange yang membukanya.
+  window.addEventListener('hashchange', () => {
+    if (location.hash === '#sampah') sorotSampah();
+  });
 
   /* Urutan diingat. Sebelumnya tiap kunjungan kembali ke "Terakhir diubah",
      dan orang yang bekerja berdasarkan nama menggantinya lagi setiap kali. */
