@@ -135,6 +135,31 @@ def test_template_tanpa_nama_kelas_default_objek():
     assert tpl["kelas"] == "objek" and tpl["titik"] == ["1", "2"]
 
 
+def test_template_k17_preset_coco():
+    """K=17 -> preset COCO: nama baku + rangka (edge) + flip_idx cermin, lolos
+    _sah_skeleton. data.yaml pose orang biasanya K=17, jadi langsung berangka."""
+    tpl = tugas.template_dari_pose({"K": 17, "names": {0: "person"}})
+    sk = tugas._sah_skeleton(tpl)
+    assert sk["kelas"] == "person"
+    assert sk["titik"][:3] == ["nose", "left_eye", "right_eye"]
+    assert sk["titik"][-1] == "right_ankle" and len(sk["titik"]) == 17
+    assert len(sk["edge"]) == 19                      # rangka COCO, lolos validasi
+    assert sk["flip_idx"] == [0, 2, 1, 4, 3, 6, 5, 8, 7,
+                              10, 9, 12, 11, 14, 13, 16, 15]
+
+
+def test_template_k17_flip_berkas_diutamakan():
+    """flip_idx dari data.yaml menang atas preset COCO (otoritatif)."""
+    tpl = tugas.template_dari_pose({"K": 17, "flip_idx": list(range(17))})
+    assert tugas._sah_skeleton(tpl)["flip_idx"] == list(range(17))  # identitas sah
+
+
+def test_template_k33_bukan_coco():
+    """K != 17 tetap slot number tanpa rangka (court 33)."""
+    tpl = tugas.template_dari_pose({"K": 33, "names": {0: "court"}})
+    assert tpl["edge"] == [] and tpl["titik"][:2] == ["01", "02"]
+
+
 # ------------------------------------------------------------ tata median
 
 def _rect(gid, x0, y0, x1, y1):

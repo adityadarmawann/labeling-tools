@@ -683,6 +683,22 @@ WARNA_KIRI = "#ef4444"
 WARNA_KANAN = "#14b8a6"
 WARNA_TENGAH = "#eab308"
 
+# Preset COCO-17 (pose orang standar COCO/Ultralytics). Dipakai saat impor K=17:
+# nama baku + rangka (edge) + flip_idx cermin kiri-kanan, 0-indexed. Urutan slot
+# = urutan baku COCO, jadi cocok dengan dataset pose orang mana pun.
+_COCO17_NAMA = [
+    "nose", "left_eye", "right_eye", "left_ear", "right_ear",
+    "left_shoulder", "right_shoulder", "left_elbow", "right_elbow",
+    "left_wrist", "right_wrist", "left_hip", "right_hip",
+    "left_knee", "right_knee", "left_ankle", "right_ankle",
+]
+_COCO17_FLIP = [0, 2, 1, 4, 3, 6, 5, 8, 7, 10, 9, 12, 11, 14, 13, 16, 15]
+_COCO17_EDGE = [
+    [15, 13], [13, 11], [16, 14], [14, 12], [11, 12], [5, 11], [6, 12],
+    [5, 6], [5, 7], [6, 8], [7, 9], [8, 10], [1, 2], [0, 1], [0, 2],
+    [1, 3], [2, 4], [3, 5], [4, 6],
+]
+
 
 def _warna_cermin(K: int, flip: list) -> list:
     """Warna per keypoint dari keluarga cermin flip_idx (lihat di atas)."""
@@ -728,7 +744,6 @@ def template_dari_pose(spec: dict) -> dict:
         K = int(spec.get("K") or 0)
     except (TypeError, ValueError):
         K = 0
-    titik = scanner.nama_slot_keypoint(K)
     names = spec.get("names") if isinstance(spec.get("names"), dict) else {}
     kelas = " ".join(str(names.get(0) or "").split()) or "objek"
     flip = spec.get("flip_idx") or []
@@ -737,7 +752,20 @@ def template_dari_pose(spec: dict) -> dict:
                 if isinstance(flip, list) and len(flip) == K else [])
     except (TypeError, ValueError):
         flip = []
-    return {"kelas": kelas, "titik": titik, "edge": [],
+    # K=17 hampir pasti pose orang COCO (standar Ultralytics/COCO) — diberi nama,
+    # rangka (edge), dan flip_idx yang benar otomatis, bukan slot "01".."17"
+    # tanpa rangka. data.yaml YOLO tetap tak membawa nama, tapi K=17 cukup kuat
+    # menebak COCO; owner bebas mengubah di #dlg-skel. flip dari berkas tetap
+    # diutamakan (otoritatif); COCO dipakai hanya kalau berkas tak menyediakannya.
+    if K == 17:
+        titik = list(_COCO17_NAMA)
+        edge = [e[:] for e in _COCO17_EDGE]
+        if not flip:
+            flip = list(_COCO17_FLIP)
+    else:
+        titik = scanner.nama_slot_keypoint(K)
+        edge = []
+    return {"kelas": kelas, "titik": titik, "edge": edge,
             "flip_idx": flip, "warna": _warna_cermin(K, flip), "tata": []}
 
 

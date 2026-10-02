@@ -3739,6 +3739,23 @@ function hapusInstance(gid) {
   toast('Instance dihapus');
 }
 
+/* z-order instance: urutan S.shapes ADALAH urutan gambar (belakangan = di atas,
+   lihat loop gambar & hit-test yang menelusuri dari belakang). "Ke depan" =
+   pindahkan semua shape instance ke akhir array, "ke belakang" = ke awal.
+   Reassign S.shapes (gaya yang sama dengan undo/redo), lalu lepas pilihan karena
+   indeksnya berubah — sama seperti hapusInstance. */
+function instanceZ(gid, kedepan) {
+  if (gid == null) return;
+  const inst = S.shapes.filter(s => s.group_id === gid);
+  if (!inst.length) return;
+  const lain = S.shapes.filter(s => s.group_id !== gid);
+  simpanUndo();
+  S.shapes = kedepan ? [...lain, ...inst] : [...inst, ...lain];
+  S.sel = -1; S.selv = -1; S.terpilih = [];
+  tandaiKotor(); render();
+  toast(kedepan ? 'Instance dibawa ke depan' : 'Instance dikirim ke belakang');
+}
+
 /* Jadikan contoh negatif: buang shape instance; kalau gambar jadi tanpa objek
    sama sekali, itu disengaja = sampel negatif (aturan projek "label kosong =
    negatif disengaja"). Bedanya dari Hapus cuma pesannya. */
@@ -3788,6 +3805,9 @@ function bukaMenuInstance(x, y, gid) {
     ['pisah'],
     ['aksi', 'Duplikat instance', 'Ctrl+D', true, () => duplikatInstance(gid), false],
     ['aksi', 'Jadikan Box (buang titik)', '', true, () => jadikanBox(gid), false],
+    ['pisah'],
+    ['aksi', 'Bawa ke depan', '', true, () => instanceZ(gid, true), false],
+    ['aksi', 'Kirim ke belakang', '', true, () => instanceZ(gid, false), false],
     ['pisah'],
     ['aksi', 'Jadikan contoh negatif', '', true, () => jadikanNegatif(gid), true],
     ['aksi', 'Hapus instance', 'Del', true, () => hapusInstance(gid), true],
