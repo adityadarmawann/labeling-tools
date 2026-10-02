@@ -238,7 +238,33 @@
     const kisi = $('ug-kisi');
     pengamat.disconnect();
     kisi.replaceChildren();
-    $('ug-kosong').hidden = tampil.length > 0;
+    // Kotak kosong pratinjau. Pilihan bisa TAK KOSONG walau kisinya kosong:
+    // .zip dan video memang TAK di-thumbnail (dibongkar/diekstrak di server),
+    // jadi memilih SATU arsip menyisakan kisi gambar kosong. Dulu kasus itu
+    // menampilkan "Tidak ada yang cocok" yang terbaca seperti GAGAL — padahal
+    // arsipnya sudah siap, dan orang jadi mengira unggahannya tak berjalan.
+    // Sekarang bedakan: tak ada gambar TAPI ada arsip/video -> pesan menenangkan
+    // + langkah berikutnya; gambar ada tapi tersaring -> "pilih tab lain".
+    const kosong = $('ug-kosong');
+    kosong.hidden = tampil.length > 0;
+    if (!kosong.hidden) {
+      const nArsip = [...berkas.values()].filter(b => b.arsip).length;
+      const nVideo = [...berkas.values()].filter(b => b.video).length;
+      if (semua.length === 0 && (nArsip || nVideo)) {
+        const apa = [];
+        if (nArsip) apa.push(`${nArsip} arsip .zip`);
+        if (nVideo) apa.push(`${nVideo} video`);
+        kosong.innerHTML =
+          `<b>${apa.join(' dan ')} siap diunggah</b>`
+          + 'Arsip dan video tak perlu pratinjau — isinya dibongkar/diekstrak '
+          + 'di server. Klik <b>“Simpan dan lanjutkan &rarr;”</b> di atas, lalu '
+          + '<b>Unggah</b>, untuk memprosesnya.';
+      } else {
+        kosong.innerHTML =
+          '<b>Tidak ada yang cocok</b>'
+          + 'Tidak ada berkas pada saringan ini. Pilih tab lain.';
+      }
+    }
 
     const tpl = $('ug-ubin-tpl');
     for (const g of tampil.slice(0, MAKS_UBIN)) {
