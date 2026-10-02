@@ -310,6 +310,42 @@ def test_status_isi_kelas_untuk_training_lama_tanpa_field(tmp_path):
     assert s["kelas"] == ["a", "b", "c"]
 
 
+def test_rincian_menyertakan_versi_dan_catatan(klien, lingkungan):
+    """Panel Rincian training harus menyebut versi dataset MANA yang dilatih +
+    catatan & pembagiannya, bukan cuma "vN". Dan tetap aman kalau versinya
+    sudah dihapus (versi_meta None, rincian tetap ok)."""
+    import pathlib
+
+    from app.services import versi
+    from tests.test_data import masuk, PW_PAUL
+    from tests.test_projek import _projek as buat_projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = buat_projek(ruang, "tr-rinci", n=2, label=True)
+    klien.post(f"/setsrc?path={d}")
+
+    versi.buat(d, "paul", "80/10/10", ["a.jpg", "b.jpg"],
+               {"a.jpg": "train", "b.jpg": "valid"},
+               {"split": {"train": 1, "valid": 1}, "kelas": 2},
+               catatan="paragon tanpa katalog", berencana=True)
+    nv = versi.daftar(d)[0]["nomor"]
+    isi = latih.siapkan(d, nama="uji", versi_nomor=nv, tugas="segment",
+                        bobot="yolo26n-seg.pt", par={"epochs": 3}, oleh="paul")
+
+    r = klien.get(f"/api/latih/rincian?nomor={isi['nomor']}").json()
+    assert r["ok"], r
+    vm = r["versi_meta"]
+    assert vm and vm["catatan"] == "paragon tanpa katalog"
+    assert vm["jumlah"] == {"train": 1, "valid": 1}
+    assert vm["berencana"] is True and vm["kelas"] == 2
+
+    # Versi dihapus sesudah training: rincian tetap jalan, versi_meta None.
+    versi.hapus(d, nv)
+    r2 = klien.get(f"/api/latih/rincian?nomor={isi['nomor']}").json()
+    assert r2["ok"] and r2["versi_meta"] is None
+
+
 def test_nama_kosong_diberi_nama_bawaan(tmp_path):
     isi = latih.siapkan(tmp_path, nama="   ", versi_nomor=1, tugas="segment",
                         bobot="y.pt", par={}, oleh="uji")

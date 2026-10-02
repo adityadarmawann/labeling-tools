@@ -290,7 +290,28 @@ async def rincian(nomor: int = 0, sess: Session = Depends(current_session_api)):
     if not s:
         return {"ok": False, "error": "training itu tidak ada"}
     csv = await asyncio.to_thread(svc.baca_hasil_csv, svc.dir_latih(d, nomor))
-    return {"ok": True, "latih": s, "kurva": csv.get("kurva") or [],
+    # Rincian dataset yang dilatih: versi MANA + catatannya + pembagiannya.
+    # Training membeku ke SATU versi (s["versi"]); rinciannya hidup di berkas
+    # versi, bukan di entri training, jadi diambil di sini supaya panel bisa
+    # menyebut "dilatih dari versi vN (<catatan>)" bukan cuma "vN". Versinya
+    # bisa sudah DIHAPUS sesudah training — kalau tak terbaca, versi_meta None
+    # dan panel mengatakannya apa adanya, bukan menyembunyikan.
+    vm = await asyncio.to_thread(svc_versi.baca, d, int(s.get("versi") or 0))
+    versi_meta = None
+    if vm:
+        versi_meta = {
+            "nomor": vm.get("nomor"),
+            "catatan": vm.get("catatan") or "",
+            "dibuat": vm.get("dibuat") or "",
+            "oleh": vm.get("oleh") or "",
+            "n": vm.get("n") or 0,
+            "jumlah": vm.get("jumlah") or {},      # {train,valid,test}
+            "kelas": vm.get("kelas") or 0,
+            "rasio": vm.get("rasio") or "",
+            "berencana": bool(vm.get("berencana")),  # True = split anti-bocor
+        }
+    return {"ok": True, "latih": s, "versi_meta": versi_meta,
+            "kurva": csv.get("kurva") or [],
             "evaluasi": await asyncio.to_thread(svc.hasil_evaluasi, d, nomor),
             "gambar": await asyncio.to_thread(svc.gambar_hasil, d, nomor),
             "log": await asyncio.to_thread(svc.ekor_log, d, nomor, 60)}

@@ -810,6 +810,12 @@
     catch (e) { $('tr-panel-isi').innerHTML = `<p class="tr-galat">gagal memuat: ${esc(e)}</p>`; return; }
     if (!r.ok) { $('tr-panel-isi').innerHTML = `<p class="tr-galat">${esc(r.error)}</p>`; return; }
     const t = r.latih, w = t.warna || {}, par = t.par || {};
+    // Rincian versi dataset yang dilatih (null kalau versinya sudah dihapus).
+    const vm = r.versi_meta;
+    const jm = (vm && vm.jumlah) || {};
+    const splitStr = Object.keys(jm).length
+      ? Object.entries(jm).map(([k, v]) => `${esc(k)} ${angka(v)}`).join(' / ')
+      : '';
     // "L1 — Paragon v2 — uji evaluasi": dua em-dash beruntun membuat judulnya
     // terbaca seperti potongan yang disambung mesin. Nomornya jadi label
     // terpisah, namanya berdiri sendiri.
@@ -832,10 +838,31 @@
                 ? `${angka(t.epoch_berjalan)} / ${angka(t.epochs)} <small>(epoch ini berjalan ${durasi(t.berlalu_epoch)})</small>`
                 : `${angka(t.epoch)} / ${angka(t.epochs)}`)}</dd></div>
         <div><dt>Lama</dt><dd>${durasi(t.detik)}</dd></div>
-        <div><dt>Sumber</dt><dd>v${t.versi}</dd></div>
+        <div><dt>Dataset</dt><dd>v${t.versi}${
+          vm ? (vm.catatan ? ' · ' + esc(vm.catatan.slice(0, 50)) : '')
+             : ' <small>(versi dihapus)</small>'}</dd></div>
         ${t.lanjut_dari ? `<div><dt>Lanjutan dari</dt><dd>L${t.lanjut_dari}</dd></div>` : ''}
         <div><dt>Oleh</dt><dd>${esc(t.oleh || '?')}</dd></div>
       </div>
+      ${vm ? `<div class="tr-p-blok">
+        <h4>Dataset yang dilatih — versi v${t.versi}</h4>
+        <div class="tr-kv-grid">
+          <span class="tr-kv"><i>Dibuat</i><b>${esc(vm.dibuat || '?')}${
+            vm.oleh ? ' · ' + esc(vm.oleh) : ''}</b></span>
+          <span class="tr-kv"><i>Gambar</i><b>${angka(vm.n)}</b></span>
+          ${splitStr ? `<span class="tr-kv"><i>Split</i><b>${splitStr}</b></span>` : ''}
+          <span class="tr-kv"><i>Kelas</i><b>${angka(vm.kelas)}</b></span>
+          <span class="tr-kv"><i>Pembagian</i><b>${
+            vm.berencana ? 'anti-bocor' : 'acak nama'}${
+            vm.rasio ? ' · ' + esc(vm.rasio) : ''}</b></span>
+        </div>
+        ${vm.catatan ? `<p class="tr-warna-pesan" style="margin-top:6px">
+          <i>Catatan versi:</i> ${esc(vm.catatan)}</p>` : ''}
+      </div>` : `<div class="tr-p-blok">
+        <h4>Dataset yang dilatih — versi v${t.versi}</h4>
+        <p class="tr-diam">Versi ini sudah dihapus, jadi rincian dataset &amp;
+          catatannya tak tersedia lagi. Kelas yang dibekukan tetap di bawah.</p>
+      </div>`}
       ${w.pesan ? `<div class="tr-p-blok tr-warna">
         <h4>Warna: setelan latih mengikuti versinya</h4>
         <p class="tr-warna-pesan">${esc(w.pesan)}</p></div>` : ''}
