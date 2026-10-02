@@ -1449,27 +1449,29 @@ const Progres = (() => {
       return;
     }
     judulSampah.textContent = `Tempat sampah (${isi.length})`;
-    // Bilah borongan di atas: pilih semua + hapus-permanen terpilih. Per-baris
-    // "Kembalikan"/"Hapus permanen" tetap ada untuk tindakan satuan.
+    // Bilah borongan (lengket di atas): pilih semua + hapus-permanen terpilih.
+    // Per-baris "Kembalikan"/"Hapus permanen" tetap ada untuk tindakan satuan.
     isiSampah.innerHTML =
-      `<div class="sampah-bar row" style="gap:8px;align-items:center;margin-bottom:8px">
-        <label class="row" style="gap:6px;align-items:center">
-          <input type="checkbox" id="sampah-semua"> Pilih semua</label>
+      `<div class="sampah-bar">
+        <label><input type="checkbox" id="sampah-semua">
+          Pilih semua</label>
         <span class="spacer"></span>
         <button class="chip chip-bahaya" id="sampah-hapus-pilih" type="button" disabled>
           Hapus permanen terpilih</button>
       </div>`
       + isi.map(s => `
-      <div class="row" style="gap:8px;align-items:center;margin-bottom:5px">
+      <div class="sampah-baris">
         <input type="checkbox" class="sampah-cek" data-folder="${esc(s.folder)}"
                aria-label="Pilih ${esc(s.nama)}">
-        <span style="flex:1">${esc(s.nama)}
-          <span class="halus">· dibuang ${esc(s.usia)}${s.ukuran ? ' · ' + esc(s.ukuran) : ''}</span></span>
+        <div class="sampah-info">
+          <div class="sampah-nama">${esc(s.nama)}</div>
+          <div class="sampah-meta">dibuang ${esc(s.usia)}${s.ukuran ? ' · ' + esc(s.ukuran) : ''}</div>
+        </div>
         <button class="chip" data-pulih="${esc(s.folder)}">Kembalikan</button>
         <button class="chip chip-bahaya" data-hapus="${esc(s.folder)}"
                 data-nama="${esc(s.nama)}">Hapus permanen</button>
       </div>`).join('')
-      + '<div class="halus" style="margin-top:8px">'
+      + '<div class="sampah-ket">'
       + '<b>Kembalikan</b> mengembalikan projek utuh. '
       + '<b>Hapus permanen</b> menghapus berkasnya dari disk dan membebaskan '
       + 'ruang — tidak bisa dibatalkan.</div>';
