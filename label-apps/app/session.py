@@ -177,6 +177,15 @@ class Session:
         # Peran dibaca sekali saat sesi dibuat. Membacanya ulang di tiap
         # permintaan berarti membuka users.json puluhan kali per halaman.
         self.admin = False
+        # Nama tampil dan foto profil dibaca SEKALI saat sesi dibuat, dengan
+        # alasan yang sama seperti `admin`: kepala halaman menampilkannya di
+        # SETIAP halaman, dan membuka users.json tiap permintaan hanya untuk
+        # satu nama berarti puluhan kali baca per muat halaman. Keduanya
+        # disegarkan di tempat oleh rute profil saat pemiliknya menyimpan —
+        # bukan dibaca ulang dari berkas. Bawaannya nama = slug akun (kepala
+        # tetap menampilkan sesuatu walau akunnya belum punya nama tampil).
+        self.nama = user
+        self.foto = ""
 
     # -- dataset --
 
@@ -443,8 +452,15 @@ class SessionStore:
     def create(self, user: str, settings: Settings) -> tuple[str, Session]:
         sid = secrets.token_urlsafe(32)
         sess = Session(user, settings)
+        # users.json dibaca SEKALI di sini untuk ketiga medan yang dititipkan
+        # ke sesi (peran, nama tampil, foto). Membacanya tiga kali berarti
+        # membuka berkas yang sama tiga kali hanya untuk membuat satu sesi.
         from .security import is_admin, load_users
-        sess.admin = is_admin(load_users(settings.users_file), user)
+        users = load_users(settings.users_file)
+        rec = users.get(user) or {}
+        sess.admin = is_admin(users, user)
+        sess.nama = (rec.get("nama") or "").strip() or user
+        sess.foto = rec.get("foto") or ""
         with self._lock:
             self._data[sid] = sess
         return sid, sess

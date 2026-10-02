@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{# Halaman akun DIRI SENDIRI. Tingkat akun, BUKAN tingkat projek, jadi sengaja
+   TANPA sidebar projek (_sisi.html): yang diurus di sini milik orang itu, bukan
+   milik satu dataset. _header.html tetap disertakan supaya menu akun (tempat
+   tautan "Kelola akun" ini berasal) ada di tempatnya. #}
+{% block body %}
+<header>
+  <div class="top"><h1>{{ nama_app() }}</h1>{% include "_header.html" %}</div>
+</header>
+
+<main>
+<div class="pick profil" data-akun="{{ sess.user }}" data-foto="{{ sess.foto }}">
+  <h2>Akun saya</h2>
+  <p class="sub">Ubah nama tampil, email, foto, dan kata sandimu sendiri.</p>
+
+  {# ----------------------------------------------------------------- Foto #}
+  <div class="panel">
+    <h3>Foto</h3>
+    <div class="profil-foto">
+      <span class="profil-ava" id="profil-ava" aria-hidden="true">
+        {%- if sess.foto -%}
+        <img id="profil-ava-img"
+             src="/profil/foto?akun={{ sess.user | urlquote }}&v={{ sess.foto }}"
+             alt="">
+        {%- else -%}<span id="profil-ava-huruf"
+          >{{ (nama or sess.user or '?')[:1] | upper }}</span>{%- endif -%}
+      </span>
+      <div class="profil-foto-aksi">
+        <p class="halus" style="margin:0 0 8px">
+          JPG, PNG, atau WebP. Maksimal {{ maks_foto_mb }} MB; otomatis dipotong
+          jadi kotak.</p>
+        {# Input berkas disembunyikan di balik tombol bergaya: <input type=file>
+           bawaan tak bisa diberi gaya konsisten lintas peramban. #}
+        <input type="file" id="profil-foto-berkas" accept="image/*"
+               class="profil-foto-input" aria-label="Pilih foto profil">
+        <div class="row" style="align-items:center">
+          <button class="chip" type="button" id="profil-foto-pilih">
+            Unggah foto…</button>
+          <button class="chip bahaya" type="button" id="profil-foto-hapus"
+                  {% if not sess.foto %}hidden{% endif %}>Hapus foto</button>
+        </div>
+        <p class="upnote" id="profil-foto-note" style="text-align:left"></p>
+      </div>
+    </div>
+  </div>
+
+  {# ------------------------------------------------------------ Nama & email #}
+  <div class="panel">
+    <h3>Nama &amp; email</h3>
+    <label class="form-lbl" for="profil-nama">Nama tampil</label>
+    <input id="profil-nama" type="text" value="{{ nama }}"
+           autocomplete="name" placeholder="mis. Rizky Pratama">
+    <label class="form-lbl" for="profil-email" style="margin-top:12px">
+      Email <span class="halus" style="display:inline;margin:0">(untuk login
+      Google nanti)</span></label>
+    <input id="profil-email" type="email" value="{{ email }}"
+           autocomplete="email" placeholder="rizky@higo.id">
+    <div class="row" style="margin-top:14px">
+      <button class="cta" type="button" id="profil-simpan"
+              style="width:auto;padding:9px 20px">Simpan</button>
+    </div>
+    <p class="upnote" id="profil-note" style="text-align:left"></p>
+  </div>
+
+  {# ------------------------------------------------------------- Ganti sandi #}
+  <div class="panel">
+    <h3>Ganti sandi</h3>
+    {% if punya_sandi %}
+    <label class="form-lbl" for="profil-sandi-lama">Kata sandi sekarang</label>
+    <input id="profil-sandi-lama" type="password" autocomplete="current-password">
+    {% else %}
+    <p class="halus" style="margin:0 0 4px">Akunmu belum punya kata sandi
+      sendiri. Buat satu di bawah.</p>
+    {% endif %}
+    <label class="form-lbl" for="profil-sandi-baru"
+           style="margin-top:12px">Kata sandi baru
+      <span class="halus" style="display:inline;margin:0">(minimal
+      {{ min_sandi }} karakter)</span></label>
+    <input id="profil-sandi-baru" type="password" autocomplete="new-password">
+    <div class="row" style="margin-top:14px">
+      <button class="cta" type="button" id="profil-sandi-simpan"
+              style="width:auto;padding:9px 20px"
+              data-punya-sandi="{{ '1' if punya_sandi else '0' }}">
+        {{ 'Ganti sandi' if punya_sandi else 'Buat sandi' }}</button>
+    </div>
+    <p class="upnote" id="profil-sandi-note" style="text-align:left"></p>
+  </div>
+</div>
+</main>
+{% endblock %}
+
+{% block skrip %}<script src="{{ statik('profil.js') }}"></script>{% endblock %}

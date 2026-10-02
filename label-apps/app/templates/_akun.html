@@ -7,13 +7,21 @@
 <div class="akun" id="akun">
   {# Tombol = pil identitas .whoami yang kini bisa diklik; caret ▾ menandai ia
      membuka sesuatu. aria-haspopup=menu + aria-expanded memberi tahu pembaca
-     layar ini pembuka menu, bukan tautan. Span .whoami-nama DIJAGA apa adanya:
-     tiap akun harus melihat NAMANYA SENDIRI di kepala (test_akses). #}
+     layar ini pembuka menu, bukan tautan. .whoami-nama menampilkan NAMA TAMPIL
+     (sess.nama), jatuh ke slug akun kalau belum diisi — tiap akun tetap melihat
+     identitasnya sendiri di kepala (test_akses), kini namanya alih-alih
+     slug-nya. Avatar menampilkan FOTO profil kalau ada (sess.foto, disajikan
+     /profil/foto dengan cap ?v= pemutus cache), kalau tidak inisial namanya. #}
   <button class="whoami akun-tombol" id="akun-tombol" type="button"
           aria-haspopup="menu" aria-expanded="false" aria-controls="akun-menu"
           title="Masuk sebagai {{ sess.user }}">
-    <span class="whoami-ava" aria-hidden="true">{{ (sess.user or '?')[:1] | upper }}</span>
-    <span class="whoami-nama">{{ sess.user }}</span>
+    <span class="whoami-ava" aria-hidden="true">
+      {%- if sess.foto -%}
+      <img src="/profil/foto?akun={{ sess.user | urlquote }}&v={{ sess.foto }}"
+           alt="" width="23" height="23">
+      {%- else -%}{{ (sess.nama or sess.user or '?')[:1] | upper }}{%- endif -%}
+    </span>
+    <span class="whoami-nama">{{ sess.nama or sess.user }}</span>
     <span class="akun-caret" aria-hidden="true">&#9662;</span>
   </button>
 

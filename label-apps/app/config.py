@@ -81,6 +81,18 @@ class Settings:
     uploads_root: Path
     thumb_root: Path
     datasets_root: Path | None = None
+    # Folder foto profil (avatar) tiap akun, satu berkas per akun. Diletakkan
+    # DI DALAM uploads_root (berawalan "_", seperti _unggahan/_sampah-gambar),
+    # bukan di sebelah users_file: users_file prod/dev berada di folder aplikasi
+    # (users.json / users.dev.json), dan menulis avatar di situ mengotori repo
+    # sekaligus memicu penjaga folder_aplikasi_tak_berubah tiap kali server
+    # sungguhan (yang jalan berdampingan dengan tes) menyimpan satu avatar.
+    # uploads_root selalu di luar folder aplikasi (prod) atau di bawah dev-data
+    # yang memang diabaikan penjaga (dev) — jadi avatar aman di sana dan tetap
+    # bertahan (beda dari thumb_root yang dihapus tiap restart). Nama berawalan
+    # "_" membuat projek.daftar tak pernah salah membacanya sebagai projek
+    # (penelusurannya menuntut subfolder ber-.tugas.json; _avatar berisi .jpg).
+    avatar_root: Path | None = None
     default_src: Path | None = None
     max_upload_mb: int = 80
     # Arsip punya batas sendiri: satu ekspor Roboflow bisa lebih dari 1 GB,
@@ -175,11 +187,19 @@ def get_settings() -> Settings:
     uploads_root.mkdir(parents=True, exist_ok=True)
     thumb_root.mkdir(parents=True, exist_ok=True)
 
+    users_file = _path("USERS_FILE") or (root / "users.json")
+    # Di bawah uploads_root (di luar folder aplikasi), BUKAN di sebelah
+    # users_file yang ada di folder aplikasi — lihat medan avatar_root. Tidak
+    # di-mkdir di sini (uploads_root sudah dibuat di atas); folder _avatar-nya
+    # dibuat saat avatar pertama ditulis.
+    avatar_root = _path("AVATAR_ROOT") or (uploads_root / "_avatar")
+
     return Settings(
-        users_file=_path("USERS_FILE") or (root / "users.json"),
+        users_file=users_file,
         uploads_root=uploads_root,
         thumb_root=thumb_root,
         datasets_root=datasets_root,
+        avatar_root=avatar_root,
         default_src=_path("DEFAULT_SRC"),
         max_upload_mb=max(1, _int("MAX_UPLOAD_MB", 80)),
         max_video_mb=max(1, _int("MAX_VIDEO_MB", 2048)),

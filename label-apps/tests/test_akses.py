@@ -57,13 +57,13 @@ def test_dua_akun_punya_dataset_sendiri(aplikasi, lingkungan):
     assert "ds-beta" in hb and "ds-alpha" not in hb
     assert ha.count('class="card"') == 4
     assert hb.count('class="card"') == 3
-    # Nama akun tampil di TOMBOL akun kepala — pil .whoami yang kini membuka
-    # menu (Tema/Kelola akun/Keluar), bukan lagi potongan terpisah. Span
-    # .whoami-nama di dalam tombol itu sengaja dijaga apa adanya. Yang dijamin
-    # sama seperti dulu: tiap akun melihat NAMANYA SENDIRI di kepala, bukan nama
-    # akun lain.
-    assert 'class="whoami-nama">paul</span>' in ha
-    assert 'class="whoami-nama">anggi</span>' in hb
+    # Nama tampil muncul di TOMBOL akun kepala — pil .whoami yang kini membuka
+    # menu (Tema/Kelola akun/Keluar). Span .whoami-nama kini menampilkan NAMA
+    # TAMPIL (sess.nama), bukan lagi slug akunnya; di lingkungan uji nama paul =
+    # "Paul" dan anggi = "Anggi". Yang dijamin tetap sama seperti dulu: tiap
+    # akun melihat IDENTITASNYA SENDIRI di kepala, bukan identitas akun lain.
+    assert 'class="whoami-nama">Paul</span>' in ha
+    assert 'class="whoami-nama">Anggi</span>' in hb
 
 
 def test_akun_tidak_bisa_melihat_gambar_dataset_akun_lain(aplikasi, lingkungan):
