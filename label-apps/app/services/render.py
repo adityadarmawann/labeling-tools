@@ -7,7 +7,9 @@ kelas yang sama selalu berwarna sama tanpa perlu tabel warna.
 from __future__ import annotations
 
 import colorsys
+import json
 import os
+import re
 import threading
 from pathlib import Path
 
@@ -23,7 +25,9 @@ JPEG_QUALITY = 86
 OVERLAY_ALPHA = 0.45
 # Dinaikkan tiap kali gambar overlay-nya berubah, supaya thumbnail lama yang
 # tercache (kunci-nya dari isi berkas, BUKAN dari kode ini) ikut dibuat ulang.
-RENDER_VERSI = 2
+# v3: pose/keypoint digambar seperti Roboflow — rangka tipis berwarna per sisi +
+# titik kecil, bbox instance tak dibanjiri warna.
+RENDER_VERSI = 3
 
 
 def hash_kelas(nama) -> int:
@@ -57,6 +61,112 @@ def cls_color(key) -> tuple[int, int, int]:
     return int(r * 255), int(g * 255), int(b * 255)
 
 
+def _hex_bgr(hx) -> tuple[int, int, int] | None:
+    """'#rrggbb' -> (B,G,R) untuk cv2. None kalau bukan hex 6 digit."""
+    m = re.fullmatch(r"#?([0-9a-fA-F]{6})", str(hx or "").strip())
+    if not m:
+        return None
+    n = int(m.group(1), 16)
+    return (n & 255, (n >> 8) & 255, (n >> 16) & 255)
+
+
+def _warna_slot(warna: list, idx: int, nama) -> tuple[int, int, int]:
+    """Warna BGR satu slot keypoint: UTAMAKAN warna[slot] template (skema sisi
+    kiri/kanan/tengah dari impor Roboflow), jatuh ke warna-hash nama kalau tak
+    ada. Padanan warnaKp() di label.js supaya thumbnail = kanvas."""
+    if 0 <= idx < len(warna):
+        c = _hex_bgr(warna[idx])
+        if c:
+            return c
+    return cls_color(nama)[::-1]
+
+
+def _cari_tugas(img: Path) -> Path | None:
+    """.tugas.json projek, ditelusuri ke atas dari gambar. Gambar bisa di akar
+    projek, di images/, atau di <split>/images/ — jadi naik beberapa tingkat."""
+    d = Path(img).parent
+    for _ in range(5):
+        p = d / ".tugas.json"
+        if p.is_file():
+            return p
+        if d.parent == d:
+            break
+        d = d.parent
+    return None
+
+
+def skeleton_item(item: dict) -> dict | None:
+    """Template skeleton projek pose dari .tugas.json: {titik, edge, warna}.
+
+    None kalau bukan projek pose. Nama slot dinormalkan sama seperti
+    scanner._skeleton_titik (yang dipakai read_yolo memberi label titik), jadi
+    nama di sini pasti cocok dengan label bentuk titiknya. edge/warna diambil
+    apa adanya — _sah_skeleton sudah menyelaraskan indeksnya saat menyimpan.
+    """
+    p = _cari_tugas(item["img"])
+    if not p:
+        return None
+    try:
+        d = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    sk = d.get("skeleton") if isinstance(d, dict) else None
+    if not isinstance(sk, dict):
+        return None
+    titik = [" ".join(str(t or "").split())[:40] for t in (sk.get("titik") or [])]
+    if not any(titik):
+        return None
+    edge = [(int(e[0]), int(e[1])) for e in (sk.get("edge") or [])
+            if isinstance(e, (list, tuple)) and len(e) == 2]
+    return {"titik": titik, "edge": edge, "warna": list(sk.get("warna") or [])}
+
+
+def _gambar_pose(im, pose_shapes: list, tpl: dict, sc: float, side: int) -> None:
+    """Gambar rangka pose langsung di `im` (opasitas penuh, tajam) ala Roboflow:
+    garis sisi tipis berwarna per slot, lalu titik KECIL. Bbox instance SENGAJA
+    tidak digambar — Roboflow pun hanya menampilkannya saat kursor di atasnya,
+    bukan di grid/pratinjau; membanjirinya warna justru menutupi fotonya."""
+    titik, edge, warna = tpl["titik"], tpl["edge"], tpl["warna"]
+    # Ukuran relatif thumbnail: kecil, seperti Roboflow. ~2px titik + 1px garis
+    # di grid 320; ~4px + 2px di pratinjau 1100.
+    r = max(2, round(side / 260))
+    lw = max(1, round(side / 550))
+
+    grup: dict = {}
+    for s in pose_shapes:
+        if s["type"] != "point" or s.get("group_id") is None:
+            continue
+        x, y = s["pts"][0] * sc
+        v = int((s.get("flags") or {}).get("v", 2))
+        grup.setdefault(s["group_id"], {})[s["label"]] = (float(x), float(y), v)
+
+    # Sisi dulu, titik menimpanya (sama urutannya dengan label.js:244).
+    for byname in grup.values():
+        for i, j in edge:
+            if not (0 <= i < len(titik) and 0 <= j < len(titik)):
+                continue
+            a, b = byname.get(titik[i]), byname.get(titik[j])
+            if not a or not b or a[2] < 1 or b[2] < 1:   # lewati titik absen
+                continue
+            col = _warna_slot(warna, i, titik[i])
+            cv2.line(im, (round(a[0]), round(a[1])), (round(b[0]), round(b[1])),
+                     col, lw, cv2.LINE_AA)
+
+    for byname in grup.values():
+        for idx, nm in enumerate(titik):
+            p = byname.get(nm)
+            if not p or p[2] < 1:                        # absen/dihapus: lewati
+                continue
+            c = (round(p[0]), round(p[1]))
+            col = _warna_slot(warna, idx, nm)
+            if p[2] >= 2:                                # visible: titik terisi
+                cv2.circle(im, c, r, col, -1, cv2.LINE_AA)
+                if r >= 3:                               # tepi tipis agar menonjol
+                    cv2.circle(im, c, r, (40, 40, 40), 1, cv2.LINE_AA)
+            else:                                        # occluded: cincin kosong
+                cv2.circle(im, c, r, col, max(1, lw), cv2.LINE_AA)
+
+
 def render(item: dict, side: int):
     """Gambar + mask ter-overlay, diskalakan supaya sisi terpanjang = side."""
     im = cv2.imread(str(item["img"]))
@@ -73,7 +183,16 @@ def render(item: dict, side: int):
     im = cv2.resize(im, (ow, oh), interpolation=cv2.INTER_AREA)
     ov = im.copy()
     tebal = max(2, round(min(ow, oh) / 75))        # ~4px di thumbnail 320px
+
+    # Projek pose: titik+bbox instance ditangani terpisah (rangka tajam, titik
+    # kecil, tanpa banjir warna). Sisanya (poligon/kotak biasa) seperti dulu.
+    tpl = skeleton_item(item)
+    pose_shapes, pakai_overlay = [], False
     for s in item["shapes"]:
+        if tpl is not None and s.get("group_id") is not None \
+                and s["type"] in ("point", "rectangle"):
+            pose_shapes.append(s)
+            continue
         col = cls_color(s["label"])[::-1]          # cv2 memakai BGR
         pts = np.round(s["pts"] * sc).astype(np.int32)
         # Titik, garis, dan polyline tidak punya bagian dalam: mengisinya
@@ -85,7 +204,15 @@ def render(item: dict, side: int):
         else:
             cv2.fillPoly(ov, [pts], col)
             cv2.polylines(im, [pts], True, col, tebal, cv2.LINE_AA)
-    return cv2.addWeighted(ov, OVERLAY_ALPHA, im, 1 - OVERLAY_ALPHA, 0)
+            pakai_overlay = True
+
+    out = cv2.addWeighted(ov, OVERLAY_ALPHA, im, 1 - OVERLAY_ALPHA, 0) \
+        if pakai_overlay else im
+    # Rangka pose digambar SETELAH blend, langsung di hasil akhir: garis & titik
+    # keypoint tetap tajam (tidak diredam alpha overlay seperti dulu).
+    if tpl is not None and pose_shapes:
+        _gambar_pose(out, pose_shapes, tpl, sc, side)
+    return out
 
 
 # Thumbnail dipakai BERSAMA semua akun, tidak lagi satu salinan per akun.
