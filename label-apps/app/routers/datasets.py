@@ -68,8 +68,13 @@ async def set_source(path: str = "",
     if tolak:
         return {"ok": False, "error": tolak}
     n = len(await asyncio.to_thread(sess.load, d))
-    if not n:
-        return {"ok": False, "error": "tidak ada gambar terbaca di folder itu"}
+    # Projek KOSONG (0 gambar) tetap boleh dibuka. Projek yang baru dibuat memang
+    # belum berisi apa pun, dan membukanya justru LANGKAH MENUJU "Unggah data" —
+    # bukan kesalahan. boleh_buka di atas sudah memastikan folder ini sah (projek
+    # milik akun ini / undangan / dataset bersama), jadi 0 gambar bukan alasan
+    # menolak. Dulu ditolak di sini, sehingga kartu projek yang tampil "0 gambar"
+    # gagal saat diklik dengan "tidak ada gambar terbaca" — padahal projek itulah
+    # yang mau diisi dataset.
     riwayat.catat(settings, sess.user, d.resolve(), "buka")
     return {"ok": True, "dir": str(d.resolve()), "n": n}
 

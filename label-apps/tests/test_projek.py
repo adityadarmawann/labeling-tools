@@ -218,6 +218,30 @@ def test_grid_menautkan_ke_halaman_unggah_bukan_menu_kedua(klien, lingkungan):
     assert "Tidak bisa ditambahi" in h
 
 
+def test_projek_kosong_tetap_bisa_dibuka(klien, lingkungan):
+    """Projek baru yang BELUM berisi gambar tetap bisa dibuka — membukanya
+    langkah menuju Unggah data, bukan kesalahan.
+
+    Regresi: /setsrc dulu menolak folder 0-gambar dengan "tidak ada gambar
+    terbaca di folder itu", padahal picker menampilkan kartu "0 gambar" yang
+    bisa diklik. Membuat projek, logout, login, lalu membukanya jadi gagal —
+    justru projek itu yang mau diisi dataset.
+    """
+    import pathlib
+
+    from tests.test_data import masuk, PW_PAUL
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    kosong = _projek(ruang, "coba-skle", n=0)        # tanpa satu pun gambar
+
+    r = klien.post(f"/setsrc?path={kosong}").json()
+    assert r["ok"] is True and r["n"] == 0, r
+    # Grid-nya TERBUKA (bukan ditolak) dan menawarkan jalan mengunggah.
+    h = klien.get("/").text
+    assert 'href="/unggah?ds=coba-skle"' in h
+
+
 def test_sidebar_projek_menautkan_keempat_bagiannya(klien, lingkungan):
     """Sidebar yang memegang alurnya: satu projek, empat pekerjaan berurutan.
 
