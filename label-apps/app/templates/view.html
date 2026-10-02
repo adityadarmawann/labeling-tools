@@ -13,7 +13,12 @@
 <header>
   <div class="top">
     <a class="chip" href="/">&larr; Kembali</a>
-    <h1 class="lh-nama mono" title="{{ it.img.name }}">{{ it.img.name }}</h1>
+    {#- Nama berkas TIDAK lagi dicetak di kepala: panjang, meramaikan pojok, dan
+        sudah dieja utuh di kartu "Berkas" + jadi tooltip gambarnya. Lambang
+        brand teal pun ikut hilang di sini — ia ::before milik <h1> ini. Judul
+        disimpan sr-only supaya dokumen tetap punya satu <h1> yang menamainya
+        bagi pembaca layar. -#}
+    <h1 class="sr-only">{{ it.img.name }}</h1>
     {%- if it.split %}<span class="split">{{ it.split }}</span>{% endif %}
     <span class="path mono">{{ it.W }}&times;{{ it.H }} px</span>
     {% include "_header.html" %}

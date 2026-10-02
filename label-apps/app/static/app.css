@@ -88,6 +88,14 @@ header h1::before{content:"";flex:0 0 auto;width:25px;height:25px;
   border-radius:8px;background:var(--aksi);
   box-shadow:inset 0 0 0 2px var(--aksi), inset 0 0 0 4px var(--aksi-ink)}
 
+/* Judul yang HANYA untuk pembaca layar: menjaga dokumen tetap punya <h1> dan
+   urutan heading, tanpa menampilkan apa pun. Dipakai halaman /view, yang
+   nama berkasnya sudah dieja utuh di kartu "Berkas" sehingga mengulanginya di
+   kepala cuma menuh-menuhi. Lambang brand ::before ikut dimatikan di sini. */
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;
+  overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+header h1.sr-only::before{display:none}
+
 /* ------------------------------------------------------------- gugus akun
    "masuk sebagai devuser / Tema / Kelola akun / Keluar" dulu EMPAT potong lepas
    sejajar baseline, yang di layar sempit melebar lalu membungkus ke baris
