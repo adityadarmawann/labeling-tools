@@ -27,7 +27,8 @@ OVERLAY_ALPHA = 0.45
 # tercache (kunci-nya dari isi berkas, BUKAN dari kode ini) ikut dibuat ulang.
 # v3: pose/keypoint digambar seperti Roboflow — rangka tipis berwarna per sisi +
 # titik kecil, bbox instance tak dibanjiri warna.
-RENDER_VERSI = 3
+# v4: nomor slot titik dicetak di pratinjau besar (/view), bukan di grid.
+RENDER_VERSI = 4
 
 
 def hash_kelas(nama) -> int:
@@ -165,6 +166,23 @@ def _gambar_pose(im, pose_shapes: list, tpl: dict, sc: float, side: int) -> None
                     cv2.circle(im, c, r, (40, 40, 40), 1, cv2.LINE_AA)
             else:                                        # occluded: cincin kosong
                 cv2.circle(im, c, r, col, max(1, lw), cv2.LINE_AA)
+
+    # Nomor slot titik, HANYA di pratinjau besar (side>=700 -> halaman /view
+    # "Lihat"), bukan di sel grid yang kecil — di sana lusinan angka cuma jadi
+    # bercak. Diletakkan di samping titik, dengan garis luar gelap supaya terbaca
+    # di atas latar seterang/segelap apa pun. Diminta supaya titik di layar bisa
+    # dicocokkan dengan nomornya.
+    if side >= 700:
+        fs = max(0.34, side / 2600)
+        for byname in grup.values():
+            for nm, p in byname.items():
+                if p[2] < 1:
+                    continue
+                org = (round(p[0]) + r + 2, round(p[1]) - r)
+                cv2.putText(im, nm, org, cv2.FONT_HERSHEY_SIMPLEX, fs,
+                            (0, 0, 0), 3, cv2.LINE_AA)        # garis luar
+                cv2.putText(im, nm, org, cv2.FONT_HERSHEY_SIMPLEX, fs,
+                            (255, 255, 255), 1, cv2.LINE_AA)  # isi putih
 
 
 def render(item: dict, side: int):

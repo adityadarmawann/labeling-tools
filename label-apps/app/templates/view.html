@@ -3,7 +3,9 @@
 
 {% block body %}
 {%- set p = it | imgpath %}
-{%- set n_obj = it.shapes | length %}
+{#- n_obj datang dari router: jumlah OBJEK (instance pose dihitung satu, bukan
+    tiap keypoint-nya). Dulu `it.shapes | length` di sini menghitung tiap titik
+    sebagai objek, jadi satu court jadi "34 objek". -#}
 {#- Satu kalimat vonis per keadaan. severity() sudah dikirim router; yang
     kurang cuma penerjemahannya ke bahasa manusia. -#}
 {%- set vonis = {'ok':   'Anotasi terlihat wajar',

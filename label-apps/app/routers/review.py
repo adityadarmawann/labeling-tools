@@ -488,11 +488,6 @@ async def view(request: Request, path: str = "",
         next_it = items[i + 1] if i < len(items) - 1 else None
         posisi = (i + 1, len(items))
 
-    hitung: dict[str, int] = {}
-    for s in it["shapes"]:
-        k = str(s["label"])
-        hitung[k] = hitung.get(k, 0) + 1
-
     from ..services import tag as svc_tag
     from ..services import tugas as svc_tugas
 
@@ -503,10 +498,37 @@ async def view(request: Request, path: str = "",
     # ramai justru di bagian yang dipakai orang memeriksa fotonya. Tempatnya
     # di sini, sebaris dengan keterangan lain tentang satu gambar.
     tugas_data = svc_tugas.baca_projek(sess.src, settings.uploads_root)
+
+    # "Objek per kelas": satu INSTANCE pose (titik-titik ber-group_id sama) =
+    # SATU objek, kelasnya dari KOTAK bbox-nya ("court"), bukan tiap keypoint
+    # dihitung kelas tersendiri. Tanpa ini projek keypoint tampil sebagai
+    # "34 objek · 34 kelas" berisi slot titik 01..33 — padahal di gambar cuma
+    # ADA SATU court. Bentuk tanpa group (objek biasa) tetap dihitung per bentuk
+    # seperti dulu. Kelas instance jatuh ke skeleton.kelas, lalu "objek", kalau
+    # instance-nya kebetulan tak punya kotak (mis. pose berbasis hull).
+    skel_kelas = str(((tugas_data.get("skeleton") or {}).get("kelas") or "")).strip()
+    hitung: dict[str, int] = {}
+    instance_kelas: dict = {}
+    n_obj = 0
+    for s in it["shapes"]:
+        gid = s.get("group_id")
+        if gid is None:
+            k = str(s["label"])
+            hitung[k] = hitung.get(k, 0) + 1
+            n_obj += 1
+        elif s.get("type") == "rectangle":
+            instance_kelas[gid] = str(s["label"])
+        else:
+            instance_kelas.setdefault(gid, None)
+    for gid, kelas in instance_kelas.items():
+        k = kelas or skel_kelas or "objek"
+        hitung[k] = hitung.get(k, 0) + 1
+        n_obj += 1
+
     return templates.TemplateResponse(request, "view.html", {
         "sess": sess, "local": is_local(request), "it": it,
         "sev": scanner.severity(it), "prev_it": prev_it, "next_it": next_it,
-        "posisi": posisi, "hitung": dict(sorted(hitung.items())),
+        "posisi": posisi, "hitung": dict(sorted(hitung.items())), "n_obj": n_obj,
         "tag": svc_tag.untuk(tdata, kunci),
         "pelabel": ("" if tugas_data["warisan"]
                     else svc_tugas.pelabel_gambar(tugas_data, kunci)),
