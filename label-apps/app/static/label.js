@@ -123,6 +123,28 @@ function warna(label, alpha) {
   return `hsla(${h.toFixed(0)},62%,55%,${alpha})`;
 }
 
+/* Warna HEX "#rrggbb" -> string rgba() dengan alpha. null kalau bukan hex 6
+   digit — supaya pemanggil bisa jatuh ke warna hash. */
+function hexKeRgba(hex, alpha) {
+  const m = /^#?([0-9a-fA-F]{6})$/.exec(String(hex == null ? '' : hex).trim());
+  if (!m) return null;
+  const n = parseInt(m[1], 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha == null ? 1 : alpha})`;
+}
+
+/* Warna satu keypoint. UTAMAKAN warna[slot] dari template — itulah skema sisi
+   yang ditetapkan saat impor YOLO-pose (kiri merah / kanan toska / tengah
+   kuning, diturunkan dari flip_idx) — dan jatuh ke hash nama kalau template tak
+   punya warna untuk slot itu. Dipakai baik di titik maupun di garis skeleton
+   supaya kanvas memperlihatkan kiri-kanan seperti alat anotasi Roboflow. */
+function warnaKp(label, alpha) {
+  const tpl = skelTpl();
+  const t = tpl.titik || [], w = tpl.warna || [];
+  const i = t.indexOf(label);
+  if (i >= 0 && w[i]) { const c = hexKeRgba(w[i], alpha); if (c) return c; }
+  return warna(label, alpha);
+}
+
 /*
  * Gaya seleksi mengikuti bawaan AnyLabeling (~/.anylabelingrc):
  *   select_line_color [255,255,255,255]  vertex_fill_color [0,255,0,255]
@@ -301,20 +323,24 @@ function gambarBentuk(s, terpilih) {
   if (s.shape_type === 'point') {
     const [x, y] = p[0];
     const r = UKURAN_TITIK / 2 + (terpilih ? 1.5 : 0);
-    // Keypoint pose (punya group_id) digambar menurut visibilitasnya: visible
-    // terisi, occluded cincin kosong, absen pudar sebagai hantu. Titik biasa
-    // (tanpa group) tetap seperti AnyLabeling.
+    // Keypoint pose (punya group_id) digambar menurut visibilitasnya menurut
+    // semantik Roboflow: VISIBLE (v2) titik terisi, OCCLUDED (v1) tanda X,
+    // DELETED (v0) hantu pudar — slotnya tetap disimpan, tak pernah dibuang.
+    // Titik biasa (tanpa group) tetap seperti AnyLabeling. Warna titik pose
+    // diambil dari template (warna[slot] = sisi kiri/kanan/tengah) lewat
+    // warnaKp, jadi kanvas memperlihatkan skema warna impor Roboflow.
     const kp = s.group_id != null && s.flags && s.flags.v != null;
     const v = kp ? vKp(s) : 2;
+    const ckp = kp ? warnaKp(s.label, 1) : warna(s.label, 1);
     if (v === 0) {
       g.save(); g.globalAlpha = 0.45;
       bulatan(x, y, r, 'rgba(150,150,150,.5)', '#bbb');
       g.restore();
     } else if (v === 1) {
-      bulatan(x, y, r, terpilih ? '#fff' : 'rgba(0,0,0,0)',
-              terpilih ? GARIS_PILIH : warna(s.label, 1));
+      // Occluded = X (bukan cincin), seperti alat anotasi Roboflow.
+      silang(x, y, r + 0.5, terpilih ? GARIS_PILIH : ckp, terpilih ? 2.6 : 2);
     } else {
-      bulatan(x, y, r, terpilih ? '#fff' : warna(s.label, 1),
+      bulatan(x, y, r, terpilih ? '#fff' : ckp,
               terpilih ? GARIS_PILIH : '#fff');
     }
     gambarTeksBentuk(s, p);
@@ -508,6 +534,20 @@ function bulatan(x, y, r, isi, garis) {
   g.arc(keLayarX(x), keLayarY(y), r, 0, 6.2832);
   g.fillStyle = isi; g.fill();
   g.strokeStyle = garis; g.lineWidth = 1.5; g.stroke();
+}
+
+/* Tanda silang (X) pada koordinat gambar — penanda keypoint OCCLUDED, meniru
+   alat anotasi Roboflow (titiknya ADA tapi tertutup objek lain). Dibedakan
+   tegas dari titik visible (bulatan terisi) supaya status terbaca sekilas. */
+function silang(x, y, r, garis, lebar) {
+  const cx = keLayarX(x), cy = keLayarY(y);
+  g.save();
+  g.strokeStyle = garis; g.lineWidth = lebar || 2; g.lineCap = 'round';
+  g.beginPath();
+  g.moveTo(cx - r, cy - r); g.lineTo(cx + r, cy + r);
+  g.moveTo(cx + r, cy - r); g.lineTo(cx - r, cy + r);
+  g.stroke();
+  g.restore();
 }
 
 function titikPrompt(p) {
@@ -1493,13 +1533,33 @@ function klikKanan(ev) {
     return;
   }
   if (S.mode !== 'edit') { setMode('edit'); }
+  const gx = keGambarX(ev.offsetX), gy = keGambarY(ev.offsetY);
+  // Pose: titik dipilih lewat VERTEX-nya (didalam() selalu false untuk point),
+  // jadi cek keypoint di bawah kursor dulu — klik kanan di atasnya membuka menu
+  // per-keypoint (Visible/Occluded/Deleted/Jadikan Box/Edit visibilitas).
+  if (poseProjek()) {
+    const dv = dekatVertex(gx, gy);
+    const st = dv && S.shapes[dv.i];
+    if (st && st.shape_type === 'point' && st.group_id != null) {
+      if (!S.terpilih.includes(dv.i)) pilihBentuk(dv.i, ev.ctrlKey);
+      render();
+      bukaMenuKeypoint(ev.clientX, ev.clientY, dv.i);
+      return;
+    }
+  }
   // Padanan select_shape_point pada klik kanan: kalau yang diklik belum
   // terpilih, dia yang dipilih; kalau sudah, pilihan yang ada dipertahankan
   // supaya menu berlaku untuk semuanya.
-  const i = bentukDi(keGambarX(ev.offsetX), keGambarY(ev.offsetY));
+  const i = bentukDi(gx, gy);
   if (i >= 0 && !S.terpilih.includes(i)) pilihBentuk(i, ev.ctrlKey);
   render();
-  bukaMenu(ev.clientX, ev.clientY);
+  // Pose: klik kanan pada KOTAK instance membuka menu Opsi instance.
+  const sh = i >= 0 ? S.shapes[i] : null;
+  if (poseProjek() && sh && sh.shape_type === 'rectangle' && sh.group_id != null) {
+    bukaMenuInstance(ev.clientX, ev.clientY, sh.group_id);
+  } else {
+    bukaMenu(ev.clientX, ev.clientY);
+  }
 }
 
 /*
@@ -3539,7 +3599,9 @@ function gambarSkeleton() {
     edge.forEach(([i, j]) => {
       const a = byName[titik[i]], b = byName[titik[j]];
       if (!a || !b || vKp(a) < 1 || vKp(b) < 1) return;   // lewati titik absen
-      g.strokeStyle = warna(titik[i], 0.85);
+      // Warna sisi mengikuti warna[slot] template (kiri/kanan/tengah) lewat
+      // warnaKp, bukan hash nama — itulah tampilan kiri-merah/kanan-toska.
+      g.strokeStyle = warnaKp(titik[i], 0.85);
       g.beginPath();
       g.moveTo(keLayarX(a.points[0][0]), keLayarY(a.points[0][1]));
       g.lineTo(keLayarX(b.points[0][0]), keLayarY(b.points[0][1]));
@@ -3549,6 +3611,258 @@ function gambarSkeleton() {
   g.restore();
 }
 
+/* ------------------------------------------------ PARITAS ROBOFLOW (Part 2)
+   Menu & aksi per-instance/per-keypoint yang menyamai rasa Roboflow, semuanya
+   menumpang mesin keypoint yang sudah ada (visibilitasKeypoint, perbaruiBbox,
+   duplikatTerpilih). Semua aktif HANYA di projek pose (poseProjek()). */
+
+/* gid instance yang sedang jadi fokus: dari seleksi, bentuk utama, lalu hover.
+   Dipakai tombol "Opsi" palet yang tak tahu titik mana yang diklik kanan. */
+function gidTerpilih() {
+  const kand = [];
+  if (S.terpilih && S.terpilih.length) kand.push(...S.terpilih);
+  if (S.sel >= 0) kand.push(S.sel);
+  if (S.hover && S.hover.i != null) kand.push(S.hover.i);
+  for (const i of kand) {
+    const s = S.shapes[i];
+    if (s && s.group_id != null) return s.group_id;
+  }
+  return null;
+}
+
+/* Kotak pembatas instance: rectangle-nya kalau ada, kalau tidak hull titik.
+   Dipakai flip sebagai cermin — x'/y' dipantulkan di dalam kotak ini. */
+function kotakInstance(gid) {
+  const rect = S.shapes.find(s => s.group_id === gid && s.shape_type === 'rectangle');
+  if (rect) return { x0: rect.points[0][0], y0: rect.points[0][1],
+                     x1: rect.points[1][0], y1: rect.points[1][1] };
+  const pts = titikGrup(gid).map(s => s.points[0]);
+  if (!pts.length) return null;
+  const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+  return { x0: Math.min(...xs), y0: Math.min(...ys),
+           x1: Math.max(...xs), y1: Math.max(...ys) };
+}
+
+/*
+ * Balik instance pose. Horizontal memakai flip_idx — involusi yang sudah
+ * divalidasi di _sah_skeleton & dipakai augmentasi_pose_sekali (olah.py:1047):
+ * di sana baris aug menaruh titik slot i ke slot flip_idx[i] dengan x dicermin.
+ * Di kanvas label titik = identitas slot, jadi setara: cermin x semua titik di
+ * dalam bbox, LALU tukar KOORDINAT+visibilitas tiap pasangan (i,j=flip[i]).
+ * Titik yang memetakan ke dirinya sendiri (garis tengah) hanya dicermin.
+ * Vertical hanya mencermin y tanpa tukar slot — flip_idx cuma cermin kiri-kanan.
+ */
+function flipInstance(gid, arah) {
+  if (gid == null || !poseProjek()) return;
+  const pts = titikGrup(gid);
+  if (!pts.length) { toast('Instance ini tak punya keypoint'); return; }
+  const k = kotakInstance(gid);
+  if (!k) return;
+  const titik = skelTpl().titik || [];
+  const flip = skelTpl().flip_idx || [];
+  simpanUndo();
+  if (arah === 'v') {
+    pts.forEach(s => { s.points[0][1] = kurungY(k.y0 + k.y1 - s.points[0][1]); });
+  } else {
+    // 1) cermin x tiap titik di dalam bbox
+    pts.forEach(s => { s.points[0][0] = kurungX(k.x0 + k.x1 - s.points[0][0]); });
+    // 2) tukar pasangan flip (koordinat + flags), sekali per pasangan
+    const useFlip = flip.length === titik.length && titik.length > 0;
+    if (useFlip) {
+      const byName = {};
+      pts.forEach(s => { byName[s.label] = s; });
+      const sudah = new Set();
+      for (let i = 0; i < titik.length; i++) {
+        const j = flip[i];
+        if (j === i || j < 0 || j >= titik.length) continue;   // self-map: diam
+        const key = i < j ? i + ':' + j : j + ':' + i;
+        if (sudah.has(key)) continue;
+        sudah.add(key);
+        const a = byName[titik[i]], b = byName[titik[j]];
+        if (!a || !b) continue;
+        const ta = a.points[0], tb = b.points[0]; a.points[0] = tb; b.points[0] = ta;
+        const fa = a.flags, fb = b.flags; a.flags = fb; b.flags = fa;
+      }
+    }
+  }
+  perbaruiBbox(gid);
+  tandaiKotor(); render();
+  toast(arah === 'v' ? 'Instance dibalik vertikal' : 'Instance dibalik horizontal');
+}
+
+/* Jadikan Box: buang semua titik instance, sisakan rectangle sebagai deteksi
+   biasa (lepas group_id & titipan.kp_auto). Dipakai menu titik & menu instance.
+   Kotak yang tadinya auto jadi box manual — ekspor memperlakukannya detection. */
+function jadikanBox(gid) {
+  if (gid == null) return;
+  const rect = S.shapes.find(s => s.group_id === gid && s.shape_type === 'rectangle');
+  if (!rect) {
+    // Tanpa rectangle tak ada yang bisa disisakan — sama saja menghapus instance.
+    hapusInstance(gid);
+    return;
+  }
+  simpanUndo();
+  for (let k = S.shapes.length - 1; k >= 0; k--)
+    if (S.shapes[k].group_id === gid && S.shapes[k].shape_type === 'point')
+      S.shapes.splice(k, 1);
+  rect.group_id = null;
+  if (rect.titipan) delete rect.titipan.kp_auto;
+  S.sel = -1; S.selv = -1; S.terpilih = [];
+  tandaiKotor(); render();
+  toast('Instance jadi box biasa (titik dibuang)');
+}
+
+/* Duplikat seluruh instance. Menumpang duplikatTerpilih, lalu salinannya diberi
+   gid BARU supaya jadi instance terpisah — kalau gid-nya sama, tiap slot punya
+   dua titik dan _instansi_pose ekspor kacau. */
+function duplikatInstance(gid) {
+  if (gid == null) return;
+  const idx = [];
+  S.shapes.forEach((s, i) => { if (s.group_id === gid) idx.push(i); });
+  if (!idx.length) return;
+  S.terpilih = idx.slice(); S.sel = idx[idx.length - 1]; S.selv = -1;
+  const sebelum = S.shapes.length;
+  duplikatTerpilih();                         // simpanUndo + geser +8 di dalamnya
+  const gbaru = gidBaru();
+  for (let i = sebelum; i < S.shapes.length; i++) S.shapes[i].group_id = gbaru;
+  render();
+}
+
+/* Hapus seluruh shape satu instance (titik + rectangle). */
+function hapusInstance(gid) {
+  if (gid == null) return;
+  simpanUndo();
+  for (let k = S.shapes.length - 1; k >= 0; k--)
+    if (S.shapes[k].group_id === gid) S.shapes.splice(k, 1);
+  S.sel = -1; S.selv = -1; S.terpilih = [];
+  tandaiKotor(); render();
+  toast('Instance dihapus');
+}
+
+/* Jadikan contoh negatif: buang shape instance; kalau gambar jadi tanpa objek
+   sama sekali, itu disengaja = sampel negatif (aturan projek "label kosong =
+   negatif disengaja"). Bedanya dari Hapus cuma pesannya. */
+function jadikanNegatif(gid) {
+  if (gid == null) return;
+  simpanUndo();
+  for (let k = S.shapes.length - 1; k >= 0; k--)
+    if (S.shapes[k].group_id === gid) S.shapes.splice(k, 1);
+  S.sel = -1; S.selv = -1; S.terpilih = [];
+  tandaiKotor(); render();
+  toast(S.shapes.length ? 'Instance dibuang'
+        : 'Gambar kosong — jadi contoh negatif (disengaja)');
+}
+
+/* Menu klik-kanan untuk SATU keypoint (point ber-group). Semua butir menumpang
+   visibilitasKeypoint, yang sudah men-set flags.v pada titik terpilih dan
+   merapikan bbox auto. Label disebut di butirnya, seperti Roboflow. */
+function bukaMenuKeypoint(x, y, i) {
+  const s = S.shapes[i];
+  if (!s) return;
+  const nama = s.label || 'titik';
+  const gid = s.group_id;
+  const v = vKp(s);
+  pasangMenu(x, y, [
+    ['judul', `Keypoint "${nama}"`],
+    ['aksi', `Tandai "${nama}" Visible`, '2', v !== 2, () => visibilitasKeypoint(2), false],
+    ['aksi', `Tandai "${nama}" Occluded`, '1', v !== 1, () => visibilitasKeypoint(1), false],
+    ['aksi', `Hapus "${nama}" (Deleted)`, '0', v !== 0, () => visibilitasKeypoint(0), true],
+    ['pisah'],
+    ['aksi', 'Edit visibilitas keypoint…', '', true, () => bukaDlgKpVis(gid), false],
+    ['aksi', 'Jadikan Box (buang titik)', '', true, () => jadikanBox(gid), false],
+  ]);
+}
+
+/* Menu "Opsi" untuk SATU instance pose — padanan menu Options Roboflow. */
+function bukaMenuInstance(x, y, gid) {
+  if (gid == null) return;
+  const titik = skelTpl().titik || [];
+  const flip = skelTpl().flip_idx || [];
+  const adaFlip = titik.length > 0 && flip.length === titik.length;
+  pasangMenu(x, y, [
+    ['judul', `Instance pose #${gid}`],
+    ['aksi', 'Balik horizontal (Flip H)', adaFlip ? 'flip_idx' : 'cermin', true,
+     () => flipInstance(gid, 'h'), false],
+    ['aksi', 'Balik vertikal (Flip V)', '', true, () => flipInstance(gid, 'v'), false],
+    ['aksi', 'Edit visibilitas keypoint…', '', true, () => bukaDlgKpVis(gid), false],
+    ['pisah'],
+    ['aksi', 'Duplikat instance', 'Ctrl+D', true, () => duplikatInstance(gid), false],
+    ['aksi', 'Jadikan Box (buang titik)', '', true, () => jadikanBox(gid), false],
+    ['pisah'],
+    ['aksi', 'Jadikan contoh negatif', '', true, () => jadikanNegatif(gid), true],
+    ['aksi', 'Hapus instance', 'Del', true, () => hapusInstance(gid), true],
+  ]);
+}
+
+/* ---------------------------------------- dialog Edit Keypoint Visibility
+   Daftar K baris (swatch + slot + nama + pilihan Visible/Occluded/Deleted) untuk
+   satu instance. Simpan = terapkan tiap baris ke flags.v (mutasi sama dengan
+   visibilitasKeypoint, dibatch), lalu perbaruiBbox + tandaiKotor + render. */
+let _gidKpVis = null;
+
+function _isiDlgKpVis(gid) {
+  _gidKpVis = gid;
+  const titik = skelTpl().titik || [];
+  const warnaTpl = skelTpl().warna || [];
+  const byName = {};
+  titikGrup(gid).forEach(s => { byName[s.label] = s; });
+  const wrap = el('kpvis-daftar');
+  wrap.innerHTML = '';
+  titik.forEach((nama, i) => {
+    const s = byName[nama];
+    const v = s ? vKp(s) : 0;            // slot yang tak ada di instance = Deleted
+    const row = document.createElement('div');
+    row.className = 'kpvis-baris';
+    row.innerHTML =
+      '<i class="kpvis-sw"></i>'
+      + '<span class="kpvis-no mono"></span>'
+      + '<span class="kpvis-nama"></span>'
+      + '<select class="kpvis-sel" aria-label="visibilitas">'
+      + '<option value="2">Visible</option>'
+      + '<option value="1">Occluded</option>'
+      + '<option value="0">Deleted</option></select>';
+    row.querySelector('.kpvis-sw').style.background =
+      (warnaTpl[i] && hexKeRgba(warnaTpl[i], 1)) || warna(nama, 1);
+    row.querySelector('.kpvis-no').textContent = '#' + i;
+    row.querySelector('.kpvis-nama').textContent = nama;
+    const sel = row.querySelector('.kpvis-sel');
+    sel.value = String(v);
+    sel.disabled = !s;                   // slot absen tak bisa diubah di sini
+    sel.dataset.nama = nama;
+    sel.title = 'Visible = terlihat · Occluded = tertutup objek lain (X) · '
+              + 'Deleted = tak ada di gambar (slot disimpan, ekspor 0 0 0)';
+    wrap.appendChild(row);
+  });
+  el('kpvis-galat').textContent = '';
+}
+
+function _simpanDlgKpVis() {
+  if (_gidKpVis == null) { el('dlg-kp-vis').hidden = true; return; }
+  const byName = {};
+  titikGrup(_gidKpVis).forEach(s => { byName[s.label] = s; });
+  simpanUndo();
+  let n = 0;
+  el('kpvis-daftar').querySelectorAll('.kpvis-sel').forEach(sel => {
+    const s = byName[sel.dataset.nama];
+    if (!s) return;
+    const v = +sel.value;
+    if (vKp(s) !== v) { s.flags = { ...(s.flags || {}), v }; n++; }
+  });
+  perbaruiBbox(_gidKpVis);               // bbox auto re-fit dari titik v>=1
+  tandaiKotor();
+  el('dlg-kp-vis').hidden = true;
+  render();
+  toast(n ? `${n} keypoint diperbarui` : 'Tak ada perubahan');
+}
+
+function bukaDlgKpVis(gid) {
+  if (gid == null) { toast('Pilih satu instance dulu'); return; }
+  if (!titikGrup(gid).length) { toast('Instance ini tak punya keypoint'); return; }
+  _isiDlgKpVis(gid);
+  const dlg = el('dlg-kp-vis');
+  if (dlg) dlg.hidden = false;
+}
+
 /* Wiring tombol palet Keypoint (dirender server-side kalau projek pose). */
 (() => {
   const w = (id, fn) => { const b = el(id); if (b) b.onclick = fn; };
@@ -3556,4 +3870,18 @@ function gambarSkeleton() {
   w('btn-lewati-kp', lewatiTitik);
   w('btn-rapikan-bbox', rapikanBbox);
   w('btn-tata-default', jadikanTataDefault);
+  // Tombol "Opsi" palet: buka menu instance untuk instance yang sedang fokus.
+  w('btn-opsi-instance', () => {
+    const gid = gidTerpilih();
+    if (gid == null) { toast('Pilih dulu satu instance (klik kotak atau titiknya)'); return; }
+    const b = el('btn-opsi-instance');
+    const r = b.getBoundingClientRect();
+    bukaMenuInstance(r.right, r.top, gid);
+  });
+  // Dialog Edit Keypoint Visibility.
+  w('kpvis-simpan', _simpanDlgKpVis);
+  const batal = el('kpvis-batal');
+  if (batal) batal.onclick = () => { el('dlg-kp-vis').hidden = true; };
+  const dlg = el('dlg-kp-vis');
+  if (dlg) dlg.addEventListener('click', ev => { if (ev.target === dlg) dlg.hidden = true; });
 })();

@@ -444,7 +444,8 @@ def jalankan(d, ip):
                      ("grid", lambda: jalankan_grid(d)),
                      ("bagian", lambda: jalankan_bagian(d)),
                      ("latar", lambda: jalankan_latar(d)),
-                     ("potret", lambda: jalankan_potret(d))):
+                     ("potret", lambda: jalankan_potret(d)),
+                     ("keypoint", lambda: jalankan_keypoint(d))):
         if BLOK and nama not in BLOK:
             continue
         fn()
@@ -2694,6 +2695,186 @@ def jalankan_bagian(d):
         time.sleep(0.2)
     cek("halaman kanvas kembali terbuka untuk blok berikutnya",
         bool(d.js("typeof S !== 'undefined' && !!S.shapes")))
+
+
+def jalankan_keypoint(d):
+    """Paritas Roboflow keypoint (Part 2): occluded = X, flip_idx interaktif,
+    modal Edit Keypoint Visibility, menu per-keypoint/instance, warna template.
+
+    Blok ini membuat projek pose sendiri di ruang unggahan devuser (template
+    3 titik: slot0 tengah, pasangan cermin 1<->2 lewat flip_idx) lalu menguji
+    dengan render + peristiwa sungguhan — bukan hanya memanggil fungsinya.
+    """
+    import base64
+    print("  -- keypoint (paritas Roboflow) --")
+
+    pc = TMP / "unggahan" / "devuser" / "pose-court"
+    pc.mkdir(parents=True, exist_ok=True)
+    cv2.imwrite(str(pc / "court-01.jpg"), np.full((60, 80, 3), 90, np.uint8))
+    (pc / ".tugas.json").write_text(json.dumps({
+        "versi": 1, "pemilik": "devuser", "anggota": {}, "tugas": {},
+        "dataset": [], "undangan": {}, "kurasi": True,
+        "jenis_anotasi": "kerangka",
+        "skeleton": {"kelas": "court", "titik": ["01", "02", "03"],
+                     "edge": [[0, 1], [0, 2]], "flip_idx": [0, 2, 1],
+                     # tengah kuning / kiri merah / kanan toska (skema impor)
+                     "warna": ["#eab308", "#ef4444", "#14b8a6"], "tata": []},
+        "aksi": {"kelas": [], "merge": {}, "warna": [], "negatif": ""}}))
+    ip = pc / "court-01.jpg"
+
+    ok = d.js(f"fetch('/setsrc?path={pc}', {{method:'POST'}}).then(r=>r.json())",
+              tunggu=True)
+    cek("setsrc ke projek pose", bool((ok or {}).get("ok")), f"{ok}")
+    d.kirim("Page.navigate", url=f"http://127.0.0.1:{PORT}/label?path={ip}")
+    for _ in range(80):
+        time.sleep(0.2)
+        if d.js("typeof S!=='undefined' && !!S.shapes && typeof poseProjek==='function'"
+                " && poseProjek()"):
+            break
+    else:
+        raise RuntimeError("halaman label pose tidak siap")
+    time.sleep(0.4)
+
+    cek("projek terbaca sebagai pose", d.js("poseProjek()") is True)
+    cek("tombol Opsi instance dirender (boleh_ubah)",
+        bool(d.js("!!document.getElementById('btn-opsi-instance')")))
+    cek("dialog Edit Keypoint Visibility dirender",
+        bool(d.js("!!document.getElementById('dlg-kp-vis')")))
+
+    # Satu instance: rectangle (BUKAN kp_auto, jadi bbox tetap saat flip) + 3
+    # titik. 01 tengah (v2), 02 kiri (v2), 03 kanan (v1/occluded).
+    def tanam():
+        d.js("""
+          S.shapes = [
+            {label:'court',shape_type:'rectangle',points:[[10,10],[70,50]],group_id:7,flags:{},text:'',titipan:{}},
+            {label:'01',shape_type:'point',points:[[40,20]],group_id:7,flags:{v:2},text:'',titipan:{}},
+            {label:'02',shape_type:'point',points:[[20,30]],group_id:7,flags:{v:2},text:'',titipan:{}},
+            {label:'03',shape_type:'point',points:[[60,40]],group_id:7,flags:{v:1},text:'',titipan:{}}
+          ]; S.terpilih=[]; S.sel=-1; S.selv=-1; S.undo=[]; S.kotor=false; render();
+        """)
+    POS = ("(()=>{const o={};S.shapes.forEach(s=>{if(s.shape_type==='point')"
+           "o[s.label]=[Math.round(s.points[0][0]),Math.round(s.points[0][1]),vKp(s)];});"
+           "return o;})()")
+    tanam()
+
+    # -------- Flip Horizontal: cermin x di bbox [10,70] + tukar pasangan 1<->2
+    d.js("flipInstance(7,'h');")
+    p = d.js(POS)
+    cek("Flip H: titik tengah hanya dicermin x", p.get("01") == [40, 20, 2], f"01={p.get('01')}")
+    cek("Flip H: pasangan tukar koordinat+vis (slot kiri)", p.get("02") == [20, 40, 1], f"02={p.get('02')}")
+    cek("Flip H: pasangan tukar koordinat+vis (slot kanan)", p.get("03") == [60, 30, 2], f"03={p.get('03')}")
+
+    # -------- Flip H lagi = involusi: kembali ke semula
+    d.js("flipInstance(7,'h');")
+    p = d.js(POS)
+    cek("Flip H involutif (balik lagi = semula)",
+        p.get("01") == [40, 20, 2] and p.get("02") == [20, 30, 2] and p.get("03") == [60, 40, 1], f"{p}")
+
+    # -------- Flip Vertical: cermin y di bbox [10,50], TANPA tukar slot
+    d.js("flipInstance(7,'v');")
+    p = d.js(POS)
+    cek("Flip V: cermin y tanpa tukar slot",
+        p.get("01") == [40, 40, 2] and p.get("02") == [20, 30, 2] and p.get("03") == [60, 20, 1], f"{p}")
+    d.js("flipInstance(7,'v');")   # pulihkan
+
+    # -------- Modal Edit Keypoint Visibility: set 03 -> Deleted (v0)
+    # Jadikan kotaknya auto supaya re-fit bbox kelihatan saat titik jadi v0.
+    d.js("S.shapes.find(s=>s.shape_type==='rectangle').titipan.kp_auto=true;")
+    x1_before = d.js("S.shapes.find(s=>s.shape_type==='rectangle').points[1][0]")
+    d.js("bukaDlgKpVis(7);")
+    time.sleep(0.2)
+    cek("modal terbuka", bool(d.js("!document.getElementById('dlg-kp-vis').hidden")))
+    cek("modal berisi K baris", d.js("document.querySelectorAll('#kpvis-daftar .kpvis-baris').length") == 3)
+    d.js("(()=>{const s=[...document.querySelectorAll('#kpvis-daftar .kpvis-sel')]"
+         ".find(x=>x.dataset.nama==='03'); s.value='0';})()")
+    d.js("document.getElementById('kpvis-simpan').click();")
+    time.sleep(0.2)
+    cek("modal Deleted => flags.v==0", d.js("vKp(S.shapes.find(s=>s.label==='03'))") == 0)
+    cek("modal Deleted mempertahankan shape (slot utuh)",
+        d.js("S.shapes.filter(s=>s.shape_type==='point'&&s.group_id===7).length") == 3)
+    x1_after = d.js("S.shapes.find(s=>s.shape_type==='rectangle').points[1][0]")
+    cek("modal menyetel ulang bbox auto (titik v0 dikeluarkan)",
+        x1_after < x1_before, f"{x1_before} -> {x1_after}")
+
+    # -------- Menu per-keypoint hanya untuk point ber-group_id
+    tanam()
+    d.js("(()=>{klikKanan({button:2, offsetX:keLayarX(40), offsetY:keLayarY(20),"
+         " clientX:200, clientY:200, ctrlKey:false});})()")
+    ctx1 = d.js("document.getElementById('ctx').textContent") or ""
+    cek("klik kanan pada keypoint membuka menu per-keypoint",
+        ("Visible" in ctx1 and "Occluded" in ctx1 and "Deleted" in ctx1), ctx1[:90])
+    d.js("tutupMenu && tutupMenu();")
+    d.js("(()=>{klikKanan({button:2, offsetX:keLayarX(2), offsetY:keLayarY(2),"
+         " clientX:50, clientY:50, ctrlKey:false});})()")
+    ctx2 = d.js("document.getElementById('ctx').textContent") or ""
+    cek("klik kanan di luar keypoint: menu generik (tak ada butir Occluded)",
+        "Occluded" not in ctx2, ctx2[:90])
+    d.js("tutupMenu && tutupMenu();")
+
+    # -------- Warna titik/garis diambil dari warna[slot] template (2.4)
+    cek("warna titik tengah = kuning template", d.js("warnaKp('01',1)") == "rgba(234,179,8,1)")
+    cek("warna titik kiri = merah template", d.js("warnaKp('02',1)") == "rgba(239,68,68,1)")
+    cek("warna titik kanan = toska template", d.js("warnaKp('03',1)") == "rgba(20,184,166,1)")
+
+    # -------- Glyph: occluded (v1) = X, visible (v2) = bulatan. Piksel diperiksa
+    # dengan diff (titik vs tanpa titik) di 4 diagonal & 4 kardinal sekitar titik.
+    # Edge dikosongkan supaya garis skeleton tak mengotori patch.
+    d.js("D.skeleton = Object.assign({}, D.skeleton, {edge: []});")
+    tanam()
+    # Rc = radius sampel kardinal, Rd = radius sampel diagonal. Dibedakan karena
+    # geometri X dan bulatan beda: lengan X ada di diagonal pada R=4 (kardinal
+    # kosong), sedangkan isi bulatan terbaca di kardinal R=3 (diagonal R=6 di
+    # luar bulatan). Margin lebar itu yang membuat diff pikselnya tak rapuh.
+    sig = d.js("""(()=>{
+      // Matikan tulisan label sementara — kotaknya di atas titik mengotori
+      // sampel diagonal. Glyph titik sendiri tak bergantung pada tulisan.
+      const simpanV={t:S.v.teks,n:S.v.namaKelas,gr:S.v.grup};
+      S.v.teks=false; S.v.namaKelas=false; S.v.grup=false;
+      function sig(label, Rc, Rd){
+        S.shapes.forEach(s=>{ s.sembunyi = (s.label!==label); });
+        const t=S.shapes.find(s=>s.label===label);
+        gambarSekarang();
+        const cx=Math.round(keLayarX(t.points[0][0])), cy=Math.round(keLayarY(t.points[0][1]));
+        const grab=(ax,ay)=>{const a=g.getImageData(cx+ax,cy+ay,1,1).data;return [a[0],a[1],a[2]];};
+        const ambil=(Rc,Rd)=>({dTL:grab(-Rd,-Rd),dTR:grab(Rd,-Rd),dBL:grab(-Rd,Rd),dBR:grab(Rd,Rd),
+                               cN:grab(0,-Rc),cS:grab(0,Rc),cE:grab(Rc,0),cW:grab(-Rc,0)});
+        const on=ambil(Rc,Rd);
+        t.sembunyi=true; gambarSekarang();
+        const off=ambil(Rc,Rd);
+        S.shapes.forEach(s=>{ s.sembunyi=false; });
+        const beda=(a,b)=>Math.max(Math.abs(a[0]-b[0]),Math.abs(a[1]-b[1]),Math.abs(a[2]-b[2]))>25;
+        return {diag:[beda(on.dTL,off.dTL),beda(on.dTR,off.dTR),beda(on.dBL,off.dBL),beda(on.dBR,off.dBR)],
+                card:[beda(on.cN,off.cN),beda(on.cS,off.cS),beda(on.cE,off.cE),beda(on.cW,off.cW)]};
+      }
+      const hasil={occ:sig('03',4,4), vis:sig('01',3,6)};
+      S.v.teks=simpanV.t; S.v.namaKelas=simpanV.n; S.v.grup=simpanV.gr;
+      return hasil;
+    })()""")
+    cek("occluded digambar X (diagonal ada, kardinal kosong)",
+        all(sig["occ"]["diag"]) and not any(sig["occ"]["card"]), f"occ={sig['occ']}")
+    cek("visible digambar bulatan (kardinal ada, diagonal kosong)",
+        all(sig["vis"]["card"]) and not any(sig["vis"]["diag"]), f"vis={sig['vis']}")
+
+    # -------- Tangkapan layar untuk lead: glyph X + modal.
+    d.js("D.skeleton = Object.assign({}, D.skeleton, {edge:[[0,1],[0,2]]});"
+         " S.shapes.forEach(s=>s.sembunyi=false);"
+         " S.shapes.find(s=>s.label==='03').flags={v:1};"
+         " S.terpilih=[1]; S.sel=1; render();")
+    time.sleep(0.3)
+    try:
+        png = d.kirim("Page.captureScreenshot").get("data")
+        if png:
+            (TMP / "pose-xglyph.png").write_bytes(base64.b64decode(png))
+            cek("tangkapan layar glyph tersimpan", (TMP / "pose-xglyph.png").exists())
+        d.js("bukaDlgKpVis(7);")
+        time.sleep(0.3)
+        png = d.kirim("Page.captureScreenshot").get("data")
+        if png:
+            (TMP / "pose-modal.png").write_bytes(base64.b64decode(png))
+            cek("tangkapan layar modal tersimpan", (TMP / "pose-modal.png").exists())
+        d.js("document.getElementById('dlg-kp-vis').hidden=true;")
+    except Exception as e:                       # screenshot opsional, jangan gagalkan blok
+        print(f"     (lewati tangkapan layar: {e})")
 
 
 if __name__ == "__main__":

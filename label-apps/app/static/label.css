@@ -518,6 +518,27 @@ body[data-baca-saja] #btn-redo { opacity: .4; pointer-events: none; }
 #skel-nomor{font-family:ui-monospace,monospace; font-size:11px;
   color:var(--ink-faint); margin:4px 0 0; word-break:break-word}
 
+/* Dialog Edit Keypoint Visibility (#dlg-kp-vis). Satu baris per keypoint:
+   swatch warna template, nomor slot, nama, lalu pilihan visibilitas. */
+#dlg-kp-vis .dlg-kotak{text-align:left}
+#dlg-kp-vis code{font-family:ui-monospace,monospace; font-size:11px}
+.kpvis-daftar{max-height:min(52vh,340px); overflow-y:auto;
+  border:1px solid var(--line2); border-radius:8px; margin:8px 0 10px}
+.kpvis-daftar:empty{display:none}
+.kpvis-baris{display:flex; align-items:center; gap:9px; padding:6px 10px;
+  border-bottom:1px solid var(--line)}
+.kpvis-baris:last-child{border-bottom:0}
+.kpvis-sw{width:12px; height:12px; border-radius:3px; flex:0 0 auto;
+  border:1px solid rgba(var(--bayang),.3)}
+.kpvis-no{font-family:ui-monospace,monospace; font-size:11px;
+  color:var(--ink-faint); min-width:30px; flex:0 0 auto}
+.kpvis-nama{font-size:13px; color:var(--ink); flex:1 1 auto; word-break:break-word}
+.kpvis-sel{font:inherit; font-size:12.5px; padding:4px 7px; border-radius:7px;
+  border:1px solid var(--garis); background:var(--sunk); color:var(--ink);
+  flex:0 0 auto; cursor:pointer}
+.kpvis-sel:disabled{opacity:.5; cursor:default}
+.kpvis-sel:focus-visible{outline:2px solid var(--ok); outline-offset:1px}
+
 .dlg-tombol{display:flex; gap:8px; justify-content:flex-end}
 .dlg-tombol .btn{font-size:12.5px; padding:7px 13px}
 

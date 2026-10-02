@@ -324,6 +324,15 @@
       <button class="tool" type="button" id="btn-rapikan-bbox"
               title="Rapikan bbox otomatis mengikuti keypoint tiap instance">
         {{ ikon('kotak', 21) }}<span>Rapikan box</span></button>
+      {% if boleh_ubah %}
+      {#- Opsi instance pose (gaya Options Roboflow): flip H/V, edit visibilitas,
+          duplikat, jadikan box, jadikan negatif, hapus. Beroperasi pada instance
+          yang sedang terpilih/disorot. Klik kanan pada kotak/titik instance juga
+          membuka menu yang sama. -#}
+      <button class="tool" type="button" id="btn-opsi-instance"
+              title="Opsi instance pose terpilih: Flip H/V, visibilitas, duplikat, jadikan box/negatif, hapus">
+        {{ ikon('sunting', 21) }}<span>Opsi instance</span></button>
+      {% endif %}
       {% if boleh_kelola %}
       <button class="tool" type="button" id="btn-tata-default"
               title="Jadikan susunan instance terakhir sebagai tata letak default (untuk Drop semua)">
@@ -490,6 +499,31 @@
     </div>
   </div>
 </div>
+
+{% if skeleton and skeleton.titik %}
+<!-- Edit Keypoint Visibility (padanan Roboflow). Daftar SEMUA keypoint instance
+     terpilih: swatch warna template + slot + nama + pilihan Visible/Occluded/
+     Deleted. Dibuka dari menu Opsi instance / menu klik-kanan keypoint. Hanya
+     ada di projek pose. Simpan menerapkan tiap baris ke flags.v sekaligus lalu
+     merapikan bbox; Batal membuang perubahan. -->
+<div class="dlg" id="dlg-kp-vis" hidden>
+  <div class="dlg-kotak" role="dialog" aria-modal="true"
+       aria-labelledby="kpvis-judul" style="max-width:460px">
+    <h3 id="kpvis-judul">Edit visibilitas keypoint</h3>
+    <p class="dlg-sub2">
+      <b>Visible</b> = titik terlihat. <b>Occluded</b> = titik ADA tapi tertutup
+      objek lain (digambar X). <b>Deleted</b> = titik tidak ada di gambar; slotnya
+      tetap disimpan (tak dibuang), ekspor menulis <code>0&nbsp;0&nbsp;0</code>.
+    </p>
+    <div class="kpvis-daftar" id="kpvis-daftar"></div>
+    <p class="dlg-galat" id="kpvis-galat"></p>
+    <div class="dlg-tombol">
+      <button type="button" class="btn" id="kpvis-batal">Batal</button>
+      <button type="button" class="btn pri" id="kpvis-simpan">Simpan</button>
+    </div>
+  </div>
+</div>
+{% endif %}
 
 <script src="{{ statik('app.js') }}"></script>
 <script src="{{ statik('label.js') }}"></script>
