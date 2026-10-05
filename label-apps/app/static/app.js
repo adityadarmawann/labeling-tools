@@ -2165,22 +2165,37 @@ window.pilihRentang = function (wadah, sel, saatUbah) {
 
 
 /* ============================================= kartu per baris grid Dataset
- * Preferensi tampilan MURNI di peramban (localStorage), disetel sebagai
- * --kartu-kolom pada #grid (lihat app.css). Tidak lewat URL/server: ia tidak
- * mengubah data, cuma kerapatan tampilan. */
+ * Preferensi tampilan MURNI di peramban (localStorage). Yang dipilih BUKAN
+ * jumlah kolom yang dikunci, melainkan KERAPATAN: dari jumlah yang diinginkan
+ * pada lebar grid SAAT INI dihitung lebar minimum kartu (--kartu-min), lalu
+ * auto-fill (app.css) mengisi sebanyak yang muat.
+ *
+ * Kuncinya: --kartu-min disetel HANYA saat muat & saat pilihan diganti, TIDAK
+ * pada resize/zoom. Justru itu yang membuat Ctrl +/- mengubah jumlah per baris
+ * sendiri — lebar minimum kartu tetap, tampilan diperbesar berarti makin
+ * sedikit yang muat satu baris (mis. 10 -> 7-8), dikecilkan makin banyak. */
 (() => {
   const sel = document.getElementById('kartu-kolom');
   const grid = document.getElementById('grid');
   if (!sel || !grid) return;
   const BAWAAN = '10';
-  const terapkan = (v) => grid.style.setProperty('--kartu-kolom', v);
+  const GAP = 14;                       // = gap .grid di app.css
+  const terapkan = (n) => {
+    const w = grid.clientWidth || 0;
+    // Lebar yang membuat PERSIS n kartu muat di lebar sekarang; floor supaya
+    // n (bukan n-1) yang muat. Dipatok [72,260] agar tak jadi terlalu kecil di
+    // layar sempit maupun terlalu besar.
+    let min = w > 0 ? Math.floor((w - (n - 1) * GAP) / n) : 128;
+    min = Math.max(72, Math.min(260, min));
+    grid.style.setProperty('--kartu-min', min + 'px');
+  };
   let v = BAWAAN;
   try { v = localStorage.getItem('labelapp_kartu_kolom') || BAWAAN; } catch (e) { /* mode privat */ }
   if (![...sel.options].some((o) => o.value === v)) v = BAWAAN;
   sel.value = v;
-  terapkan(v);
+  terapkan(parseInt(v, 10));
   sel.addEventListener('change', () => {
-    terapkan(sel.value);
+    terapkan(parseInt(sel.value, 10));
     try { localStorage.setItem('labelapp_kartu_kolom', sel.value); } catch (e) { /* abai */ }
   });
 })();

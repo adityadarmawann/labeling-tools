@@ -405,9 +405,11 @@
       </select>
     </form>
 
-    {#- Jumlah kartu per baris: preferensi tampilan MURNI di peramban
-        (localStorage), jadi tidak lewat form/URL seperti Urut. Di layar sempit
-        diabaikan (auto-fill), lihat app.css. -#}
+    {#- "Per baris": kerapatan kartu, preferensi tampilan MURNI di peramban
+        (localStorage), tidak lewat form/URL seperti Urut. BUKAN jumlah kolom
+        terkunci — ia menetapkan lebar minimum kartu lalu grid auto-fill mengisi
+        sebanyak muat, jadi memperbesar/mengecilkan tampilan (Ctrl +/-) mengubah
+        jumlah per baris sendiri. Lihat app.js + app.css. -#}
     <span class="saring-urut">
       <label class="halus" for="kartu-kolom">Per baris</label>
       <select id="kartu-kolom" aria-label="Kartu per baris">
