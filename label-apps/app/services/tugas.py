@@ -643,6 +643,48 @@ def skeleton_aktif(data: dict) -> bool:
     return bool(sk.get("titik"))
 
 
+def _relabel_anotasi(ds: Path, peta: dict[str, str]) -> int:
+    """Ganti nama titik pada anotasi labelme (.json) yang SUDAH tersimpan.
+
+    Frame yang masih ekspor YOLO (.txt) menyimpan keypoint secara POSISIONAL —
+    namanya diberi template saat dibaca, jadi mengganti nama di template sudah
+    cukup. Tapi frame yang pernah disunting disimpan sebagai .json dengan label
+    titik tertulis apa adanya; tanpa ini, ganti-nama slot membuat label lama di
+    situ tak lagi cocok template dan rangkanya putus di frame-frame itu.
+
+    `peta` = {nama_lama: nama_baru}. Hanya bentuk `point` yang labelnya ada di
+    peta yang disentuh (kotak kelas "court" dkk tak tersentuh). Mengembalikan
+    jumlah berkas yang berubah.
+    """
+    from . import scanner
+    from .annotations import tulis_aman
+
+    n = 0
+    for jp in scanner.anotasi_json(ds):
+        try:
+            d = json.loads(jp.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(d, dict) or not isinstance(d.get("shapes"), list):
+            continue
+        ubah = False
+        for s in d["shapes"]:
+            if (isinstance(s, dict) and s.get("shape_type") == "point"
+                    and s.get("label") in peta):
+                s["label"] = peta[s["label"]]
+                ubah = True
+        if ubah:
+            try:
+                tulis_aman(jp, json.dumps(d, ensure_ascii=False))
+                n += 1
+            except OSError as e:                      # noqa: BLE001
+                log.warning("re-label %s gagal: %s", jp.name, e)
+    if n:
+        log.info("re-label %d berkas anotasi di %s mengikuti ganti nama slot",
+                 n, Path(ds).name)
+    return n
+
+
 def set_skeleton(ds: Path, template, pemilik: str = "") -> dict:
     """
     Tetapkan template skeleton projek: nama keypoint, edge, flip_idx (per projek).
@@ -654,6 +696,9 @@ def set_skeleton(ds: Path, template, pemilik: str = "") -> dict:
     bersih = _sah_skeleton(template)
     with _kunci:
         data = baca(ds, pemilik)
+        # Nama slot LAMA, untuk mendeteksi ganti-nama (K sama, nama beda) supaya
+        # anotasi .json yang sudah ada ikut diganti namanya — lihat _relabel.
+        lama = list((data.get("skeleton") or {}).get("titik") or [])
         data["pemilik"] = data["pemilik"] or pemilik
         data["skeleton"] = bersih
         # Jenis anotasi diselaraskan: punya titik -> projek kerangka; template
@@ -664,6 +709,14 @@ def set_skeleton(ds: Path, template, pemilik: str = "") -> dict:
         elif data.get("jenis_anotasi") == "kerangka":
             data["jenis_anotasi"] = ""
         _tulis(ds, data)
+    # Ganti-nama slot (jumlah sama, posisi sama, nama beda): rawat anotasi .json
+    # yang sudah tersimpan supaya tak putus. Di luar _kunci — ini I/O berkas
+    # anotasi, bukan .tugas.json, dan frame YOLO (.txt) tak perlu disentuh.
+    baru = bersih["titik"]
+    if lama and len(lama) == len(baru):
+        peta = {a: b for a, b in zip(lama, baru) if a != b}
+        if peta:
+            _relabel_anotasi(ds, peta)
     log.info("skeleton %s: %d titik, %d edge, flip_idx %s", Path(ds).name,
              len(bersih["titik"]), len(bersih["edge"]),
              "ada" if bersih["flip_idx"] else "identitas")

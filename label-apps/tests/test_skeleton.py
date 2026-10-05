@@ -8,6 +8,8 @@ jadi jenis 'kerangka'. Plus rute: pemilik boleh set, anggota boleh baca.
 """
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from app.services import tugas
@@ -88,6 +90,43 @@ def test_kosongkan_skeleton_lepas_dari_kerangka(tmp_path):
     data = tugas.baca(d, "own")
     assert tugas.skeleton_aktif(data) is False
     assert data["jenis_anotasi"] == ""                  # lepas dari kerangka
+
+
+def _tulis_json(d, nama, shapes):
+    (d / nama).write_text(json.dumps(
+        {"version": "0.4.36", "flags": {}, "shapes": shapes, "imagePath": "f.jpg"}))
+
+
+def test_ganti_nama_slot_merelabel_anotasi_json(tmp_path):
+    """Ganti NAMA slot (jumlah sama) ikut mengganti nama titik pada anotasi
+    .json yang SUDAH tersimpan — supaya rangka tak putus di frame yang pernah
+    disunting. Frame YOLO (.txt) tak perlu disentuh (namanya diberi template saat
+    dibaca); kasus utamanya: court diimpor "01".."33", lalu owner ganti ke nomor
+    Roboflow dan frame yang sudah disunting ikut berpindah nama."""
+    d = _projek(tmp_path)
+    tugas.set_skeleton(d, {"kelas": "court", "titik": ["01", "02", "03"],
+                           "edge": [[0, 1], [1, 2]], "flip_idx": []}, pemilik="own")
+    _tulis_json(d, "f.json", [
+        {"label": "court", "shape_type": "rectangle", "group_id": 0, "points": [[0, 0], [9, 9]]},
+        {"label": "01", "shape_type": "point", "group_id": 0, "points": [[1, 1]]},
+        {"label": "02", "shape_type": "point", "group_id": 0, "points": [[2, 2]]},
+        {"label": "03", "shape_type": "point", "group_id": 0, "points": [[3, 3]]},
+    ])
+    tugas.set_skeleton(d, {"kelas": "court", "titik": ["1", "2", "4"],
+                           "edge": [[0, 1], [1, 2]], "flip_idx": []}, pemilik="own")
+    lab = [s["label"] for s in json.loads((d / "f.json").read_text())["shapes"]]
+    assert lab == ["court", "1", "2", "4"]             # titik berpindah, kotak tetap
+
+
+def test_ganti_jumlah_titik_tak_merelabel(tmp_path):
+    """Kalau JUMLAH titik berubah (perubahan STRUKTUR, bukan ganti nama), anotasi
+    .json tidak disentuh — memetakan nama lama ke baru per posisi tak bermakna."""
+    d = _projek(tmp_path)
+    tugas.set_skeleton(d, {"titik": ["01", "02", "03"]}, pemilik="own")
+    _tulis_json(d, "f.json", [
+        {"label": "01", "shape_type": "point", "group_id": 0, "points": [[1, 1]]}])
+    tugas.set_skeleton(d, {"titik": ["a", "b"]}, pemilik="own")       # K 3 -> 2
+    assert json.loads((d / "f.json").read_text())["shapes"][0]["label"] == "01"
 
 
 def test_jumlah_keypoint_bebas_per_projek(tmp_path):
