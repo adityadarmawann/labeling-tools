@@ -7,6 +7,7 @@ kelas yang sama selalu berwarna sama tanpa perlu tabel warna.
 from __future__ import annotations
 
 import colorsys
+import hashlib
 import json
 import os
 import re
@@ -262,14 +263,49 @@ def dir_bersama() -> Path:
     return d
 
 
+# Sidik template skeleton projek, dimemo per .tugas.json (mtime). Dipakai KUNCI
+# cache thumbnail: tanpa ini, mengubah template (mis. menambah `edge` rangka)
+# tidak pernah menampilkan garisnya di grid/pratinjau — kunci_isi cuma melihat
+# gambar + .json anotasi, BUKAN .tugas.json, jadi frame YOLO (.txt, tanpa .json)
+# tetap memakai thumbnail lama tanpa rangka sampai server mati.
+_fp_skel: dict = {}
+
+
+def _skeleton_fp(item: dict) -> str:
+    """'' kalau bukan projek pose; selain itu sidik 8-heksa dari (titik, edge,
+    warna) template — berubah tepat ketika yang digambar _gambar_pose berubah."""
+    p = _cari_tugas(item["img"])
+    if not p:
+        return ""
+    try:
+        mt = p.stat().st_mtime_ns
+    except OSError:
+        return ""
+    c = _fp_skel.get(str(p))
+    if c and c[0] == mt:
+        return c[1]
+    tpl = skeleton_item(item)
+    if tpl:
+        bahan = json.dumps([tpl["titik"], tpl["edge"], tpl["warna"]],
+                           sort_keys=True, ensure_ascii=False)
+        fp = hashlib.sha1(bahan.encode()).hexdigest()[:8]
+    else:
+        fp = ""
+    _fp_skel[str(p)] = (mt, fp)
+    return fp
+
+
 def nama_thumb(item: dict, side: int) -> str:
-    """`<kunci path>_<kunci isi>_<sisi>.jpg`.
+    """`<kunci path>_<kunci isi>_<sisi>[-<sidik skeleton>].jpg`.
 
     Kunci path ditaruh di depan supaya berkas lama sebuah gambar masih bisa
     disapu dengan satu glob saat anotasinya berubah — tanpa itu, tiap suntingan
-    meninggalkan thumbnail yatim yang menumpuk selama server hidup.
+    meninggalkan thumbnail yatim yang menumpuk selama server hidup. Sidik
+    skeleton di belakang membuat perubahan rangka ikut membatalkan cache.
     """
-    return f"{item_key(item)}_{kunci_isi(item)}_{side}v{RENDER_VERSI}.jpg"
+    fp = _skeleton_fp(item)
+    extra = ("-" + fp) if fp else ""
+    return f"{item_key(item)}_{kunci_isi(item)}_{side}v{RENDER_VERSI}{extra}.jpg"
 
 
 def thumb_path(sess, item: dict, side: int) -> Path | None:

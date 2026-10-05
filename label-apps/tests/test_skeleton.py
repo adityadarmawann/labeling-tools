@@ -129,6 +129,34 @@ def test_ganti_jumlah_titik_tak_merelabel(tmp_path):
     assert json.loads((d / "f.json").read_text())["shapes"][0]["label"] == "01"
 
 
+def test_kunci_thumbnail_ikut_berubah_saat_rangka_berubah(tmp_path):
+    """Kunci cache thumbnail WAJIB berubah saat template skeleton berubah (mis.
+    menambah `edge`). Tanpa ini, frame YOLO (.txt, tanpa .json sidecar) terus
+    memakai thumbnail lama TANPA garis rangka — kunci_isi cuma melihat gambar +
+    .json, bukan .tugas.json. Projek non-pose tak ketambahan sidik apa pun."""
+    import time
+
+    from app.services import render
+
+    d = _projek(tmp_path)
+    (d / "f.jpg").write_bytes(b"\xff\xd8\xff\xd9")        # cukup untuk stat
+    it = {"img": d / "f.jpg"}
+    tugas.set_skeleton(d, {"kelas": "x", "titik": ["01", "02", "03"],
+                           "edge": [], "flip_idx": []}, pemilik="own")
+    k1 = render.nama_thumb(it, 320)
+    time.sleep(0.01)                                     # pastikan mtime beda
+    tugas.set_skeleton(d, {"kelas": "x", "titik": ["01", "02", "03"],
+                           "edge": [[0, 1], [1, 2]], "flip_idx": []}, pemilik="own")
+    k2 = render.nama_thumb(it, 320)
+    assert k1 != k2, "kunci thumbnail tak berubah saat rangka ditambah"
+
+    # Projek biasa (tanpa .tugas.json skeleton) -> nama tanpa sidik skeleton.
+    d2 = _projek(tmp_path, "p2")
+    (d2 / "g.jpg").write_bytes(b"\xff\xd8\xff\xd9")
+    assert render.nama_thumb({"img": d2 / "g.jpg"}, 320).endswith(
+        f"v{render.RENDER_VERSI}.jpg")
+
+
 def test_jumlah_keypoint_bebas_per_projek(tmp_path):
     """Inti: tiap projek punya K sendiri — bukan angka tetap 33."""
     botol = _projek(tmp_path, "botol")
