@@ -257,6 +257,19 @@ def boleh_unggah(data: dict, akun: str) -> bool:
     return akun == data["pemilik"] or peran_anggota(data, akun) == "editor"
 
 
+def boleh_bagi(data: dict, akun: str) -> bool:
+    """Siapa yang boleh MENGELOLA PEKERJAAN: membagi tugas, menugaskan ulang,
+    membubarkan job, dan memasukkan gambar ke dataset borongan. Pemilik ATAU
+    Editor — Editor memang mengurus alur kerja pelabelan, bukan cuma mengunggah,
+    jadi setara boleh_unggah.
+
+    Beda dari boleh_kelola (pemilik saja): mengurus ANGGOTA (undang/keluarkan/
+    atur peran), mengganti nama/gabung/hapus projek, dan setelan projek (template
+    keypoint, format anotasi) tetap hak pemilik — itu memengaruhi SEMUA orang,
+    bukan cuma pembagian kerja."""
+    return boleh_unggah(data, akun)
+
+
 def pelabel_gambar(data: dict, kunci: str) -> str:
     """Siapa yang ditugaskan pada satu gambar. Kosong berarti belum ada."""
     for t in data["tugas"].values():

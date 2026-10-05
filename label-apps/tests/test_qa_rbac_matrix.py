@@ -74,10 +74,11 @@ def test_editor_label_semua_dan_unggah_tapi_tak_mengelola(klien, aplikasi, lingk
     # Unggah ke projek pemiliknya.
     r = ed.put("/upload?ds=paul/proj-editor&name=ed.png", content=b"x" * 50).json()
     assert r["ok"] is True and (d / "ed.png").exists()
-    # TAK boleh mengelola: undang / atur / keluarkan / bagi semuanya owner-only.
+    # Editor KINI boleh membagi tugas (alur kerja = boleh_bagi).
+    assert ed.post("/api/tugas/bagi", json={"pelabel": "anggi", "n": 1}).json()["ok"] is True
+    # TAPI mengelola ANGGOTA tetap pemilik saja (boleh_kelola).
     assert ed.post("/api/tugas/undang?akun=paul").json()["ok"] is False
     assert ed.post("/api/tugas/atur-anggota?akun=anggi&peran=editor").json()["ok"] is False
-    assert ed.post("/api/tugas/bagi", json={"pelabel": "anggi", "n": 1}).json()["ok"] is False
 
 
 # ======================================================= LABELER menyeluruh
@@ -176,10 +177,10 @@ def test_halaman_bagi_non_owner_hanya_baca(klien, aplikasi, lingkungan):
     d, g = _siapkan_projek(klien, "proj-bagi")
     tugas.undang(d, "paul", "anggi", peran="pelabel", akses="semua")
 
-    anggi = klien_baru(aplikasi, "anggi", PW_ANGGI)
+    anggi = klien_baru(aplikasi, "anggi", PW_ANGGI)   # pelabel, bukan editor
     h = anggi.get("/bagi?ds=paul/proj-bagi").text
-    assert "Hanya pemilik projek yang mengelola anggota" in h
-    # Dan rute calon-nya pun menolak non-pemilik.
+    assert "Hanya pemilik atau editor yang membagi tugas" in h
+    # Dan rute calon-nya pun menolak pelabel.
     anggi.get("/?ds=paul/proj-bagi")
     assert anggi.get("/api/tugas/calon").json()["ok"] is False
 

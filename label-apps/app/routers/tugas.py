@@ -195,6 +195,7 @@ async def halaman_papan(request: Request, ds: str = "", urut: str = "terbaru",
     return templates.TemplateResponse(request, "anotasi.html", {
         "sess": sess, "pr": pr, "aktif": "anotasi",
         "boleh_kelola": svc.boleh_kelola(data, sess.user),
+        "boleh_bagi": svc.boleh_bagi(data, sess.user),
         "pemilik": data["pemilik"] or sess.user,
         "aku": sess.user,
         # Dipakai kolom "Dikerjakan" yang kosong untuk membedakan anggota yang
@@ -505,6 +506,7 @@ async def halaman_bagi(request: Request, ds: str = "", batch: str = "",
     return templates.TemplateResponse(request, "bagi.html", {
         "sess": sess, "pr": pr, "aktif": "anotasi",
         "boleh_kelola": svc.boleh_kelola(data, sess.user),
+        "boleh_bagi": svc.boleh_bagi(data, sess.user),
         "pemilik": data["pemilik"] or sess.user,
         "anggota": sorted(data["anggota"]),
         "undangan": svc.undangan_terbuka(data),
@@ -528,8 +530,8 @@ async def calon(sess: Session = Depends(current_session_api),
     data, galat = _siap(sess)
     if galat:
         return {"ok": False, "error": galat}
-    if not svc.boleh_kelola(data, sess.user):
-        return {"ok": False, "error": "hanya pemilik projek yang bisa membagi tugas"}
+    if not svc.boleh_bagi(data, sess.user):
+        return {"ok": False, "error": "hanya pemilik atau editor yang bisa membagi tugas"}
     from ..security import load_users
     users = load_users(settings.users_file)
     # Alamat surel hanya untuk orang yang MEMANG sudah di projek ini. Daftar
@@ -732,8 +734,8 @@ async def bagi(request: Request, sess: Session = Depends(current_session_api),
     data, galat = _siap(sess)
     if galat:
         return {"ok": False, "error": galat}
-    if not svc.boleh_kelola(data, sess.user):
-        return {"ok": False, "error": "hanya pemilik projek yang bisa membagi tugas"}
+    if not svc.boleh_bagi(data, sess.user):
+        return {"ok": False, "error": "hanya pemilik atau editor yang bisa membagi tugas"}
     body = await bodi_json(request)
     pelabel = str(body.get("pelabel") or "").strip()
     tolak = _akun_sah(pelabel, settings)
@@ -800,8 +802,8 @@ async def ubah(id: str = "", pelabel: str = "", catatan: str | None = None,
     data, galat = _siap(sess)
     if galat:
         return {"ok": False, "error": galat}
-    if not svc.boleh_kelola(data, sess.user):
-        return {"ok": False, "error": "hanya pemilik projek yang bisa mengubah tugas"}
+    if not svc.boleh_bagi(data, sess.user):
+        return {"ok": False, "error": "hanya pemilik atau editor yang bisa mengubah tugas"}
     if pelabel:
         tolak = _akun_sah(pelabel, settings)
         if tolak:
@@ -820,8 +822,8 @@ async def bubarkan(id: str = "", sess: Session = Depends(current_session_api)):
     data, galat = _siap(sess)
     if galat:
         return {"ok": False, "error": galat}
-    if not svc.boleh_kelola(data, sess.user):
-        return {"ok": False, "error": "hanya pemilik projek yang bisa membubarkan"}
+    if not svc.boleh_bagi(data, sess.user):
+        return {"ok": False, "error": "hanya pemilik atau editor yang bisa membubarkan"}
     r = await asyncio.to_thread(svc.bubarkan, sess.src, sess.user, id)
     return {"ok": True, **r}
 
@@ -930,8 +932,8 @@ async def dataset_siap(request: Request,
     galat = _punya_alur_dataset(data)
     if galat:
         return {"ok": False, "error": galat}
-    if not svc.boleh_kelola(data, sess.user):
-        return {"ok": False, "error": "hanya pemilik projek yang bisa "
+    if not svc.boleh_bagi(data, sess.user):
+        return {"ok": False, "error": "hanya pemilik atau editor yang bisa "
                                       "memasukkan gambar yang belum ditugaskan"}
     from ..services import scanner
 

@@ -414,13 +414,13 @@ def test_halaman_bagi_menolak_yang_bukan_pemilik(klien, aplikasi, lingkungan):
     klien.post(f"/setsrc?path={d}")
     klien.post("/api/tugas/undang?akun=anggi")
 
-    lain = klien_baru(aplikasi, "anggi", PW_ANGGI)
+    lain = klien_baru(aplikasi, "anggi", PW_ANGGI)   # anggi = pelabel (bawaan)
     h = lain.get("/bagi?ds=paul/bagi-hak").text
-    assert "Hanya pemilik projek yang mengelola anggota" in h
+    assert "Hanya pemilik atau editor yang membagi tugas" in h
     assert 'id="bg-mulai"' not in h
 
     j = lain.get("/api/tugas/calon").json()
-    assert j["ok"] is False and "pemilik" in j["error"]
+    assert j["ok"] is False and "pemilik atau editor" in j["error"]
 
 
 def test_calon_pelabel_hanya_untuk_pemilik(klien, lingkungan):
@@ -1763,11 +1763,54 @@ def test_borongan_hanya_untuk_pemilik_projek(klien, aplikasi, lingkungan):
     klien.post(f"/setsrc?path={d}")
     klien.post("/api/tugas/undang?akun=anggi")
 
-    tamu = klien_baru(aplikasi, "anggi", PW_ANGGI)
+    tamu = klien_baru(aplikasi, "anggi", PW_ANGGI)   # anggi = pelabel (bawaan)
     tamu.get("/?ds=paul/borongan-hak")
     r = tamu.post("/api/tugas/dataset-siap", json={}).json()
-    assert r["ok"] is False and "pemilik projek" in r["error"]
+    assert r["ok"] is False and "pemilik atau editor" in r["error"]
     assert tugas.baca(d, "paul")["dataset"] == []
+
+
+def test_editor_boleh_membagi_tugas_tapi_bukan_kelola_anggota(klien, aplikasi,
+                                                              lingkungan):
+    """Editor mengurus ALUR KERJA — bagi/ubah/bubarkan tugas + masukkan dataset
+    borongan (pemilik ATAU editor, lewat boleh_bagi). Tapi mengurus ANGGOTA
+    (undang) dan setelan projek (format anotasi) TETAP pemilik saja
+    (boleh_kelola). Pelabel tak bisa keduanya (diuji di tes di atas)."""
+    import json
+
+    from app.security import hash_password
+    from conftest import klien_baru
+    from tests.test_projek import _projek
+
+    # budi harus ada di berkas akun supaya bisa login sebagai editor.
+    uf = lingkungan["users"]
+    u = json.loads(uf.read_text())
+    u["budi"] = {"hash": hash_password("sandi-budi-uji-1"), "nama": "Budi"}
+    uf.write_text(json.dumps(u))
+
+    masuk(klien, "paul", PW_PAUL)
+    d = _projek(_ruang(klien), "editor-bagi", n=4)        # 4 gambar berlabel
+    klien.post(f"/setsrc?path={d}")
+    klien.post("/api/tugas/undang?akun=budi&peran=editor")   # budi = EDITOR
+    klien.post("/api/tugas/undang?akun=anggi")               # anggi = pelabel
+
+    budi = klien_baru(aplikasi, "budi", "sandi-budi-uji-1")
+    budi.get("/?ds=paul/editor-bagi")                        # buka projek -> sess.src
+    # BOLEH: lihat calon, bagi tugas, ubah, bubarkan.
+    assert budi.get("/api/tugas/calon").json()["ok"] is True
+    g = sorted(str(p) for p in d.glob("*.jpg"))[:2]
+    r = budi.post("/api/tugas/bagi", json={"pelabel": "anggi", "gambar": g}).json()
+    assert r["ok"] is True and r["n"] == 2
+    tid = r["id"]
+    assert budi.post(f"/api/tugas/ubah?id={tid}&judul=Baru").json()["ok"] is True
+    assert budi.post(f"/api/tugas/bubarkan?id={tid}").json()["ok"] is True
+    # BOLEH: masukkan dataset borongan.
+    assert budi.post("/api/tugas/dataset-siap", json={}).json()["ok"] is True
+    assert len(tugas.baca(d, "paul")["dataset"]) == 4
+    # TAK BOLEH: kelola anggota (undang) + setelan projek (format anotasi).
+    assert budi.post("/api/tugas/undang?akun=eka").json()["ok"] is False
+    assert budi.post("/api/tugas/jenis?ds=paul/editor-bagi&jenis=kotak"
+                     ).json()["ok"] is False
 
 
 def test_anggota_tanpa_tugas_tidak_menghilang_dari_papan(klien, aplikasi,
