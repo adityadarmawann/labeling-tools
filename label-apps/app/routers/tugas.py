@@ -188,7 +188,10 @@ async def halaman_papan(request: Request, ds: str = "", urut: str = "terbaru",
             if b:
                 batch_dari[k] = b
 
-    papan = svc.papan(data, berlabel, semua, batch_dari, urut)
+    # Nama sumber dataset (data.yaml ekspor Roboflow) buat menamai kartu kolom
+    # Dataset — unggahan dataset jadi yang auto-masuk tampil sebagai kartu.
+    sumber_impor = scanner.nama_sumber_dataset(d)
+    papan = svc.papan(data, berlabel, semua, batch_dari, urut, sumber_impor)
     return templates.TemplateResponse(request, "anotasi.html", {
         "sess": sess, "pr": pr, "aktif": "anotasi",
         "boleh_kelola": svc.boleh_kelola(data, sess.user),

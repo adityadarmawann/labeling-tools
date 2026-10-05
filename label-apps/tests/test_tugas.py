@@ -1558,6 +1558,36 @@ def test_dataset_tak_muncul_di_belum_ditugaskan(tmp_path):
     assert p2["belum_ditugaskan"] == 2
 
 
+def test_papan_kartu_dataset_per_unggahan(tmp_path):
+    """Gambar yang masuk dataset TANPA lewat job (unggahan dataset jadi yang
+    auto-masuk) tampil sebagai kartu Dataset, dikelompokkan per unggahan, dengan
+    nama sumber datasetnya. Yang lewat job sudah punya kartunya sendiri."""
+    d = _ds(tmp_path)
+    tugas.masukkan(d, ["a.jpg", "b.jpg", "c.jpg"], pemilik="own")
+    data = tugas.baca(d, "own")
+    semua = {"a.jpg", "b.jpg", "c.jpg", "x.jpg"}
+    batch_dari = {"a.jpg": "Unggahan X", "b.jpg": "Unggahan X", "c.jpg": "Unggahan Y"}
+    p = tugas.papan(data, {"a.jpg", "b.jpg", "c.jpg"}, semua, batch_dari,
+                    sumber_impor="court-ds")
+    kartu = {k["batch"]: k for k in p["dataset_kartu"]}
+    assert kartu["Unggahan X"]["jumlah"] == 2 and kartu["Unggahan X"]["sumber"] == "court-ds"
+    assert kartu["Unggahan Y"]["jumlah"] == 1
+    assert "x.jpg" not in {k for dk in p["dataset_kartu"] for k in [dk["batch"]]}  # x belum di dataset
+
+
+def test_nama_sumber_dataset_dari_dyaml(tmp_path):
+    """Nama sumber dataset dibaca dari `roboflow.project` di data.yaml."""
+    from app.services import scanner
+    d = _ds(tmp_path)
+    (d / "data.yaml").write_text(
+        "nc: 1\nnames: ['court']\nroboflow:\n  project: basketball-court-2\n")
+    assert scanner.nama_sumber_dataset(d) == "basketball-court-2"
+    # Tanpa blok roboflow -> "".
+    d2 = _ds(tmp_path, "polos")
+    (d2 / "data.yaml").write_text("nc: 1\nnames: ['x']\n")
+    assert scanner.nama_sumber_dataset(d2) == ""
+
+
 def test_dataset_jadi_berlabel_masuk_sendiri_tapi_butuh_manifes(tmp_path):
     """Satu-satunya pengecualian aturan di atas: ekspor dataset JADI.
 

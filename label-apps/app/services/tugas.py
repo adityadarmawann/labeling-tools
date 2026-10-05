@@ -1598,7 +1598,7 @@ URUT_PAPAN = {
 
 def papan(data: dict, berlabel: set[str], semua: set[str],
           batch_dari: dict[str, str] | None = None,
-          urut: str = "terbaru") -> dict:
+          urut: str = "terbaru", sumber_impor: str = "") -> dict:
     """
     Bahan untuk papan Anotasi: tiga kolom.
 
@@ -1717,12 +1717,31 @@ def papan(data: dict, berlabel: set[str], semua: set[str],
     punya_tugas = {k["pelabel"] for k in kartu}
     tanpa_tugas = sorted(a for a in data["anggota"] if a not in punya_tugas)
 
+    # Kartu kolom Dataset untuk gambar yang masuk dataset TANPA lewat job: ekspor
+    # dataset jadi (Roboflow) yang auto-masuk, atau "Masukkan ke dataset"
+    # borongan. Dikelompokkan per UNGGAHAN — judulnya nama sumber datasetnya
+    # (dari data.yaml) dengan tanggal/jam unggahannya. Yang lewat job sudah punya
+    # kartunya sendiri di kolom ini (keadaan "selesai"), jadi dikecualikan di
+    # sini supaya tak dihitung dua kali. Konsepnya sama dengan kartu job, hanya
+    # sumbernya unggahan dataset, bukan pembagian tugas.
+    ds_batch: dict[str, int] = {}
+    for k in semua:
+        if k in ditugaskan or not sudah_dimasukkan(data, k):
+            continue
+        b = bd.get(k) or ""
+        ds_batch[b] = ds_batch.get(b, 0) + 1
+    dataset_kartu = sorted(
+        ({"sumber": sumber_impor, "batch": nama, "jumlah": n}
+         for nama, n in ds_batch.items()),
+        key=lambda x: (x["batch"] == "", -x["jumlah"], x["batch"]))
+
     return {
         "urut": urut if urut in URUT_PAPAN else "terbaru",
         "belum_ditugaskan": len(belum),
         "belum_batch": belum_batch,
         "belum_siap": sum(siap_kelompok.values()),
         "kartu": kartu,
+        "dataset_kartu": dataset_kartu,
         "per_pelabel": per_pelabel,
         "tanpa_tugas": tanpa_tugas,
         "n_dataset": sum(1 for k in semua if di_dataset(data, k)),

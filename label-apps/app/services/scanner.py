@@ -186,6 +186,34 @@ def baca_nama_kelas(src: Path) -> dict:
     return {}
 
 
+def nama_sumber_dataset(src: Path) -> str:
+    """Nama SUMBER dataset dari ekspor Roboflow/YOLO: `roboflow.project` di
+    data.yaml. Dipakai menamai kartu Dataset di papan Anotasi ("yang diunggah
+    ini datasetnya apa"). "" kalau bukan ekspor ber-data.yaml atau tak ber-field
+    itu. Dibaca di akar projek dan satu folder pembungkus (ekspor tak diratakan).
+    """
+    src = Path(src)
+    kandidat = [src]
+    try:
+        kandidat += [p for p in src.iterdir()
+                     if p.is_dir() and not p.name.startswith((".", "_"))]
+    except OSError:
+        pass
+    for folder in kandidat:
+        for nama in ("data.yaml", "data.yml", "dataset.yaml"):
+            p = folder / nama
+            if not p.is_file():
+                continue
+            try:
+                d = yaml.safe_load(p.read_text(encoding="utf-8"))
+            except (OSError, yaml.YAMLError):
+                continue
+            rf = d.get("roboflow") if isinstance(d, dict) else None
+            if isinstance(rf, dict) and rf.get("project"):
+                return " ".join(str(rf["project"]).split())[:80]
+    return ""
+
+
 def _pose_dari_yaml(p: Path) -> dict:
     """`kpt_shape`/`flip_idx` di data.yaml -> {"K":K, "flip_idx":[...]}.
 

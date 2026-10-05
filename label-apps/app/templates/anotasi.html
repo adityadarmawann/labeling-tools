@@ -239,13 +239,35 @@
     <div class="an-kolom">
       <div class="an-kolom-kepala">
         <b>Dataset</b>
-        <span class="an-hitung" title="{{ selesai | length }} tugas selesai">
-          {{ selesai | length }} tugas</span>
+        <span class="an-hitung" title="{{ n_dataset }} gambar di dataset">
+          {{ n_dataset }} gambar</span>
       </div>
       {#- Istilahnya disamakan dengan yang dipakai di seluruh aplikasi: yang
           masuk sini itulah yang di-splitting, diberi versi, dan diekspor. -#}
       <a class="an-lihat-semua" href="/?ds={{ pr.ds | urlquote }}">
         Lihat semua {{ n_dataset }} gambar di dataset &rarr;</a>
+      {#- Unggahan dataset jadi (ekspor Roboflow) yang auto-masuk dataset TANPA
+          lewat job: ditampilkan sebagai kartu PERSIS seperti kartu job selesai
+          di bawah (bilah 100% + "N gambar masuk dataset"), hanya sumbernya
+          unggahan dataset, bukan pembagian tugas. Judul = nama sumber datasetnya
+          (data.yaml), dengan tanggal/jam unggahannya di bawahnya. -#}
+      {%- for dk in dataset_kartu %}
+      <article class="an-kartu an-selesai an-dataset-asal">
+        <div class="an-kartu-atas">
+          <span class="an-kartu-judul" title="{{ dk.sumber or dk.batch or 'Unggahan dataset' }}">
+            {{ dk.sumber or dk.batch or 'Unggahan dataset' }}</span>
+        </div>
+        <span class="halus an-kartu-waktu">
+          {%- if dk.batch %}{{ dk.batch }}{% else %}langsung masuk dataset{% endif %}
+          &middot; unggahan dataset</span>
+        {{ bilah(dk.jumlah, dk.jumlah) }}
+        <div class="an-kartu-angka">
+          <span><b>{{ dk.jumlah }}</b> gambar masuk dataset</span>
+          <b class="an-persen">100%</b>
+        </div>
+        <a class="an-mulai" href="/?ds={{ pr.ds | urlquote }}">Lihat di dataset &rarr;</a>
+      </article>
+      {%- endfor %}
       {%- for k in selesai %}
       <article class="an-kartu an-selesai" data-id="{{ k.id }}"
                data-pelabel="{{ k.pelabel }}">
@@ -287,13 +309,14 @@
         <a class="an-mulai" href="/tugas/{{ k.id }}?ds={{ pr.ds | urlquote }}">
           Lihat isinya &rarr;</a>
       </article>
-      {%- else %}
+      {%- endfor %}
+      {%- if not selesai and not dataset_kartu %}
       <div class="an-kosong"><b>Belum ada yang masuk dataset</b>
         {# Ini yang paling sering ditanyakan saat kolom ini kosong padahal
            pekerjaannya sudah rampung: melabeli saja belum cukup. #}
         <span class="halus">Tugas pindah ke sini setelah gambarnya
           dimasukkan ke dataset, bukan cuma dilabeli.</span></div>
-      {%- endfor %}
+      {%- endif %}
     </div>
   </section>
 
