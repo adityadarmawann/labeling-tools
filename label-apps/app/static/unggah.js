@@ -627,7 +627,16 @@
     }
 
     tombol.disabled = true;
-    const pr = Progres.mulai('Menyalin ke ' + PROJEK, { di: jalur });
+    // Pindah ke tahap 3 (Unggah) DULU dan render progres di wadah tahap 3
+    // (ug-progres-jalur), persis seperti unggah berkas (kirim). Kalau progres
+    // dirender di panel server (tahap 1) lalu keTahap(3) baru dipanggil di
+    // AKHIR, bilah yang dilihat orang di tahap 3 bukan bilah yang diperbarui —
+    // jadi tampak macet di "Menyiapkan 0%" padahal salinannya sudah beres.
+    keTahap(3);
+    $('ug-unggah-nama').textContent = PROJEK;
+    $('ug-lanjut').hidden = true;
+    $('ug-batal').hidden = true;
+    const pr = Progres.mulai('Menyalin ke ' + PROJEK, { di: $('ug-progres-jalur') });
     // Sama seperti berkas dari laptop: projek yang sudah berisi harus lewat
     // jalur yang menghormati tata letaknya. /impor menyalin folder apa adanya
     // ke akar projek, dan pada dataset bersplit itu menumpahkan isinya di luar
@@ -661,11 +670,8 @@
       if (!j.ok) { pr.gagal(j.error); tombol.disabled = false; return; }
       pr.selesai(`${(j.n || 0).toLocaleString('id-ID')} gambar masuk ke ${PROJEK}`);
       $('ug-lanjut').hidden = false;
-      keTahap(3);
-      $('ug-unggah-nama').textContent = PROJEK;
       $('ug-unggah-ket').textContent =
         'Salinan selesai. Berkasnya sekarang ada di ' + PROJEK + '.';
-      $('ug-batal').hidden = true;
     } catch (e) {
       clearInterval(pantau);
       pr.gagal('Gagal menghubungi server saat menyalin');
