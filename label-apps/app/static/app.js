@@ -925,6 +925,15 @@ const Progres = (() => {
           : `<b>nyata: ${n(pc.train)}% : ${n(pc.valid)}% : ${n(pc.test)}%</b><br>`)
         + `train ${s.train} · valid ${s.valid} · test ${s.test}`
         + `, dari ${j.gambar} gambar, ${j.objek} objek, ${j.kelas} kelas`
+        // Valid kosong pada pembelahan cepat: model akan dilatih tanpa satu pun
+        // gambar validasi. Mudah terlewat sebagai angka "valid 0" di atas, jadi
+        // dikatakan terang-terangan. Test kosong tidak diperingatkan — itu
+        // lumrah di dataset kecil; yang mematikan evaluasi cuma valid.
+        + (j.valid_kosong
+           ? '<br><span class="split-warn">split validasi kosong — dataset '
+             + 'terlalu kecil untuk pembagian otomatis, model akan dilatih '
+             + 'tanpa validasi. Tambah gambar, atau jalankan splitting '
+             + 'anti-bocor di bawah.</span>' : '')
         + (j.split_bawaan
           ? '<br>Dataset ini sudah terbagi train/valid/test, jadi pembagiannya '
             + 'dipertahankan dan angka rasio di atas tidak dipakai.'

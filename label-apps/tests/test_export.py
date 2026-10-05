@@ -517,6 +517,50 @@ def test_ringkasan_dataset_kosong_tidak_bagi_nol(tmp_path):
     assert all(v == 0.0 for v in r["persen"].values())
 
 
+def _it_split(nama, split=None):
+    """Item ringan untuk uji split: pembelahan menilai NAMA berkas, bukan isi,
+    jadi ringkasan hanya butuh nama + W/H + shapes (boleh kosong) dan (opsional)
+    split. valid_kosong tak bergantung pada ada-tidaknya objek."""
+    from pathlib import Path
+    it = {"img": Path(nama), "W": 100, "H": 80, "shapes": []}
+    if split:
+        it["split"] = split
+    return it
+
+
+def test_ringkasan_memperingatkan_valid_kosong_pada_split_cepat(tmp_path):
+    """Pembelahan cepat pada dataset kecil bisa menaruh SEMUA gambar di train,
+    menyisakan valid kosong — model lalu dilatih tanpa validasi. Itu harus
+    terbaca sebelum unduh. Hanya untuk pembelahan cepat: split bawaan & rencana
+    anti-bocor adalah pilihan sadar, bukan kecelakaan ukuran."""
+    from app.services import export as ex
+
+    # g0 & g1 dua-duanya jatuh ke train (hash deterministik) -> valid kosong.
+    cepat = ex.ringkasan([_it_split("g0.jpg"), _it_split("g1.jpg")], False)
+    assert cepat["split"]["valid"] == 0
+    assert cepat["valid_kosong"] is True
+
+    # Ada gambar yang memang jatuh ke valid -> tidak diperingatkan.
+    isi = ex.ringkasan([_it_split("v1.jpg"), _it_split("v15.jpg")], False)
+    assert isi["split"]["valid"] >= 1
+    assert isi["valid_kosong"] is False
+
+    # Split BAWAAN dataset: walau valid kosong, itu pilihan sadar -> diam.
+    bawaan = ex.ringkasan([_it_split("g0.jpg", "train"),
+                           _it_split("g1.jpg", "train")], False)
+    assert bawaan["split"]["valid"] == 0 and bawaan["split_bawaan"] is True
+    assert bawaan["valid_kosong"] is False
+
+    # RENCANA anti-bocor yang dijalankan orang: sama, pilihan sadar -> diam.
+    rb = ex.ringkasan([_it_split("g0.jpg"), _it_split("g1.jpg")], False,
+                      rencana={"peta": {"g0.jpg": "train", "g1.jpg": "train"}})
+    assert rb["split"]["valid"] == 0
+    assert rb["valid_kosong"] is False
+
+    # Dataset kosong: tidak ada yang bisa diperingatkan.
+    assert ex.ringkasan([], False)["valid_kosong"] is False
+
+
 def test_ringkasan_tidak_menahan_kunci_sesi_selama_menghitung(klien, lingkungan,
                                                               monkeypatch):
     """

@@ -764,6 +764,16 @@ def ringkasan(items: list[dict], segmentasi: bool, rasio=RASIO_BAWAAN,
     # tidak berlaku kalau datasetnya sudah punya split sendiri, dan diam-diam
     # mengabaikan angka yang mereka ketik itu membingungkan.
     bawaan = any(it.get("split") for it in items)
+    # Pada dataset kecil, pembelahan CEPAT (deterministik dari nama, tanpa
+    # rencana anti-bocor dan tanpa split bawaan) bisa meninggalkan valid KOSONG:
+    # semua gambar jatuh ke train. Model lalu dilatih tanpa satu pun gambar
+    # validasi, dan tidak ada apa pun di panel yang mengatakannya kecuali angka
+    # "valid 0" yang mudah terlewat. Split bawaan dan rencana adalah pilihan
+    # sadar orang, bukan kecelakaan ukuran, jadi tidak diperingatkan. Test
+    # kosong memang lumrah di dataset kecil (lihat zip_yolo) — yang mematikan
+    # evaluasi cuma valid.
+    cepat = not bawaan and not (rencana and rencana.get("peta"))
+    valid_kosong = cepat and len(items) > 0 and len(bagian["valid"]) == 0
     return {"gambar": len(items), "objek": n_objek, "kelas": len(peta),
             "nama_kelas": [l for l, _ in sorted(peta.items(), key=lambda kv: kv[1])],
             "tanpa_objek": n_kosong, "latar": n_latar,
@@ -771,6 +781,7 @@ def ringkasan(items: list[dict], segmentasi: bool, rasio=RASIO_BAWAAN,
             "bentuk_dilewati": dilewati,
             "split": {k: len(v) for k, v in bagian.items()},
             "split_bawaan": bawaan,
+            "valid_kosong": valid_kosong,
             "rasio": [round(r * 100) for r in rasio],
             # Persentase yang benar-benar tercapai. Berbeda sedikit dari rasio
             # yang diminta karena pembagiannya deterministik dari nama berkas,
