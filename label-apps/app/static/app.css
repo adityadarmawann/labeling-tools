@@ -323,7 +323,7 @@ h1{font-size:15px;font-weight:600;letter-spacing:.02em}
 .spacer{flex:1}
 
 main{padding:20px 22px 60px}
-.grid{display:grid;gap:14px;
+.grid{display:grid;gap:18px;
   grid-template-columns:repeat(auto-fill,minmax(210px,1fr))}
 /* Grid Dataset: ADAPTIF. Kontrol "Per baris" tidak mengunci jumlah kolom —
    ia menetapkan LEBAR MINIMUM kartu (--kartu-min, dihitung app.js dari jumlah
@@ -331,18 +331,42 @@ main{padding:20px 22px 60px}
    muat. Akibatnya memperbesar/mengecilkan tampilan (Ctrl +/-) mengubah jumlah
    per baris SENDIRI: diperbesar -> kartu lebih sedikit & tampak besar,
    dikecilkan -> lebih banyak. Bawaan ~10. Lebar minimum itu dipatok JS supaya
-   di layar sempit kartunya tidak jadi terlalu kecil. */
+   di layar sempit kartunya tidak jadi terlalu kecil. Bawaan ~7. */
 #grid{grid-template-columns:repeat(auto-fill,minmax(var(--kartu-min,128px),1fr))}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;
-  overflow:hidden;position:relative;transition:.14s;
-  box-shadow:0 1px 2px rgba(var(--bayang),.05)}
-.card:hover{border-color:var(--line2);transform:translateY(-2px);
-  box-shadow:0 6px 16px rgba(var(--bayang),.10)}
-.card .rail{position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--ok);z-index:2}
-.card[data-s="warn"] .rail{background:var(--warn)}
-.card[data-s="stop"] .rail{background:var(--stop)}
-.card[data-s="bg"] .rail{background:var(--latar)}
-.card img{width:100%;aspect-ratio:1;object-fit:contain;display:block;background:var(--sunk)}
+/* Kartu TANPA kotak. Gaya Roboflow menaruh thumbnail sebagai tokoh utama di
+   atas latar halaman yang tenang, bukan di dalam kartu berbingkai tebal dengan
+   bayangan dan efek terangkat saat disorot. Jadi .card sendiri transparan tanpa
+   garis/bayangan; yang terbaca sebagai objek adalah gambarnya. Jarak antarbaris
+   kini datang dari gap grid (18px), menggantikan padding bawah kartu yang dulu. */
+.card{background:transparent;border:0;border-radius:12px;
+  position:relative;transition:.14s}
+/* Bingkai gambar: sudut membulat + cincin tipis sebagai pengganti bingkai
+   kartu, sekaligus acuan posisi semua hamparan (kotak centang, lencana).
+   overflow memotong gambar ke sudut membulat; --sunk mengisi area letterbox
+   yang disisakan object-fit:contain. Sorot cuma menegaskan cincinnya, tanpa
+   mengangkat kartu. */
+.kartu-gbr{position:relative;border-radius:12px;overflow:hidden;
+  background:var(--sunk);box-shadow:inset 0 0 0 1px var(--line);
+  transition:box-shadow .14s}
+.card:hover .kartu-gbr{box-shadow:inset 0 0 0 1px var(--line2)}
+.kartu-gbr a{display:block}
+/* object-fit:contain DIPERTAHANKAN: cover memotong foto potret sampai isinya
+   berubah arti (lihat .ug-gambar). Latar gambar pindah ke .kartu-gbr. */
+.card img{width:100%;aspect-ratio:1;object-fit:contain;display:block}
+/* Lencana keadaan. Dulu .rail adalah rel warna 3px di tepi KIRI kartu; kini
+   chip kecil membulat di kiri-BAWAH gambar, gerak khas Roboflow. Backing beku
+   senada chip kotak-centang supaya kontras di atas gambar terang MAUPUN gelap;
+   titik di dalamnya yang membawa warna severity (ok/warn/stop/bg). Kata-katanya
+   dibawa title & aria di templat -- rel lama tak punya teks sama sekali. */
+.card .rail{position:absolute;left:7px;bottom:7px;z-index:2;
+  width:20px;height:20px;border-radius:7px;display:grid;place-items:center;
+  background:rgba(var(--header),.86);backdrop-filter:blur(4px);
+  box-shadow:0 0 0 1px rgba(var(--bayang),.14)}
+.card .rail::before{content:"";width:9px;height:9px;border-radius:50%;
+  background:var(--ok)}
+.card[data-s="warn"] .rail::before{background:var(--warn)}
+.card[data-s="stop"] .rail::before{background:var(--stop)}
+.card[data-s="bg"]   .rail::before{background:var(--latar)}
 /* Tinggi .meta DIKUNCI, bukan mengikuti isinya.
    Sebelumnya isi kotak ini boleh tumbuh: chip kelas membungkus ke baris kedua
    dan ketiga, baris temuan kadang dua baris, cap pelabel hanya ada di sebagian
@@ -359,8 +383,11 @@ main{padding:20px 22px 60px}
    Dengan token ini, mengubah tinggi jalur label otomatis membawa serta tinggi
    kotaknya. */
 .card{--pad-meta:7px;--h-labs:34px;--h-iss:20px}
+/* Padding mendatar DIRAPATKAN ke tepi gambar (4px, dari 11px): tanpa kotak
+   kartu, keterangan sejajar lurus dengan thumbnail di atasnya. Tinggi TETAP
+   dari tokennya -- disiplin sama-tinggi per baris tak berubah. */
 .meta{height:calc(var(--pad-meta) + var(--h-labs) + var(--h-iss));
-  padding:var(--pad-meta) 11px 0;overflow:hidden}
+  padding:var(--pad-meta) 4px 0;overflow:hidden}
 /* direction:rtl sengaja tidak dipakai: ia memindahkan titik ke depan sehingga
    "000036.jpg" terbaca "jpg.000036". */
 /* DUA baris, satu nama kelas per baris. Tingginya dikunci 2 x 17px dan
@@ -394,7 +421,9 @@ main{padding:20px 22px 60px}
 .iss{margin-top:5px;height:15px;font-size:10.5px;color:var(--warn);
   line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .iss.stop{color:var(--stop)}
-.acts{display:flex;gap:6px;padding:0 11px 11px}
+/* Dipisahkan tipis dari gambar lewat jarak atas; jarak bawah kini dari gap
+   grid, bukan padding kartu. Mendatar dirapatkan ke tepi gambar. */
+.acts{display:flex;gap:6px;padding:8px 4px 0}
 .btn{flex:1;text-align:center;border:1px solid var(--line2);background:var(--raised);
   color:var(--ink-dim);border-radius:5px;padding:5px 0;font-size:11.5px;cursor:pointer;
   text-decoration:none;transition:.12s}
@@ -404,8 +433,20 @@ main{padding:20px 22px 60px}
    tombol, dan "Batal latar" pecah dua baris di kartu sempit — satu-satunya
    sisa penyebab kartu tidak sama tinggi setelah .meta dikunci. Teks yang
    terpotong tetap terbaca lewat title tombolnya. */
-.acts .btn{min-width:0;padding:5px 2px;white-space:nowrap;overflow:hidden;
-  text-overflow:ellipsis}
+/* Gaya hantu yang tenang untuk SEMUA tombol kartu (Edit label, Lihat,
+   Latar/Batal, ikon): transparan, garis tipis --line, sudut agak membulat.
+   Menimpa latar --raised & garis --line2 dari .btn dasar supaya deret kartu
+   terbaca ringan dan rapi, bukan deretan tombol padat -- tanpa menyentuh .btn
+   di halaman kanvas yang memakai gaya dasarnya. */
+.acts .btn{min-width:0;padding:6px 2px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;background:transparent;border-color:var(--line);
+  color:var(--ink-dim);border-radius:7px}
+.acts .btn:hover{background:var(--hover);border-color:var(--line2);color:var(--ink)}
+/* "Edit label" tetap tindakan pokok, tapi TENANG: teks & garis beraksen teal,
+   bukan tombol terisi penuh yang berteriak. "Lihat" netral di sebelahnya.
+   Keduanya -- yang disebut pengguna -- tetap ada dan terbaca jelas. */
+.acts .btn.pri{color:var(--aksi);border-color:var(--ok-pudar);font-weight:600}
+.acts .btn.pri:hover{background:var(--ok-lembut);border-color:var(--ok);color:var(--aksi)}
 /* Tombol teks DIBAGI RATA, termasuk yang utama.
 
    Sebelumnya yang utama mengambil seluruh sisa ruang, jadi "Edit label"
@@ -419,7 +460,7 @@ main{padding:20px 22px 60px}
    teks masing-masing, dan "Edit label" tetap lebih lebar daripada "Lihat". */
 .acts .btn{flex:1 1 0}
 /* Tombol ikon selebar isinya saja, bukan ikut dibagi rata. */
-.acts .btn-ikon{flex:0 0 auto;padding:5px 7px;display:grid;place-items:center}
+.acts .btn-ikon{flex:0 0 auto;padding:6px 8px;display:grid;place-items:center}
 .acts .btn-ikon .ik{display:block}
 
 .hero{max-width:520px;margin:16vh auto 0;text-align:center;padding:0 24px}
@@ -1778,7 +1819,7 @@ input:focus{outline:0;border-color:var(--ok)}
    jarak 6px + sedikit lebih. */
 .ug-ubin{position:relative;margin:0;min-width:0;
   content-visibility:auto;contain-intrinsic-size:auto 152px}
-.ug-gambar{position:relative;display:block;aspect-ratio:1;border-radius:7px;
+.ug-gambar{position:relative;display:block;aspect-ratio:1;border-radius:10px;
   overflow:hidden;background:var(--sunk);border:1px solid var(--line);
   transition:border-color .12s}
 /* contain, bukan cover: yang diperiksa di tahap ini adalah "berkasnya benar
@@ -1958,8 +1999,11 @@ body.berprojek main{flex:1 1 auto;min-height:0;
    projek — tidak kena, jadi namanya tetap bisa disalin. */
 .card:has(.kartu-pilih){user-select:none}
 /* Terpilih ditandai di kartunya sendiri, bukan cuma di bilah: pada 50 kartu,
-   yang sudah dicentang berada jauh dari angka penghitungnya. */
-.card.kartu-terpilih{outline:2px solid var(--aksi);outline-offset:-2px}
+   yang sudah dicentang berada jauh dari angka penghitungnya. Cincin teal
+   mengelilingi THUMBNAIL (bukan garis sekeliling seluruh kartu): sejak kartu
+   tak lagi berupa kotak, cincin di gambarnya yang terbaca sebagai "terpilih".
+   Datang setelah aturan :hover .kartu-gbr supaya menang pada spesifisitas seri. */
+.card.kartu-terpilih .kartu-gbr{box-shadow:0 0 0 2px var(--aksi)}
 
 /* Mengambang, muncul hanya saat ada yang terpilih. Sepadan dengan bilah
    tindakan Roboflow: ia mendatangi orangnya, bukan menunggu ditemukan. */
@@ -2014,7 +2058,7 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
   grid-template-columns:repeat(auto-fill,minmax(110px,1fr));
   max-height:min(64vh,660px);overflow-y:auto;padding:2px}
 .bg-ubin{margin:0}
-.bg-gambar{display:block;aspect-ratio:1;border-radius:7px;overflow:hidden;
+.bg-gambar{display:block;aspect-ratio:1;border-radius:10px;overflow:hidden;
   background:var(--sunk);border:1px solid var(--line)}
 .bg-gambar img{width:100%;height:100%;object-fit:contain;display:block}
 .bg-nama{font-size:10.5px;color:var(--ink-faint);margin-top:4px;
@@ -2180,7 +2224,7 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
 /* user-select:none supaya Shift+klik memilih ubin, bukan menyorot teks nama
    berkas & tombol jadi biru. Ubin memang untuk dicentang, bukan disalin. */
 .jb-ubin{margin:0; user-select:none}
-.jb-gambar{position:relative;display:block;aspect-ratio:1;border-radius:7px;
+.jb-gambar{position:relative;display:block;aspect-ratio:1;border-radius:10px;
   overflow:hidden;background:var(--sunk);border:1px solid var(--line);
   cursor:pointer}
 .jb-gambar img{width:100%;height:100%;object-fit:contain;display:block}

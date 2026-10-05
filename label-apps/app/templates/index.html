@@ -413,8 +413,8 @@
     <span class="saring-urut">
       <label class="halus" for="kartu-kolom">Per baris</label>
       <select id="kartu-kolom" aria-label="Kartu per baris">
-        {%- for n in [6, 8, 10, 12, 14] %}
-        <option value="{{ n }}"{% if n == 10 %} selected{% endif %}>{{ n }}</option>
+        {%- for n in [5, 6, 7, 8, 10, 12] %}
+        <option value="{{ n }}"{% if n == 7 %} selected{% endif %}>{{ n }}</option>
         {%- endfor %}
       </select>
     </span>
@@ -495,16 +495,29 @@
       labelnya dan siapa pelabelnya. Ia pindah ke `title` supaya tetap bisa
       dilihat dengan menunjuk kartunya, dan tetap ada di aria-label kotak
       centang serta alt gambar untuk pembaca layar. Rinciannya di "Lihat". -#}
-  <div class="card" data-s="{{ sev }}" title="{{ it.img.name }}"><span class="rail"></span>
-    {%- if pr %}
-    {#- Kotak centang untuk tindakan borongan. Di dalam kartu, BUKAN menimpa
-        tautannya: menaruhnya di atas gambar membuat klik untuk membuka dan
-        klik untuk memilih berebut area yang sama. -#}
-    <label class="kartu-pilih">
-      <input type="checkbox" class="kp-in" data-path="{{ p }}"
-             aria-label="Pilih {{ p.split('/')[-1] }}"></label>
-    {%- endif %}
-    <a href="/view?path={{ p }}" aria-label="Lihat {{ p.split('/')[-1] }}"><img loading="lazy" src="/thumb?path={{ p }}&s=320" alt="{{ p.split('/')[-1] }}"></a>
+  {#- Severity -> kata yang bisa dibaca, dipakai title & aria lencana keadaan. -#}
+  {%- set sev_kata = {'ok':'Sudah dilabeli','warn':'Perlu dicek','stop':'Belum dilabeli','bg':'Latar'}[sev] %}
+  <div class="card" data-s="{{ sev }}" title="{{ it.img.name }}">
+    {#- Thumbnail jadi tokoh utama (gaya Roboflow): sudut membulat, dan SEMUA
+        hamparan (kotak centang + lencana keadaan) menumpang di bingkai gambar
+        INI, bukan di kartu -- supaya "kiri-bawah gambar" tetap di gambar walau
+        ada keterangan dan tombol di bawahnya. -#}
+    <div class="kartu-gbr">
+      {%- if pr %}
+      {#- Kotak centang untuk tindakan borongan. Di atas gambar, BUKAN menimpa
+          tautannya: dipojok, jadi klik untuk membuka dan klik untuk memilih
+          tidak berebut area yang sama. -#}
+      <label class="kartu-pilih">
+        <input type="checkbox" class="kp-in" data-path="{{ p }}"
+               aria-label="Pilih {{ p.split('/')[-1] }}"></label>
+      {%- endif %}
+      <a href="/view?path={{ p }}" aria-label="Lihat {{ p.split('/')[-1] }}"><img loading="lazy" src="/thumb?path={{ p }}&s=320" alt="{{ p.split('/')[-1] }}"></a>
+      {#- Lencana keadaan: chip kecil di kiri-bawah gambar (gaya Roboflow),
+          menggantikan rel warna di tepi kiri. Titiknya berwarna menurut
+          severity; kata-katanya di title & aria agar tetap terbaca pembaca
+          layar -- rel lama tak punya teks sama sekali. -#}
+      <span class="rail" role="img" title="{{ sev_kata }}" aria-label="Keadaan: {{ sev_kata }}"></span>
+    </div>
     <div class="meta">
       {#- Chip kelas: DUA baris, satu nama per baris, sisanya dihitung di pil
           "+N" pada baris kedua.

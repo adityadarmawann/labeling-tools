@@ -2182,13 +2182,13 @@ window.pilihRentang = function (wadah, sel, saatUbah) {
  * Kuncinya: --kartu-min disetel HANYA saat muat & saat pilihan diganti, TIDAK
  * pada resize/zoom. Justru itu yang membuat Ctrl +/- mengubah jumlah per baris
  * sendiri — lebar minimum kartu tetap, tampilan diperbesar berarti makin
- * sedikit yang muat satu baris (mis. 10 -> 7-8), dikecilkan makin banyak. */
+ * sedikit yang muat satu baris (mis. 7 -> 5-6), dikecilkan makin banyak. */
 (() => {
   const sel = document.getElementById('kartu-kolom');
   const grid = document.getElementById('grid');
   if (!sel || !grid) return;
-  const BAWAAN = '10';
-  const GAP = 14;                       // = gap .grid di app.css
+  const BAWAAN = '7';
+  const GAP = 18;                       // = gap .grid di app.css
   const terapkan = (n) => {
     const w = grid.clientWidth || 0;
     // Lebar yang membuat PERSIS n kartu muat di lebar sekarang; floor supaya
