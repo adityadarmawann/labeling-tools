@@ -519,7 +519,16 @@
           layar -- rel lama tak punya teks sama sekali. -#}
       <span class="rail" role="img" title="{{ sev_kata }}" aria-label="Keadaan: {{ sev_kata }}"></span>
     </div>
-    <div class="kartu-nama" title="{{ it.img.name }}">{{ it.img.name }}</div>
+    {#- Dipendekkan dari DEPAN, bukan belakang. Berkas satu dataset kerap
+        berbagi awalan panjang yang sama (mis. "boston-celtics-...-game-1-") dan
+        berbeda hanya di EKORNYA -- nomor frame atau hash Roboflow + ekstensi.
+        Memotong dari belakang (ellipsis CSS biasa) membuat SEMUA kartu
+        menampilkan teks yang sama persis; memotong dari depan menyisakan bagian
+        yang membedakan beserta tipe berkasnya. Ambang 24: cukup pendek untuk
+        satu baris di kartu rapat, cukup panjang membawa ekor yang khas. Nama
+        PENUH tetap di title (sorot) dan di halaman Lihat. -#}
+    {%- set _nm = it.img.name %}
+    <div class="kartu-nama" title="{{ _nm }}">{{ _nm if _nm | length <= 24 else '…' ~ _nm[-23:] }}</div>
     <div class="meta">
       {#- Chip kelas: DUA baris, satu nama per baris, sisanya dihitung di pil
           "+N" pada baris kedua.
