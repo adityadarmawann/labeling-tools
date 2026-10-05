@@ -490,11 +490,12 @@
   {%- for it in items %}
   {%- set p = it | imgpath %}
   {%- set sev = severity(it) %}
-  {#- Nama berkas TIDAK lagi tercetak di muka kartu: pada 50 kartu ia lima
-      puluh baris teks yang jarang dibaca, sementara yang dicari orang adalah
-      labelnya dan siapa pelabelnya. Ia pindah ke `title` supaya tetap bisa
-      dilihat dengan menunjuk kartunya, dan tetap ada di aria-label kotak
-      centang serta alt gambar untuk pembaca layar. Rinciannya di "Lihat". -#}
+  {#- Nama berkas dicetak di bawah thumbnail, gaya Roboflow: satu baris, di
+      tengah, teduh. Sempat disembunyikan ke `title` demi kerapatan (50 kartu =
+      50 baris teks), tetapi dikembalikan karena nama berkas itulah yang dipakai
+      mencocokkan kartu dengan gambar yang dibicarakan. Tetap satu baris ber-
+      ellipsis supaya tinggi kartu sama rata; nama penuh tetap di `title` kartu
+      & elemen namanya saat terpotong, dan di alt/aria untuk pembaca layar. -#}
   {#- Severity -> kata yang bisa dibaca, dipakai title & aria lencana keadaan. -#}
   {%- set sev_kata = {'ok':'Sudah dilabeli','warn':'Perlu dicek','stop':'Belum dilabeli','bg':'Latar'}[sev] %}
   <div class="card" data-s="{{ sev }}" title="{{ it.img.name }}">
@@ -518,6 +519,7 @@
           layar -- rel lama tak punya teks sama sekali. -#}
       <span class="rail" role="img" title="{{ sev_kata }}" aria-label="Keadaan: {{ sev_kata }}"></span>
     </div>
+    <div class="kartu-nama" title="{{ it.img.name }}">{{ it.img.name }}</div>
     <div class="meta">
       {#- Chip kelas: DUA baris, satu nama per baris, sisanya dihitung di pil
           "+N" pada baris kedua.

@@ -367,6 +367,13 @@ main{padding:20px 22px 60px}
 .card[data-s="warn"] .rail::before{background:var(--warn)}
 .card[data-s="stop"] .rail::before{background:var(--stop)}
 .card[data-s="bg"]   .rail::before{background:var(--latar)}
+/* Nama berkas di bawah thumbnail, gaya Roboflow: SATU baris, di tengah, teduh.
+   Tingginya TETAP (16px, ellipsis, tak membungkus) supaya menambah nama tidak
+   merusak disiplin sama-tinggi per baris -- nama sepanjang apa pun memakan satu
+   baris yang sama. Nama penuh tetap di title saat terpotong. */
+.kartu-nama{height:16px;margin-top:8px;padding:0 4px;font-size:11px;
+  line-height:16px;color:var(--ink-dim);text-align:center;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* Tinggi .meta DIKUNCI, bukan mengikuti isinya.
    Sebelumnya isi kotak ini boleh tumbuh: chip kelas membungkus ke baris kedua
    dan ketiga, baris temuan kadang dua baris, cap pelabel hanya ada di sebagian
@@ -442,11 +449,16 @@ main{padding:20px 22px 60px}
   text-overflow:ellipsis;background:transparent;border-color:var(--line);
   color:var(--ink-dim);border-radius:7px}
 .acts .btn:hover{background:var(--hover);border-color:var(--line2);color:var(--ink)}
-/* "Edit label" tetap tindakan pokok, tapi TENANG: teks & garis beraksen teal,
-   bukan tombol terisi penuh yang berteriak. "Lihat" netral di sebelahnya.
-   Keduanya -- yang disebut pengguna -- tetap ada dan terbaca jelas. */
-.acts .btn.pri{color:var(--aksi);border-color:var(--ok-pudar);font-weight:600}
-.acts .btn.pri:hover{background:var(--ok-lembut);border-color:var(--ok);color:var(--aksi)}
+/* "Edit label" = tindakan pokok, dibuat MENONJOL: tombol TERISI penuh beraksen
+   --aksi (teks --aksi-ink yang kontras di dua tema), berpasangan dengan "Lihat"
+   yang tetap hantu netral -- pola primer/sekunder yang lazim dan langsung
+   terbaca. Hanya SATU tombol terisi per kartu, jadi deret kartu tetap ringan.
+   Latar/border DINYATAKAN ULANG di :hover supaya menang atas `.acts .btn:hover`
+   (yang akan menyetel latar --hover); hover cukup digelapkan tipis. */
+.acts .btn.pri{background:var(--aksi);border-color:var(--aksi);
+  color:var(--aksi-ink);font-weight:600}
+.acts .btn.pri:hover{background:var(--aksi);border-color:var(--aksi);
+  color:var(--aksi-ink);filter:brightness(.94)}
 /* Tombol teks DIBAGI RATA, termasuk yang utama.
 
    Sebelumnya yang utama mengambil seluruh sisa ruang, jadi "Edit label"
