@@ -483,6 +483,65 @@ def test_tambah_impor_tidak_bisa_menyedot_projek_akun_lain(klien, aplikasi,
     assert lain.post(f"/tambah/impor?path={bersama}").json()["ok"] is True
 
 
+def test_boleh_buka_mengizinkan_akar_impor_terdaftar(tmp_path):
+    """Folder di LUAR ruang kerja & dataset bersama tetap ditolak -- KECUALI
+    bila ada di bawah salah satu akar impor (LABELAPP_IMPOR_ROOTS). Itu yang
+    membuat "Ambil dari folder di server" bisa menyalin aset dari folder server
+    lain, tanpa membuka seluruh disk. Projek akun lain (di bawah uploads_root)
+    TIDAK lewat jalur ini: ia dicabang lebih dulu dan tetap tunduk kepemilikan,
+    sekalipun akar impor kebetulan memuat uploads_root."""
+    import json as _json
+
+    from app.services.projek import boleh_buka
+
+    up = tmp_path / "unggahan"; up.mkdir()
+    ds = tmp_path / "bersama"; ds.mkdir()
+    luar = tmp_path / "aset-luar" / "frames"; luar.mkdir(parents=True)
+
+    # Tanpa akar impor -> ditolak (perilaku lama, tak berubah).
+    assert boleh_buka(luar, "paul", up, ds) != ""
+    assert boleh_buka(luar, "paul", up, ds, ()) != ""
+    # Di bawah akar impor yang terdaftar -> boleh.
+    assert boleh_buka(luar, "paul", up, ds, (tmp_path / "aset-luar",)) == ""
+    # Akar yang tidak memuatnya -> tetap ditolak.
+    assert boleh_buka(luar, "paul", up, ds, (tmp_path / "bukan-ini",)) != ""
+    # Keamanan tetap: projek BERPEMILIK akun lain di bawah uploads_root tidak
+    # bisa dibuka lewat akar impor, walau akarnya = uploads_root.
+    lain = up / "budi" / "rahasia"; lain.mkdir(parents=True)
+    (lain / ".tugas.json").write_text(_json.dumps({"pemilik": "budi"}))
+    assert boleh_buka(lain, "paul", up, ds, (up,)) != ""
+
+
+def test_tambah_impor_menerima_folder_dari_akar_impor(klien, lingkungan,
+                                                       monkeypatch):
+    """"Ambil dari folder di server" MENERIMA folder di luar ruang kerja &
+    dataset bersama kalau ada di bawah LABELAPP_IMPOR_ROOTS -- isinya disalin ke
+    projek yang sedang dibuka. Tanpa daftar itu, ditolak seperti sebelumnya."""
+    from conftest import buat_dataset
+    from app.config import get_settings
+    from tests.test_data import masuk, PW_PAUL
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    tujuan = _projek(lingkungan["ruang"], "penampung", n=1, label=False)
+    klien.post(f"/setsrc?path={tujuan}")
+
+    # Folder aset di LUAR semua root yang dikenal lingkungan.
+    aset = lingkungan["tmp"] / "aset-server" / "frames"
+    buat_dataset(aset, 3, 0)                      # 3 gambar mentah
+
+    # Tanpa IMPOR_ROOTS -> ditolak.
+    assert klien.post(f"/tambah/impor?path={aset}").json()["ok"] is False
+
+    # Daftarkan akarnya -> ketiganya tersalin ke projek tujuan.
+    monkeypatch.setenv("LABELAPP_IMPOR_ROOTS",
+                       str(lingkungan["tmp"] / "aset-server"))
+    get_settings.cache_clear()
+    r = klien.post(f"/tambah/impor?path={aset}").json()
+    assert r["ok"] is True, r
+    assert r["ditambah"] == 3, r
+
+
 def test_markbg_membaca_disk_bukan_ingatan_sesi(klien, aplikasi, lingkungan):
     """Menandai latar tidak boleh menghapus pekerjaan orang.
 

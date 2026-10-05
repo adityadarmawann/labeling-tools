@@ -66,6 +66,12 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--max-upload-mb", type=int,
                    help="batas ukuran per berkas yang diunggah. Tanpa ini, "
                         "dipakai LABELAPP_MAX_UPLOAD_MB dari env, lalu 80.")
+    g.add_argument("--impor-roots", type=Path, nargs="*", metavar="DIR",
+                   help="akar server yang boleh jadi SUMBER 'Ambil dari folder "
+                        "di server' (survei/impor/salin ke projek), di luar "
+                        "ruang kerja & dataset bersama. Bisa beberapa. Projek "
+                        "pribadi akun lain tetap aman. Padanan "
+                        "LABELAPP_IMPOR_ROOTS (dipisah os.pathsep).")
 
     g = ap.add_argument_group("AnyLabeling")
     g.add_argument("--anylabeling",
@@ -108,6 +114,9 @@ def to_environ(a: argparse.Namespace) -> None:
         "LABELS_FILE": a.labels,
         "FLAGS_FILE": a.flags,
         "MAX_UPLOAD_MB": a.max_upload_mb,
+        # Daftar path -> satu string dipisah os.pathsep (dibaca _paths di config).
+        "IMPOR_ROOTS": (os.pathsep.join(str(p) for p in a.impor_roots)
+                        if a.impor_roots else None),
         "ANYLABELING": a.anylabeling,
         "OPEN_MODE": a.open_mode,
         "LOCK_LABELS": "1" if a.lock_labels else "",

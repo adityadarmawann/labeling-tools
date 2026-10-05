@@ -73,6 +73,24 @@ def _bool(name: str, default: bool = False) -> bool:
     return v.lower() in ("1", "true", "yes", "ya", "on") if v else default
 
 
+def _paths(name: str) -> tuple[Path, ...]:
+    """Daftar path dari satu env, dipisah os.pathsep (mis. '/a:/b'). Dipakai
+    LABELAPP_IMPOR_ROOTS. Tiap entri di-resolve; yang kosong dilewati."""
+    v = _get(name)
+    if not v:
+        return ()
+    out = []
+    for bit in v.split(os.pathsep):
+        bit = bit.strip()
+        if not bit:
+            continue
+        try:
+            out.append(Path(bit).expanduser().resolve())
+        except OSError:
+            continue
+    return tuple(out)
+
+
 @dataclass(frozen=True)
 class Settings:
     """Setelan yang sama untuk semua akun. Keadaan per akun ada di Session."""
@@ -94,6 +112,14 @@ class Settings:
     # (penelusurannya menuntut subfolder ber-.tugas.json; _avatar berisi .jpg).
     avatar_root: Path | None = None
     default_src: Path | None = None
+    # Akar server tambahan yang boleh jadi SUMBER "Ambil dari folder di server"
+    # (survei/impor/salin ke projek). Di luar ruang kerja & dataset bersama,
+    # hanya path DI BAWAH salah satu akar ini yang diterima — jadi admin yang
+    # menentukan folder server mana boleh dibaca HIGOLAB, tanpa membuka seluruh
+    # disk. Dari LABELAPP_IMPOR_ROOTS (dipisah ':'). Kosong = perilaku lama
+    # (hanya ruang kerja & dataset bersama). Projek pribadi akun lain tetap
+    # terlindung: ia di bawah uploads_root, diperiksa lebih dulu, bukan di sini.
+    impor_roots: tuple[Path, ...] = ()
     max_upload_mb: int = 80
     # Arsip punya batas sendiri: satu ekspor Roboflow bisa lebih dari 1 GB,
     # sementara batas per-gambar sengaja tetap kecil supaya salah seret tidak
@@ -201,6 +227,7 @@ def get_settings() -> Settings:
         datasets_root=datasets_root,
         avatar_root=avatar_root,
         default_src=_path("DEFAULT_SRC"),
+        impor_roots=_paths("IMPOR_ROOTS"),
         max_upload_mb=max(1, _int("MAX_UPLOAD_MB", 80)),
         max_video_mb=max(1, _int("MAX_VIDEO_MB", 2048)),
         max_zip_mb=max(1, _int("MAX_ZIP_MB", 4096)),

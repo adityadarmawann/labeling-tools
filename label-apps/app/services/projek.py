@@ -309,7 +309,8 @@ def _usia(t: float) -> str:
     return datetime.fromtimestamp(t).strftime("%d %b %Y")
 
 
-def boleh_buka(d: Path, akun: str, uploads_root, datasets_root) -> str:
+def boleh_buka(d: Path, akun: str, uploads_root, datasets_root,
+               impor_roots=()) -> str:
     """
     Pesan penolakan kalau akun ini tidak boleh membuka folder itu, atau "".
 
@@ -357,6 +358,18 @@ def boleh_buka(d: Path, akun: str, uploads_root, datasets_root) -> str:
                 return ""
             except ValueError:
                 pass
+        # Akar impor yang diizinkan admin (LABELAPP_IMPOR_ROOTS). Folder server
+        # di luar ruang kerja & dataset bersama boleh jadi SUMBER asalkan berada
+        # di bawah salah satunya — itulah yang membuat "Ambil dari folder di
+        # server" bisa menyalin aset dari folder lain di server, tanpa membuka
+        # seluruh disk (admin memilih akarnya). Projek PRIBADI akun lain tetap
+        # aman: ia di bawah uploads_root, sudah dicabang di atas, tak sampai sini.
+        for r in (impor_roots or ()):
+            try:
+                d.relative_to(Path(r).resolve())
+                return ""
+            except (ValueError, OSError):
+                continue
         return ("folder itu di luar ruang kerjamu dan bukan dataset bersama; "
                 "salin dulu ke ruang kerjamu lewat halaman Unggah data")
 

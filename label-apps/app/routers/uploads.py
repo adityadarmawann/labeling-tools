@@ -386,7 +386,7 @@ async def impor_survei(path: str = "",
     # dengan membuka: yang tidak boleh dibuka tidak boleh dihitung.
     tolak = await asyncio.to_thread(
         projek.boleh_buka, d, sess.user,
-        settings.uploads_root, settings.datasets_root)
+        settings.uploads_root, settings.datasets_root, settings.impor_roots)
     if tolak:
         return {"ok": False, "error": tolak}
     s = await asyncio.to_thread(impor.survei, d)
@@ -425,7 +425,7 @@ async def impor_dari_server(path: str = "", ds: str = "",
     # PRODUKSI dari sini, dan rute impor di sebelahnya bisa menyalinnya.
     tolak = await asyncio.to_thread(
         projek.boleh_buka, sumber, sess.user,
-        settings.uploads_root, settings.datasets_root)
+        settings.uploads_root, settings.datasets_root, settings.impor_roots)
     if tolak:
         return {"ok": False, "error": tolak}
     # Diserahkan apa adanya ke upload_dir, yang memegang satu-satunya aturan
@@ -568,7 +568,7 @@ async def tambah_dari_server(path: str = "",
     # menjawab "ok".
     tolak = await asyncio.to_thread(
         projek.boleh_buka, sumber, sess.user,
-        settings.uploads_root, settings.datasets_root)
+        settings.uploads_root, settings.datasets_root, settings.impor_roots)
     if tolak:
         return {"ok": False, "error": tolak}
     await _mulai_kurasi(sess.src, settings)
