@@ -530,36 +530,30 @@
     {%- set _nm = it.img.name %}
     <div class="kartu-nama" title="{{ _nm }}">{{ _nm if _nm | length <= 24 else '…' ~ _nm[-23:] }}</div>
     <div class="meta">
-      {#- Chip kelas: DUA baris, satu nama per baris, sisanya dihitung di pil
-          "+N" pada baris kedua.
+      {#- Chip kelas: SATU baris ringkas, sampai dua nama + pil "+N".
 
-          Aturannya sengaja TETAP, bukan dihitung dari ruang yang tersisa.
-          Versi sebelumnya memakai katupLabel() di app.js untuk mengukur lebar
-          lalu menyembunyikan chip yang tidak muat; hasilnya benar tetapi
-          jumlah nama yang tampil berbeda-beda antar kartu di baris yang sama,
-          dan itu justru membuat deretnya terbaca tidak rapi. Dua nama, selalu.
-
-          Nama yang kepanjangan dipotong dengan elipsis, TIDAK dibungkus ke
-          baris berikutnya: baris kedua adalah milik kelas kedua, bukan
-          sambungan kelas pertama. Nama utuhnya ada di title tiap chip. -#}
+          Jumlah nama yang tampil sengaja TETAP (dua), bukan dihitung dari ruang
+          yang tersisa. Versi lama memakai katupLabel() di app.js untuk mengukur
+          lebar lalu menyembunyikan chip yang tidak muat; hasilnya benar tetapi
+          jumlah nama berbeda-beda antar kartu di baris yang sama, dan deretnya
+          jadi terbaca tidak rapi. Dua nama, selalu; sisanya ke pil "+N".
+          Nama yang kepanjangan dipotong elipsis (tak membungkus); utuhnya di
+          title tiap chip. -#}
       {%- set kelas = it.shapes | map(attribute='label') | map('string') | unique | sort | list %}
+      {#- SATU baris ringkas: penanda split (bila ada), lalu sampai dua nama
+          kelas, lalu pil "+N" untuk sisanya. Nama kepanjangan dipotong elipsis;
+          pil "+N" tak ikut menyusut supaya selalu terlihat masih ada kelas lain.
+          Nama utuhnya di title. Dulu DUA baris (satu nama per baris) -- memakan
+          tinggi kartu tanpa menambah informasi. Gambar tanpa kelas (sampel
+          negatif) tetap menampilkan splitnya lewat cabang if yang sama. -#}
       <div class="labs"{% if kelas %} title="{{ kelas | join(', ') }}"{% endif %}>
+        {%- if it.split %}<span class="split">{{ it.split }}</span>{% endif %}
         {%- for l in kelas[:2] %}
-        <span class="lab-baris">
-          {#- Penanda split menumpang di baris PERTAMA, bukan barisnya sendiri:
-              .labs cuma punya dua baris dan keduanya milik nama kelas. -#}
-          {%- if loop.first and it.split %}<span class="split">{{ it.split }}</span>{% endif %}
-          <span class="lab" title="{{ l }}">{{ l }}</span>
-          {%- if loop.last and kelas | length > 2 %}
-          <span class="lab-sisa" title="{{ kelas[2:] | join(', ') }}"
-            >+{{ kelas | length - 2 }}</span>
-          {%- endif %}
-        </span>
+        <span class="lab" title="{{ l }}">{{ l }}</span>
         {%- endfor %}
-        {#- Gambar tanpa kelas (sampel negatif) tetap perlu menunjukkan
-            splitnya, dan tanpa baris ini penandanya hilang sama sekali. -#}
-        {%- if not kelas and it.split %}
-        <span class="lab-baris"><span class="split">{{ it.split }}</span></span>
+        {%- if kelas | length > 2 %}
+        <span class="lab-sisa" title="{{ kelas[2:] | join(', ') }}"
+          >+{{ kelas | length - 2 }}</span>
         {%- endif %}
       </div>
       {%- if it.issues %}

@@ -389,7 +389,7 @@ main{padding:20px 22px 60px}
    terpotong separuh di bawah tanpa ada yang menyadarinya sampai diukur.
    Dengan token ini, mengubah tinggi jalur label otomatis membawa serta tinggi
    kotaknya. */
-.card{--pad-meta:7px;--h-labs:34px;--h-iss:20px}
+.card{--pad-meta:7px;--h-labs:17px;--h-iss:20px}
 /* Padding mendatar DIRAPATKAN ke tepi gambar (4px, dari 11px): tanpa kotak
    kartu, keterangan sejajar lurus dengan thumbnail di atasnya. Tinggi TETAP
    dari tokennya -- disiplin sama-tinggi per baris tak berubah. */
@@ -397,14 +397,15 @@ main{padding:20px 22px 60px}
   padding:var(--pad-meta) 4px 0;overflow:hidden}
 /* direction:rtl sengaja tidak dipakai: ia memindahkan titik ke depan sehingga
    "000036.jpg" terbaca "jpg.000036". */
-/* DUA baris, satu nama kelas per baris. Tingginya dikunci 2 x 17px dan
-   dicadangkan SELALU, juga untuk gambar berkelas satu: kalau tingginya ikut
-   jumlah kelas, kartu di baris yang sama jadi tidak sama tinggi lagi, dan itu
-   persis keluhan yang membuat jalur ini dirombak. */
-.labs{margin-top:0;height:var(--h-labs);display:flex;flex-direction:column;
-  gap:0;align-items:flex-start;overflow:hidden}
-.lab-baris{display:flex;align-items:center;gap:4px;height:17px;
-  max-width:100%;min-width:0}
+/* SATU baris, ringkas: split (bila ada) + sampai dua nama kelas + pil "+N".
+   Tingginya dikunci (17px) dan dicadangkan SELALU -- juga untuk gambar tanpa
+   kelas -- supaya kartu di baris yang sama tetap sama tinggi. Dulu DUA baris
+   (satu nama per baris); itu memakan tinggi kartu tanpa menambah informasi. */
+.labs{margin-top:0;height:var(--h-labs);display:flex;flex-direction:row;
+  align-items:center;gap:4px;overflow:hidden}
+/* Di labs, jarak antarchip dari gap; margin kanan bawaan .split (untuk halaman
+   Lihat) dinolkan, dan split tak ikut menyusut. */
+.labs .split{flex:0 0 auto;margin-right:0}
 /* Dibatasi ke dalam .labs. Tanpa pembatasan itu selektornya juga mengenai
    <body class="lab"> di halaman anotasi: badan halaman mewarisi latar dan
    warna teks pil kecil ini, dan itu sudah terjadi diam-diam sejak awal. */
