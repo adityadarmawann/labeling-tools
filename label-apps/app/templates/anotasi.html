@@ -259,7 +259,7 @@
         </div>
         <span class="halus an-kartu-waktu">
           {%- if dk.batch %}{{ dk.batch }}{% else %}langsung masuk dataset{% endif %}
-          &middot; unggahan dataset</span>
+          &middot; {% if dk.dibuat %}masuk {{ dk.dibuat }}{% else %}unggahan dataset{% endif %}</span>
         {{ bilah(dk.jumlah, dk.jumlah) }}
         <div class="an-kartu-angka">
           <span><b>{{ dk.jumlah }}</b> gambar masuk dataset</span>

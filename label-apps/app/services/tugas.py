@@ -69,6 +69,10 @@ def _p(ds: Path) -> Path:
 def kosong(pemilik: str = "") -> dict:
     return {"versi": VERSI, "pemilik": pemilik, "anggota": {},
             "tugas": {}, "dataset": [], "undangan": {},
+            # Kapan tiap gambar DIMASUKKAN ke dataset (kunci -> "%Y-%m-%d %H:%M").
+            # Dipakai kartu kolom Dataset di papan supaya unggahan dataset tahu
+            # tanggal/jamnya sendiri, bukan cuma nama batch. Lihat masukkan().
+            "dataset_waktu": {},
             "kurasi": False, "jenis_anotasi": "",
             # Template skeleton (keypoint/pose) tingkat projek. Kosong = projek
             # ini bukan projek keypoint. Lihat _sah_skeleton/set_skeleton.
@@ -105,6 +109,9 @@ def baca(ds: Path, pemilik: str = "") -> dict:
             "anggota": d.get("anggota") or {},
             "tugas": d.get("tugas") or {},
             "dataset": d.get("dataset") or [],
+            # Berkas lama tidak punya ini: kartunya cukup tampil tanpa tanggal
+            # sampai ada gambar baru yang dimasukkan. Lihat kosong()/masukkan().
+            "dataset_waktu": d.get("dataset_waktu") or {},
             "undangan": d.get("undangan") or {},
             # Kurasi dimulai saat orang pertama kali menekan "Tambahkan ke
             # dataset", BUKAN saat berkas ini lahir. Berkas ini lahir karena
@@ -522,6 +529,15 @@ def masukkan(ds: Path, kunci_daftar: list[str], pemilik: str = "") -> dict:
         # tidak disebutkan TIDAK ikut diekspor. Karena itu hanya di sini.
         data["kurasi"] = True
         data["dataset"] = data["dataset"] + baru
+        # Cap waktu per gambar baru, dipakai kartu kolom Dataset untuk
+        # menampilkan kapan unggahan itu masuk. Hanya untuk yang BARU; yang
+        # sudah ada mempertahankan waktunya, jadi memasukkan ulang tak menggeser
+        # tanggalnya.
+        kini = datetime.now().strftime("%Y-%m-%d %H:%M")
+        wkt = dict(data.get("dataset_waktu") or {})
+        for k in baru:
+            wkt.setdefault(k, kini)
+        data["dataset_waktu"] = wkt
         _tulis(ds, data)
     log.info("%s gambar masuk dataset di %s", len(baru), Path(ds).name)
     return {"ditambah": len(baru), "total": len(data["dataset"])}
@@ -1179,6 +1195,9 @@ def keluarkan(ds: Path, kunci_daftar: list[str], pemilik: str = "") -> dict:
             sisa = [k for k in data["dataset"] if k not in buang]
             n_ds = len(data["dataset"]) - len(sisa)
             data["dataset"] = sisa
+            data["dataset_waktu"] = {k: w for k, w in
+                                     (data.get("dataset_waktu") or {}).items()
+                                     if k not in buang}
 
         # 2. Lepas dari SEMUA job -> kembali ke belum ditugaskan. Job yang jadi
         #    kosong dibiarkan apa adanya; membubarkannya diam-diam menghapus
@@ -1248,6 +1267,9 @@ def buang_gambar(ds: Path, item_daftar: list[dict], pemilik: str = "") -> dict:
         # Bersihkan catatannya: keluar dari dataset dan dari semua job.
         if data["kurasi"]:
             data["dataset"] = [k for k in data["dataset"] if k not in kunci_buang]
+            data["dataset_waktu"] = {k: w for k, w in
+                                     (data.get("dataset_waktu") or {}).items()
+                                     if k not in kunci_buang}
         for job in data["tugas"].values():
             g = job.get("gambar") or []
             job["gambar"] = [k for k in g if k not in kunci_buang]
@@ -1738,13 +1760,25 @@ def papan(data: dict, berlabel: set[str], semua: set[str],
     # sini supaya tak dihitung dua kali. Konsepnya sama dengan kartu job, hanya
     # sumbernya unggahan dataset, bukan pembagian tugas.
     ds_batch: dict[str, int] = {}
+    # Waktu MASUK dataset yang paling awal per batch (kunci -> "%Y-%m-%d %H:%M"
+    # dari data["dataset_waktu"]). Paling awal, bukan terakhir: kartunya
+    # menyatakan KAPAN unggahan itu masuk, bukan kapan terakhir disentuh —
+    # menambah gambar ke batch yang sama tak menggeser tanggalnya maju. Berkas
+    # lama tanpa catatan waktu mengembalikan "" dan kartunya tampil tanpa
+    # tanggal, bukan gagal.
+    dw = data.get("dataset_waktu") or {}
+    ds_waktu: dict[str, str] = {}
     for k in semua:
         if k in ditugaskan or not sudah_dimasukkan(data, k):
             continue
         b = bd.get(k) or ""
         ds_batch[b] = ds_batch.get(b, 0) + 1
+        w = dw.get(k)
+        if w and (b not in ds_waktu or w < ds_waktu[b]):
+            ds_waktu[b] = w
     dataset_kartu = sorted(
-        ({"sumber": sumber_impor, "batch": nama, "jumlah": n}
+        ({"sumber": sumber_impor, "batch": nama, "jumlah": n,
+          "dibuat": ds_waktu.get(nama, "")}
          for nama, n in ds_batch.items()),
         key=lambda x: (x["batch"] == "", -x["jumlah"], x["batch"]))
 

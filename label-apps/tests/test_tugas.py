@@ -1573,6 +1573,57 @@ def test_papan_kartu_dataset_per_unggahan(tmp_path):
     assert kartu["Unggahan X"]["jumlah"] == 2 and kartu["Unggahan X"]["sumber"] == "court-ds"
     assert kartu["Unggahan Y"]["jumlah"] == 1
     assert "x.jpg" not in {k for dk in p["dataset_kartu"] for k in [dk["batch"]]}  # x belum di dataset
+    # Setiap kartu tahu KAPAN batch-nya masuk dataset (dicatat masukkan()).
+    assert kartu["Unggahan X"]["dibuat"] and kartu["Unggahan Y"]["dibuat"]
+
+
+def test_kartu_dataset_mencatat_waktu_masuk(tmp_path):
+    """Kartu kolom Dataset menampilkan KAPAN unggahan itu masuk dataset.
+
+    Waktunya dicatat per gambar saat masukkan(), dan kartu memakai yang paling
+    AWAL per batch: menambah gambar ke batch yang sama tidak menggeser
+    tanggalnya maju. Berkas lama tanpa catatan waktu tetap tampil, hanya tanpa
+    tanggal."""
+    d = _ds(tmp_path)
+    tugas.masukkan(d, ["a.jpg"], pemilik="own")
+    data = tugas.baca(d, "own")
+    assert data["dataset_waktu"].get("a.jpg"), "waktu masuk tidak dicatat"
+    waktu_a = data["dataset_waktu"]["a.jpg"]
+
+    # Memasukkan ulang a.jpg TIDAK menggeser waktunya; b.jpg dapat waktunya
+    # sendiri. (Beda detik dipaksa lewat waktu palsu supaya ujinya tak rapuh.)
+    tugas.masukkan(d, ["a.jpg", "b.jpg"], pemilik="own")
+    data = tugas.baca(d, "own")
+    assert data["dataset_waktu"]["a.jpg"] == waktu_a
+    assert data["dataset_waktu"].get("b.jpg")
+
+    semua = {"a.jpg", "b.jpg"}
+    batch_dari = {"a.jpg": "Unggahan X", "b.jpg": "Unggahan X"}
+    p = tugas.papan(data, semua, semua, batch_dari, sumber_impor="court-ds")
+    kartu = {k["batch"]: k for k in p["dataset_kartu"]}
+    # Batch memakai waktu paling AWAL (a.jpg masuk lebih dulu).
+    assert kartu["Unggahan X"]["dibuat"] == min(waktu_a, data["dataset_waktu"]["b.jpg"])
+
+    # Mengeluarkan a.jpg dari dataset juga melepas catatan waktunya.
+    tugas.keluarkan(d, ["a.jpg"], pemilik="own")
+    assert "a.jpg" not in tugas.baca(d, "own")["dataset_waktu"]
+
+
+def test_kartu_dataset_berkas_lama_tanpa_waktu_tetap_tampil(tmp_path):
+    """Projek lama yang .tugas.json-nya belum punya dataset_waktu: kartunya
+    tetap muncul, hanya `dibuat` kosong — bukan error."""
+    d = _ds(tmp_path)
+    # Tiru berkas lama: ada daftar dataset, TANPA dataset_waktu.
+    (d / tugas.BERKAS).write_text(
+        '{"versi": 1, "pemilik": "own", "dataset": ["a.jpg"], "kurasi": true}',
+        encoding="utf-8")
+    data = tugas.baca(d, "own")
+    assert data["dataset_waktu"] == {}
+    semua = {"a.jpg"}
+    p = tugas.papan(data, semua, semua, {"a.jpg": "Lama"}, sumber_impor="")
+    kartu = {k["batch"]: k for k in p["dataset_kartu"]}
+    assert kartu["Lama"]["jumlah"] == 1
+    assert kartu["Lama"]["dibuat"] == ""
 
 
 def test_nama_sumber_dataset_dari_dyaml(tmp_path):
