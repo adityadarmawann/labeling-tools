@@ -429,6 +429,10 @@ main{padding:20px 22px 60px}
 .iss{margin-top:5px;height:15px;font-size:10.5px;color:var(--warn);
   line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .iss.stop{color:var(--stop)}
+/* Halaman tanpa SATU pun gambar bertemuan: baris temuan tak perlu dicadangkan,
+   jadi tingginya dinolkan dan kartu merapat. Disetel di grid (dari ada_temuan),
+   bukan per kartu, supaya kartu sebaris tetap sama tinggi. */
+#grid.grid-rapat .card{--h-iss:0}
 /* Dipisahkan tipis dari gambar lewat jarak atas; jarak bawah kini dari gap
    grid, bukan padding kartu. Mendatar dirapatkan ke tepi gambar. */
 .acts{display:flex;gap:6px;padding:8px 4px 0}

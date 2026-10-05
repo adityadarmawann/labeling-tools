@@ -396,6 +396,11 @@ async def index(request: Request, f: str = "all",
         "n_projek": hitung_ds["n_semua"],
         "local": is_local(request),
         "items": halaman,
+        # Apakah ADA gambar bertemuan di halaman ini. Kalau tidak satu pun,
+        # baris "temuan" yang biasa dicadangkan di tiap kartu dirapatkan (nol
+        # tinggi) -- dataset yang bersih tak perlu menyisakan ruang kosong.
+        # Dihitung dari halaman yang tampil supaya kartu sebaris tetap rata.
+        "ada_temuan": any(i.get("issues") for i in halaman),
         "urut": urut,
         "urut_pilihan": URUT,
         "cari": cari,

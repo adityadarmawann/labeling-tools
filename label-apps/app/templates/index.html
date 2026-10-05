@@ -486,7 +486,7 @@
 </div>{# /.grid-atas #}
 
 <div class="grid-gulung" id="grid-gulung">
-<div class="grid" id="grid">
+<div class="grid{% if not ada_temuan %} grid-rapat{% endif %}" id="grid">
   {%- for it in items %}
   {%- set p = it | imgpath %}
   {%- set sev = severity(it) %}
