@@ -126,6 +126,21 @@
           <b class="an-batch-nama" title="{{ b.batch or 'tanpa nama unggahan' }}">
             {{ b.batch or 'Tanpa nama unggahan' }}</b>
           <span class="an-batch-n">{{ b.n }}</span>
+          {% if boleh_bagi %}
+          {#- Menu kelola batch (titik tiga di pojok kanan), sepola kartu job.
+              Hapus batch itu destruktif, jadi disembunyikan di menu — bukan
+              tombol telanjang yang gampang terpencet. -#}
+          <span class="menu an-menu">
+            <button class="an-titik" type="button"
+                    title="Kelola batch ini" aria-label="Kelola batch">&#8942;</button>
+            <span class="menu-isi">
+              <button class="menu-aksi menu-bahaya an-hapus-batch" type="button"
+                      data-hapus-batch="{{ b.batch }}" data-n="{{ b.n }}"
+                      data-nama="{{ b.batch or 'Tanpa nama unggahan' }}"
+                      >Hapus batch</button>
+            </span>
+          </span>
+          {% endif %}
         </div>
         {% if boleh_bagi %}
         {#- Gambar yang sudah dianotasi tetapi tidak pernah dibagi tidak punya

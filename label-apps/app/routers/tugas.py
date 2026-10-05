@@ -961,6 +961,54 @@ async def dataset_siap(request: Request,
     return {"ok": True, **r}
 
 
+@router.post("/api/tugas/hapus-batch")
+async def hapus_batch(request: Request,
+                      sess: Session = Depends(current_session_api)):
+    """
+    Buang SEMUA gambar satu batch yang masih "Belum ditugaskan" ke tempat sampah
+    projek, bisa dipulihkan.
+
+    Lingkupnya = kartu batch di papan (b.n): gambar batch yang sudah dibagi ke
+    orang atau sudah masuk dataset TIDAK ikut — itu ada di kolom lain. Daftarnya
+    dihitung di SERVER, bukan dikirim peramban: daftar dari luar bisa memuat
+    gambar yang justru sedang dikerjakan orang lain.
+
+    Menghapus MEDIA adalah pengelolaan, bukan pelabelan — jadi hanya pemilik atau
+    Editor (boleh_unggah), sama seperti /api/tugas/hapus-gambar.
+    """
+    data, galat = _siap(sess)
+    if galat:
+        return {"ok": False, "error": galat}
+    if not svc.boleh_unggah(data, sess.user):
+        return {"ok": False, "error": "hanya pemilik atau Editor yang bisa "
+                                      "menghapus batch"}
+    body = await bodi_json(request)
+    batch = str(body.get("batch") or "")
+
+    with sess.lock:
+        items = list(sess.items)
+    semua, batch_dari, peta = set(), {}, {}
+    tdata_tag = svc_tag.baca(sess.src)
+    for it in items:
+        k = svc_tag.kunci_gambar(sess.src, it["img"])
+        semua.add(k)
+        peta[k] = it
+        b = svc_tag.untuk(tdata_tag, k)["batch"]
+        if b:
+            batch_dari[k] = b
+
+    kunci = svc.keys_batch_belum(data, semua, batch, batch_dari)
+    boleh = [peta[k] for k in kunci if k in peta]
+    if not boleh:
+        return {"ok": False, "error": "tidak ada gambar di batch itu yang "
+                                      "bisa dihapus"}
+    r = await asyncio.to_thread(svc.buang_gambar, sess.src, boleh, data["pemilik"])
+    # Berkasnya sudah pindah dari disk; pindai ulang supaya sesi ini tidak lagi
+    # menunjuk gambar yang tak ada.
+    await asyncio.to_thread(sess.load, sess.src)
+    return {"ok": True, **r, "batch": batch}
+
+
 @router.post("/api/tugas/dataset")
 async def ke_dataset(request: Request,
                      sess: Session = Depends(current_session_api)):

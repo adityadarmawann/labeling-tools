@@ -51,6 +51,28 @@
     };
   }
 
+  for (const b of document.querySelectorAll('.an-hapus-batch')) {
+    b.onclick = async () => {
+      const batch = b.dataset.hapusBatch || '';
+      const n = b.dataset.n || '';
+      const nama = b.dataset.nama || 'batch ini';
+      // Ke tempat sampah, bisa dipulihkan — tetapi tetap ditanya: ia membuang
+      // SELURUH batch sekaligus, dan akibatnya tidak langsung terlihat di papan.
+      if (!confirm(`Hapus ${n} gambar dari batch "${nama}"?\n\n`
+                   + 'Berkasnya pindah ke tempat sampah projek dan bisa '
+                   + 'dipulihkan. Gambar batch ini yang sudah dibagi ke orang '
+                   + 'atau sudah masuk dataset tidak ikut terhapus.')) return;
+      b.disabled = true;
+      const j = await send('/api/tugas/hapus-batch', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ batch }),
+      });
+      if (!j.ok) { toast(j.error); b.disabled = false; return; }
+      toast(`${j.dibuang} gambar dibuang ke tempat sampah`);
+      location.reload();
+    };
+  }
+
   async function kirim(url, pesan) {
     const j = await post(url);
     if (!j.ok) { toast(j.error); return false; }

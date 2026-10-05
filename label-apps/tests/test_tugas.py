@@ -1577,6 +1577,50 @@ def test_papan_kartu_dataset_per_unggahan(tmp_path):
     assert kartu["Unggahan X"]["dibuat"] and kartu["Unggahan Y"]["dibuat"]
 
 
+def test_keys_batch_belum_hormati_lingkup_kartu(tmp_path):
+    """keys_batch_belum = gambar satu batch yang MASIH di kartu "Belum
+    ditugaskan": yang sudah dibagi ke job atau sudah masuk dataset TIDAK ikut
+    (itu ada di kolom lain). Mentah pun ikut (tak menuntut berlabel)."""
+    d = _ds(tmp_path)
+    data = tugas.baca(d, "own")
+    semua = {"a.jpg", "b.jpg", "c.jpg", "x.jpg"}
+    bd = {"a.jpg": "U1", "b.jpg": "U1", "x.jpg": "U1", "c.jpg": "U2"}
+    data["tugas"]["t1"] = {"gambar": ["x.jpg"], "pelabel": "p"}   # x sudah dibagi
+    data["dataset"] = ["b.jpg"]                                   # b sudah di dataset
+    # U1: cuma a (b dikecualikan krn dataset, x krn sudah dibagi).
+    assert tugas.keys_batch_belum(data, semua, "U1", bd) == ["a.jpg"]
+    assert tugas.keys_batch_belum(data, semua, "U2", bd) == ["c.jpg"]
+    assert tugas.keys_batch_belum(data, semua, "tak-ada", bd) == []
+
+
+def test_rute_hapus_batch_membuang_ke_sampah(klien, lingkungan):
+    """"Hapus batch" di papan membuang SEMUA gambar batch yang masih belum
+    ditugaskan ke tempat sampah projek (bisa dipulihkan), dan hanya pemilik/
+    Editor yang boleh."""
+    from app.services import tag
+    from tests.test_data import masuk, PW_PAUL
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    d = _projek(lingkungan["ruang"], "batchproj", n=3, label=False)  # 3 mentah
+    nama = sorted(p.name for p in d.glob("*.jpg"))
+    assert len(nama) == 3
+    tag.pasang(d, nama, batch="Unggahan X")
+    klien.post(f"/setsrc?path={d}")
+
+    j = klien.post("/api/tugas/hapus-batch", json={"batch": "Unggahan X"}).json()
+    assert j["ok"] is True, j
+    assert j["dibuang"] == 3, j
+    # Berkasnya pindah dari projek ke tempat sampah, tak hilang permanen.
+    assert not list(d.glob("*.jpg")), "gambar masih di projek"
+    assert (d / "_sampah-gambar").is_dir()
+    assert len(list((d / "_sampah-gambar").rglob("*.jpg"))) == 3
+
+    # Batch yang tak ada -> tak ada yang bisa dihapus.
+    assert klien.post("/api/tugas/hapus-batch",
+                      json={"batch": "Unggahan X"}).json()["ok"] is False
+
+
 def test_kartu_dataset_mencatat_waktu_masuk(tmp_path):
     """Kartu kolom Dataset menampilkan KAPAN unggahan itu masuk dataset.
 

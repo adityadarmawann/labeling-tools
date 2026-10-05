@@ -516,6 +516,28 @@ def belum_ditugaskan_siap(data: dict, berlabel: set[str], semua: set[str],
                   and (not batch or (bd.get(k) or "") == batch))
 
 
+def keys_batch_belum(data: dict, semua: set[str], batch: str,
+                     batch_dari: dict[str, str] | None = None) -> list[str]:
+    """Kunci gambar satu BATCH yang masih "Belum ditugaskan": belum masuk job
+    mana pun DAN belum masuk dataset.
+
+    Dipakai tombol "Hapus batch" di papan — ia membuang kartu batch itu, jadi
+    lingkupnya SAMA PERSIS dengan yang kartu tampilkan (b.n). Gambar batch yang
+    sudah dibagi ke orang atau sudah masuk dataset TIDAK ikut: itu ada di kolom
+    lain, bukan di kartu ini. Beda dari belum_ditugaskan_siap(): TIDAK menuntut
+    sudah berlabel — yang masih mentah pun ikut, karena kartunya memang memuat
+    keduanya.
+
+    Lingkupnya dihitung di sini, bukan dari daftar path kiriman peramban: daftar
+    dari luar bisa memuat gambar yang sedang dikerjakan orang lain."""
+    bd = batch_dari or {}
+    ditugaskan = {k for t in data["tugas"].values() for k in (t.get("gambar") or [])}
+    return sorted(k for k in semua
+                  if k not in ditugaskan
+                  and not sudah_dimasukkan(data, k)
+                  and (bd.get(k) or "") == batch)
+
+
 def masukkan(ds: Path, kunci_daftar: list[str], pemilik: str = "") -> dict:
     """Nyatakan sekumpulan gambar masuk dataset."""
     with _kunci:
