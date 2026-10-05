@@ -119,6 +119,11 @@ def _belum_ditugaskan(sess: Session, d, data: dict, batch: str = "") -> list[str
         k = svc_tag.kunci_gambar(d, it["img"])
         if k in ditugaskan:
             continue
+        # Sudah masuk dataset = sudah selesai, bukan "belum ditugaskan" (sejalan
+        # dengan papan Anotasi). Tanpa ini, unggahan dataset jadi muncul lagi di
+        # /bagi dan ikut terbagi ke pelabel padahal sudah jadi dataset.
+        if svc.sudah_dimasukkan(data, k):
+            continue
         # Dibatasi ke satu unggahan kalau diminta: membagi biasanya dilakukan
         # per unggahan, dan menyodorkan seluruh sisa projek saat yang dimaksud
         # satu folder membuat slidernya menunjuk kumpulan yang salah.

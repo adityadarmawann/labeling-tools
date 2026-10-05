@@ -1537,6 +1537,27 @@ def test_semua_jalur_penambah_gambar_tunduk_pada_aturan_yang_sama(klien,
     assert n_dataset("pintu-gabung") == (0, 3)
 
 
+def test_dataset_tak_muncul_di_belum_ditugaskan(tmp_path):
+    """Gambar yang SUDAH masuk dataset tak boleh nongol di kolom "Belum
+    ditugaskan" papan Anotasi: ia sudah selesai, bukan antrean kerja. Dulu
+    papan cuma menyaring yang sudah DITUGASKAN, jadi unggahan dataset jadi
+    (ekspor Roboflow yang auto-masuk) tetap muncul di sana padahal tak perlu
+    dibagi — persis keluhannya."""
+    d = _ds(tmp_path)
+    tugas.masukkan(d, ["a.jpg", "b.jpg"], pemilik="own")   # a, b -> dataset
+    data = tugas.baca(d, "own")
+    semua = {"a.jpg", "b.jpg", "c.jpg"}
+    berlabel = {"a.jpg", "b.jpg"}
+    p = tugas.papan(data, berlabel, semua)
+    assert p["belum_ditugaskan"] == 1                      # hanya c tersisa
+    assert sum(b["n"] for b in p["belum_batch"]) == 1
+    # Tanpa kurasi (warisan): dataset kosong -> tak ada yang disaring, semua
+    # yang belum ditugaskan tetap tampil seperti dulu.
+    d2 = _ds(tmp_path, "warisan")
+    p2 = tugas.papan(tugas.baca(d2, "own"), {"a.jpg"}, {"a.jpg", "b.jpg"})
+    assert p2["belum_ditugaskan"] == 2
+
+
 def test_dataset_jadi_berlabel_masuk_sendiri_tapi_butuh_manifes(tmp_path):
     """Satu-satunya pengecualian aturan di atas: ekspor dataset JADI.
 

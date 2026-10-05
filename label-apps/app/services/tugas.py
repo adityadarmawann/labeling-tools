@@ -1661,7 +1661,12 @@ def papan(data: dict, berlabel: set[str], semua: set[str],
     }
     kunci_urut, turun = URUT.get(urut, URUT["terbaru"])
     kartu.sort(key=kunci_urut, reverse=turun)
-    belum = sorted(semua - ditugaskan)
+    # Belum ditugaskan = belum dibagi ke siapa pun DAN belum masuk dataset.
+    # Gambar yang sudah masuk dataset (mis. ekspor Roboflow yang auto-masuk, atau
+    # hasil "Masukkan ke dataset") pekerjaannya sudah selesai — tempatnya tab
+    # Dataset, bukan antrean "belum ditugaskan". Tanpa syarat kedua, unggahan
+    # dataset jadi tetap nangkring di kolom pertama padahal tak perlu dibagi.
+    belum = sorted(k for k in (semua - ditugaskan) if not sudah_dimasukkan(data, k))
 
     # Yang belum ditugaskan dikelompokkan per UNGGAHAN, bukan disebut sebagai
     # satu angka gabungan. Satu angka 378 tidak memberi tahu apa pun tentang
