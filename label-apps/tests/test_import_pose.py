@@ -105,18 +105,22 @@ def test_baca_pose_template_dari_split(tmp_path):
 # ------------------------------------------------------------ template_dari_pose
 
 def test_template_dari_pose_court():
+    """K=33 + flip_idx court -> PRESET court: nomor Roboflow, 36 edge, tata
+    kanonik, warna keluarga cermin."""
     spec = {"K": 33, "flip_idx": REAL_FLIP, "names": {0: "court"}}
     tpl = tugas.template_dari_pose(spec)
     assert tpl["kelas"] == "court"
-    assert tpl["titik"] == [f"{i + 1:02d}" for i in range(33)]   # "01".."33"
-    assert len(set(tpl["titik"])) == 33                          # unik
+    assert tpl["titik"][:3] == ["1", "2", "4"] and tpl["titik"][-1] == "41"  # nomor
+    assert len(tpl["titik"]) == 33 and len(set(tpl["titik"])) == 33          # unik
+    assert len(tpl["edge"]) == 36                                            # rangka preset
+    assert len(tpl["tata"]) == 33 and tpl["tata"][0] == [0.03, 0.09]         # tata kanonik
     assert len(tpl["warna"]) == 33
     # Keluarga cermin ada: ada yang kiri (merah) DAN kanan (teal).
     assert tugas.WARNA_KIRI in tpl["warna"] and tugas.WARNA_KANAN in tpl["warna"]
     # flip involusi bertahan lewat _sah_skeleton (pintu tunggal template).
     sk = tugas._sah_skeleton(tpl)
     assert sk["flip_idx"] == REAL_FLIP
-    assert sk["titik"] == tpl["titik"]
+    assert sk["titik"] == tpl["titik"] and len(sk["edge"]) == 36 and len(sk["tata"]) == 33
 
 
 def test_warna_cermin_kiri_kanan_tengah():
@@ -154,10 +158,50 @@ def test_template_k17_flip_berkas_diutamakan():
     assert tugas._sah_skeleton(tpl)["flip_idx"] == list(range(17))  # identitas sah
 
 
-def test_template_k33_bukan_coco():
-    """K != 17 tetap slot number tanpa rangka (court 33)."""
+def test_template_k33_tanpa_sinyal_court_tetap_generik():
+    """K=33 TANPA flip court & TANPA nama keypoint -> slot number, tanpa rangka
+    (bukan setiap K=33 itu court)."""
     tpl = tugas.template_dari_pose({"K": 33, "names": {0: "court"}})
-    assert tpl["edge"] == [] and tpl["titik"][:2] == ["01", "02"]
+    assert tpl["edge"] == [] and tpl["tata"] == [] and tpl["titik"][:2] == ["01", "02"]
+
+
+# court names[1..33] (nomor Roboflow terurut) buat uji deteksi lewat nama.
+_COURT_NAMA = ["1", "2", "4", "5", "7", "8", "9", "10", "11", "12", "13", "14",
+               "15", "16", "17", "19", "21", "23", "25", "26", "27", "28", "29",
+               "30", "31", "32", "33", "34", "35", "37", "38", "40", "41"]
+
+
+def test_template_court33_dari_nama_keypoint_tanpa_flip():
+    """Court dikenali juga dari nama keypoint di data.yaml (names[1..33]) walau
+    flip tak disertakan; flip lalu diisi dari preset."""
+    names = {0: "court", **{i + 1: n for i, n in enumerate(_COURT_NAMA)}}
+    tpl = tugas.template_dari_pose({"K": 33, "names": names})
+    assert len(tpl["edge"]) == 36 and len(tpl["tata"]) == 33
+    assert tpl["titik"][:2] == ["1", "2"] and tpl["flip_idx"] == REAL_FLIP
+
+
+def test_buat_skeleton_court_pakai_tata_preset_bukan_median(tmp_path):
+    """Impor court: skeleton auto memakai tata PRESET kanonik, dan
+    buat_skeleton_dari_pose TIDAK menimpanya dengan median perspektif."""
+    import cv2
+    import numpy as np
+
+    d = tmp_path / "court-import"
+    (d / "images").mkdir(parents=True)
+    (d / "labels").mkdir(parents=True)
+    cv2.imwrite(str(d / "images" / "f0.jpg"), np.full((100, 160, 3), 50, np.uint8))
+    (d / "data.yaml").write_text(
+        "train: images\nval: images\n"
+        "kpt_shape: [33, 3]\n"
+        f"flip_idx: {REAL_FLIP}\n"
+        "nc: 34\nnames: ['court'," + ",".join(f"'{n}'" for n in _COURT_NAMA) + "]\n")
+    (d / "labels" / "f0.txt").write_text(REAL_LINE + "\n")
+
+    r = tugas.buat_skeleton_dari_pose(d, "paul")
+    assert r["dibuat"] is True and r["K"] == 33
+    sk = tugas.baca(d, "paul")["skeleton"]
+    assert len(sk["edge"]) == 36 and sk["titik"][:2] == ["1", "2"]
+    assert sk["tata"][0] == [0.03, 0.09]          # tata PRESET, bukan median
 
 
 # ------------------------------------------------------------ tata median

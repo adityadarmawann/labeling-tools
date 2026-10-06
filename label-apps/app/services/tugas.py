@@ -803,6 +803,36 @@ _COCO17_EDGE = [
     [1, 3], [2, 4], [3, 5], [4, 6],
 ]
 
+# Preset lapangan basket Roboflow (K=33, project basketball-court-detection-2).
+# data.yaml pose-nya mengapalkan kpt_shape+flip_idx+nama keypoint, TAPI tidak
+# rangka (edge) maupun pose acuan — jadi "drop semua" tanpa ini jatuh ke median
+# perspektif yang kusut. Rangka + tata kanonik di sini diturunkan dari
+# lable_court.jpg (top-down) dan diverifikasi di tiga arena nyata. Slot 0-32 =
+# nomor Roboflow terurut; edge menunjuk indeks slot; tata relatif 0..1 (court
+# top-down penuh). Dipakai saat impor yang flip-nya ATAU nama keypoint-nya cocok.
+_COURT33_NAMA = ["1", "2", "4", "5", "7", "8", "9", "10", "11", "12", "13",
+                 "14", "15", "16", "17", "19", "21", "23", "25", "26", "27",
+                 "28", "29", "30", "31", "32", "33", "34", "35", "37", "38",
+                 "40", "41"]
+_COURT33_FLIP = [27, 28, 29, 30, 31, 32, 26, 24, 25, 21, 22, 23, 18, 19, 20,
+                 15, 16, 17, 12, 13, 14, 9, 10, 11, 7, 8, 6, 0, 1, 2, 3, 4, 5]
+_COURT33_EDGE = [
+    [0, 12], [12, 15], [15, 18], [18, 27], [5, 14], [14, 17], [17, 20],
+    [20, 32], [0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [27, 28], [28, 29],
+    [29, 30], [30, 31], [31, 32], [15, 16], [16, 17], [1, 7], [7, 13],
+    [13, 8], [8, 4], [28, 24], [24, 19], [19, 25], [25, 31], [2, 9], [9, 10],
+    [10, 11], [11, 3], [29, 21], [21, 22], [22, 23], [23, 30],
+]
+_COURT33_TATA = [
+    [0.03, 0.09], [0.03, 0.15], [0.03, 0.37], [0.03, 0.63], [0.03, 0.85],
+    [0.03, 0.91], [0.07, 0.5], [0.12, 0.15], [0.12, 0.85], [0.21, 0.37],
+    [0.21, 0.5], [0.21, 0.63], [0.33, 0.09], [0.3, 0.5], [0.33, 0.91],
+    [0.5, 0.09], [0.5, 0.5], [0.5, 0.91], [0.67, 0.09], [0.7, 0.5],
+    [0.67, 0.91], [0.79, 0.37], [0.79, 0.5], [0.79, 0.63], [0.88, 0.15],
+    [0.88, 0.85], [0.93, 0.5], [0.97, 0.09], [0.97, 0.15], [0.97, 0.37],
+    [0.97, 0.63], [0.97, 0.85], [0.97, 0.91],
+]
+
 
 def _warna_cermin(K: int, flip: list) -> list:
     """Warna per keypoint dari keluarga cermin flip_idx (lihat di atas)."""
@@ -856,21 +886,44 @@ def template_dari_pose(spec: dict) -> dict:
                 if isinstance(flip, list) and len(flip) == K else [])
     except (TypeError, ValueError):
         flip = []
+    # Nama keypoint dari data.yaml, kalau disediakan: ekspor pose Roboflow court
+    # menaruh nama keypoint SESUDAH nama kelas (nc=K+1, names[0]=kelas,
+    # names[1..K]=nama keypoint). Dipakai untuk MENGENALI court.
+    nama_kp = []
+    if len(names) >= K + 1:
+        kp = [str(names.get(i + 1) or "").strip() for i in range(K)]
+        if all(kp):
+            nama_kp = kp
+
+    # Lapangan basket Roboflow (K=33), dikenali dari flip_idx khasnya ATAU nama
+    # keypoint-nya ('1','2','4',..'41'). data.yaml-nya tak mengapalkan rangka
+    # maupun pose acuan, jadi dipasok dari preset: 36 edge + tata kanonik yang
+    # sudah diverifikasi, supaya "drop semua" langsung berbentuk court, bukan
+    # median perspektif yang kusut. Nama slot DIKUNCI ke _COURT33_NAMA supaya
+    # indeks edge/tata selalu sejajar, berapa pun urutan nama di berkas.
+    if K == 33 and (flip == list(_COURT33_FLIP) or nama_kp == list(_COURT33_NAMA)):
+        titik = list(_COURT33_NAMA)
+        edge = [e[:] for e in _COURT33_EDGE]
+        tata = [t[:] for t in _COURT33_TATA]
+        if not flip:
+            flip = list(_COURT33_FLIP)
     # K=17 hampir pasti pose orang COCO (standar Ultralytics/COCO) — diberi nama,
     # rangka (edge), dan flip_idx yang benar otomatis, bukan slot "01".."17"
     # tanpa rangka. data.yaml YOLO tetap tak membawa nama, tapi K=17 cukup kuat
     # menebak COCO; owner bebas mengubah di #dlg-skel. flip dari berkas tetap
     # diutamakan (otoritatif); COCO dipakai hanya kalau berkas tak menyediakannya.
-    if K == 17:
+    elif K == 17:
         titik = list(_COCO17_NAMA)
         edge = [e[:] for e in _COCO17_EDGE]
         if not flip:
             flip = list(_COCO17_FLIP)
+        tata = []
     else:
         titik = scanner.nama_slot_keypoint(K)
         edge = []
+        tata = []
     return {"kelas": kelas, "titik": titik, "edge": edge,
-            "flip_idx": flip, "warna": _warna_cermin(K, flip), "tata": []}
+            "flip_idx": flip, "warna": _warna_cermin(K, flip), "tata": tata}
 
 
 def _tata_dari_pose(items: list, titik: list) -> list:
@@ -961,10 +1014,13 @@ def buat_skeleton_dari_pose(ds: Path, pemilik: str = "") -> dict:
         return {"dibuat": False, "alasan": "K tak sah"}
     set_skeleton(ds, tpl, pemilik)
     try:
-        items, _ = scanner.scan(ds)
-        tata = _tata_dari_pose(items, tpl["titik"])
-        if tata:
-            set_skeleton(ds, {**tpl, "tata": tata}, pemilik)
+        # Preset yang sudah membawa tata (court) TIDAK ditimpa median: median
+        # perspektif justru yang kusut, dan tata preset sudah kanonik.
+        if not tpl.get("tata"):
+            items, _ = scanner.scan(ds)
+            tata = _tata_dari_pose(items, tpl["titik"])
+            if tata:
+                set_skeleton(ds, {**tpl, "tata": tata}, pemilik)
     except Exception as e:                        # tata hiasan; jangan gagalkan impor
         log.warning("tata pose %s gagal diturunkan: %s", Path(ds).name, e)
     log.info("skeleton pose auto-dibuat di %s: K=%d, kelas=%r",
