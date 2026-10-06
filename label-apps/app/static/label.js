@@ -241,9 +241,10 @@ function gambarSekarang() {
     if (perluFilter) g.filter = 'none';
   }
 
-  // Sorot instance pose DI BAWAH kursor (mode Sunting): bagian DALAM bbox-nya
-  // dicerahkan — padanan sorotan hover Roboflow. Digambar sesudah citra tetapi
-  // SEBELUM rangka & titik, supaya keduanya tetap tajam di atas area terang.
+  // Sorot instance pose DI BAWAH kursor (mode Sunting): bagian LUAR bbox-nya
+  // digelapkan ("lampu sorot" Roboflow), jadi hanya wilayah instance yang
+  // bercahaya normal. Digambar sesudah citra tetapi SEBELUM rangka & titik,
+  // supaya keduanya tetap tajam dan tidak ikut digelapkan.
   if (poseProjek() && S.mode === 'edit' && img.complete && img.naturalWidth) {
     const gidS = gidSorotHover();
     if (gidS != null) sorotInstanceDalamBbox(gidS);
@@ -3696,11 +3697,13 @@ function gidSorotHover() {
   return pilih;
 }
 
-/* Cerahkan PIKSEL di dalam bbox instance — padanan sorotan hover Roboflow:
-   bagian dalam kotak "menyala". Citra digambar ulang terklip ke bbox dengan
-   brightness lebih tinggi, menumpang di atas kecerahan/kontras pilihan pengguna
-   (jadi tidak membatalkannya); di luar bbox tidak tersentuh. Dipanggil sebelum
-   rangka/titik, jadi keduanya tetap tajam di atas area terang. */
+/* "Lampu sorot" instance pose — padanan hover Roboflow (light switch): bagian
+   DALAM bbox dibiarkan NORMAL, dan SEMUA di luarnya digelapkan, sehingga cahaya
+   normal hanya di wilayah instance (court). BUKAN mencerahkan bagian dalam —
+   justru meredupkan bagian luar. Satu path = seluruh kanvas + lubang bbox,
+   diisi aturan even-odd, jadi peredup hanya mengenai LUAR bbox. Dipanggil
+   sesudah citra tetapi SEBELUM rangka/titik, supaya keduanya tetap tajam dan
+   TIDAK ikut digelapkan. */
 function sorotInstanceDalamBbox(gid) {
   const k = kotakInstance(gid);
   if (!k) return;
@@ -3711,13 +3714,10 @@ function sorotInstanceDalamBbox(gid) {
   if (w < 1 || h < 1) return;
   g.save();
   g.beginPath();
-  g.rect(x, y, w, h);
-  g.clip();
-  g.imageSmoothingEnabled = S.zoom < 4;
-  g.filter = `brightness(${(S.cerah * 1.3).toFixed(3)}) `
-           + `contrast(${S.kontras.toFixed(3)})`;
-  g.drawImage(img, S.panx, S.pany, D.W * S.zoom, D.H * S.zoom);
-  g.filter = 'none';
+  g.rect(0, 0, c.width, c.height);   // seluruh kanvas (koordinat layar)
+  g.rect(x, y, w, h);                // lubang: bbox instance
+  g.fillStyle = 'rgba(0,0,0,0.5)';   // peredup; dalam bbox tak terisi
+  g.fill('evenodd');
   g.restore();
 }
 
