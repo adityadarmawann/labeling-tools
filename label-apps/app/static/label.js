@@ -1178,6 +1178,7 @@ function tikusGerak(ev) {
       if (nx !== p[0] || ny !== p[1]) {
         S.shapes[S.seret.i].points[S.seret.v] = [nx, ny];
         S.seret.bergerak = true;
+        lepasKpAuto(S.seret.i);
         tandaiKotor();
       }
     } else if (S.seret.jenis === 'bentuk') {
@@ -1193,7 +1194,11 @@ function tikusGerak(ev) {
       S.seret.awal.forEach(a => {
         S.shapes[a.i].points = a.pts.map(p => [p[0] + dx, p[1] + dy]);
       });
-      if (dx || dy) { S.seret.bergerak = true; tandaiKotor(); }
+      if (dx || dy) {
+        S.seret.bergerak = true;
+        S.seret.awal.forEach(a => lepasKpAuto(a.i));
+        tandaiKotor();
+      }
     } else {
       S.seret.x1 = ev.offsetX;
       S.seret.y1 = ev.offsetY;
@@ -3496,6 +3501,17 @@ function lewatiTitik() {                 // keypoint sekarang = absen (v=0)
   S.pose.idx++;
   if (S.pose.idx >= t.length) { perbaruiBbox(S.pose.gid); S.pose = null; }
   tandaiKotor(); petunjukPose(); render();
+}
+
+/* Bbox pose yang DIGESER atau DIUBAH UKURANNYA dengan tangan tak lagi "auto":
+   sejak itu perbaruiBbox membiarkannya (lihat syarat kp_auto di sana), jadi
+   menghapus keypoint, meng-Deleted-kannya, atau mengubah visibilitasnya tak lagi
+   mengembalikan box ke fit rapat keypoint. Tanpa ini, satu keypoint di-Deleted
+   mengecilkan kembali box yang baru saja disesuaikan tangan. */
+function lepasKpAuto(i) {
+  const s = S.shapes[i];
+  if (s && s.shape_type === 'rectangle' && s.group_id != null
+      && s.titipan && s.titipan.kp_auto) delete s.titipan.kp_auto;
 }
 
 function perbaruiBbox(gid) {
