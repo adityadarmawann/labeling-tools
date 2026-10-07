@@ -590,6 +590,26 @@ def _galat_kuota(teks: str) -> bool:
     return any(k in low for k in _KATA_KUOTA)
 
 
+def batalkan_remote(settings, kernel_id: str, akun_user: str) -> tuple[bool, str]:
+    """Best-effort: HAPUS kernel yang sedang jalan di Kaggle supaya kuota GPU tak
+    terus terpakai setelah orang menekan Hentikan. `kernels delete` terbukti
+    melenyapkan kernel yang RUNNING (run ikut dibatalkan). Butuh token akun
+    pemilik kernel. TIDAK PERNAH melempar — pembatalan lokal tetap berlaku
+    walau langkah ini gagal."""
+    if not kernel_id or not akun_user:
+        return False, "tak ada kernel/akun untuk dibatalkan"
+    tok = next((a["token"] for a in akun_pool(settings)
+                if a["user"] == akun_user), None)
+    if not tok:
+        return False, f"token akun {akun_user} tak tersedia di pool"
+    try:
+        rc, out = _kg(["kernels", "delete", kernel_id], tok, timeout=120,
+                      masuk="yes\nyes\n")
+    except Exception as e:                       # noqa: BLE001
+        return False, str(e)[:160]
+    return (rc == 0), out.strip()[-160:]
+
+
 # ============================================================
 # ORKESTRATOR BERBILAH
 # ============================================================

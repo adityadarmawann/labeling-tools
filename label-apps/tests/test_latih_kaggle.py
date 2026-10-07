@@ -305,6 +305,28 @@ def test_push_kernel_pasang_timeout(monkeypatch):
     assert val <= 12 * 3600, "tetap di bawah batas global Kaggle ~12 jam"
 
 
+def test_batalkan_remote_hapus_kernel(monkeypatch):
+    """Hentikan training Kaggle -> kernel remote dihapus (kuota berhenti).
+    Best-effort: butuh token akun pemilik; kalau tak ada -> (False, ...)."""
+    rekam = {}
+
+    def fake_kg(args, token, timeout=0, masuk=None, inp=None):
+        rekam["args"] = list(args); rekam["token"] = token; rekam["masuk"] = masuk
+        return 0, "Kernel deleted successfully"
+
+    monkeypatch.setattr(k, "_kg", fake_kg)
+    monkeypatch.setattr(k, "akun_pool", lambda s: [{"user": "a", "token": "tok-a"}])
+    ok, _ = k.batalkan_remote(NS(), "a/kern-l1-leg0", "a")
+    assert ok is True
+    assert rekam["args"] == ["kernels", "delete", "a/kern-l1-leg0"]
+    assert rekam["token"] == "tok-a" and rekam["masuk"] == "yes\nyes\n"
+    # akun tak ada di pool -> tak bisa, tapi tak melempar
+    ok2, pesan = k.batalkan_remote(NS(), "b/kern", "b")
+    assert ok2 is False and "tak tersedia" in pesan
+    # kernel/akun kosong -> aman
+    assert k.batalkan_remote(NS(), "", "a")[0] is False
+
+
 def test_main_satu_leg_selesai(siapkan_main):
     tmp_path, jalankan = siapkan_main
     rc, rek = jalankan(1, target=5, legs=[{"epochs": 5}],

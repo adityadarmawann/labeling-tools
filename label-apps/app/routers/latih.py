@@ -318,7 +318,17 @@ async def batal(nomor: int = 0, sess: Session = Depends(current_session_api),
     tdata = svc_tugas.baca_projek(d, settings.uploads_root)
     if not svc_tugas.boleh_kelola(tdata, sess.user):
         return {"ok": False, "error": "hanya pemilik projek yang boleh"}
+    # Baca rekaman DULU (untuk info kernel Kaggle), lalu hentikan poller lokal.
+    rek = await asyncio.to_thread(svc.baca, d, nomor)
     await asyncio.to_thread(svc.batalkan, d, nomor)
+    # Training Kaggle: poller lokal mati tak menghentikan kernel yang telanjur
+    # jalan di Kaggle — maka batalkan remote-nya juga supaya kuota GPU berhenti.
+    # Best-effort: kegagalan di sini tak membatalkan pembatalan lokal.
+    if rek and rek.get("backend") == "kaggle":
+        kag = rek.get("kaggle") or {}
+        if kag.get("kernel"):
+            await asyncio.to_thread(svc_kaggle.batalkan_remote, settings,
+                                    kag["kernel"], kag.get("akun"))
     return {"ok": True}
 
 
