@@ -600,6 +600,32 @@
    * benar 0 dari 7 pada foto RVM sungguhan, dan yang menangkapnya justru
    * angka ketergantungan warna — bukan mAP.
    */
+  /* Blok "Dijalankan di Kaggle" untuk panel Rincian: akun yang dipakai, berapa
+     leg (sesi 11-jam) sudah dijalankan, epoch KUMULATIF lintas-leg, status
+     remote terakhir, dan tautan ke halaman kernel (tempat log detik-per-detik,
+     yang tak bisa disiarkan API). Hanya muncul untuk training backend Kaggle. */
+  function blokKaggle(t) {
+    if (t.backend !== 'kaggle') return '';
+    const k = t.kaggle || {};
+    const rem = (k.remote || '').replace(/.*status\s*"?KernelWorkerStatus\.?/i, '')
+      .replace(/"$/, '').trim() || '—';
+    const url = k.kernel_url
+      ? `<a class="chip" href="${esc(k.kernel_url)}" target="_blank"
+            rel="noopener">buka kernel ↗</a>` : '';
+    return `<div class="tr-p-blok">
+      <h4>Dijalankan di Kaggle (GPU cadangan)</h4>
+      <div class="tr-kv-grid">
+        <span class="tr-kv"><i>Akun</i><b>${esc(k.akun || '—')}</b></span>
+        <span class="tr-kv"><i>Leg (sesi)</i><b>${angka(k.leg || 0)}</b></span>
+        <span class="tr-kv"><i>Epoch kumulatif</i><b>${angka(k.epochs_done || 0)} / ${angka(t.epochs)}</b></span>
+        <span class="tr-kv"><i>Status remote</i><b>${esc(rem)}</b></span>
+      </div>
+      ${k.pesan ? `<p class="tr-warna-pesan" style="margin-top:6px">${esc(k.pesan)}</p>` : ''}
+      ${url ? `<p style="margin-top:6px">${url}
+        <small class="tr-bantu">log langsung ada di halaman kernel — API tak menyiarkannya</small></p>` : ''}
+    </div>`;
+  }
+
   function blokEvaluasi(e) {
     if (!e) {
       return `<div class="tr-p-blok">
@@ -907,6 +933,7 @@
         ${t.lanjut_dari ? `<div><dt>Lanjutan dari</dt><dd>L${t.lanjut_dari}</dd></div>` : ''}
         <div><dt>Oleh</dt><dd>${esc(t.oleh || '?')}</dd></div>
       </div>
+      ${blokKaggle(t)}
       ${vm ? `<div class="tr-p-blok">
         <h4>Dataset yang dilatih — versi v${t.versi}</h4>
         <div class="tr-kv-grid">
