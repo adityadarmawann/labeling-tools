@@ -169,6 +169,23 @@ class Settings:
     # sengaja. Tempel-URL satuan dan unggah berkas tidak tersentuh saklar ini;
     # keduanya selalu boleh (lihat services/video_ingest.scraper_aktif).
     scraper: bool = False
+    # ---- Kaggle sebagai backend training CADANGAN (offload ke GPU gratis) ----
+    # Satu server fisik ini hambatannya: training hanya bisa satu pada satu waktu
+    # di GPU lokal. Backend Kaggle menambah lajur GPU di LUAR mesin ini — dataset
+    # diunggah, kernel GPU dijalankan lewat API, bobotnya ditarik balik. Kuota
+    # Kaggle ~30 jam GPU/minggu per akun dan satu run maksimal ~12 jam, jadi
+    # training panjang disambung berbilah (leg) dan — kalau kuota satu akun
+    # habis — dirotasi ke akun berikutnya di pool.
+    #
+    # Kredensial TIDAK PERNAH ditaruh di env/*.env (terlacak git). Dua cara:
+    #   1. Pool banyak akun: LABELAPP_KAGGLE_AKUN_FILE -> berkas JSON DI LUAR
+    #      repo: [{"user": "...", "token_file": "/path/token"}, ...] (boleh juga
+    #      "token" inline). Dipakai untuk rotasi akun saat kuota habis.
+    #   2. Satu akun: LABELAPP_KAGGLE_USER + LABELAPP_KAGGLE_TOKEN_FILE.
+    # Kosong semua = backend Kaggle mati; form training hanya menawarkan "PC ini".
+    kaggle_akun_file: Path | None = None
+    kaggle_user: str = ""
+    kaggle_token_file: Path | None = None
 
     @property
     def max_upload_bytes(self) -> int:
@@ -242,4 +259,7 @@ def get_settings() -> Settings:
         daftar_sendiri=_bool("DAFTAR_SENDIRI", True),
         daftar_langsung=_bool("DAFTAR_LANGSUNG", False),
         scraper=_bool("SCRAPER", False),
+        kaggle_akun_file=_path("KAGGLE_AKUN_FILE"),
+        kaggle_user=_get("KAGGLE_USER"),
+        kaggle_token_file=_path("KAGGLE_TOKEN_FILE"),
     )

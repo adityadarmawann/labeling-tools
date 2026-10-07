@@ -1,0 +1,688 @@
+"""
+Backend training KEDUA: menjalankan training YOLO di Kaggle lewat API resmi,
+sebagai CADANGAN GPU di luar satu-satunya mesin ini.
+
+    python -m app.services.latih_kaggle <folder-projek> <nomor>
+
+Dipanggil latih.jalankan() sebagai subproses terlepas — SAMA seperti
+latih_jalan.py (jalur lokal) — jadi seluruh mesin status()/hidup(pid) yang
+sudah ada berlaku tanpa diubah: selama poller ini hidup, keadaan "jalan"; saat
+ia menulis best.pt + results.csv ke .latih/L<n>/ lalu keluar, status() membaca
+hasilnya persis seperti training lokal. Bedanya dengan jalur lokal:
+
+  * TIDAK memakai GPU lokal dan TIDAK mengambil flock GPU -> training Kaggle
+    bisa berjalan BERSAMAAN dengan training lokal. Itulah gunanya: satu mesin
+    fisik tak lagi jadi satu-satunya lajur.
+
+  * Kaggle membatasi satu run ~12 jam dan ~30 jam GPU/minggu per akun. Maka satu
+    training panjang dijalankan BERBILAH (leg): tiap leg berhenti rapi sebelum
+    batas waktu (callback wall-clock), menyimpan last.pt, lalu leg berikutnya
+    MELANJUTKAN dari bobot itu. Kalau kuota satu akun menipis, poller berpindah
+    ke akun berikutnya di pool (rotasi). Satu subproses ini mengorkestrasi
+    seluruh rantai dan tahan restart server.
+
+Semua sentuhan jaringan lewat satu fungsi _kg(); tesnya memalsukan itu sehingga
+suite tak pernah menyentuh Kaggle.
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+import traceback
+from datetime import datetime, timezone
+from pathlib import Path
+
+from . import latih
+
+# Batas waktu satu leg (jam). Di bawah batas keras Kaggle (~12 jam) supaya
+# training berhenti rapi dan last.pt sempat tersimpan sebelum kernel dibunuh.
+BATAS_JAM = float(os.environ.get("LABELAPP_KAGGLE_BATAS_JAM", "11") or 11)
+# Anggaran kuota GPU per akun per 7 hari (jam). Akun dilewati kalau pemakaian
+# 7-harinya + satu leg akan menembus ini. Konservatif terhadap batas resmi ~30.
+KUOTA_MINGGU_JAM = float(os.environ.get("LABELAPP_KAGGLE_KUOTA_JAM", "28") or 28)
+# GPU yang diminta. T4 x2 sama seperti kernel paragon yang sudah terbukti.
+AKSELERATOR = os.environ.get("LABELAPP_KAGGLE_GPU", "nvidiaTeslaT4") or "nvidiaTeslaT4"
+
+
+def _sekarang() -> str:
+    return datetime.now().strftime("%Y-%m-%d %H:%M")
+
+
+# ============================================================
+# AKUN & KREDENSIAL
+# ============================================================
+#
+# Token TIDAK PERNAH ada di repo. Diambil dari berkas di luar repo (token_file)
+# atau — hanya untuk pool yang ditulis admin sendiri — inline "token".
+
+def _baca_token_file(p: Path) -> str:
+    """Baris pertama yang tampak seperti token Kaggle dari sebuah berkas.
+    Berkas catatan boleh berisi teks lain; yang diambil token 'KGAT_...' atau,
+    kalau tak ada pola itu, baris tak-kosong pertama."""
+    try:
+        teks = Path(p).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    for ln in teks.splitlines():
+        ln = ln.strip()
+        if ln.startswith("KGAT_") or re.fullmatch(r"[A-Za-z0-9_\-]{20,}", ln):
+            return ln
+    for ln in teks.splitlines():
+        if ln.strip():
+            return ln.strip()
+    return ""
+
+
+def _token_dari_spec(spec: dict) -> str:
+    if not isinstance(spec, dict):
+        return ""
+    if spec.get("token"):
+        return str(spec["token"]).strip()
+    tf = spec.get("token_file")
+    return _baca_token_file(Path(tf).expanduser()) if tf else ""
+
+
+def akun_pool(settings) -> list[dict]:
+    """Daftar akun Kaggle [{user, token}] yang bisa dipakai, token sudah
+    diselesaikan. Dari AKUN_FILE (pool untuk rotasi) atau USER+TOKEN_FILE (satu
+    akun). Entri tanpa user/token dibuang. [] = backend Kaggle mati."""
+    out: list[dict] = []
+    f = getattr(settings, "kaggle_akun_file", None)
+    if f and Path(f).exists():
+        try:
+            data = json.loads(Path(f).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            data = []
+        for spec in data if isinstance(data, list) else []:
+            user = str((spec or {}).get("user") or "").strip()
+            tok = _token_dari_spec(spec or {})
+            if user and tok:
+                out.append({"user": user, "token": tok})
+    # Akun tunggal (dipakai kalau pool tidak ada / kosong).
+    if not out:
+        user = str(getattr(settings, "kaggle_user", "") or "").strip()
+        tf = getattr(settings, "kaggle_token_file", None)
+        tok = _baca_token_file(Path(tf).expanduser()) if tf else ""
+        if user and tok:
+            out.append({"user": user, "token": tok})
+    # Buang duplikat user (akun yang sama disebut dua kali), pertahankan urutan.
+    unik, lihat = [], set()
+    for a in out:
+        if a["user"] not in lihat:
+            lihat.add(a["user"])
+            unik.append(a)
+    return unik
+
+
+def siap(settings) -> tuple[bool, str]:
+    """Backend Kaggle bisa dipakai dari server ini atau tidak, beserta alasannya.
+    Dipakai router untuk memutuskan menawarkan pilihan "Kaggle" di form atau
+    tidak — dan untuk menolak lebih awal dengan pesan yang jelas."""
+    import importlib.util
+    if importlib.util.find_spec("kaggle") is None:
+        return False, ("Paket 'kaggle' belum terpasang di venv server ini. "
+                       "Pasang dengan: pip install kaggle")
+    if not akun_pool(settings):
+        return False, ("Belum ada akun Kaggle terkonfigurasi. Set "
+                       "LABELAPP_KAGGLE_AKUN_FILE (pool) atau LABELAPP_KAGGLE_USER "
+                       "+ LABELAPP_KAGGLE_TOKEN_FILE.")
+    return True, ""
+
+
+# ============================================================
+# SEAM JARINGAN — satu-satunya tempat kaggle CLI dipanggil
+# ============================================================
+
+def _kaggle_bin() -> str:
+    """Executable kaggle di venv yang menjalankan server ini (tempat ia
+    dipasang), dengan cadangan PATH."""
+    kandidat = Path(sys.executable).with_name("kaggle")
+    if kandidat.exists():
+        return str(kandidat)
+    return shutil.which("kaggle") or "kaggle"
+
+
+def _kg(args: list[str], token: str, timeout: int = 1800,
+        masuk: str | None = None) -> tuple[int, str]:
+    """Jalankan satu perintah kaggle CLI dengan token akun ybs di env. Satu-
+    satunya sentuhan jaringan — tes memalsukan fungsi INI, bukan di bawahnya."""
+    env = dict(os.environ)
+    if token:
+        env["KAGGLE_API_TOKEN"] = token
+    try:
+        p = subprocess.run([_kaggle_bin(), *args], input=masuk,
+                           capture_output=True, text=True, timeout=timeout, env=env)
+    except subprocess.TimeoutExpired as e:
+        return 124, f"timeout: {e}"
+    return p.returncode, (p.stdout or "") + (p.stderr or "")
+
+
+def _tidur(detik: float) -> None:
+    """Dibungkus supaya tes bisa mem-patch jadi no-op."""
+    time.sleep(detik)
+
+
+# ============================================================
+# LEDGER — pemakaian kuota per akun & reuse dataset
+# ============================================================
+
+def _dir_kaggle(ds) -> Path:
+    d = latih.dir_latih(ds, 0).parent          # .latih/
+    return d
+
+
+def _ledger_path(ds) -> Path:
+    return _dir_kaggle(ds) / ".kaggle-pakai.json"
+
+
+def _baca_ledger(ds) -> dict:
+    p = _ledger_path(ds)
+    try:
+        return json.loads(p.read_text()) if p.exists() else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _tulis_ledger(ds, data: dict) -> None:
+    p = _ledger_path(ds)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(data, indent=1))
+    os.replace(tmp, p)
+
+
+def _pakai_7hari(ledger: dict, user: str) -> float:
+    """Jumlah jam GPU yang terpakai akun ini dalam 7 hari terakhir."""
+    now = time.time()
+    tot = 0.0
+    for e in (ledger.get("pakai") or []):
+        if e.get("user") != user:
+            continue
+        if now - float(e.get("ts") or 0) <= 7 * 86400:
+            tot += float(e.get("jam") or 0)
+    return tot
+
+
+def _catat_pakai(ds, user: str, jam: float) -> None:
+    led = _baca_ledger(ds)
+    led.setdefault("pakai", []).append(
+        {"user": user, "ts": time.time(), "jam": round(float(jam), 3)})
+    # Pangkas entri lebih tua dari 14 hari supaya berkas tidak tumbuh selamanya.
+    batas = time.time() - 14 * 86400
+    led["pakai"] = [e for e in led["pakai"] if float(e.get("ts") or 0) >= batas]
+    _tulis_ledger(ds, led)
+
+
+def _tandai_habis(ds, user: str) -> None:
+    """Tandai akun kehabisan kuota sampai jendela 7-hari bergeser (reaktif:
+    dipakai saat kernel gagal dengan galat kuota)."""
+    led = _baca_ledger(ds)
+    led.setdefault("habis", {})[user] = time.time()
+    _tulis_ledger(ds, led)
+
+
+def _akun_habis(ds, user: str) -> bool:
+    led = _baca_ledger(ds)
+    ts = (led.get("habis") or {}).get(user)
+    return bool(ts and time.time() - float(ts) < 7 * 86400)
+
+
+def reset_habis(ds) -> None:
+    """Hapus penanda 'kuota habis' semua akun. Dipakai saat orang menekan
+    'Lanjutkan di Kaggle' pada job yang tertunda: itu permintaan eksplisit untuk
+    MENCOBA LAGI SEKARANG. Kalau kuotanya memang masih habis, kernel akan gagal
+    lagi dengan galat kuota dan penandanya dipasang ulang — jadi aman."""
+    led = _baca_ledger(ds)
+    if led.get("habis"):
+        led["habis"] = {}
+        _tulis_ledger(ds, led)
+
+
+def _pilih_akun(ds, pool: list[dict]) -> dict | None:
+    """Akun pertama yang (a) tidak ditandai habis dan (b) pemakaian 7-harinya
+    masih menyisakan ruang untuk satu leg. None kalau semua mentok."""
+    led = _baca_ledger(ds)
+    for a in pool:
+        if _akun_habis(ds, a["user"]):
+            continue
+        if _pakai_7hari(led, a["user"]) + BATAS_JAM <= KUOTA_MINGGU_JAM:
+            return a
+    return None
+
+
+# ============================================================
+# NAMA & METADATA (murni — diuji tanpa jaringan)
+# ============================================================
+
+def _slug(s: str, maks: int = 40) -> str:
+    s = re.sub(r"[^a-z0-9]+", "-", str(s).lower()).strip("-")
+    return (s or "x")[:maks].strip("-") or "x"
+
+
+def nama_dataset(ds, versi: int) -> str:
+    return _slug(f"higolab-{Path(ds).name}-v{int(versi)}")
+
+
+def nama_kernel(ds, nomor: int, leg: int) -> str:
+    return _slug(f"higolab-{Path(ds).name}-l{int(nomor)}-leg{int(leg)}")
+
+
+def _meta_dataset(user: str, slug: str, judul: str) -> dict:
+    return {"title": judul[:50], "id": f"{user}/{slug}",
+            "licenses": [{"name": "CC0-1.0"}]}
+
+
+def _meta_kernel(user: str, slug: str, code_file: str,
+                 dataset_sources: list[str]) -> dict:
+    return {
+        "id": f"{user}/{slug}", "title": slug[:50], "code_file": code_file,
+        "language": "python", "kernel_type": "script", "is_private": True,
+        "enable_gpu": True, "enable_tpu": False, "enable_internet": True,
+        "keywords": [], "dataset_sources": list(dataset_sources),
+        "kernel_sources": [], "competition_sources": [], "model_sources": [],
+    }
+
+
+# Skrip yang BENAR-BENAR melatih di sisi Kaggle. Dibuat dari templat dengan
+# penggantian token (bukan .format) supaya kurung di dalam kode Python tidak
+# bentrok. Guard augmentasi pose MENYALIN latih_jalan.py: flip vertikal mati,
+# flip horizontal hanya kalau flip_idx bukan identitas, mosaic dijepit <=0.5.
+# Stop wall-clock lewat callback: training berhenti rapi sebelum batas Kaggle.
+_SKRIP_TEMPLAT = '''
+import os, sys, glob, subprocess, zipfile, json, time, shutil
+print("== pasang ultralytics ==", flush=True)
+subprocess.run([sys.executable, "-m", "pip", "install", "-q", "ultralytics"], check=True)
+import torch
+print("CUDA_TERSEDIA", torch.cuda.is_available(), "N_GPU", torch.cuda.device_count(), flush=True)
+
+PAR   = json.loads(r"""__PAR_JSON__""")
+TUGAS = "__TUGAS__"
+BOBOT = "__BOBOT__"
+RUN   = "__RUN__"
+BATAS_DETIK = float(__BATAS_JAM__) * 3600.0
+RESUME = __RESUME__
+
+# --- temukan dataset (data.yaml) di /kaggle/input, apa pun kedalamannya ---
+ys = glob.glob("/kaggle/input/**/data.yaml", recursive=True)
+if not ys:
+    for z in glob.glob("/kaggle/input/**/*.zip", recursive=True):
+        try: zipfile.ZipFile(z).extractall("/kaggle/working/ds")
+        except Exception as e: print("gagal unzip", z, e, flush=True)
+    ys = glob.glob("/kaggle/working/**/data.yaml", recursive=True)
+assert ys, "data.yaml tak ketemu di /kaggle/input"
+SRC = os.path.dirname(sorted(ys, key=len)[0])
+print("DATASET_DI", SRC, flush=True)
+
+import yaml
+y = yaml.safe_load(open(os.path.join(SRC, "data.yaml")))
+y["path"] = SRC
+for k in ("train", "val", "test"):
+    sub = {"val": "valid/images"}.get(k, k + "/images")
+    if os.path.isdir(os.path.join(SRC, os.path.dirname(sub))):
+        y[k] = sub
+DATA_YAML = "/kaggle/working/data.yaml"
+yaml.safe_dump(y, open(DATA_YAML, "w"), sort_keys=False, allow_unicode=True)
+
+# --- guard augmentasi khusus pose (menyalin latih_jalan.py) ---
+if TUGAS == "pose":
+    PAR["flipud"] = 0.0
+    fi = (y.get("flip_idx") or [])
+    if not fi or list(fi) == list(range(len(fi))):
+        PAR["fliplr"] = 0.0
+    if PAR.get("mosaic", 0.0) > 0.5:
+        PAR["mosaic"] = 0.5
+
+# --- bobot awal: leg lanjutan mulai dari last.pt yang dibawa dari leg sebelum ---
+mula = BOBOT
+if RESUME:
+    ck = glob.glob("/kaggle/input/**/last.pt", recursive=True) or \\
+         glob.glob("/kaggle/input/**/best.pt", recursive=True)
+    assert ck, "RESUME tapi checkpoint (last.pt) tak ketemu di input"
+    mula = sorted(ck, key=len)[0]
+    print("LANJUT_DARI", mula, flush=True)
+
+from ultralytics import YOLO
+DEV = "0,1" if torch.cuda.device_count() >= 2 else 0
+print("DEVICE", DEV, "BATAS_JAM", __BATAS_JAM__, "RESUME", RESUME, flush=True)
+
+t0 = time.time()
+def _stop_waktu(trainer):
+    if time.time() - t0 >= BATAS_DETIK:
+        print("BATAS_WAKTU tercapai -> berhenti rapi", flush=True)
+        trainer.stop = True
+
+model = YOLO(mula)
+model.add_callback("on_fit_epoch_end", _stop_waktu)
+model.train(data=DATA_YAML, task=TUGAS, project="/kaggle/working", name=RUN,
+            exist_ok=True, device=DEV, **PAR)
+
+import pandas as pd
+rp = "/kaggle/working/" + RUN + "/results.csv"
+EP = 0
+if os.path.exists(rp):
+    try: EP = len(pd.read_csv(rp))
+    except Exception: EP = 0
+bp = "/kaggle/working/" + RUN + "/weights/best.pt"
+print("EPOCH_LEG", EP, flush=True)
+print("BEST_EXISTS", os.path.exists(bp), (os.path.getsize(bp) if os.path.exists(bp) else 0), flush=True)
+'''
+
+
+def skrip_latih(tugas: str, bobot: str, par: dict, *, run: str,
+                batas_jam: float, resume: bool) -> str:
+    """Rakit skrip kernel. Murni -> diuji tanpa jaringan."""
+    return (_SKRIP_TEMPLAT
+            .replace("__PAR_JSON__", json.dumps(par))
+            .replace("__TUGAS__", str(tugas))
+            .replace("__BOBOT__", str(bobot))
+            .replace("__RUN__", str(run))
+            .replace("__BATAS_JAM__", repr(float(batas_jam)))
+            .replace("__RESUME__", "True" if resume else "False"))
+
+
+# ============================================================
+# SERAP KELUARAN (murni) — salin hasil kernel ke .latih/L<n>/
+# ============================================================
+
+def _epoch_csv(d: Path) -> int:
+    """Berapa baris data di results.csv (0 kalau tak ada)."""
+    return latih.baca_hasil_csv(Path(d)).get("epoch") or 0
+
+
+def serap_keluaran(out_dir: Path, run: str, dir_latih: Path) -> int:
+    """Pindahkan isi folder run hasil kernel (<out>/<run>/*) ke dir_latih,
+    datar seperti training lokal: results.csv, weights/, grafik PNG. Kembalikan
+    jumlah epoch yang terbaca dari results.csv setelah penyerapan."""
+    out_dir, dir_latih = Path(out_dir), Path(dir_latih)
+    sumber = out_dir / run
+    if not sumber.is_dir():
+        # Kadang Kaggle meratakan output; cari results.csv di mana pun.
+        kandidat = list(out_dir.rglob("results.csv"))
+        sumber = kandidat[0].parent if kandidat else out_dir
+    dir_latih.mkdir(parents=True, exist_ok=True)
+    for p in sumber.rglob("*"):
+        if p.is_dir():
+            continue
+        rel = p.relative_to(sumber)
+        tuju = dir_latih / rel
+        tuju.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            shutil.copy2(p, tuju)
+        except OSError:
+            pass
+    return _epoch_csv(dir_latih)
+
+
+# ============================================================
+# OPERASI JARINGAN (tipis di atas _kg)
+# ============================================================
+
+def _unggah_dataset(ds, versi_dir: Path, akun: dict, slug: str,
+                    judul: str) -> str:
+    """Pastikan versi ada sebagai dataset milik akun ini; kembalikan 'user/slug'.
+    Reuse: versi itu beku, jadi kalau dataset sudah ada di akun ini ia dipakai
+    ulang tanpa unggah lagi (dicatat di ledger per akun)."""
+    user, token = akun["user"], akun["token"]
+    dsid = f"{user}/{slug}"
+    led = _baca_ledger(ds)
+    sudah = (led.get("dataset") or {}).get(f"{user}:{slug}")
+    if sudah:
+        rc, _ = _kg(["datasets", "status", dsid], token, timeout=120)
+        if rc == 0:
+            return dsid                      # sudah ada & milik kita -> reuse
+    with tempfile.TemporaryDirectory() as tmp:
+        paket = Path(tmp) / "ds"
+        shutil.copytree(versi_dir, paket)
+        (paket / "dataset-metadata.json").write_text(
+            json.dumps(_meta_dataset(user, slug, judul), indent=2))
+        rc, out = _kg(["datasets", "status", dsid], token, timeout=120)
+        if rc == 0:                          # sudah ada -> versi baru
+            rc, out = _kg(["datasets", "version", "-p", str(paket), "-r", "zip",
+                           "-m", "higolab", "-q"], token, timeout=3600)
+        else:                                # belum ada -> buat
+            rc, out = _kg(["datasets", "create", "-p", str(paket), "-r", "zip", "-q"],
+                          token, timeout=3600)
+        if rc != 0:
+            raise RuntimeError(f"unggah dataset gagal: {out[-300:]}")
+    # tunggu diproses sampai 'ready'
+    for _ in range(40):
+        _tidur(6)
+        rc, out = _kg(["datasets", "status", dsid], token, timeout=120)
+        if "ready" in out.lower():
+            break
+    led = _baca_ledger(ds)
+    led.setdefault("dataset", {})[f"{user}:{slug}"] = dsid
+    _tulis_ledger(ds, led)
+    return dsid
+
+
+def _unggah_checkpoint(ds, dir_latih: Path, akun: dict, slug: str) -> str:
+    """Kemas folder run (last.pt + results.csv) jadi dataset kecil untuk leg
+    lanjutan. Selalu versi baru karena bobotnya berubah tiap leg."""
+    user, token = akun["user"], akun["token"]
+    dsid = f"{user}/{slug}"
+    with tempfile.TemporaryDirectory() as tmp:
+        paket = Path(tmp) / "ck"
+        (paket / "weights").mkdir(parents=True)
+        for f in ("weights/last.pt", "weights/best.pt", "results.csv", "args.yaml"):
+            src = Path(dir_latih) / f
+            if src.exists():
+                shutil.copy2(src, paket / f)
+        (paket / "dataset-metadata.json").write_text(
+            json.dumps(_meta_dataset(user, slug, slug), indent=2))
+        rc, out = _kg(["datasets", "status", dsid], token, timeout=120)
+        if rc == 0:
+            rc, out = _kg(["datasets", "version", "-p", str(paket), "-r", "zip",
+                           "-m", "leg", "-q"], token, timeout=600)
+        else:
+            rc, out = _kg(["datasets", "create", "-p", str(paket), "-r", "zip", "-q"],
+                          token, timeout=600)
+        if rc != 0:
+            raise RuntimeError(f"unggah checkpoint gagal: {out[-300:]}")
+    for _ in range(30):
+        _tidur(5)
+        rc, out = _kg(["datasets", "status", dsid], token, timeout=120)
+        if "ready" in out.lower():
+            break
+    return dsid
+
+
+def _push_kernel(akun: dict, slug: str, skrip: str,
+                 dataset_sources: list[str]) -> tuple[str, str]:
+    """Push satu kernel GPU; kembalikan (kernel_id, url)."""
+    user, token = akun["user"], akun["token"]
+    with tempfile.TemporaryDirectory() as tmp:
+        d = Path(tmp)
+        (d / "main.py").write_text(skrip)
+        (d / "kernel-metadata.json").write_text(
+            json.dumps(_meta_kernel(user, slug, "main.py", dataset_sources), indent=2))
+        rc, out = _kg(["kernels", "push", "-p", str(d)], token, timeout=600)
+    if rc != 0:
+        raise RuntimeError(f"push kernel gagal: {out[-300:]}")
+    kid = f"{user}/{slug}"
+    return kid, f"https://www.kaggle.com/code/{kid}"
+
+
+_KATA_KUOTA = ("quota", "exceeded", "limit", "no gpu", "gpu is not available")
+
+
+def _poll_kernel(akun: dict, kid: str, lapor) -> tuple[str, str]:
+    """Poll status sampai selesai. `lapor(status)` dipanggil tiap perubahan.
+    Kembalikan (hasil, teks_status_terakhir) di mana hasil ∈ {complete, error,
+    timeout}."""
+    token = akun["token"]
+    t0 = time.time()
+    batas = BATAS_JAM * 3600 + 3600         # beri kelonggaran di atas batas leg
+    terakhir = ""
+    while time.time() - t0 < batas:
+        _tidur(20)
+        rc, out = _kg(["kernels", "status", kid], token, timeout=120)
+        low = out.lower()
+        if low != terakhir:
+            terakhir = low
+            lapor(out.strip()[:200])
+        if "complete" in low:
+            return "complete", out
+        if "error" in low or "cancel" in low:
+            return "error", out
+    return "timeout", terakhir
+
+
+def _tarik_keluaran(akun: dict, kid: str, tujuan: Path) -> Path:
+    token = akun["token"]
+    Path(tujuan).mkdir(parents=True, exist_ok=True)
+    rc, out = _kg(["kernels", "output", kid, "-p", str(tujuan)], token, timeout=1800)
+    if rc != 0:
+        raise RuntimeError(f"tarik output gagal: {out[-300:]}")
+    return Path(tujuan)
+
+
+def _galat_kuota(teks: str) -> bool:
+    low = (teks or "").lower()
+    return any(k in low for k in _KATA_KUOTA)
+
+
+# ============================================================
+# ORKESTRATOR BERBILAH
+# ============================================================
+
+def main() -> int:
+    if len(sys.argv) < 3:
+        print("pemakaian: latih_kaggle <folder-projek> <nomor>", file=sys.stderr)
+        return 2
+    ds, nomor = Path(sys.argv[1]), int(sys.argv[2])
+
+    isi = latih.baca(ds, nomor)
+    if isi is None:
+        print(f"training L{nomor} tidak ada di {ds}", file=sys.stderr)
+        return 2
+
+    from ..config import get_settings
+    settings = get_settings()
+    pool = akun_pool(settings)
+    if not pool:
+        latih.perbarui(ds, nomor, keadaan="gagal",
+                       galat="tidak ada akun Kaggle terkonfigurasi",
+                       selesai_pada=_sekarang())
+        return 1
+
+    try:
+        from . import buatversi
+        versi = int(isi["versi"])
+        versi_dir = buatversi.dir_versi(ds, versi)
+        if not (versi_dir / "data.yaml").exists():
+            raise FileNotFoundError(
+                f"versi v{versi} belum punya data.yaml — tak bisa diunggah ke Kaggle")
+
+        par = dict(isi.get("par") or {})
+        target = int(par.get("epochs") or 0)
+        tugas = isi.get("tugas") or "segment"
+        bobot = isi.get("bobot") or "yolov8n.pt"
+        dl = latih.dir_latih(ds, nomor)
+        (dl / "weights").mkdir(parents=True, exist_ok=True)
+
+        kag = dict(isi.get("kaggle") or {})
+        leg = int(kag.get("leg") or 0)
+        # Epoch KUMULATIF lintas-leg dipegang di rekaman, BUKAN dibaca dari
+        # results.csv: tiap leg lanjutan "mulai dari bobot" memulai penomoran
+        # epoch dari 1 lagi (optimizer di-strip, resume murni mustahil — temuan
+        # dari kernel resume paragon), jadi results.csv hanya mencatat leg
+        # TERAKHIR. Fallback ke results.csv untuk run yang belum mencatat.
+        epochs_done = int(kag.get("epochs_done") or 0) or _epoch_csv(dl)
+
+        def lapor(**kv):
+            kag.update(kv)
+            latih.perbarui(ds, nomor, kaggle=dict(kag))
+
+        latih.perbarui(ds, nomor, keadaan="jalan", mulai_pada=_sekarang(),
+                       pid=os.getpid())
+        lapor(leg=leg, epochs_done=epochs_done,
+              pesan="menyiapkan training di Kaggle…")
+
+        ds_slug = nama_dataset(ds, versi)
+        judul_ds = f"HIGOLAB {Path(ds).name} v{versi}"
+
+        while epochs_done < target:
+            akun = _pilih_akun(ds, pool)
+            if akun is None:
+                latih.perbarui(
+                    ds, nomor, keadaan="tertunda", selesai_pada=_sekarang(),
+                    galat="kuota semua akun Kaggle menipis minggu ini — "
+                          "training bisa dilanjutkan nanti atau tambah akun")
+                lapor(pesan="tertunda: kuota semua akun menipis")
+                return 0
+
+            resume = epochs_done > 0
+            sisa = max(1, target - epochs_done)
+            par_leg = dict(par)
+            par_leg["epochs"] = sisa
+            run = f"run-l{nomor}"
+            slug_k = nama_kernel(ds, nomor, leg)
+            lapor(akun=akun["user"], leg=leg,
+                  pesan=f"unggah dataset ke akun {akun['user']}…")
+
+            dsid = _unggah_dataset(ds, versi_dir, akun, ds_slug, judul_ds)
+            sumber = [dsid]
+            if resume:
+                ck_slug = _slug(f"higolab-ck-l{nomor}")
+                ckid = _unggah_checkpoint(ds, dl, akun, ck_slug)
+                sumber.append(ckid)
+
+            skrip = skrip_latih(tugas, bobot, par_leg, run=run,
+                                batas_jam=BATAS_JAM, resume=resume)
+            kid, url = _push_kernel(akun, slug_k, skrip, sumber)
+            lapor(kernel=kid, kernel_url=url, remote="queued",
+                  pesan=f"leg {leg+1} berjalan di Kaggle (akun {akun['user']})")
+
+            t0 = time.time()
+            hasil, teks = _poll_kernel(akun, kid,
+                                       lambda s: lapor(remote=s))
+            _catat_pakai(ds, akun["user"], (time.time() - t0) / 3600.0)
+
+            # Tarik hasil leg ini. ep_leg = epoch yang DISELESAIKAN leg ini
+            # (penomoran leg sendiri), ditambahkan ke kumulatif. best.pt/last.pt/
+            # results.csv terbaru mendarat di .latih/L<n>/ — jadi leg berikutnya
+            # melanjutkan dari sana dan status()/unduh bobot tetap berlaku.
+            ep_leg = 0
+            with tempfile.TemporaryDirectory() as tmp:
+                try:
+                    _tarik_keluaran(akun, kid, Path(tmp))
+                    ep_leg = serap_keluaran(Path(tmp), run, dl)
+                except Exception as e:                   # noqa: BLE001
+                    if hasil == "complete":
+                        raise                            # sukses tapi output tak terbaca -> nyata gagal
+                    ep_leg = 0                           # leg tak sukses: tak apa kosong
+            epochs_done += ep_leg
+            leg += 1
+            lapor(leg=leg, epochs_done=epochs_done)
+
+            # Leg ini tak memajukan satu epoch pun -> jangan berputar selamanya.
+            # Kalau sebabnya kuota, rotasi akun; selain itu benar-benar gagal.
+            if ep_leg <= 0:
+                if _galat_kuota(teks):
+                    _tandai_habis(ds, akun["user"])
+                    lapor(pesan=f"akun {akun['user']} kehabisan kuota — "
+                                "rotasi ke akun berikutnya")
+                    continue
+                raise RuntimeError(
+                    f"leg {leg} di Kaggle tak menghasilkan epoch: {teks[-200:]}")
+
+        latih.perbarui(ds, nomor, keadaan="selesai", selesai_pada=_sekarang())
+        lapor(epochs_done=epochs_done,
+              pesan=f"selesai — {epochs_done} epoch dalam {leg} leg")
+        return 0
+    except Exception as e:                       # noqa: BLE001
+        latih.perbarui(ds, nomor, keadaan="gagal", galat=str(e)[:300],
+                       selesai_pada=_sekarang())
+        traceback.print_exc()
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

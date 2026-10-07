@@ -92,6 +92,18 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--lock-labels", action="store_true",
                    help="tolak label di luar daftar. Aktifkan setelah "
                         "taksonomi kelas final.")
+
+    g = ap.add_argument_group("Kaggle (backend training cadangan)")
+    g.add_argument("--kaggle-user", metavar="NAMA",
+                   help="username Kaggle untuk backend training 'Kaggle'. "
+                        "Set juga --kaggle-token-file.")
+    g.add_argument("--kaggle-token-file", type=Path, metavar="BERKAS",
+                   help="berkas berisi token API Kaggle (KGAT_...), DI LUAR "
+                        "repo. Tokennya tak pernah ditulis ke env/*.env.")
+    g.add_argument("--kaggle-akun-file", type=Path, metavar="BERKAS",
+                   help="berkas JSON daftar akun Kaggle untuk ROTASI saat kuota "
+                        'habis: [{"user": "...", "token_file": "..."}]. '
+                        "Menggantikan --kaggle-user/--kaggle-token-file.")
     return ap
 
 
@@ -120,6 +132,9 @@ def to_environ(a: argparse.Namespace) -> None:
         "ANYLABELING": a.anylabeling,
         "OPEN_MODE": a.open_mode,
         "LOCK_LABELS": "1" if a.lock_labels else "",
+        "KAGGLE_USER": a.kaggle_user,
+        "KAGGLE_TOKEN_FILE": a.kaggle_token_file,
+        "KAGGLE_AKUN_FILE": a.kaggle_akun_file,
     }
     for k, v in env.items():
         if v not in (None, ""):

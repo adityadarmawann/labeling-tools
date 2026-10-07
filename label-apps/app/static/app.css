@@ -3093,6 +3093,17 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
 .tr-pil-antre{background:var(--split-bg); color:var(--split-ink)}
 .tr-pil-selesai{background:var(--ok); color:var(--on-ink)}
 .tr-pil-gagal,.tr-pil-hilang{background:var(--stop); color:var(--on-ink)}
+/* Tertunda: bukan gagal — kuota Kaggle menipis, bisa dilanjutkan. Warna
+   peringatan lembut, bukan merah. */
+.tr-pil-tertunda{background:var(--split-bg); color:var(--split-ink)}
+.tr-pil-kaggle{background:var(--lab-bg); color:var(--lab-ink); font-weight:600}
+/* Pita info Kaggle: lencana + tautan kernel + pesan poller. Satu baris kecil,
+   tenang, di bawah kepala kartu. */
+.tr-kaggle{display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  margin:2px 0 8px; font-size:12px}
+.tr-kaggle-pesan{color:var(--ink-dim)}
+.tr-k-tunda{margin:2px 0 8px; padding:8px 11px; border-radius:8px;
+  background:var(--split-bg); color:var(--split-ink); font-size:12.5px}
 
 .tr-bar{height:7px; border-radius:4px; background:var(--sunk); overflow:hidden; margin:10px 0 9px}
 .tr-bar>i{display:block; height:100%; background:var(--aksi); transition:width .6s}

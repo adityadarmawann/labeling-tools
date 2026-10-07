@@ -309,6 +309,27 @@
     g.textContent = pesan || '';
   }
 
+  /* Gerbang tombol Jalankan mengikuti backend yang DIPILIH. Lokal menuntut
+     siap_latih() (ultralytics/GPU di mesin ini); Kaggle menuntut akun
+     terkonfigurasi — dan sengaja bisa dipakai meski lokal tidak siap, karena
+     itulah gunanya cadangan: server CPU pun bisa melatih di Kaggle. */
+  function terapkanBackend() {
+    if (!BAHAN) return;
+    const b = ($('tr-backend') && $('tr-backend').value) || 'lokal';
+    const siap = b === 'kaggle' ? BAHAN.kaggle_siap : BAHAN.siap;
+    const alasan = b === 'kaggle' ? BAHAN.kaggle_alasan : BAHAN.alasan;
+    if ($('tr-jalankan')) $('tr-jalankan').disabled = (siap === false);
+    if ($('tr-tambah')) $('tr-tambah').disabled = (siap === false);
+    galat(siap === false ? (alasan || 'backend ini belum siap') : '');
+    const ket = $('tr-backend-ket');
+    if (ket) {
+      ket.textContent = b === 'kaggle'
+        ? `akun: ${(BAHAN.kaggle_akun || []).join(', ') || '—'} · di luar PC ini, `
+          + 'boleh berbarengan dengan training lokal; run panjang disambung otomatis'
+        : 'GPU mesin ini — satu training pada satu waktu';
+    }
+  }
+
   // ============================================================
   // DAFTAR: YANG BERJALAN DAN HASILNYA
   // ============================================================
@@ -316,7 +337,25 @@
   const LABEL_KEADAAN = {
     antre: 'Menunggu giliran', jalan: 'Berjalan', selesai: 'Selesai',
     gagal: 'Gagal', batal: 'Dihentikan', hilang: 'Terputus',
+    tertunda: 'Tertunda',
   };
+
+  /* Pita info khusus training yang di-offload ke Kaggle: lencana + akun + leg,
+     tautan ke halaman kernel (log LANGSUNG ada di sana — API tak menyiarkannya,
+     jadi inilah cara memantau detik-per-detik), dan pesan ramah dari poller. */
+  function barisKaggle(t) {
+    if (t.backend !== 'kaggle') return '';
+    const k = t.kaggle || {};
+    const akun = k.akun ? ` · ${esc(k.akun)}` : '';
+    const leg = k.leg ? ` · leg ${esc(String(k.leg))}` : '';
+    const url = k.kernel_url
+      ? `<a class="chip" href="${esc(k.kernel_url)}" target="_blank"
+            rel="noopener" title="Pantau log langsung di Kaggle">lihat di Kaggle ↗</a>`
+      : '';
+    const pesan = k.pesan ? `<span class="tr-kaggle-pesan">${esc(k.pesan)}</span>` : '';
+    return `<div class="tr-kaggle">
+      <span class="tr-pil tr-pil-kaggle">Kaggle${akun}${leg}</span>${url}${pesan}</div>`;
+  }
 
   function barisMetrik(m) {
     const k = Object.keys(m || {});
@@ -357,6 +396,7 @@
         <span class="spacer"></span>
         <span class="tr-k-meta">L${t.nomor}<i>dari</i>v${t.versi}<i>oleh</i>${esc(t.oleh || '?')}</span>
       </header>
+      ${barisKaggle(t)}
 
       <div class="tr-bar${ep1 ? ' tr-bar-kerja' : ''}" role="progressbar"
            aria-valuenow="${ep1 ? '' : pj.toFixed(0)}"
@@ -415,6 +455,9 @@
         <span class="tr-k-meta">L${t.nomor}<i>dari</i>v${t.versi}<i>oleh</i>${esc(t.oleh || '?')}
           <i>pada</i>${esc(t.dibuat || '')}</span>
       </header>
+      ${barisKaggle(t)}
+      ${t.keadaan === 'tertunda' && t.galat
+        ? `<p class="tr-k-tunda">${esc(t.galat)}</p>` : ''}
 
       ${rusak ? `<p class="tr-k-galat">${esc(t.galat || 'berhenti tanpa keterangan')}</p>`
         : `<div class="tr-k-isi">
@@ -432,6 +475,10 @@
 
       <footer class="tr-k-aksi">
         <button class="chip chip-utama" type="button" data-rinci="${t.nomor}">Rincian</button>
+        ${t.keadaan === 'tertunda' && t.backend === 'kaggle' && bolehKelola ? `
+          <button class="chip chip-utama" type="button" data-sambung="${t.nomor}"
+            title="Coba lagi sekarang: lanjutkan dari epoch terakhir di Kaggle">
+            Lanjutkan di Kaggle</button>` : ''}
         ${t.punya_bobot && bolehKelola ? `<button class="chip" type="button"
             data-uji="${t.nomor}">Uji produksi</button>` : ''}
         ${t.punya_bobot && bolehKelola ? `<button class="chip" type="button"
@@ -515,6 +562,17 @@
     document.querySelectorAll('[data-lanjut]').forEach((b) => {
       b.onclick = () => bukaLanjut(Number(b.dataset.lanjut), b.dataset.nama,
                                    Number(b.dataset.epochs) || 400);
+    });
+    document.querySelectorAll('[data-sambung]').forEach((b) => {
+      b.onclick = async () => {
+        b.disabled = true;
+        b.textContent = 'Menyambung…';
+        const j = await ambil(`/api/latih/sambung-kaggle?nomor=${b.dataset.sambung}`,
+                              {method: 'POST'});
+        if (!j.ok) { alert(j.error || 'gagal menyambung'); b.disabled = false;
+                     b.textContent = 'Lanjutkan di Kaggle'; return; }
+        muatDaftar();
+      };
     });
     document.querySelectorAll('[data-hapus]').forEach((b) => {
       b.onclick = async () => {
@@ -969,11 +1027,14 @@
       const versi = Number($('tr-versi').value || 0);
       if (!versi) { galat('pilih versi lebih dulu'); return; }
       const batch = ANTREAN.length ? ANTREAN : [bacaSatu()];
+      // backend berlaku untuk SELURUH kiriman (satu pilihan "Jalankan di"),
+      // bukan per-percobaan. Bawaan lokal kalau selektornya tak ada.
+      const backend = ($('tr-backend') && $('tr-backend').value) || 'lokal';
       $('tr-jalankan').disabled = true;
       try {
         const j = await ambil('/api/latih/mulai', {
           method: 'POST', headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({versi, batch}),
+          body: JSON.stringify({versi, batch, backend}),
         });
         if (!j.ok) { galat(j.error || 'gagal memulai'); return; }
         ANTREAN = [];
@@ -1072,13 +1133,21 @@
           gambarForm();
           $('tr-bobot').onchange();
           gambarAntrean();
-          // Dikatakan SEBELUM orang menyusun setelan, bukan sesudah ia
-          // menekan Jalankan dan menunggu kegagalan yang tidak dijelaskan.
-          if (BAHAN.siap === false) {
-            galat(BAHAN.alasan || 'server ini belum bisa menjalankan training');
-            $('tr-jalankan').disabled = true;
-            $('tr-tambah').disabled = true;
+          // Backend Kaggle, kalau terkonfigurasi: buka selektor "Jalankan di".
+          // Server CPU bisa saja tak bisa melatih lokal (siap=false) tapi tetap
+          // boleh offload ke Kaggle — jadi pilihannya default ke yang siap.
+          if (BAHAN.kaggle_siap && $('tr-backend-bungkus')) {
+            $('tr-backend-bungkus').hidden = false;
+            if ($('tr-backend')) {
+              $('tr-backend').value =
+                (BAHAN.siap === false && BAHAN.kaggle_siap) ? 'kaggle' : 'lokal';
+              $('tr-backend').onchange = terapkanBackend;
+            }
           }
+          // Dikatakan SEBELUM orang menyusun setelan, bukan sesudah ia menekan
+          // Jalankan dan menunggu kegagalan yang tidak dijelaskan. Gerbangnya
+          // mengikuti backend yang DIPILIH, bukan hanya kesiapan lokal.
+          terapkanBackend();
         }
       } catch (e) {
         galat('gagal memuat bahan form: ' + e);

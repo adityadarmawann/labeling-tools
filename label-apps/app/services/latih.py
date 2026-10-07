@@ -548,7 +548,8 @@ def hidup(pid) -> bool:
     # selamanya.
     try:
         cmd = Path(f"/proc/{pid}/cmdline").read_bytes().decode("utf8", "replace")
-        return "latih_jalan" in cmd
+        # Dua worker sah: latih_jalan (lokal) dan latih_kaggle (poller offload).
+        return "latih_jalan" in cmd or "latih_kaggle" in cmd
     except OSError:
         return True
 
@@ -691,6 +692,10 @@ def status(ds, nomor: int) -> dict:
            ("nomor", "nama", "catatan", "versi", "tugas", "bobot", "oleh",
             "dibuat", "selesai_pada", "galat", "par", "warna", "lanjut_dari")},
         "kelas": kelas or [],
+        # Di mana training ini berjalan + kemajuan khusus Kaggle (akun, leg,
+        # tautan kernel, status remote). backend bawaan "lokal" untuk entri lama.
+        "backend": isi.get("backend") or "lokal",
+        "kaggle": isi.get("kaggle") or {},
         "keadaan": keadaan,
         "epoch": ep, "epochs": epochs, "persen": persen,
         "epoch_berjalan": epoch_berjalan, "persen_epoch": persen_epoch,
@@ -752,7 +757,8 @@ def _saring_par(minta: dict) -> tuple[dict, list[str]]:
 
 def siapkan(ds, *, nama: str, versi_nomor: int, tugas: str, bobot: str,
             par: dict, oleh: str, catatan: str = "",
-            warna: dict | None = None, lanjut_dari: int | None = None) -> dict:
+            warna: dict | None = None, lanjut_dari: int | None = None,
+            backend: str = "lokal") -> dict:
     """Catat satu training baru. Belum dijalankan."""
     n = nomor_berikut(ds)
     par_bersih, galat = _saring_par(par)
@@ -794,6 +800,10 @@ def siapkan(ds, *, nama: str, versi_nomor: int, tugas: str, bobot: str,
         "lanjut_dari": int(lanjut_dari) if lanjut_dari else None,
         "tugas": tugas,
         "bobot": bobot,
+        # DI MANA dijalankan: "lokal" (GPU mesin ini, jalur latih_jalan) atau
+        # "kaggle" (offload ke GPU Kaggle lewat API, jalur latih_kaggle). Bawaan
+        # lokal supaya perilaku lama tak berubah sama sekali.
+        "backend": backend if backend in ("lokal", "kaggle") else "lokal",
         "par": par_bersih,
         # Hasil periksa_warna DIBEKUKAN di sini, bukan dihitung ulang saat
         # ditampilkan: versinya bisa saja dihapus nanti, dan alasan sebuah
@@ -852,7 +862,17 @@ def jalankan(ds, nomor: int) -> dict:
     # Subproses dijalankan dengan interpreter YANG SAMA dengan server, jadi
     # saklar LABELAPP_OLAH ikut menentukan venv mana yang melatih — sama
     # seperti bagian lain sistem ini.
-    perintah = [sys.executable, "-m", "app.services.latih_jalan",
+    #
+    # DUA JALUR, dipilih oleh field backend yang dibekukan di siapkan():
+    #   lokal  -> latih_jalan  (GPU mesin ini, satu pada satu waktu via flock)
+    #   kaggle -> latih_kaggle (offload ke GPU Kaggle; TIDAK ambil flock lokal,
+    #            jadi boleh jalan berbarengan dengan training lokal)
+    # Keduanya subproses terlepas dengan kontrak yang sama: menulis
+    # results.csv + weights/best.pt ke .latih/L<n>/ dan memperbarui keadaan,
+    # sehingga status()/hidup(pid) berlaku tanpa pembedaan.
+    modul = ("app.services.latih_kaggle"
+             if isi.get("backend") == "kaggle" else "app.services.latih_jalan")
+    perintah = [sys.executable, "-m", modul,
                 str(Path(ds).resolve()), str(nomor)]
     env = dict(os.environ)
     env.setdefault("PYTHONPATH", str(akar))

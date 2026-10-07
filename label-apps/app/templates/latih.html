@@ -52,6 +52,19 @@
                  placeholder="mis. percobaan pertama, 250 epoch">
         </label>
 
+        {#- DI MANA training dijalankan. Tersembunyi sampai JS memastikan backend
+            Kaggle memang terkonfigurasi (BAHAN.kaggle_siap) — kalau tidak, satu-
+            satunya jalur adalah GPU mesin ini dan pilihan ini cuma mengganggu.
+            Gunanya: satu server fisik bukan lagi satu-satunya lajur — training
+            bisa di-offload ke GPU Kaggle, berbarengan dengan training lokal. -#}
+        <label class="tr-label" id="tr-backend-bungkus" hidden>Jalankan di
+          <select id="tr-backend">
+            <option value="lokal">PC ini — GPU lokal</option>
+            <option value="kaggle">Kaggle — GPU gratis (cadangan)</option>
+          </select>
+          <span class="tr-bantu" id="tr-backend-ket"></span>
+        </label>
+
         <label class="tr-label">Sumber dataset
           <select id="tr-versi"></select>
           <span class="tr-bantu" id="tr-versi-ket">memuat daftar versi…</span>

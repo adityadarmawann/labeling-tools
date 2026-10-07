@@ -18,6 +18,7 @@ from ..config import Settings, get_settings
 from ..deps import bodi_json, current_session, current_session_api
 from ..log import catat
 from ..services import latih as svc
+from ..services import latih_kaggle as svc_kaggle
 from ..services import projek, tugas as svc_tugas, versi as svc_versi
 from ..session import Session
 from ..templating import templates
@@ -46,9 +47,13 @@ async def halaman(request: Request, ds: str = "",
     pr = await asyncio.to_thread(projek.konteks, d, settings.uploads_root,
                                  sess.user)
     tdata = svc_tugas.baca_projek(d, settings.uploads_root)
+    kaggle_siap, _ = svc_kaggle.siap(settings)
     return templates.TemplateResponse(request, "latih.html", {
         "sess": sess, "projek": pr, "pr": pr, "aktif": "latih",
         "boleh_kelola": svc_tugas.boleh_kelola(tdata, sess.user),
+        # Pilihan "Jalankan di: Kaggle" hanya muncul kalau backend terkonfigurasi.
+        "kaggle_siap": kaggle_siap,
+        "kaggle_akun": [a["user"] for a in svc_kaggle.akun_pool(settings)],
     })
 
 
@@ -88,7 +93,12 @@ async def bahan(sess: Session = Depends(current_session_api),
             "warna": svc.periksa_warna(penuh, kat),
         })
     siap, alasan = svc.siap_latih()
+    kaggle_siap, kaggle_alasan = svc_kaggle.siap(settings)
     return {"ok": True, "siap": siap, "alasan": alasan,
+            # Kesiapan backend Kaggle terpisah: server CPU bisa saja tak bisa
+            # melatih lokal (siap=False) tapi tetap boleh offload ke Kaggle.
+            "kaggle_siap": kaggle_siap, "kaggle_alasan": kaggle_alasan,
+            "kaggle_akun": [a["user"] for a in svc_kaggle.akun_pool(settings)],
             "versi": versi_siap,
             "bobot": await asyncio.to_thread(svc.bobot_tersedia),
             "preset": svc.PRESET_V14,
@@ -117,11 +127,20 @@ async def mulai(request: Request,
     if not svc_tugas.boleh_kelola(tdata, sess.user):
         return {"ok": False, "error": "hanya pemilik projek yang boleh melatih"}
 
-    siap, alasan = svc.siap_latih()
+    body = await bodi_json(request)
+    # DI MANA dijalankan. "kaggle" meng-offload ke GPU Kaggle lewat API — maka
+    # server ini TIDAK perlu ultralytics/GPU lokal; yang diperiksa justru apakah
+    # akun Kaggle terkonfigurasi. "lokal" (bawaan) tetap menuntut siap_latih().
+    backend = str(body.get("backend") or "lokal").strip().lower()
+    if backend not in ("lokal", "kaggle"):
+        backend = "lokal"
+    if backend == "kaggle":
+        siap, alasan = svc_kaggle.siap(settings)
+    else:
+        siap, alasan = svc.siap_latih()
     if not siap:
         return {"ok": False, "error": alasan}
 
-    body = await bodi_json(request)
     nomor_versi = int(body.get("versi") or 0)
     v = await asyncio.to_thread(svc_versi.baca, d, nomor_versi)
     if v is None:
@@ -168,7 +187,7 @@ async def mulai(request: Request,
                 par=satu.get("par") or {},
                 oleh=sess.user,
                 catatan=str(satu.get("catatan") or ""),
-                warna=warna)
+                warna=warna, backend=backend)
         except ValueError as e:
             return {"ok": False, "error": str(e), "dibuat": dibuat}
         try:
@@ -250,6 +269,41 @@ async def lanjut(request: Request,
                                 keadaan="gagal", galat=str(e)[:200])
         return {"ok": False, "error": str(e)[:200]}
     return {"ok": True, "nomor": isi["nomor"], "dari": dari}
+
+
+@router.post("/api/latih/sambung-kaggle")
+async def sambung_kaggle(nomor: int = 0,
+                         sess: Session = Depends(current_session_api),
+                         settings: Settings = Depends(get_settings)):
+    """Lanjutkan sebuah training Kaggle yang BERHENTI di tengah (tertunda karena
+    kuota semua akun menipis, atau gagal) — TANPA kehilangan kemajuan. Worker
+    Kaggle melanjutkan dari bobot (last.pt) + epoch kumulatif yang sudah tercatat
+    di .latih/L<n>/; penanda 'kuota habis' dibersihkan dulu supaya ini benar-
+    benar mencoba lagi sekarang (kalau masih habis, ia tertunda lagi, bukan
+    rusak). Beda dari /lanjut yang membuat training BARU dari bobot."""
+    if not sess.src:
+        return {"ok": False, "error": "belum ada projek terbuka"}
+    d = Path(sess.src)
+    tdata = svc_tugas.baca_projek(d, settings.uploads_root)
+    if not svc_tugas.boleh_kelola(tdata, sess.user):
+        return {"ok": False, "error": "hanya pemilik projek yang boleh"}
+    rek = await asyncio.to_thread(svc.baca, d, nomor)
+    if rek is None:
+        return {"ok": False, "error": f"training L{nomor} tidak ada"}
+    if rek.get("backend") != "kaggle":
+        return {"ok": False, "error": "hanya training Kaggle yang bisa disambung begini"}
+    if rek.get("keadaan") in svc.BERJALAN:
+        return {"ok": False, "error": "training itu masih berjalan"}
+    siap, alasan = svc_kaggle.siap(settings)
+    if not siap:
+        return {"ok": False, "error": alasan}
+    await asyncio.to_thread(svc_kaggle.reset_habis, d)
+    try:
+        await asyncio.to_thread(svc.jalankan, d, nomor)
+    except Exception as e:                           # noqa: BLE001
+        _log.exception("gagal menyambung training Kaggle")
+        return {"ok": False, "error": str(e)[:200]}
+    return {"ok": True, "nomor": nomor}
 
 
 @router.post("/api/latih/batal")
