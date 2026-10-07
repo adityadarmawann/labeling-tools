@@ -317,3 +317,26 @@ def test_reset_habis_membersihkan_penanda(tmp_path):
     assert k._akun_habis(tmp_path, "a") is True
     k.reset_habis(tmp_path)
     assert k._akun_habis(tmp_path, "a") is False
+
+
+def test_main_retry_leg_transient_lalu_sukses(siapkan_main):
+    """Kernel Kaggle sesekali ERROR sesaat lalu sukses saat diulang — leg yang
+    gagal tanpa kemajuan & bukan kuota dicoba ulang, bukan langsung gagal."""
+    tmp_path, jalankan = siapkan_main
+    rc, rek = jalankan(6, target=5,
+                       legs=[{"error": True, "no_output": True}, {"epochs": 5}],
+                       pool=[{"user": "a", "token": "ta"}])
+    assert rc == 0 and rek["keadaan"] == "selesai"
+    assert rek["kaggle"]["epochs_done"] == 5 and rek["kaggle"]["leg"] == 1
+
+
+def test_main_gagal_setelah_maks_coba(siapkan_main, monkeypatch):
+    """Kalau leg terus gagal (bukan kuota) sampai batas percobaan -> gagal,
+    bukan berputar selamanya."""
+    monkeypatch.setattr(k, "MAKS_COBA_LEG", 3)
+    tmp_path, jalankan = siapkan_main
+    rc, rek = jalankan(7, target=5,
+                       legs=[{"error": True, "no_output": True}] * 3,
+                       pool=[{"user": "a", "token": "ta"}])
+    assert rc == 1 and rek["keadaan"] == "gagal"
+    assert "gagal" in (rek.get("galat") or "").lower()

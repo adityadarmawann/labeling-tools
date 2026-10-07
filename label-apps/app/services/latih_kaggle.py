@@ -48,6 +48,12 @@ BATAS_JAM = float(os.environ.get("LABELAPP_KAGGLE_BATAS_JAM", "11") or 11)
 KUOTA_MINGGU_JAM = float(os.environ.get("LABELAPP_KAGGLE_KUOTA_JAM", "28") or 28)
 # GPU yang diminta. T4 x2 sama seperti kernel paragon yang sudah terbukti.
 AKSELERATOR = os.environ.get("LABELAPP_KAGGLE_GPU", "nvidiaTeslaT4") or "nvidiaTeslaT4"
+# Kernel Kaggle sesekali ERROR karena sebab sesaat (blip infra, init DDP di
+# T4x2) lalu sukses saat diulang dengan konfigurasi yang SAMA — terbukti saat
+# uji. Maka satu leg yang gagal TANPA kemajuan dan BUKAN karena kuota dicoba
+# ulang beberapa kali dulu sebelum dinyatakan gagal. (Kegagalan kuota tidak
+# ikut dihitung di sini — itu memicu rotasi akun, bukan coba-ulang.)
+MAKS_COBA_LEG = max(1, int(os.environ.get("LABELAPP_KAGGLE_COBA", "3") or 3))
 
 
 def _sekarang() -> str:
@@ -600,14 +606,18 @@ def main() -> int:
             kag.update(kv)
             latih.perbarui(ds, nomor, kaggle=dict(kag))
 
+        # galat="" membersihkan pesan error dari percobaan sebelumnya saat job
+        # ini disambung lagi — supaya kartu tak memamerkan galat basi selagi
+        # jalan atau setelah akhirnya selesai.
         latih.perbarui(ds, nomor, keadaan="jalan", mulai_pada=_sekarang(),
-                       pid=os.getpid())
+                       pid=os.getpid(), galat="")
         lapor(leg=leg, epochs_done=epochs_done,
               pesan="menyiapkan training di Kaggle…")
 
         ds_slug = nama_dataset(ds, versi)
         judul_ds = f"HIGOLAB {Path(ds).name} v{versi}"
 
+        percubaan = 0            # berapa kali leg saat ini gagal transient
         while epochs_done < target:
             akun = _pilih_akun(ds, pool)
             if akun is None:
@@ -658,20 +668,29 @@ def main() -> int:
                     if hasil == "complete":
                         raise                            # sukses tapi output tak terbaca -> nyata gagal
                     ep_leg = 0                           # leg tak sukses: tak apa kosong
-            epochs_done += ep_leg
-            leg += 1
-            lapor(leg=leg, epochs_done=epochs_done)
 
-            # Leg ini tak memajukan satu epoch pun -> jangan berputar selamanya.
-            # Kalau sebabnya kuota, rotasi akun; selain itu benar-benar gagal.
-            if ep_leg <= 0:
-                if _galat_kuota(teks):
-                    _tandai_habis(ds, akun["user"])
-                    lapor(pesan=f"akun {akun['user']} kehabisan kuota — "
-                                "rotasi ke akun berikutnya")
-                    continue
+            if ep_leg > 0:                               # leg maju -> lanjut/selesai
+                epochs_done += ep_leg
+                leg += 1
+                percubaan = 0
+                lapor(leg=leg, epochs_done=epochs_done,
+                      pesan=f"leg {leg} selesai — {epochs_done}/{target} epoch")
+                continue
+
+            # Tak ada kemajuan. Kuota habis -> rotasi akun (bukan coba-ulang).
+            if _galat_kuota(teks):
+                _tandai_habis(ds, akun["user"])
+                lapor(pesan=f"akun {akun['user']} kehabisan kuota — "
+                            "rotasi ke akun berikutnya")
+                continue
+            # Selain kuota: anggap sesaat, coba ulang leg yang SAMA beberapa kali.
+            percubaan += 1
+            if percubaan >= MAKS_COBA_LEG:
                 raise RuntimeError(
-                    f"leg {leg} di Kaggle tak menghasilkan epoch: {teks[-200:]}")
+                    f"leg {leg+1} gagal {percubaan}x berturut di Kaggle: {teks[-200:]}")
+            lapor(pesan=f"leg {leg+1} gagal (mungkin sesaat) — coba ulang "
+                        f"{percubaan}/{MAKS_COBA_LEG-1}")
+            continue
 
         latih.perbarui(ds, nomor, keadaan="selesai", selesai_pada=_sekarang())
         lapor(epochs_done=epochs_done,
