@@ -130,6 +130,30 @@ def test_ledger_kuota_melewati_akun_penuh(tmp_path):
     assert pilih["user"] == "b", "akun yang penuh dilewati"
 
 
+def test_basis_ledger_global_bukan_per_projek(tmp_path):
+    """Ledger kuota hidup di <uploads_root>/_kaggle (global), bukan di .latih/
+    tiap projek — supaya kuota akun dihitung lintas-projek."""
+    s = NS(uploads_root=tmp_path)
+    assert k.basis_ledger(s) == tmp_path / "_kaggle"
+
+
+def test_ringkas_akun_lapor_pakai_dan_sisa(tmp_path):
+    """Status tiap akun: jam terpakai 7-hari + sisa + habis, untuk UI."""
+    tok = tmp_path / "t"; tok.write_text("KGAT_xxxxxxxxxxxxxxxxxxxx")
+    f = tmp_path / "akun.json"
+    f.write_text(json.dumps([{"user": "a", "token_file": str(tok)},
+                             {"user": "b", "token_file": str(tok)}]))
+    s = NS(uploads_root=tmp_path, kaggle_akun_file=f, kaggle_user="", kaggle_token_file=None)
+    basis = k.basis_ledger(s)
+    k._catat_pakai(basis, "a", 10.0)        # a sudah pakai 10 jam minggu ini
+    k._tandai_habis(basis, "b")             # b ditandai habis
+    r = {x["user"]: x for x in k.ringkas_akun(s)}
+    assert r["a"]["pakai_jam"] == 10.0
+    assert r["a"]["sisa_jam"] == round(k.KUOTA_MINGGU_JAM - 10.0, 1)
+    assert r["a"]["habis"] is False
+    assert r["b"]["habis"] is True
+
+
 def test_tandai_habis_lalu_rotasi(tmp_path):
     pool = [{"user": "a", "token": "ta"}, {"user": "b", "token": "tb"}]
     assert k._pilih_akun(tmp_path, pool)["user"] == "a"
@@ -240,7 +264,8 @@ def siapkan_main(tmp_path, monkeypatch):
     fungsi untuk menjalankan main() pada skenario leg tertentu."""
     _versi_yaml(tmp_path, 1, ["a", "b"])
     monkeypatch.setattr(k, "_tidur", lambda d: None)
-    monkeypatch.setattr("app.config.get_settings", lambda: NS())
+    # uploads_root dibutuhkan basis_ledger() -> ledger global di tmp_path/_kaggle
+    monkeypatch.setattr("app.config.get_settings", lambda: NS(uploads_root=tmp_path))
 
     def jalankan(nomor, target, legs, pool, kag_awal=None, ckpt_rows=0):
         latih._tulis(tmp_path, nomor, {
@@ -307,7 +332,7 @@ def test_main_rotasi_akun_saat_kuota_habis(siapkan_main):
                        pool=[{"user": "a", "token": "ta"}, {"user": "b", "token": "tb"}])
     assert rc == 0 and rek["keadaan"] == "selesai"
     assert rek["kaggle"]["akun"] == "b", "leg sukses dijalankan akun cadangan"
-    assert k._akun_habis(tmp_path, "a") is True
+    assert k._akun_habis(tmp_path / "_kaggle", "a") is True   # ledger global
 
 
 def test_main_semua_kuota_habis_jadi_tertunda(siapkan_main):

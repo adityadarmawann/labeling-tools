@@ -323,9 +323,14 @@
     galat(siap === false ? (alasan || 'backend ini belum siap') : '');
     const ket = $('tr-backend-ket');
     if (ket) {
+      // kaggle_akun = [{user, pakai_jam, sisa_jam, kuota_jam, habis}] — tunjukkan
+      // sisa jatah minggu ini tiap akun, supaya terlihat mana yang masih bisa.
+      const akun = (BAHAN.kaggle_akun || []).map((a) =>
+        a.habis ? `${a.user} (kuota habis)` : `${a.user} (sisa ~${a.sisa_jam}j)`
+      ).join(' · ') || '—';
       ket.textContent = b === 'kaggle'
-        ? `akun: ${(BAHAN.kaggle_akun || []).join(', ') || '—'} · di luar PC ini, `
-          + 'boleh berbarengan dengan training lokal; run panjang disambung otomatis'
+        ? `akun: ${akun} · di luar PC ini, boleh berbarengan dengan training `
+          + 'lokal; run panjang disambung otomatis'
         : 'GPU mesin ini — satu training pada satu waktu';
     }
   }

@@ -53,7 +53,7 @@ async def halaman(request: Request, ds: str = "",
         "boleh_kelola": svc_tugas.boleh_kelola(tdata, sess.user),
         # Pilihan "Jalankan di: Kaggle" hanya muncul kalau backend terkonfigurasi.
         "kaggle_siap": kaggle_siap,
-        "kaggle_akun": [a["user"] for a in svc_kaggle.akun_pool(settings)],
+        "kaggle_akun": svc_kaggle.ringkas_akun(settings),
     })
 
 
@@ -98,7 +98,9 @@ async def bahan(sess: Session = Depends(current_session_api),
             # Kesiapan backend Kaggle terpisah: server CPU bisa saja tak bisa
             # melatih lokal (siap=False) tapi tetap boleh offload ke Kaggle.
             "kaggle_siap": kaggle_siap, "kaggle_alasan": kaggle_alasan,
-            "kaggle_akun": [a["user"] for a in svc_kaggle.akun_pool(settings)],
+            # Status tiap akun pool (jam terpakai 7-hari, sisa, habis) — supaya
+            # form bisa menunjukkan akun mana yang masih punya jatah minggu ini.
+            "kaggle_akun": await asyncio.to_thread(svc_kaggle.ringkas_akun, settings),
             "versi": versi_siap,
             "bobot": await asyncio.to_thread(svc.bobot_tersedia),
             "preset": svc.PRESET_V14,
@@ -297,7 +299,8 @@ async def sambung_kaggle(nomor: int = 0,
     siap, alasan = svc_kaggle.siap(settings)
     if not siap:
         return {"ok": False, "error": alasan}
-    await asyncio.to_thread(svc_kaggle.reset_habis, d)
+    await asyncio.to_thread(svc_kaggle.reset_habis,
+                            svc_kaggle.basis_ledger(settings))
     try:
         await asyncio.to_thread(svc.jalankan, d, nomor)
     except Exception as e:                           # noqa: BLE001

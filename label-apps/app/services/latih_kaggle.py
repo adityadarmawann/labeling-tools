@@ -182,28 +182,34 @@ def _tidur(detik: float) -> None:
 
 
 # ============================================================
-# LEDGER — pemakaian kuota per akun & reuse dataset
+# LEDGER KUOTA — GLOBAL lintas-projek (<uploads_root>/_kaggle)
 # ============================================================
+#
+# Kuota Kaggle (~30 jam GPU/minggu) milik AKUN, bukan projek. Maka ledgernya
+# satu untuk seluruh instalasi — bukan per-projek — supaya "akun mana yang masih
+# punya jatah minggu ini" menghitung SEMUA training akun itu, tidak buta pada
+# projek lain. Fungsi-fungsinya menerima `basis` (folder ledger) agar mudah
+# diuji; produksi memakai basis_ledger(settings).
 
-def _dir_kaggle(ds) -> Path:
-    d = latih.dir_latih(ds, 0).parent          # .latih/
-    return d
+def basis_ledger(settings) -> Path:
+    """Folder ledger kuota global: <uploads_root>/_kaggle."""
+    return Path(settings.uploads_root) / "_kaggle"
 
 
-def _ledger_path(ds) -> Path:
-    return _dir_kaggle(ds) / ".kaggle-pakai.json"
+def _ledger_path(basis) -> Path:
+    return Path(basis) / "kaggle-pakai.json"
 
 
-def _baca_ledger(ds) -> dict:
-    p = _ledger_path(ds)
+def _baca_ledger(basis) -> dict:
+    p = _ledger_path(basis)
     try:
         return json.loads(p.read_text()) if p.exists() else {}
     except (OSError, ValueError):
         return {}
 
 
-def _tulis_ledger(ds, data: dict) -> None:
-    p = _ledger_path(ds)
+def _tulis_ledger(basis, data: dict) -> None:
+    p = _ledger_path(basis)
     p.parent.mkdir(parents=True, exist_ok=True)
     tmp = p.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(data, indent=1))
@@ -222,51 +228,70 @@ def _pakai_7hari(ledger: dict, user: str) -> float:
     return tot
 
 
-def _catat_pakai(ds, user: str, jam: float) -> None:
-    led = _baca_ledger(ds)
+def _catat_pakai(basis, user: str, jam: float) -> None:
+    led = _baca_ledger(basis)
     led.setdefault("pakai", []).append(
         {"user": user, "ts": time.time(), "jam": round(float(jam), 3)})
     # Pangkas entri lebih tua dari 14 hari supaya berkas tidak tumbuh selamanya.
     batas = time.time() - 14 * 86400
     led["pakai"] = [e for e in led["pakai"] if float(e.get("ts") or 0) >= batas]
-    _tulis_ledger(ds, led)
+    _tulis_ledger(basis, led)
 
 
-def _tandai_habis(ds, user: str) -> None:
+def _tandai_habis(basis, user: str) -> None:
     """Tandai akun kehabisan kuota sampai jendela 7-hari bergeser (reaktif:
     dipakai saat kernel gagal dengan galat kuota)."""
-    led = _baca_ledger(ds)
+    led = _baca_ledger(basis)
     led.setdefault("habis", {})[user] = time.time()
-    _tulis_ledger(ds, led)
+    _tulis_ledger(basis, led)
 
 
-def _akun_habis(ds, user: str) -> bool:
-    led = _baca_ledger(ds)
+def _akun_habis(basis, user: str) -> bool:
+    led = _baca_ledger(basis)
     ts = (led.get("habis") or {}).get(user)
     return bool(ts and time.time() - float(ts) < 7 * 86400)
 
 
-def reset_habis(ds) -> None:
+def reset_habis(basis) -> None:
     """Hapus penanda 'kuota habis' semua akun. Dipakai saat orang menekan
     'Lanjutkan di Kaggle' pada job yang tertunda: itu permintaan eksplisit untuk
     MENCOBA LAGI SEKARANG. Kalau kuotanya memang masih habis, kernel akan gagal
     lagi dengan galat kuota dan penandanya dipasang ulang — jadi aman."""
-    led = _baca_ledger(ds)
+    led = _baca_ledger(basis)
     if led.get("habis"):
         led["habis"] = {}
-        _tulis_ledger(ds, led)
+        _tulis_ledger(basis, led)
 
 
-def _pilih_akun(ds, pool: list[dict]) -> dict | None:
+def _pilih_akun(basis, pool: list[dict]) -> dict | None:
     """Akun pertama yang (a) tidak ditandai habis dan (b) pemakaian 7-harinya
     masih menyisakan ruang untuk satu leg. None kalau semua mentok."""
-    led = _baca_ledger(ds)
+    led = _baca_ledger(basis)
     for a in pool:
-        if _akun_habis(ds, a["user"]):
+        if _akun_habis(basis, a["user"]):
             continue
         if _pakai_7hari(led, a["user"]) + BATAS_JAM <= KUOTA_MINGGU_JAM:
             return a
     return None
+
+
+def ringkas_akun(settings) -> list[dict]:
+    """Status tiap akun di pool: jam GPU terpakai 7 hari, sisa perkiraan, dan
+    apakah sedang ditandai habis. Dipakai UI supaya terlihat akun mana yang
+    masih punya jatah minggu ini — inti dari rotasi multi-akun."""
+    basis = basis_ledger(settings)
+    led = _baca_ledger(basis)
+    out = []
+    for a in akun_pool(settings):
+        pakai = round(_pakai_7hari(led, a["user"]), 1)
+        out.append({
+            "user": a["user"],
+            "pakai_jam": pakai,
+            "kuota_jam": KUOTA_MINGGU_JAM,
+            "sisa_jam": round(max(0.0, KUOTA_MINGGU_JAM - pakai), 1),
+            "habis": _akun_habis(basis, a["user"]),
+        })
+    return out
 
 
 # ============================================================
@@ -436,14 +461,14 @@ def serap_keluaran(out_dir: Path, run: str, dir_latih: Path) -> int:
 # OPERASI JARINGAN (tipis di atas _kg)
 # ============================================================
 
-def _unggah_dataset(ds, versi_dir: Path, akun: dict, slug: str,
+def _unggah_dataset(basis, versi_dir: Path, akun: dict, slug: str,
                     judul: str) -> str:
     """Pastikan versi ada sebagai dataset milik akun ini; kembalikan 'user/slug'.
     Reuse: versi itu beku, jadi kalau dataset sudah ada di akun ini ia dipakai
-    ulang tanpa unggah lagi (dicatat di ledger per akun)."""
+    ulang tanpa unggah lagi (ditandai di ledger global per akun)."""
     user, token = akun["user"], akun["token"]
     dsid = f"{user}/{slug}"
-    led = _baca_ledger(ds)
+    led = _baca_ledger(basis)
     sudah = (led.get("dataset") or {}).get(f"{user}:{slug}")
     if sudah:
         rc, _ = _kg(["datasets", "status", dsid], token, timeout=120)
@@ -469,9 +494,9 @@ def _unggah_dataset(ds, versi_dir: Path, akun: dict, slug: str,
         rc, out = _kg(["datasets", "status", dsid], token, timeout=120)
         if "ready" in out.lower():
             break
-    led = _baca_ledger(ds)
+    led = _baca_ledger(basis)
     led.setdefault("dataset", {})[f"{user}:{slug}"] = dsid
-    _tulis_ledger(ds, led)
+    _tulis_ledger(basis, led)
     return dsid
 
 
@@ -588,6 +613,7 @@ def main() -> int:
                        galat="tidak ada akun Kaggle terkonfigurasi",
                        selesai_pada=_sekarang())
         return 1
+    basis = basis_ledger(settings)          # ledger kuota GLOBAL, bukan per-projek
 
     try:
         from . import buatversi
@@ -630,7 +656,7 @@ def main() -> int:
 
         percubaan = 0            # berapa kali leg saat ini gagal transient
         while epochs_done < target:
-            akun = _pilih_akun(ds, pool)
+            akun = _pilih_akun(basis, pool)
             if akun is None:
                 latih.perbarui(
                     ds, nomor, keadaan="tertunda", selesai_pada=_sekarang(),
@@ -648,7 +674,7 @@ def main() -> int:
             lapor(akun=akun["user"], leg=leg,
                   pesan=f"unggah dataset ke akun {akun['user']}…")
 
-            dsid = _unggah_dataset(ds, versi_dir, akun, ds_slug, judul_ds)
+            dsid = _unggah_dataset(basis, versi_dir, akun, ds_slug, judul_ds)
             sumber = [dsid]
             if resume:
                 ck_slug = _slug(f"higolab-ck-l{nomor}")
@@ -664,7 +690,7 @@ def main() -> int:
             t0 = time.time()
             hasil, teks = _poll_kernel(akun, kid,
                                        lambda s: lapor(remote=s))
-            _catat_pakai(ds, akun["user"], (time.time() - t0) / 3600.0)
+            _catat_pakai(basis, akun["user"], (time.time() - t0) / 3600.0)
 
             # Tarik hasil leg ini. ep_leg = epoch yang DISELESAIKAN leg ini
             # (penomoran leg sendiri), ditambahkan ke kumulatif. best.pt/last.pt/
@@ -690,7 +716,7 @@ def main() -> int:
 
             # Tak ada kemajuan. Kuota habis -> rotasi akun (bukan coba-ulang).
             if _galat_kuota(teks):
-                _tandai_habis(ds, akun["user"])
+                _tandai_habis(basis, akun["user"])
                 lapor(pesan=f"akun {akun['user']} kehabisan kuota — "
                             "rotasi ke akun berikutnya")
                 continue
