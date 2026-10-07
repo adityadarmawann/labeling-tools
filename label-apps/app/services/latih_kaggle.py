@@ -54,6 +54,13 @@ AKSELERATOR = os.environ.get("LABELAPP_KAGGLE_GPU", "nvidiaTeslaT4") or "nvidiaT
 # ulang beberapa kali dulu sebelum dinyatakan gagal. (Kegagalan kuota tidak
 # ikut dihitung di sini — itu memicu rotasi akun, bukan coba-ulang.)
 MAKS_COBA_LEG = max(1, int(os.environ.get("LABELAPP_KAGGLE_COBA", "3") or 3))
+# Batas KERAS durasi run kernel (detik), dipasang di `kernels push --timeout`.
+# Jaring pengaman: kalau kernel MACET sebelum/di luar training (mis. pip install
+# menggantung, dataset tak terbaca), Kaggle memaksa berhenti — jadi tak ada
+# skenario kuota GPU terbakar tanpa progres. Di atas BATAS_JAM plus kelonggaran
+# untuk pip install + scan dataset + validasi/simpan setelah stop wall-clock;
+# Kaggle sendiri tak akan melewati batas globalnya (~12 jam).
+TIMEOUT_KERNEL = int(BATAS_JAM * 3600 + 1800)
 
 
 def _sekarang() -> str:
@@ -508,7 +515,11 @@ def _push_kernel(akun: dict, slug: str, skrip: str,
         (d / "main.py").write_text(skrip)
         (d / "kernel-metadata.json").write_text(
             json.dumps(_meta_kernel(user, slug, "main.py", dataset_sources), indent=2))
-        rc, out = _kg(["kernels", "push", "-p", str(d)], token, timeout=600)
+        # --timeout: batas keras durasi run di sisi Kaggle (jaring pengaman
+        # anti-macet). `timeout=600` di _kg hanya untuk perintah push-nya, bukan
+        # run kernelnya — maka keduanya perlu.
+        rc, out = _kg(["kernels", "push", "-p", str(d),
+                       "--timeout", str(TIMEOUT_KERNEL)], token, timeout=600)
     if rc != 0:
         raise RuntimeError(f"push kernel gagal: {out[-300:]}")
     kid = f"{user}/{slug}"

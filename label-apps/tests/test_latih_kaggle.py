@@ -261,6 +261,25 @@ def siapkan_main(tmp_path, monkeypatch):
     return tmp_path, jalankan
 
 
+def test_push_kernel_pasang_timeout(monkeypatch):
+    """Jaring pengaman: push kernel membawa --timeout (batas keras run) supaya
+    kernel yang macet tak membakar kuota tanpa progres."""
+    rekam = {}
+
+    def fake_kg(args, token, timeout=0, inp=None, masuk=None):
+        rekam["args"] = list(args)
+        return 0, "ok"
+
+    monkeypatch.setattr(k, "_kg", fake_kg)
+    kid, url = k._push_kernel({"user": "u", "token": "t"}, "slugku", "print()", ["u/ds"])
+    assert kid == "u/slugku" and url.endswith("u/slugku")
+    args = rekam["args"]
+    assert "--timeout" in args
+    val = int(args[args.index("--timeout") + 1])
+    assert val >= k.BATAS_JAM * 3600, "timeout harus >= batas leg"
+    assert val <= 12 * 3600, "tetap di bawah batas global Kaggle ~12 jam"
+
+
 def test_main_satu_leg_selesai(siapkan_main):
     tmp_path, jalankan = siapkan_main
     rc, rek = jalankan(1, target=5, legs=[{"epochs": 5}],
