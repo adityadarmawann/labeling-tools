@@ -9,6 +9,7 @@ dua tempat.
 from __future__ import annotations
 
 import asyncio
+import shutil
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
@@ -249,10 +250,6 @@ async def lanjut(request: Request,
     tdata = svc_tugas.baca_projek(d, settings.uploads_root)
     if not svc_tugas.boleh_kelola(tdata, sess.user):
         return {"ok": False, "error": "hanya pemilik projek yang boleh melatih"}
-    siap, alasan = svc.siap_latih()
-    if not siap:
-        return {"ok": False, "error": alasan}
-
     body = await bodi_json(request)
     dari = int(body.get("dari") or 0)
     jenis = "last" if str(body.get("jenis") or "best").lower() == "last" else "best"
@@ -263,18 +260,81 @@ async def lanjut(request: Request,
     sumber = await asyncio.to_thread(svc.baca, d, dari)
     if sumber is None:
         return {"ok": False, "error": f"training L{dari} tidak ada"}
-    bobot = await asyncio.to_thread(svc.bobot_training, d, dari, jenis)
-    if bobot is None:
-        return {"ok": False,
-                "error": f"training L{dari} belum punya {jenis}.pt untuk dilanjutkan"}
     # Versi sumbernya harus masih bisa dilatih (data.yaml-nya ada) — kelasnya
-    # harus cocok dengan bobot yang dilanjutkan.
+    # harus cocok dengan model yang dilanjutkan.
     versi_nomor = int(sumber.get("versi") or 0)
     if not (buatversi.dir_versi(d, versi_nomor) / "data.yaml").exists():
         return {"ok": False,
                 "error": f"versi v{versi_nomor} (sumber L{dari}) tak punya data.yaml, "
                          "jadi tak bisa dilanjutkan"}
+    arsitektur = svc.arsitektur_sah(sumber.get("arsitektur") or "yolo")
 
+    # ---- RF-DETR: lanjut = RESUME SEJATI dari last.ckpt sumber (state penuh:
+    # optimizer+scheduler+epoch). epochs = TOTAL baru (> epoch sumber); Lightning
+    # melanjutkan current_epoch -> max_epochs. Inherit backend sumbernya supaya
+    # model yang dilatih di Kaggle dilanjutkan di Kaggle, yang lokal di lokal. --
+    if arsitektur == "rfdetr":
+        backend = sumber.get("backend") or "lokal"
+        if backend == "kaggle":
+            siap, alasan = svc_kaggle.siap(settings)
+        else:
+            siap, alasan = svc.siap_rfdetr()
+        if not siap:
+            return {"ok": False, "error": alasan}
+        src_ckpt = svc.dir_latih(d, dari) / "rfdetr" / "last.ckpt"
+        if not src_ckpt.exists():
+            return {"ok": False,
+                    "error": f"training L{dari} belum punya checkpoint penuh "
+                             "(rfdetr/last.ckpt) untuk dilanjutkan"}
+        src_epochs = int((sumber.get("par") or {}).get("epochs") or 0)
+        if epochs <= src_epochs:
+            return {"ok": False,
+                    "error": f"epoch lanjutan ({epochs}) harus lebih besar dari epoch "
+                             f"sumber ({src_epochs}) — RF-DETR melanjutkan sampai total "
+                             "epoch ini, bukan menambah dari awal"}
+        par = dict(sumber.get("par") or {})
+        par["epochs"] = epochs
+        nama = str(body.get("nama") or "").strip() \
+            or f"{sumber.get('nama') or f'L{dari}'} lanjutan"
+        catatan = str(body.get("catatan") or "").strip() \
+            or f"Lanjutan RF-DETR dari L{dari} (resume, {src_epochs} -> {epochs} epoch)"
+        try:
+            isi = await asyncio.to_thread(
+                svc.siapkan, d, nama=nama, versi_nomor=versi_nomor,
+                tugas="detect", bobot="", par=par, oleh=sess.user, catatan=catatan,
+                warna={}, lanjut_dari=dari, preset=sumber.get("preset") or "rvm",
+                arsitektur="rfdetr", rfdetr_model=sumber.get("rfdetr_model") or "nano",
+                backend=backend)
+        except ValueError as e:
+            return {"ok": False, "error": str(e)}
+        # Semai checkpoint penuh + epoch kumulatif supaya worker (lokal maupun
+        # Kaggle) MELANJUTKAN dari sini, bukan dari nol.
+        new_dl = svc.dir_latih(d, isi["nomor"])
+
+        def _semai():
+            (new_dl / "rfdetr").mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src_ckpt, new_dl / "rfdetr" / "last.ckpt")
+
+        await asyncio.to_thread(_semai)
+        await asyncio.to_thread(svc.perbarui, d, isi["nomor"],
+                                kaggle={"epochs_done": src_epochs, "leg": 0})
+        try:
+            await asyncio.to_thread(svc.jalankan, d, isi["nomor"])
+        except Exception as e:                       # noqa: BLE001
+            _log.exception("gagal meluncurkan lanjutan RF-DETR")
+            await asyncio.to_thread(svc.perbarui, d, isi["nomor"],
+                                    keadaan="gagal", galat=str(e)[:200])
+            return {"ok": False, "error": str(e)[:200]}
+        return {"ok": True, "nomor": isi["nomor"], "dari": dari}
+
+    # ---- YOLO: warm-start dari best.pt/last.pt (perilaku lama, tak berubah) ----
+    siap, alasan = svc.siap_latih()
+    if not siap:
+        return {"ok": False, "error": alasan}
+    bobot = await asyncio.to_thread(svc.bobot_training, d, dari, jenis)
+    if bobot is None:
+        return {"ok": False,
+                "error": f"training L{dari} belum punya {jenis}.pt untuk dilanjutkan"}
     # Warisi par sumber apa adanya, ganti hanya epochs. Semua yang lain —
     # imgsz, lr, hsv, batch — dibiarkan sama supaya lanjutan benar-benar
     # menyambung setelan yang sama, bukan training baru yang menyaru.

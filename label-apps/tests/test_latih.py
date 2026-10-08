@@ -640,6 +640,64 @@ def test_lanjut_tanpa_bobot_ditolak(klien, lingkungan, monkeypatch, server_siap)
     assert r["ok"] is False and "best.pt" in r["error"]
 
 
+def test_lanjut_rfdetr_resume_dari_last_ckpt(klien, lingkungan, monkeypatch, server_siap):
+    """Lanjut RF-DETR: resume SEJATI dari last.ckpt sumber — checkpoint disemai ke
+    training baru + epoch kumulatif diset, epochs = TOTAL baru. Setara YOLO, tapi
+    melanjutkan (bukan warm-start bobot)."""
+    masuk(klien, "paul", PW_PAUL)
+    d = _projek(klien, lingkungan)
+    _versi_siap(d, 1)
+    monkeypatch.setattr(latih, "siap_rfdetr", lambda: (True, ""))
+    src = latih.siapkan(d, nama="basket-rfdetr", versi_nomor=1, tugas="detect",
+                        bobot="", par={"epochs": 100}, oleh="paul",
+                        arsitektur="rfdetr", rfdetr_model="small")
+    ck = latih.dir_latih(d, src["nomor"]) / "rfdetr"
+    ck.mkdir(parents=True, exist_ok=True)
+    (ck / "last.ckpt").write_bytes(b"CKPT")
+    monkeypatch.setattr(latih, "jalankan", lambda ds, n: {})
+    r = klien.post("/api/latih/lanjut",
+                   json={"dari": src["nomor"], "epochs": 150}).json()
+    assert r["ok"] is True, r
+    baru = latih.baca(d, r["nomor"])
+    assert baru["lanjut_dari"] == src["nomor"]
+    assert baru["arsitektur"] == "rfdetr" and baru["rfdetr_model"] == "small"
+    assert baru["par"]["epochs"] == 150                 # TOTAL baru
+    # checkpoint disemai ke training baru + epoch kumulatif -> worker resume
+    assert (latih.dir_latih(d, r["nomor"]) / "rfdetr" / "last.ckpt").exists()
+    assert baru["kaggle"]["epochs_done"] == 100
+
+
+def test_lanjut_rfdetr_tanpa_ckpt_ditolak(klien, lingkungan, monkeypatch, server_siap):
+    """RF-DETR tanpa last.ckpt (mis. model lama/gagal) tak bisa dilanjutkan."""
+    masuk(klien, "paul", PW_PAUL)
+    d = _projek(klien, lingkungan)
+    _versi_siap(d, 1)
+    monkeypatch.setattr(latih, "siap_rfdetr", lambda: (True, ""))
+    src = latih.siapkan(d, nama="x", versi_nomor=1, tugas="detect", bobot="",
+                        par={"epochs": 100}, oleh="paul", arsitektur="rfdetr")
+    monkeypatch.setattr(latih, "jalankan", lambda ds, n: {})
+    r = klien.post("/api/latih/lanjut",
+                   json={"dari": src["nomor"], "epochs": 150}).json()
+    assert r["ok"] is False and "last.ckpt" in r["error"]
+
+
+def test_lanjut_rfdetr_epochs_harus_lebih_besar(klien, lingkungan, monkeypatch, server_siap):
+    """RF-DETR melanjutkan sampai TOTAL epoch, jadi epoch baru wajib > sumber."""
+    masuk(klien, "paul", PW_PAUL)
+    d = _projek(klien, lingkungan)
+    _versi_siap(d, 1)
+    monkeypatch.setattr(latih, "siap_rfdetr", lambda: (True, ""))
+    src = latih.siapkan(d, nama="x", versi_nomor=1, tugas="detect", bobot="",
+                        par={"epochs": 100}, oleh="paul", arsitektur="rfdetr")
+    ck = latih.dir_latih(d, src["nomor"]) / "rfdetr"
+    ck.mkdir(parents=True, exist_ok=True)
+    (ck / "last.ckpt").write_bytes(b"CKPT")
+    monkeypatch.setattr(latih, "jalankan", lambda ds, n: {})
+    r = klien.post("/api/latih/lanjut",
+                   json={"dari": src["nomor"], "epochs": 100}).json()
+    assert r["ok"] is False and "lebih besar" in r["error"]
+
+
 def test_bobot_training_menemukan_best_dan_last(lingkungan):
     d = lingkungan["ruang"] / "bt"; d.mkdir(parents=True, exist_ok=True)
     assert latih.bobot_training(d, 1, "best") is None

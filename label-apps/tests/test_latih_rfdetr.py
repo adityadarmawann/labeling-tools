@@ -110,10 +110,12 @@ def test_worker_main_fake_train(tmp_path, monkeypatch):
         "nomor": 1, "versi": 1, "arsitektur": "rfdetr", "rfdetr_model": "nano",
         "tugas": "detect", "par": dict(latih.PRESET_RFDETR), "keadaan": "antre", "pid": 0})
 
-    def fake_asli(coco_dir, out_dir, model, par, lapor):
+    def fake_asli(coco_dir, out_dir, model, par, lapor, resume=None):
         # COCO harus sudah ter-ekspor oleh worker SEBELUM ini
         assert (Path(coco_dir) / "train" / "_annotations.coco.json").exists()
+        assert resume is None, "training segar tak boleh resume"
         (Path(out_dir) / "checkpoint_best_total.pth").write_bytes(b"PK\x03\x04fake")
+        (Path(out_dir) / "last.ckpt").write_bytes(b"PK\x03\x04ckpt")
         (Path(out_dir) / "metrics_plot.png").write_bytes(b"\x89PNG")
         lapor(pesan="fake train")
         return {"epoch": int(par["epochs"]), "map": 0.5}
@@ -127,7 +129,46 @@ def test_worker_main_fake_train(tmp_path, monkeypatch):
     assert rek["keadaan"] == "selesai"
     dl = latih.dir_latih(tmp_path, 1)
     assert (dl / "weights" / "best.pt").exists()       # checkpoint -> best.pt
+    assert (dl / "rfdetr" / "last.ckpt").exists()      # state penuh disimpan utk Lanjutkan
     assert (dl / "results.csv").exists()               # status bisa baca epoch
     assert (dl / "metrics_plot.png").exists()          # grafik ikut tersalin
     s = latih.status(tmp_path, 1)
     assert s["arsitektur"] == "rfdetr" and s["epoch"] == 100
+    assert s["rfdetr_ckpt"] is True                    # kartu tampilkan "Lanjutkan"
+
+
+def test_worker_main_resume_dari_seed(tmp_path, monkeypatch):
+    """Kalau rfdetr/last.ckpt sudah disemai (jalur Lanjutkan), worker RESUME dari
+    situ — meneruskan path checkpoint ke training, bukan mulai dari nol."""
+    _versi(tmp_path, 1, ["player"], dengan_gambar=True)
+    latih._tulis(tmp_path, 1, {
+        "nomor": 1, "versi": 1, "arsitektur": "rfdetr", "rfdetr_model": "nano",
+        "tugas": "detect", "par": dict(latih.PRESET_RFDETR), "keadaan": "antre", "pid": 0})
+    dl = latih.dir_latih(tmp_path, 1)
+    (dl / "rfdetr").mkdir(parents=True, exist_ok=True)
+    seed = dl / "rfdetr" / "last.ckpt"
+    seed.write_bytes(b"PK\x03\x04seed")
+
+    dilihat = {}
+
+    def fake_asli(coco_dir, out_dir, model, par, lapor, resume=None):
+        dilihat["resume"] = resume
+        (Path(out_dir) / "checkpoint_best_total.pth").write_bytes(b"PK\x03\x04fake")
+        return {"epoch": int(par["epochs"]), "map": None}
+
+    monkeypatch.setattr(latih_rfdetr, "_latih_rfdetr_asli", fake_asli)
+    monkeypatch.setattr("sys.argv", ["latih_rfdetr", str(tmp_path), "1"])
+    assert latih_rfdetr.main() == 0
+    assert dilihat["resume"] == str(seed), "worker harus resume dari seed last.ckpt"
+
+
+def test_serap_simpan_last_ckpt(tmp_path):
+    """_serap menyalin last.ckpt output -> rfdetr/last.ckpt (untuk Lanjutkan)."""
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "checkpoint_best_total.pth").write_bytes(b"PK\x03\x04b")
+    (out / "last.ckpt").write_bytes(b"PK\x03\x04c")
+    dl = tmp_path / "L1"
+    latih_rfdetr._serap(out, dl, {"epoch": 3, "map": 0.4})
+    assert (dl / "weights" / "best.pt").exists()
+    assert (dl / "rfdetr" / "last.ckpt").exists()

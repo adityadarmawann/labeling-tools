@@ -628,10 +628,10 @@
             Lanjutkan di Kaggle</button>` : ''}
         ${t.punya_bobot && bolehKelola && !rf ? `<button class="chip" type="button"
             data-uji="${t.nomor}">Uji produksi</button>` : ''}
-        ${t.punya_bobot && bolehKelola && !rf ? `<button class="chip" type="button"
+        ${(bolehKelola && (rf ? t.rfdetr_ckpt : t.punya_bobot)) ? `<button class="chip" type="button"
             data-lanjut="${t.nomor}" data-nama="${esc(t.nama)}"
-            data-epochs="${t.epochs || 400}"
-            title="Latih lagi mulai dari bobot training ini">Lanjutkan</button>` : ''}
+            data-epochs="${t.epochs || 400}" data-ars="${rf ? 'rfdetr' : 'yolo'}"
+            title="${rf ? 'Lanjutkan training ini sampai total epoch lebih banyak (resume dari checkpoint, bukan dari nol)' : 'Latih lagi mulai dari bobot training ini'}">Lanjutkan</button>` : ''}
         ${t.punya_bobot ? `<span class="tr-unduh">Unduh
           <a class="chip" href="/latih/bobot?nomor=${t.nomor}&jenis=best" download
              title="${rf ? 'Checkpoint RF-DETR terbaik (.pth dikemas sebagai .pt)'
@@ -709,7 +709,8 @@
     });
     document.querySelectorAll('[data-lanjut]').forEach((b) => {
       b.onclick = () => bukaLanjut(Number(b.dataset.lanjut), b.dataset.nama,
-                                   Number(b.dataset.epochs) || 400);
+                                   Number(b.dataset.epochs) || 400,
+                                   b.dataset.ars || 'yolo');
     });
     document.querySelectorAll('[data-sambung]').forEach((b) => {
       b.onclick = async () => {
@@ -1119,13 +1120,31 @@
 
   // ---- Training lanjutan: latih lagi mulai dari bobot sebuah training ----
   let lanjutDari = 0;
-  function bukaLanjut(nomor, nama, epochs) {
+  function bukaLanjut(nomor, nama, epochs, arsitektur) {
     lanjutDari = nomor;
+    const rf = arsitektur === 'rfdetr';
     $('tr-lanjut-judul').textContent = `Lanjutkan L${nomor}`;
-    $('tr-lanjut-ket').textContent =
-      `Training baru dimulai dari bobot L${nomor}. Setelannya (versi, hsv, mode `
-      + `warna) diwarisi apa adanya — hanya jumlah epoch yang diganti.`;
-    $('tr-lanjut-epochs').value = epochs || 400;
+    // "Titik awal bobot" (best/last) hanya bermakna untuk YOLO (warm-start bobot).
+    // RF-DETR resume dari checkpoint state-penuh (last.ckpt) — tak ada pilihan ini.
+    if ($('tr-lanjut-jenis-baris')) $('tr-lanjut-jenis-baris').hidden = rf;
+    if (rf) {
+      // RF-DETR = resume sejati: epoch LANJUT (optimizer+epoch ikut), jadi yang
+      // diisi adalah TOTAL epoch baru, wajib lebih besar dari epoch sumber.
+      $('tr-lanjut-ket').textContent =
+        `Melanjutkan L${nomor} dari checkpoint terakhirnya — resume state penuh `
+        + `(optimizer & epoch ikut lanjut), bukan dari nol. Isi TOTAL epoch yang `
+        + `diinginkan, harus lebih besar dari ${epochs}.`;
+      $('tr-lanjut-epochs-label').textContent = `Total epoch (sumber ${epochs})`;
+      $('tr-lanjut-epochs').min = epochs + 1;
+      $('tr-lanjut-epochs').value = epochs + 100;
+    } else {
+      $('tr-lanjut-ket').textContent =
+        `Training baru dimulai dari bobot L${nomor}. Setelannya (versi, hsv, mode `
+        + `warna) diwarisi apa adanya — hanya jumlah epoch yang diganti.`;
+      $('tr-lanjut-epochs-label').textContent = 'Jumlah epoch';
+      $('tr-lanjut-epochs').min = 1;
+      $('tr-lanjut-epochs').value = epochs || 400;
+    }
     $('tr-lanjut-nama').value = '';
     $('tr-lanjut-nama').placeholder = `otomatis: '${nama || ('L' + nomor)} lanjutan'`;
     $('tr-lanjut-jenis').value = 'best';

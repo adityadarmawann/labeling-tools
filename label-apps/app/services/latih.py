@@ -849,6 +849,10 @@ def status(ds, nomor: int) -> dict:
         "terbaik": csv.get("terbaik") or {},
         "utama": csv.get("utama"),
         "punya_bobot": (d / "weights" / "best.pt").exists(),
+        # Checkpoint RF-DETR state-penuh (last.ckpt) ada -> training ini bisa
+        # DILANJUTKAN (resume sejati). Dipakai kartu untuk menampilkan tombol
+        # "Lanjutkan" pada RF-DETR, setara YOLO yang memakai best.pt.
+        "rfdetr_ckpt": (d / "rfdetr" / "last.ckpt").exists(),
     }
     return out
 

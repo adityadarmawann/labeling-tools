@@ -50,16 +50,20 @@ def _snap56(x: int) -> int:
 
 
 def _latih_rfdetr_asli(coco_dir: Path, out_dir: Path, model: str, par: dict,
-                       lapor) -> dict:
+                       lapor, resume: str | None = None) -> dict:
     """Jalankan training RF-DETR SUNGGUHAN. Satu-satunya tempat `rfdetr` diimpor
-    -> seam yang dipalsukan di tes. Kembalikan {"epoch": n, "map": x|None}."""
+    -> seam yang dipalsukan di tes. Kembalikan {"epoch": n, "map": x|None}.
+
+    resume = path last.ckpt (state penuh PyTorch-Lightning): dipakai jalur
+    "Lanjutkan" supaya training MELANJUTKAN dari checkpoint (epochs = TOTAL baru,
+    Lightning lanjut current_epoch -> max_epochs), bukan mulai dari nol."""
     import rfdetr
 
     Model = getattr(rfdetr, _KELAS_RFDETR.get(model, "RFDETRNano"))
     res = _snap56(int(par.get("resolution") or 560))
     lapor(pesan=f"melatih RF-DETR {model} @ {res}px…")
     m = Model(resolution=res)
-    m.train(
+    kw = dict(
         dataset_dir=str(coco_dir), output_dir=str(out_dir),
         epochs=int(par.get("epochs") or 100),
         batch_size=int(par.get("batch_size") or 4),
@@ -69,6 +73,9 @@ def _latih_rfdetr_asli(coco_dir: Path, out_dir: Path, model: str, par: dict,
         warmup_epochs=float(par.get("warmup_epochs") or 0.0),
         early_stopping=bool(par.get("early_stopping") or False),
     )
+    if resume:
+        kw["resume"] = str(resume)
+    m.train(**kw)
     return {"epoch": int(par.get("epochs") or 0), "map": None}
 
 
@@ -89,6 +96,13 @@ def _serap(out_dir: Path, dir_latih: Path, hasil: dict) -> int:
     last = sorted(out_dir.rglob("checkpoint.pth")) or sorted(out_dir.rglob("*last*.pth"))
     if last:
         shutil.copy2(last[0], dir_latih / "weights" / "last.pt")
+    # last.ckpt = state PENUH PTL (optimizer+scheduler+epoch). Disimpan ke
+    # rfdetr/ supaya training ini bisa DILANJUTKAN nanti (tombol "Lanjutkan")
+    # dengan resume sejati, bukan warm-start bobot saja.
+    ckpt = sorted(out_dir.rglob("last.ckpt"))
+    if ckpt:
+        (dir_latih / "rfdetr").mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ckpt[0], dir_latih / "rfdetr" / "last.ckpt")
     for png in out_dir.rglob("*.png"):          # metrics_plot.png dll -> kartu
         try:
             shutil.copy2(png, dir_latih / png.name)
@@ -144,6 +158,13 @@ def main() -> int:
         model = isi.get("rfdetr_model") or "nano"
         dl = latih.dir_latih(ds, nomor)
         dl.mkdir(parents=True, exist_ok=True)
+        # Jalur "Lanjutkan": kalau ada last.ckpt yang disemai (dari training
+        # sumber), resume SEJATI dari situ. Training SEGAR tak punya berkas ini,
+        # jadi tetap mulai dari bobot pralatih seperti biasa.
+        seed = dl / "rfdetr" / "last.ckpt"
+        resume_ckpt = str(seed) if seed.exists() else None
+        if resume_ckpt:
+            lapor(pesan="melanjutkan dari checkpoint (resume state penuh)…")
 
         with tempfile.TemporaryDirectory() as tmp:
             coco_dir = Path(tmp) / "coco"
@@ -152,7 +173,8 @@ def main() -> int:
             print(f"  COCO: {ring}", flush=True)
             out_dir = Path(tmp) / "out"
             out_dir.mkdir()
-            hasil = _latih_rfdetr_asli(coco_dir, out_dir, model, par, lapor)
+            hasil = _latih_rfdetr_asli(coco_dir, out_dir, model, par, lapor,
+                                       resume=resume_ckpt)
             epoch = _serap(out_dir, dl, hasil)
 
         latih.perbarui(ds, nomor, keadaan="selesai", selesai_pada=_sekarang(),

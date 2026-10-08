@@ -240,13 +240,13 @@
         <button class="chip" type="button" id="tr-lanjut-batal">Batal</button>
       </div>
       <p class="tr-bantu" id="tr-lanjut-ket"></p>
-      <label class="tr-dl-baris">Titik awal bobot
+      <label class="tr-dl-baris" id="tr-lanjut-jenis-baris">Titik awal bobot
         <select id="tr-lanjut-jenis">
           <option value="best">best.pt — metrik terbaik</option>
           <option value="last">last.pt — epoch terakhir</option>
         </select>
       </label>
-      <label class="tr-dl-baris">Jumlah epoch
+      <label class="tr-dl-baris"><span id="tr-lanjut-epochs-label">Jumlah epoch</span>
         <input type="number" id="tr-lanjut-epochs" min="1" max="2000" value="400">
       </label>
       <label class="tr-dl-baris">Nama (opsional)
