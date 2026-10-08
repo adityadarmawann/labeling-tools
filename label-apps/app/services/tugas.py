@@ -82,6 +82,11 @@ def kosong(pemilik: str = "") -> dict:
             # Kosong = projek ini belum/ bukan classifier aksi. Padanan
             # skeleton{} untuk klip; lihat _sah_aksi/set_aksi.
             "aksi": {"kelas": [], "merge": {}, "warna": [], "negatif": ""},
+            # Kelas "starter" tingkat projek: nama kelas yang DITAWARKAN di
+            # dropdown pelabelan sebelum satu objek pun diberi nama. Kosong =
+            # perilaku lama (kelas muncul hanya setelah dipakai + extra_labels
+            # global). Dipakai set kelas Basket. Lihat set_kelas_awal().
+            "kelas_awal": [],
             "warisan": True}
 
 
@@ -135,6 +140,7 @@ def baca(ds: Path, pemilik: str = "") -> dict:
             # Daftar kelas aksi disaring sama ketatnya (nama unik, target merge
             # ada di kelas, kelas negatif salah satu kelas yang ada).
             "aksi": _sah_aksi(d.get("aksi")),
+            "kelas_awal": _sah_kelas_awal(d.get("kelas_awal")),
             "warisan": False}
 
 
@@ -1231,6 +1237,47 @@ def set_jenis(ds: Path, jenis: str, pemilik: str = "") -> dict:
         _tulis(ds, data)
     log.info("jenis anotasi %s -> %r", Path(ds).name, j or "(otomatis)")
     return {"jenis": j}
+
+
+# Set kelas "starter" siap pakai per domain. Dropdown pelabelan menawarkannya
+# sebelum ada objek dilabeli — menghemat mengetik taksonomi dari nol. Basket
+# memakai taksonomi "aksi-sebagai-kelas" ala Roboflow (deteksi sekaligus jadi
+# sumber event: possession, jump-shot, layup/dunk, shot-block, ball-in-basket).
+KELAS_STARTER: dict[str, list[str]] = {
+    "basket": ["ball", "ball-in-basket", "basket", "number", "player",
+               "player-in-possession", "player-jump-shot", "player-layup-dunk",
+               "player-shot-block", "referee"],
+}
+MAKS_KELAS_AWAL = 100
+
+
+def _sah_kelas_awal(v) -> list[str]:
+    """Daftar nama kelas starter: string tak-kosong, unik (urutan dijaga),
+    dibatasi jumlahnya. Apa pun yang aneh -> []."""
+    out: list[str] = []
+    lihat: set[str] = set()
+    for x in (v if isinstance(v, (list, tuple)) else []):
+        s = str(x).strip()
+        if s and s not in lihat:
+            lihat.add(s)
+            out.append(s)
+        if len(out) >= MAKS_KELAS_AWAL:
+            break
+    return out
+
+
+def set_kelas_awal(ds: Path, kelas, pemilik: str = "") -> dict:
+    """Tetapkan daftar kelas starter projek (mengganti yang lama). Dipakai
+    tombol 'muat set kelas' di pelabelan. [] mengosongkannya kembali."""
+    bersih = _sah_kelas_awal(kelas)
+    with _kunci:
+        data = baca(ds, pemilik)
+        if data.get("kelas_awal") == bersih:
+            return _tanpa_perubahan(data, {"kelas_awal": bersih})
+        data["kelas_awal"] = bersih
+        _tulis(ds, data)
+    log.info("kelas_awal %s -> %d kelas", Path(ds).name, len(bersih))
+    return {"kelas_awal": bersih}
 
 
 def jenis_berlaku(data: dict, items: list | None = None) -> str:

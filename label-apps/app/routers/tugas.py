@@ -278,6 +278,32 @@ async def post_skeleton(request: Request, ds: str = "",
     return {"ok": True, **r}
 
 
+@router.post("/api/tugas/kelas-starter")
+async def post_kelas_starter(request: Request, ds: str = "",
+                             sess: Session = Depends(current_session_api),
+                             settings: Settings = Depends(get_settings)):
+    """Muat/ganti daftar kelas STARTER projek — nama kelas yang muncul di
+    dropdown pelabelan SEBELUM ada objek dilabeli. Body: {"set": "basket"}
+    (dari registri KELAS_STARTER) ATAU {"kelas": ["a","b"]} eksplisit; []
+    mengosongkan. Hanya pemilik — ini taksonomi tingkat projek."""
+    d = svc_projek.temukan(settings.uploads_root, sess.user, ds) if ds else sess.src
+    if d is None:
+        return {"ok": False, "error": "projek tidak ada / belum ada yang dibuka"}
+    data = await asyncio.to_thread(svc.baca_projek, d, settings.uploads_root)
+    if not svc.boleh_kelola(data, sess.user):
+        return {"ok": False, "error": "hanya pemilik projek yang mengubah ini"}
+    body = await bodi_json(request)
+    nama_set = str(body.get("set") or "").strip().lower()
+    if nama_set:
+        kelas = svc.KELAS_STARTER.get(nama_set)
+        if kelas is None:
+            return {"ok": False, "error": f"set kelas '{nama_set}' tak dikenal"}
+    else:
+        kelas = body.get("kelas") or []
+    r = await asyncio.to_thread(svc.set_kelas_awal, d, kelas, sess.user)
+    return {"ok": True, **r}
+
+
 @router.get("/api/tugas/aksi")
 async def get_aksi(ds: str = "", sess: Session = Depends(current_session_api),
                    settings: Settings = Depends(get_settings)):

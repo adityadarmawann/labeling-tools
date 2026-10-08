@@ -41,10 +41,20 @@ MIME = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
 
 
 def daftar_kelas(sess: Session) -> list[str]:
-    """Kelas yang sudah dipakai di dataset + kelas tambahan dari setelan."""
+    """Kelas yang sudah dipakai + kelas STARTER projek + kelas tambahan setelan.
+
+    kelas_awal (starter per-projek, mis. set Basket) membuat taksonomi muncul di
+    dropdown SEBELUM satu objek pun dilabeli. Projek tanpa starter -> [] -> sama
+    persis seperti perilaku lama."""
     dipakai = {str(s["label"]).strip() for it in sess.items for s in it["shapes"]
                if s["label"] is not None and str(s["label"]).strip()}
-    return sorted(dipakai | set(sess.settings.extra_labels))
+    awal: set[str] = set()
+    if sess.src:
+        try:
+            awal = set(tugas.baca(Path(sess.src)).get("kelas_awal") or [])
+        except OSError:
+            awal = set()
+    return sorted(dipakai | awal | set(sess.settings.extra_labels))
 
 
 def kelas_resmi(sess: Session) -> list[str]:

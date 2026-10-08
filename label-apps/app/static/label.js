@@ -3036,6 +3036,29 @@ el('kelasbaru').addEventListener('keydown', ev => {
   pakaiKelas(v);
 });
 
+// Tombol "muat kelas Basket": hanya pemilik; memuat taksonomi basket ke
+// dropdown (lewat kelas_awal projek) tanpa mengetik. Projek RVM mengabaikannya.
+(() => {
+  const bb = el('muat-basket');
+  if (!bb || !D.boleh_kelola) return;
+  bb.hidden = false;
+  bb.onclick = async () => {
+    bb.disabled = true;
+    try {
+      const r = await fetch('/api/tugas/kelas-starter', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ set: 'basket' }),
+      }).then(x => x.json());
+      if (!r.ok) { toast(r.error || 'gagal memuat set kelas'); return; }
+      (r.kelas_awal || []).forEach(k => { if (!S.kelas.includes(k)) S.kelas.push(k); });
+      S.kelas.sort();
+      render();
+      toast(`Set kelas Basket dimuat — ${(r.kelas_awal || []).length} kelas.`);
+    } catch (e) { toast('gagal: ' + e); }
+    finally { bb.disabled = false; }
+  };
+})();
+
 el('prev').onclick = e => { e.preventDefault(); pindah(D.prev); };
 el('next').onclick = e => { e.preventDefault(); pindah(D.next); };
 // href awal panah dibangun ulang dengan KONTEKS (templat menaruhnya tanpa

@@ -3143,3 +3143,40 @@ def test_kelas_baru_didaftarkan_saat_simpan_yolo(klien, lingkungan):
     assert dy["nc"] == 3, dy
     # label YOLO memakai indeks 2, bukan kosong (latar).
     assert (d / "labels" / "g0.txt").read_text().strip().startswith("2 ")
+
+
+# ============================================================
+# KELAS STARTER per-projek (set Basket)
+# ============================================================
+
+def test_kelas_awal_default_kosong_dan_sah(tmp_path):
+    assert tugas.baca(tmp_path).get("kelas_awal") == []        # projek baru
+    assert tugas._sah_kelas_awal(["a", " a ", "", "b", "a"]) == ["a", "b"]
+    assert "basket" in tugas.KELAS_STARTER
+    assert len(tugas.KELAS_STARTER["basket"]) >= 8
+
+
+def test_set_kelas_awal_simpan_dan_kosongkan(tmp_path):
+    tugas.set_kelas_awal(tmp_path, tugas.KELAS_STARTER["basket"], "paul")
+    ka = tugas.baca(tmp_path)["kelas_awal"]
+    assert "player" in ka and "ball" in ka and "player-jump-shot" in ka
+    tugas.set_kelas_awal(tmp_path, [], "paul")
+    assert tugas.baca(tmp_path)["kelas_awal"] == []
+
+
+def test_rute_kelas_starter_owner_dan_set_asing(klien, lingkungan):
+    import pathlib
+    from tests.test_projek import _projek
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = _projek(ruang, "basket-uji", n=2)
+    klien.post(f"/setsrc?path={d}")
+    j = klien.post("/api/tugas/kelas-starter", json={"set": "basket"}).json()
+    assert j["ok"] and "player" in j["kelas_awal"]
+    assert json.loads((d / ".tugas.json").read_text())["kelas_awal"], "tersimpan di sidecar"
+    # set tak dikenal -> error, bukan meledak
+    j2 = klien.post("/api/tugas/kelas-starter", json={"set": "ngawur"}).json()
+    assert not j2["ok"]
+    # kelas eksplisit juga bisa
+    j3 = klien.post("/api/tugas/kelas-starter", json={"kelas": ["x", "y"]}).json()
+    assert j3["ok"] and j3["kelas_awal"] == ["x", "y"]

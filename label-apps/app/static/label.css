@@ -216,6 +216,12 @@ body.lab {
 .kelas i { width: 10px; height: 10px; border-radius: 3px; flex: 0 0 auto; }
 .kelas span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kelas-baru { margin-top: 8px; flex: 0 0 auto; }
+/* Tombol muat set kelas starter (Basket) — mungil & tenang, hanya pemilik. */
+.kelas-starter { margin-top: 6px; flex: 0 0 auto; font-size: 11.5px;
+  padding: 4px 8px; border-radius: 6px; cursor: pointer;
+  border: 1px dashed var(--garis, #c9ccd1);
+  background: transparent; color: var(--ink-dim, #6b7280); }
+.kelas-starter:hover { border-style: solid; }
 
 /* daftar objek */
 .obj-list { overflow-y: auto; display: flex; flex-direction: column; gap: 2px;

@@ -147,6 +147,12 @@
       <div class="kelas-baru">
         <input id="kelasbaru" type="text" placeholder="kelas baru lalu Enter">
       </div>
+      {#- Muat set kelas siap-pakai (taksonomi Basket ala Roboflow) ke dropdown
+          tanpa mengetik satu per satu. Tersembunyi; JS membukanya hanya untuk
+          pemilik projek. Projek lain (RVM) tinggal mengabaikannya. -#}
+      <button type="button" id="muat-basket" class="kelas-starter" hidden
+              title="Muat set kelas Basket: pemain · bola · court · nomor · wasit · aksi (jump-shot, layup/dunk, dll)">
+        + muat kelas Basket</button>
     </div>
 
     {# Padanan "Find Objects with AI" di Roboflow. Dulu ini bar selebar layar
