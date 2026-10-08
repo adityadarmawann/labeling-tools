@@ -62,12 +62,18 @@ def _tulis_progres(dl: Path, baris: list[tuple]) -> None:
         pass
 
 
-# Checkpoint rfdetr -> lokasi HIGOLAB. checkpoint_best_total.pth = model terbaik
-# (best.pt); last_ema.pth = bobot epoch terakhir (last.pt); last.ckpt = state
-# penuh PTL untuk resume/Lanjutkan.
-_PETA_CKPT = (("checkpoint_best_total.pth", ("weights", "best.pt")),
-              ("last_ema.pth", ("weights", "last.pt")),
-              ("last.ckpt", ("rfdetr", "last.ckpt")))
+# Checkpoint rfdetr -> lokasi HIGOLAB. Tiap tujuan punya DAFTAR kandidat sumber
+# berurutan (fallback), karena rfdetr menamai berbeda-beda: best bisa
+# checkpoint_best_total.pth (ditulis di akhir) ATAU checkpoint_best_ema.pth
+# (ditulis selama training saat val membaik); "last" ema (last_ema.pth) baru
+# muncul di akhir. Tanpa fallback, best.pt tak tersalin selama training.
+_SYNC_CKPT = (
+    (("weights", "best.pt"),
+     ["checkpoint_best_total.pth", "checkpoint_best_ema.pth",
+      "checkpoint_best_regular.pth", "*best*.pth"]),
+    (("weights", "last.pt"), ["last_ema.pth", "last*.pth"]),
+    (("rfdetr", "last.ckpt"), ["last.ckpt"]),
+)
 
 
 def _sync_ckpt(out_dir: Path, dl: Path, mt: dict) -> None:
@@ -76,22 +82,27 @@ def _sync_ckpt(out_dir: Path, dl: Path, mt: dict) -> None:
     (dan last.ckpt untuk Lanjutkan) SUDAH ADA dan mutakhir, tak hilang bersama
     proses. Disalin hanya saat mtime berubah supaya I/O tak boros."""
     out_dir, dl = Path(out_dir), Path(dl)
-    for nama, (sub, tuju_nama) in _PETA_CKPT:
-        kand = sorted(out_dir.rglob(nama), key=lambda p: len(str(p)))
-        if not kand:
+    for (sub, tuju_nama), kandidat in _SYNC_CKPT:
+        src = None
+        for pola in kandidat:
+            got = sorted(out_dir.rglob(pola), key=lambda p: len(str(p)))
+            if got:
+                src = got[0]
+                break
+        if src is None:
             continue
-        src = kand[0]
+        kunci = (sub, tuju_nama)
         try:
             m = src.stat().st_mtime
         except OSError:
             continue
-        if mt.get(nama) == m:
+        if mt.get(kunci) == m:
             continue
         tuju = dl / sub / tuju_nama
         tuju.parent.mkdir(parents=True, exist_ok=True)
         try:
             shutil.copy2(src, tuju)
-            mt[nama] = m
+            mt[kunci] = m
         except OSError:
             pass
 

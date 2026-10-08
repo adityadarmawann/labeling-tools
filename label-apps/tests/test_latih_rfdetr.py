@@ -205,3 +205,17 @@ def test_sync_ckpt_salin_best_last_dan_cache_mtime(tmp_path):
     # Tanpa perubahan -> tak disalin lagi (cache mtime tetap 3 entri).
     latih_rfdetr._sync_ckpt(out, dl, mt)
     assert len(mt) == 3
+
+
+def test_sync_ckpt_fallback_best_ema(tmp_path):
+    """FALLBACK: kalau tak ada checkpoint_best_total.pth (baru ditulis di akhir),
+    best.pt diambil dari checkpoint_best_ema.pth yang ditulis SELAMA training.
+    Tanpa ini, stop di tengah tak meninggalkan best.pt sama sekali."""
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "checkpoint_best_ema.pth").write_bytes(b"ema-best")   # hanya EMA best
+    (out / "last.ckpt").write_bytes(b"ckpt")
+    dl = tmp_path / "L1"
+    latih_rfdetr._sync_ckpt(out, dl, {})
+    assert (dl / "weights" / "best.pt").read_bytes() == b"ema-best"
+    assert (dl / "rfdetr" / "last.ckpt").exists()
