@@ -303,8 +303,11 @@ def _slug(s: str, maks: int = 40) -> str:
     return (s or "x")[:maks].strip("-") or "x"
 
 
-def nama_dataset(ds, versi: int) -> str:
-    return _slug(f"higolab-{Path(ds).name}-v{int(versi)}")
+def nama_dataset(ds, versi: int, arsitektur: str = "yolo") -> str:
+    # RF-DETR memakai dataset COCO (beda isi dari YOLO) -> slug beda supaya reuse
+    # ledger tak keliru memakai dataset YOLO untuk RF-DETR pada versi yang sama.
+    sfx = "-coco" if arsitektur == "rfdetr" else ""
+    return _slug(f"higolab-{Path(ds).name}-v{int(versi)}{sfx}")
 
 
 def nama_kernel(ds, nomor: int, leg: int) -> str:
@@ -421,6 +424,57 @@ def skrip_latih(tugas: str, bobot: str, par: dict, *, run: str,
             .replace("__BOBOT__", str(bobot))
             .replace("__RUN__", str(run))
             .replace("__BATAS_JAM__", repr(float(batas_jam)))
+            .replace("__RESUME__", "True" if resume else "False"))
+
+
+# Skrip kernel RF-DETR: pip install rfdetr sendiri (nol dampak lokal), cari
+# dataset COCO di /kaggle/input, RFDETR<ukuran>(resolution kelipatan-56).train(),
+# simpan checkpoint terbaik ke /kaggle/working/<run>. Augmentasi internal rfdetr.
+_SKRIP_RFDETR = '''
+import os, sys, glob, json, subprocess
+print("== pasang rfdetr ==", flush=True)
+subprocess.run([sys.executable, "-m", "pip", "install", "-q", "rfdetr[train]"], check=True)
+import torch
+print("CUDA_TERSEDIA", torch.cuda.is_available(), "N_GPU", torch.cuda.device_count(), flush=True)
+PAR = json.loads(r"""__PAR_JSON__""")
+MODEL = "__MODEL__"
+RUN = "__RUN__"
+RESUME = __RESUME__
+cand = glob.glob("/kaggle/input/**/train/_annotations.coco.json", recursive=True)
+assert cand, "dataset COCO (train/_annotations.coco.json) tak ketemu di input"
+DS = os.path.dirname(os.path.dirname(sorted(cand, key=len)[0]))
+print("DATASET_DI", DS, flush=True)
+import rfdetr
+KELAS = {"nano": "RFDETRNano", "small": "RFDETRSmall", "medium": "RFDETRMedium", "large": "RFDETRLarge"}
+Model = getattr(rfdetr, KELAS.get(MODEL, "RFDETRNano"))
+res = max(56, round(float(PAR.get("resolution", 560)) / 56) * 56)
+OUT = "/kaggle/working/" + RUN
+kw = dict(dataset_dir=DS, output_dir=OUT, epochs=int(PAR.get("epochs", 100)),
+          batch_size=int(PAR.get("batch_size", 4)),
+          grad_accum_steps=int(PAR.get("grad_accum_steps", 4)),
+          lr=float(PAR.get("lr", 1e-4)), lr_encoder=float(PAR.get("lr_encoder", 1.5e-4)),
+          warmup_epochs=float(PAR.get("warmup_epochs", 0.0)),
+          early_stopping=bool(PAR.get("early_stopping", False)))
+if RESUME:
+    ck = sorted(glob.glob("/kaggle/input/**/best.pt", recursive=True)
+                + glob.glob("/kaggle/input/**/*.pth", recursive=True), key=len)
+    if ck:
+        kw["resume"] = ck[0]; print("RESUME_DARI", ck[0], flush=True)
+print("MODEL", MODEL, "res", res, flush=True)
+Model(resolution=res).train(**kw)
+best = (glob.glob(OUT + "/checkpoint_best_total.pth") or glob.glob(OUT + "/*best*.pth")
+        or glob.glob(OUT + "/*.pth"))
+print("EPOCH_LEG", int(PAR.get("epochs", 0)), flush=True)
+print("BEST_EXISTS", bool(best), (os.path.getsize(best[0]) if best else 0), flush=True)
+'''
+
+
+def skrip_rfdetr(model: str, par: dict, *, run: str, resume: bool = False) -> str:
+    """Rakit skrip kernel RF-DETR. Murni -> diuji tanpa jaringan."""
+    return (_SKRIP_RFDETR
+            .replace("__PAR_JSON__", json.dumps(par))
+            .replace("__MODEL__", str(model))
+            .replace("__RUN__", str(run))
             .replace("__RESUME__", "True" if resume else "False"))
 
 
@@ -611,6 +665,98 @@ def batalkan_remote(settings, kernel_id: str, akun_user: str) -> tuple[bool, str
 
 
 # ============================================================
+# JALUR RF-DETR DI KAGGLE (single-run; reuse helper + ledger)
+# ============================================================
+#
+# Terpisah dari loop YOLO berbilah supaya jalur YOLO-Kaggle yang sudah terbukti
+# TAK tersentuh. RF-DETR: unggah dataset COCO (bukan YOLO), kernel pip-install
+# rfdetr sendiri, satu run (bukan berbilah — rfdetr nano/small lazim muat dalam
+# 12 jam; resume berbilah menyusul). Retry transient + rotasi akun saat kuota
+# habis tetap berlaku. Dipanggil dari main() -> ikut except->gagal di sana.
+
+def _rfdetr_kaggle(ds: Path, nomor: int, isi: dict, settings, basis, pool) -> int:
+    from . import buatversi, ekspor_coco, latih_rfdetr
+
+    versi = int(isi["versi"])
+    versi_dir = buatversi.dir_versi(ds, versi)
+    if not (versi_dir / "data.yaml").exists():
+        raise FileNotFoundError(
+            f"versi v{versi} belum punya data.yaml — tak bisa diekspor ke COCO")
+    par = dict(isi.get("par") or {})
+    model = isi.get("rfdetr_model") or "nano"
+    target = int(par.get("epochs") or 0)
+    dl = latih.dir_latih(ds, nomor)
+    (dl / "weights").mkdir(parents=True, exist_ok=True)
+
+    kag = dict(isi.get("kaggle") or {})
+
+    def lapor(**kv):
+        kag.update(kv)
+        latih.perbarui(ds, nomor, kaggle=dict(kag))
+
+    latih.perbarui(ds, nomor, keadaan="jalan", mulai_pada=_sekarang(),
+                   pid=os.getpid(), galat="")
+    lapor(pesan="menyiapkan RF-DETR di Kaggle…")
+
+    coco_root = Path(tempfile.mkdtemp(prefix="higolab-coco-"))
+    try:
+        sumber = coco_root / "coco"
+        ekspor_coco.versi_ke_coco(versi_dir, sumber)        # YOLO versi -> COCO
+        ds_slug = nama_dataset(ds, versi, "rfdetr")
+        judul = f"HIGOLAB {Path(ds).name} v{versi} (COCO)"
+        run = f"run-l{nomor}"
+        percubaan = 0
+        while True:
+            akun = _pilih_akun(basis, pool)
+            if akun is None:
+                latih.perbarui(ds, nomor, keadaan="tertunda", selesai_pada=_sekarang(),
+                               galat="kuota semua akun Kaggle menipis — "
+                                     "training bisa dilanjutkan nanti atau tambah akun")
+                lapor(pesan="tertunda: kuota semua akun menipis")
+                return 0
+            lapor(akun=akun["user"], pesan=f"unggah dataset COCO ke {akun['user']}…")
+            dsid = _unggah_dataset(basis, sumber, akun, ds_slug, judul)
+            slug_k = nama_kernel(ds, nomor, 0)
+            skrip = skrip_rfdetr(model, par, run=run)
+            kid, url = _push_kernel(akun, slug_k, skrip, [dsid])
+            lapor(kernel=kid, kernel_url=url, remote="queued",
+                  pesan=f"RF-DETR {model} berjalan di Kaggle ({akun['user']})")
+
+            t0 = time.time()
+            hasil, teks = _poll_kernel(akun, kid, lambda s: lapor(remote=s))
+            _catat_pakai(basis, akun["user"], (time.time() - t0) / 3600.0)
+
+            ep = 0
+            with tempfile.TemporaryDirectory() as tmp:
+                try:
+                    _tarik_keluaran(akun, kid, Path(tmp))
+                    ep = latih_rfdetr._serap(
+                        Path(tmp), dl,
+                        {"epoch": target if hasil == "complete" else 0, "map": None})
+                except Exception:                           # noqa: BLE001
+                    if hasil == "complete":
+                        raise
+                    ep = 0
+
+            if (dl / "weights" / "best.pt").exists() and hasil == "complete":
+                latih.perbarui(ds, nomor, keadaan="selesai", selesai_pada=_sekarang())
+                lapor(epochs_done=ep or target,
+                      pesan=f"selesai — RF-DETR {model}, {ep or target} epoch")
+                return 0
+
+            if _galat_kuota(teks):
+                _tandai_habis(basis, akun["user"])
+                lapor(pesan=f"akun {akun['user']} kehabisan kuota — rotasi ke akun berikut")
+                continue
+            percubaan += 1
+            if percubaan >= MAKS_COBA_LEG:
+                raise RuntimeError(f"RF-DETR di Kaggle gagal {percubaan}x: {teks[-200:]}")
+            lapor(pesan=f"gagal (mungkin sesaat) — coba ulang {percubaan}/{MAKS_COBA_LEG-1}")
+    finally:
+        shutil.rmtree(coco_root, ignore_errors=True)
+
+
+# ============================================================
 # ORKESTRATOR BERBILAH
 # ============================================================
 
@@ -636,6 +782,10 @@ def main() -> int:
     basis = basis_ledger(settings)          # ledger kuota GLOBAL, bukan per-projek
 
     try:
+        # RF-DETR punya jalur sendiri (dataset COCO, kernel rfdetr); jalur YOLO
+        # berbilah di bawah tak tersentuh.
+        if isi.get("arsitektur") == "rfdetr":
+            return _rfdetr_kaggle(ds, nomor, isi, settings, basis, pool)
         from . import buatversi
         versi = int(isi["versi"])
         versi_dir = buatversi.dir_versi(ds, versi)

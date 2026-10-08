@@ -94,6 +94,8 @@ def _tulis_run(out_dir: Path, run: str, rows: int):
     (r / "weights" / "best.pt").write_bytes(b"PK\x03\x04b")
     (r / "weights" / "last.pt").write_bytes(b"PK\x03\x04l")
     (r / "results.png").write_bytes(b"\x89PNG")
+    # checkpoint RF-DETR (dipakai jalur rfdetr-Kaggle; diabaikan jalur YOLO).
+    (r / "checkpoint_best_total.pth").write_bytes(b"PK\x03\x04pth")
 
 
 def test_serap_meratakan_ke_dir_latih(tmp_path):
@@ -267,10 +269,12 @@ def siapkan_main(tmp_path, monkeypatch):
     # uploads_root dibutuhkan basis_ledger() -> ledger global di tmp_path/_kaggle
     monkeypatch.setattr("app.config.get_settings", lambda: NS(uploads_root=tmp_path))
 
-    def jalankan(nomor, target, legs, pool, kag_awal=None, ckpt_rows=0):
+    def jalankan(nomor, target, legs, pool, kag_awal=None, ckpt_rows=0,
+                 arsitektur="yolo", rfdetr_model=""):
         latih._tulis(tmp_path, nomor, {
             "nomor": nomor, "versi": 1, "tugas": "detect", "bobot": "yolov8n.pt",
             "par": {"epochs": target}, "keadaan": "antre", "backend": "kaggle",
+            "arsitektur": arsitektur, "rfdetr_model": rfdetr_model,
             "kaggle": dict(kag_awal or {})})
         # Checkpoint lokal (meniru leg sebelumnya) supaya jalur resume punya
         # last.pt + results.csv untuk disambung.
@@ -364,6 +368,30 @@ def test_main_semua_kuota_habis_jadi_tertunda(siapkan_main):
     assert rc == 0
     assert rek["keadaan"] == "tertunda"
     assert "kuota" in (rek.get("galat") or "").lower()
+
+
+def test_main_rfdetr_kaggle_selesai(siapkan_main):
+    """Arsitektur rfdetr + backend kaggle -> jalur _rfdetr_kaggle: ekspor COCO,
+    kernel rfdetr, tarik checkpoint .pth -> best.pt, selesai."""
+    tmp_path, jalankan = siapkan_main
+    rc, rek = jalankan(20, target=5, legs=[{"epochs": 5}],
+                       pool=[{"user": "a", "token": "ta"}],
+                       arsitektur="rfdetr", rfdetr_model="nano")
+    assert rc == 0 and rek["keadaan"] == "selesai"
+    dl = latih.dir_latih(tmp_path, 20)
+    assert (dl / "weights" / "best.pt").exists()     # dari checkpoint_best_total.pth
+    assert (dl / "results.csv").exists()
+
+
+def test_main_rfdetr_kaggle_rotasi_kuota(siapkan_main):
+    """Kuota akun pertama habis -> rotasi ke akun cadangan juga berlaku di jalur
+    RF-DETR-Kaggle."""
+    tmp_path, jalankan = siapkan_main
+    rc, rek = jalankan(21, target=5, legs=[{"quota": True}, {"epochs": 5}],
+                       pool=[{"user": "a", "token": "ta"}, {"user": "b", "token": "tb"}],
+                       arsitektur="rfdetr", rfdetr_model="nano")
+    assert rc == 0 and rek["keadaan"] == "selesai"
+    assert k._akun_habis(tmp_path / "_kaggle", "a") is True
 
 
 def test_main_resume_dari_tertunda(siapkan_main):

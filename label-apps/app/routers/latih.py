@@ -158,13 +158,12 @@ async def mulai(request: Request,
     # (Kaggle-RF-DETR menyusul); gerbang kesiapannya pun beda (butuh paket rfdetr).
     arsitektur = svc.arsitektur_sah(str(body.get("arsitektur") or "yolo").strip().lower())
     rfdetr_model = str(body.get("rfdetr_model") or "").strip().lower()
-    if arsitektur == "rfdetr":
-        if backend == "kaggle":
-            return {"ok": False,
-                    "error": "RF-DETR di Kaggle belum didukung — pilih 'PC ini'"}
-        siap, alasan = svc.siap_rfdetr()
-    elif backend == "kaggle":
+    if backend == "kaggle":
+        # RF-DETR di Kaggle: kernelnya pip-install rfdetr sendiri, jadi server
+        # ini TIDAK perlu rfdetr lokal — cukup akun Kaggle terkonfigurasi.
         siap, alasan = svc_kaggle.siap(settings)
+    elif arsitektur == "rfdetr":
+        siap, alasan = svc.siap_rfdetr()
     else:
         siap, alasan = svc.siap_latih()
     if not siap:

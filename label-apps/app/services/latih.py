@@ -1029,13 +1029,13 @@ def jalankan(ds, nomor: int) -> dict:
     # Keduanya subproses terlepas dengan kontrak yang sama: menulis
     # results.csv + weights/best.pt ke .latih/L<n>/ dan memperbarui keadaan,
     # sehingga status()/hidup(pid) berlaku tanpa pembedaan.
-    #   rfdetr -> latih_rfdetr (RF-DETR lokal di .venv-gpu; Kaggle-RF-DETR = S4,
-    #            ditolak lebih dulu di router). yolo + kaggle -> latih_kaggle.
-    #            yolo + lokal -> latih_jalan.
-    if isi.get("arsitektur") == "rfdetr":
-        modul = "app.services.latih_rfdetr"
-    elif isi.get("backend") == "kaggle":
+    #   backend kaggle -> latih_kaggle (menangani YOLO MAUPUN RF-DETR, pilih
+    #            jalur dari field arsitektur). lokal + rfdetr -> latih_rfdetr.
+    #            lokal + yolo -> latih_jalan.
+    if isi.get("backend") == "kaggle":
         modul = "app.services.latih_kaggle"
+    elif isi.get("arsitektur") == "rfdetr":
+        modul = "app.services.latih_rfdetr"
     else:
         modul = "app.services.latih_jalan"
     perintah = [sys.executable, "-m", modul,
