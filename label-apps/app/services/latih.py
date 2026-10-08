@@ -675,7 +675,13 @@ def hidup(pid) -> bool:
     try:
         cmd = Path(f"/proc/{pid}/cmdline").read_bytes().decode("utf8", "replace")
         # Worker sah: latih_jalan (YOLO lokal), latih_kaggle (offload), latih_rfdetr.
-        return any(w in cmd for w in
+        # Dicocokkan ke JALUR MODUL bertitik ("app.services.latih_jalan"), bukan
+        # sekadar "latih_jalan", karena itulah yang benar-benar ada di cmdline
+        # (dijalankan `-m app.services.<modul>`). Cocok longgar "latih_jalan"
+        # ikut terpicu oleh proses lain yang kebetulan memuat substring itu —
+        # mis. pytest yang menyebut tests/test_latih_rfdetr.py di argv-nya —
+        # sehingga proses mati bisa salah terlihat "hidup" saat PID dipakai ulang.
+        return any(f"app.services.{w}" in cmd for w in
                    ("latih_jalan", "latih_kaggle", "latih_rfdetr"))
     except OSError:
         return True

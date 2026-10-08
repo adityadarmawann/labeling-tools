@@ -52,11 +52,34 @@
                  placeholder="mis. percobaan pertama, 250 epoch">
         </label>
 
+        {#- ARSITEKTUR model: YOLO (ultralytics) atau RF-DETR (transformer, unggul
+            objek kecil/okludsi — bola basket). Tersembunyi sampai JS memastikan
+            RF-DETR memang tersedia (rfdetr lokal ATAU Kaggle). Mengganti ini
+            menukar seluruh isian parameter di bawah. -#}
+        <label class="tr-label" id="tr-arsitektur-bungkus" hidden>Arsitektur
+          <select id="tr-arsitektur">
+            <option value="yolo">YOLO — cepat, serbaguna (bawaan)</option>
+            <option value="rfdetr">RF-DETR — transformer, unggul objek kecil</option>
+          </select>
+          <span class="tr-bantu" id="tr-arsitektur-ket"></span>
+        </label>
+
+        {#- Ukuran model RF-DETR (resolusi native naik seiring ukuran). Hanya
+            muncul saat Arsitektur = RF-DETR. -#}
+        <label class="tr-label" id="tr-rfdetr-model-bungkus" hidden>Ukuran model RF-DETR
+          <select id="tr-rfdetr-model">
+            <option value="nano">Nano — paling ringan/cepat</option>
+            <option value="small">Small</option>
+            <option value="medium">Medium</option>
+            <option value="large">Large — paling akurat/berat</option>
+          </select>
+        </label>
+
         {#- JENIS PRESET: resep augmentasi + setelan yang COCOK untuk jenis
             datanya. Ditaruh paling atas karena ia mengubah seluruh setelan di
             bawahnya. Namanya ditulis untuk orang awam ("SmartBin" vs "Basket")
             dan penjelasannya muncul di bawah selektor. -#}
-        <label class="tr-label">Jenis preset
+        <label class="tr-label" id="tr-preset-bungkus">Jenis preset
           <select id="tr-preset"></select>
           <span class="tr-bantu" id="tr-preset-ket"></span>
         </label>
@@ -123,7 +146,7 @@
           <p class="tr-warna-catat" id="tr-warna-catat" hidden></p>
         </div>
 
-        <label class="tr-label">Jenis tugas
+        <label class="tr-label" id="tr-tugas-bungkus">Jenis tugas
           <select id="tr-tugas">
             <option value="segment">Segmentasi (poligon)</option>
             <option value="detect">Deteksi (kotak)</option>
@@ -131,7 +154,7 @@
           <span class="tr-bantu" id="tr-tugas-ket"></span>
         </label>
 
-        <label class="tr-label">Bobot awal
+        <label class="tr-label" id="tr-bobot-bungkus">Bobot awal
           <select id="tr-bobot"></select>
           <span class="tr-bantu" id="tr-bobot-ket"></span>
         </label>

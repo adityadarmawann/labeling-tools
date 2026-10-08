@@ -3097,6 +3097,10 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
    peringatan lembut, bukan merah. */
 .tr-pil-tertunda{background:var(--split-bg); color:var(--split-ink)}
 .tr-pil-kaggle{background:var(--lab-bg); color:var(--lab-ink); font-weight:600}
+/* RF-DETR: lencana TEKNIK, bukan keadaan. Gaya outline supaya jelas berbeda
+   dari pil status solid di sebelahnya dan tak terbaca sebagai keadaan. */
+.tr-pil-rfdetr{background:transparent; color:var(--aksi);
+  border:1px solid var(--aksi); font-weight:700}
 /* Pita info Kaggle: lencana + tautan kernel + pesan poller. Satu baris kecil,
    tenang, di bawah kepala kartu. */
 .tr-kaggle{display:flex; align-items:center; gap:8px; flex-wrap:wrap;

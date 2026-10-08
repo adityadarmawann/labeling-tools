@@ -118,6 +118,7 @@ async def bahan(sess: Session = Depends(current_session_api),
             # untuk selektor "Arsitektur" di form (S5).
             "arsitektur": list(svc.ARSITEKTUR),
             "rfdetr_siap": svc.siap_rfdetr()[0],
+            "rfdetr_alasan": svc.siap_rfdetr()[1],
             "rfdetr_model": list(svc.RFDETR_MODEL),
             "preset_rfdetr": svc.PRESET_RFDETR,
             "batas_rfdetr": {k: list(v) for k, v in svc.BATAS_RFDETR.items()}}

@@ -100,9 +100,31 @@
      angkanya bagus lalu gagal di ruang detektor. Yang ditampilkan cukup
      AKIBATNYA, dalam kalimat biasa, di panel mode di sebelah kiri. */
 
-  function kotakPar(kunci, label, satuan, jelas) {
-    const p = BAHAN.preset[kunci];
-    const b = BAHAN.batas[kunci];
+  /* Parameter RF-DETR — daftar yang BERBEDA dari YOLO karena mesinnya berbeda.
+     RF-DETR tak punya mosaic/hsv/box-cls-dfl; yang penting justru resolusi
+     (kelipatan 56, naik = objek kecil seperti bola lebih terbaca) dan batch
+     efektif = batch_size × akumulasi gradien (target 16). Dua laju belajar:
+     satu untuk kepala deteksi, satu lebih kecil untuk backbone DINOv2 pralatih.
+     Nilai bawaan & batasnya datang dari server (BAHAN.preset_rfdetr /
+     BAHAN.batas_rfdetr), persis pola preset YOLO. */
+  const PAR_RFDETR = [
+    ['epochs', 'Epoch', '', 'Berapa kali seluruh data dilewati saat melatih'],
+    ['batch_size', 'Batch', 'terlalu besar = VRAM habis',
+     'Berapa gambar diproses sekaligus tiap langkah'],
+    ['grad_accum_steps', 'Akumulasi gradien', '× batch = batch efektif',
+     'batch × ini = batch efektif. Cara menaikkan batch efektif tanpa menambah VRAM (target 16)'],
+    ['resolution', 'Resolusi', 'piksel · kelipatan 56',
+     'Gambar diproses pada ukuran ini. Lebih tinggi = objek kecil (bola) lebih terbaca, tapi lebih berat. Dibulatkan ke kelipatan 56'],
+    ['lr', 'Laju belajar', '', 'Seberapa besar langkah perbaikan pada kepala deteksi'],
+    ['lr_encoder', 'Laju belajar encoder', '',
+     'Laju belajar untuk backbone DINOv2 — lebih kecil karena sudah pralatih'],
+    ['warmup_epochs', 'Pemanasan', 'epoch',
+     'Epoch awal dengan laju belajar dinaikkan pelan'],
+  ];
+
+  function kotakPar(kunci, label, satuan, jelas, dasar, batas) {
+    const p = (dasar || BAHAN.preset)[kunci];
+    const b = (batas || BAHAN.batas)[kunci];
     const langkah = Number.isInteger(p) ? 1 : (p < 0.01 ? 0.0001 : 0.01);
     const adaKamus = window.KAMUS && window.KAMUS[kunci];
     return `<label class="tr-p" data-kamus="${esc(kunci)}" title="${esc(jelas || label)}">
@@ -115,9 +137,29 @@
     </label>`;
   }
 
+  /* ---- Arsitektur (YOLO vs RF-DETR) ------------------------------------ */
+  const arsitekturDipilih = () => {
+    const s = $('tr-arsitektur');
+    return (s && s.value === 'rfdetr') ? 'rfdetr' : 'yolo';
+  };
+  const rfdetrModelDipilih = () => {
+    const s = $('tr-rfdetr-model');
+    return (s && s.value) || 'nano';
+  };
+
   function gambarForm() {
-    $('tr-par').innerHTML = PAR_UTAMA.map((x) => kotakPar(...x)).join('');
-    $('tr-par-lanjut').innerHTML = PAR_LANJUT.map((x) => kotakPar(...x)).join('');
+    // Isian parameter mengikuti arsitektur: YOLO memakai preset (SmartBin/
+    // Basket) + setelan lanjutan; RF-DETR punya daftar sendiri (dari server)
+    // dan tidak memisah utama/lanjutan — tujuh angka saja, semuanya penting.
+    if (arsitekturDipilih() === 'rfdetr') {
+      $('tr-par').innerHTML = PAR_RFDETR.map((x) =>
+        kotakPar(x[0], x[1], x[2], x[3],
+                 BAHAN.preset_rfdetr || {}, BAHAN.batas_rfdetr || {})).join('');
+      $('tr-par-lanjut').innerHTML = '';
+    } else {
+      $('tr-par').innerHTML = PAR_UTAMA.map((x) => kotakPar(...x)).join('');
+      $('tr-par-lanjut').innerHTML = PAR_LANJUT.map((x) => kotakPar(...x)).join('');
+    }
 
     const sel = $('tr-versi');
     const siap = BAHAN.versi.filter((v) => v.siap);
@@ -194,6 +236,9 @@
   // Basket mengurus warnanya sendiri (variasi rona di preset), jadi panelnya
   // disembunyikan supaya tidak membingungkan.
   function presetPakaiWarna() {
+    // RF-DETR tak memakai panel Bentuk/Warna sama sekali — ia mengurus
+    // augmentasinya sendiri — jadi panelnya selalu tersembunyi di sana.
+    if (arsitekturDipilih() === 'rfdetr') return false;
     const p = presetTerpilih();
     return p ? !!p.warna : true;
   }
@@ -211,7 +256,7 @@
     const ket = $('tr-preset-ket');
     if (ket) ket.textContent = p.jelas || '';
     const box = $('tr-warna');
-    if (box) box.hidden = !p.warna;
+    if (box) box.hidden = !presetPakaiWarna();
   }
 
   /* Satu tempat yang menggambar seluruh panel warna, dipanggil ulang tiap
@@ -301,12 +346,17 @@
   }
 
   function bacaSatu() {
+    const rf = arsitekturDipilih() === 'rfdetr';
     return {
       nama: $('tr-nama').value.trim(),
       catatan: $('tr-catatan').value.trim(),
-      tugas: $('tr-tugas').value,
-      bobot: $('tr-bobot').value,
-      mode_warna: modeDipilih(),
+      // RF-DETR hanya deteksi kotak, tak pakai bobot YOLO atau mode warna; yang
+      // menggantikan "bobot awal" adalah ukuran model (nano/small/medium/large).
+      tugas: rf ? 'detect' : $('tr-tugas').value,
+      bobot: rf ? '' : $('tr-bobot').value,
+      mode_warna: rf ? '' : modeDipilih(),
+      arsitektur: rf ? 'rfdetr' : 'yolo',
+      rfdetr_model: rf ? rfdetrModelDipilih() : '',
       par: bacaPar(),
     };
   }
@@ -322,15 +372,23 @@
         + 'Tombol Jalankan akan memakai setelan di atas apa adanya.</span>';
       return;
     }
-    d.innerHTML = ANTREAN.map((x, i) => `
+    d.innerHTML = ANTREAN.map((x, i) => {
+      // Ringkasan parameter mengikuti arsitektur: RF-DETR memakai batch_size /
+      // resolution (bukan batch / imgsz milik YOLO) dan ditandai ukuran modelnya.
+      const rf = x.arsitektur === 'rfdetr';
+      const ringkas = rf
+        ? `${x.par.epochs} epoch · batch ${x.par.batch_size} · ${x.par.resolution}px`
+          + ` · RF-DETR ${esc(x.rfdetr_model || '')}`
+        : `${x.par.epochs} epoch · batch ${x.par.batch} · ${x.par.imgsz}px · ${esc(x.tugas)}`;
+      return `
       <div class="tr-antre">
         <span class="tr-antre-no">${i + 1}</span>
         <span class="tr-antre-nama">${esc(x.nama || '(tanpa nama)')}</span>
-        <span class="tr-antre-par">${x.par.epochs} epoch · batch ${x.par.batch}
-          · ${x.par.imgsz}px · ${esc(x.tugas)}</span>
+        <span class="tr-antre-par">${ringkas}</span>
         <span class="spacer"></span>
         <button class="chip" type="button" data-buang="${i}">Buang</button>
-      </div>`).join('');
+      </div>`;
+    }).join('');
     d.querySelectorAll('[data-buang]').forEach((b) => {
       b.onclick = () => { ANTREAN.splice(Number(b.dataset.buang), 1); gambarAntrean(); };
     });
@@ -349,8 +407,15 @@
   function terapkanBackend() {
     if (!BAHAN) return;
     const b = ($('tr-backend') && $('tr-backend').value) || 'lokal';
-    const siap = b === 'kaggle' ? BAHAN.kaggle_siap : BAHAN.siap;
-    const alasan = b === 'kaggle' ? BAHAN.kaggle_alasan : BAHAN.alasan;
+    const rf = arsitekturDipilih() === 'rfdetr';
+    // Gerbang = backend × arsitektur. Kaggle melatih YOLO MAUPUN RF-DETR (kernel
+    // memasang rfdetr sendiri), jadi kesiapannya cukup kaggle_siap. Lokal:
+    // RF-DETR menuntut rfdetr terpasang di mesin ini (rfdetr_siap), YOLO menuntut
+    // ultralytics/GPU (siap).
+    let siap, alasan;
+    if (b === 'kaggle') { siap = BAHAN.kaggle_siap; alasan = BAHAN.kaggle_alasan; }
+    else if (rf) { siap = BAHAN.rfdetr_siap; alasan = BAHAN.rfdetr_alasan; }
+    else { siap = BAHAN.siap; alasan = BAHAN.alasan; }
     if ($('tr-jalankan')) $('tr-jalankan').disabled = (siap === false);
     if ($('tr-tambah')) $('tr-tambah').disabled = (siap === false);
     galat(siap === false ? (alasan || 'backend ini belum siap') : '');
@@ -366,6 +431,32 @@
           + 'lokal; run panjang disambung otomatis'
         : 'GPU mesin ini — satu training pada satu waktu';
     }
+  }
+
+  /* Mengganti Arsitektur menukar SELURUH bentuk form: RF-DETR menyembunyikan
+     kendali khas YOLO (preset SmartBin/Basket, panel Bentuk/Warna, jenis
+     tugas, bobot awal) karena ia mengurus semua itu sendiri — deteksi kotak,
+     backbone DINOv2 pralatih — dan menampilkan pemilih ukuran model + daftar
+     parameternya sendiri. Dipanggil saat init dan tiap selektor arsitektur
+     berubah. Gerbang tombol Jalankan (kesiapan) ikut disegarkan. */
+  function terapkanArsitektur() {
+    if (!BAHAN) return;
+    const rf = arsitekturDipilih() === 'rfdetr';
+    const tampil = (id, tampak) => { const el = $(id); if (el) el.hidden = !tampak; };
+    tampil('tr-rfdetr-model-bungkus', rf);
+    tampil('tr-preset-bungkus', !rf);
+    tampil('tr-tugas-bungkus', !rf);
+    tampil('tr-bobot-bungkus', !rf);
+    const wbox = $('tr-warna');
+    if (wbox) wbox.hidden = !presetPakaiWarna();   // false untuk rfdetr
+    const ket = $('tr-arsitektur-ket');
+    if (ket) ket.textContent = rf
+      ? 'Transformer (DINOv2). Unggul untuk objek kecil & berdesakan seperti '
+        + 'bola basket; tanpa jangkar, tanpa NMS. Resolusi kelipatan 56.'
+      : 'Ultralytics. Cepat dan hemat, cocok untuk kebanyakan kasus.';
+    gambarForm();                 // tukar isian parameter (YOLO <-> RF-DETR)
+    if (!rf) terapkanPreset();    // pulihkan bawaan preset YOLO
+    terapkanBackend();            // segarkan gerbang tombol Jalankan
   }
 
   // ============================================================
@@ -393,6 +484,16 @@
     const pesan = k.pesan ? `<span class="tr-kaggle-pesan">${esc(k.pesan)}</span>` : '';
     return `<div class="tr-kaggle">
       <span class="tr-pil tr-pil-kaggle">Kaggle${akun}${leg}</span>${url}${pesan}</div>`;
+  }
+
+  /* Lencana arsitektur di kartu. YOLO dibiarkan polos — ia bawaan dan mayoritas
+     — sedang RF-DETR ditandai eksplisit beserta ukuran modelnya, supaya di
+     daftar yang bercampur jelas mana yang mana tanpa harus membuka Rincian. */
+  function pilArsitektur(t) {
+    if (t.arsitektur !== 'rfdetr') return '';
+    const m = t.rfdetr_model ? ' ' + esc(t.rfdetr_model) : '';
+    return `<span class="tr-pil tr-pil-rfdetr"
+      title="Dilatih dengan RF-DETR${m}">RF-DETR${m}</span>`;
   }
 
   function barisMetrik(m) {
@@ -427,10 +528,12 @@
     const epNo = t.epoch_berjalan != null ? t.epoch_berjalan : t.epoch;
     const m = t.metrik || {};
     const mk = Object.keys(m).slice(0, 2);
+    const rf = t.arsitektur === 'rfdetr';   // RF-DETR tak punya last.pt
     return `<article class="tr-kartu tr-kartu-jalan" data-nomor="${t.nomor}">
       <header class="tr-k-atas">
         <b class="tr-k-nama">${esc(t.nama)}</b>
         <span class="tr-pil tr-pil-${esc(t.keadaan)}">${LABEL_KEADAAN[t.keadaan] || t.keadaan}</span>
+        ${pilArsitektur(t)}
         <span class="spacer"></span>
         <span class="tr-k-meta">L${t.nomor}<i>dari</i>v${t.versi}<i>oleh</i>${esc(t.oleh || '?')}</span>
       </header>
@@ -461,8 +564,8 @@
         ${t.punya_bobot ? `<span class="tr-unduh">Unduh sementara
           <a class="chip" href="/latih/bobot?nomor=${t.nomor}&jenis=best" download
              title="Bobot mAP terbaik SEJAUH INI — bisa diunduh selagi training jalan">best.pt</a>
-          <a class="chip" href="/latih/bobot?nomor=${t.nomor}&jenis=last" download
-             title="Bobot epoch terakhir yang selesai — untuk melanjutkan training. Kalau kebetulan diunduh tepat saat epoch berakhir bisa separuh; unduh ulang.">last.pt</a>
+          ${rf ? '' : `<a class="chip" href="/latih/bobot?nomor=${t.nomor}&jenis=last" download
+             title="Bobot epoch terakhir yang selesai — untuk melanjutkan training. Kalau kebetulan diunduh tepat saat epoch berakhir bisa separuh; unduh ulang.">last.pt</a>`}
         </span>` : ''}
         <span class="spacer"></span>
         ${bolehKelola ? `<button class="chip chip-bahaya" type="button"
@@ -482,6 +585,11 @@
     const terbaik = t.terbaik || {};
     const utama = t.utama && terbaik[t.utama] !== undefined ? t.utama : null;
     const rusak = ['gagal', 'hilang'].includes(t.keadaan);
+    // RF-DETR: dua tindakan berikut adalah jalur KHAS YOLO, jadi disembunyikan.
+    // "Uji produksi" memuat .pt sebagai model Ultralytics untuk uji
+    // ketergantungan warna; "Lanjutkan" melatih ulang dari .pt lewat Ultralytics.
+    // Checkpoint RF-DETR (best.pt) bukan format itu — keduanya akan gagal.
+    const rf = t.arsitektur === 'rfdetr';
     // Metrik pendukung: yang utama dibuang supaya tidak muncul dua kali.
     const lain = Object.keys(terbaik).filter((k) => k !== utama).slice(0, 3);
 
@@ -489,6 +597,7 @@
       <header class="tr-k-atas">
         <b class="tr-k-nama">${esc(t.nama)}</b>
         <span class="tr-pil tr-pil-${esc(t.keadaan)}">${LABEL_KEADAAN[t.keadaan] || t.keadaan}</span>
+        ${pilArsitektur(t)}
         <span class="spacer"></span>
         <span class="tr-k-meta">L${t.nomor}<i>dari</i>v${t.versi}<i>oleh</i>${esc(t.oleh || '?')}
           <i>pada</i>${esc(t.dibuat || '')}</span>
@@ -517,17 +626,18 @@
           <button class="chip chip-utama" type="button" data-sambung="${t.nomor}"
             title="Coba lagi sekarang: lanjutkan dari epoch terakhir di Kaggle">
             Lanjutkan di Kaggle</button>` : ''}
-        ${t.punya_bobot && bolehKelola ? `<button class="chip" type="button"
+        ${t.punya_bobot && bolehKelola && !rf ? `<button class="chip" type="button"
             data-uji="${t.nomor}">Uji produksi</button>` : ''}
-        ${t.punya_bobot && bolehKelola ? `<button class="chip" type="button"
+        ${t.punya_bobot && bolehKelola && !rf ? `<button class="chip" type="button"
             data-lanjut="${t.nomor}" data-nama="${esc(t.nama)}"
             data-epochs="${t.epochs || 400}"
             title="Latih lagi mulai dari bobot training ini">Lanjutkan</button>` : ''}
         ${t.punya_bobot ? `<span class="tr-unduh">Unduh
           <a class="chip" href="/latih/bobot?nomor=${t.nomor}&jenis=best" download
-             title="Bobot dengan metrik terbaik selama training">best.pt</a>
-          <a class="chip" href="/latih/bobot?nomor=${t.nomor}&jenis=last" download
-             title="Bobot epoch terakhir, untuk melanjutkan training">last.pt</a>
+             title="${rf ? 'Checkpoint RF-DETR terbaik (.pth dikemas sebagai .pt)'
+                         : 'Bobot dengan metrik terbaik selama training'}">best.pt</a>
+          ${rf ? '' : `<a class="chip" href="/latih/bobot?nomor=${t.nomor}&jenis=last" download
+             title="Bobot epoch terakhir, untuk melanjutkan training">last.pt</a>`}
         </span>` : ''}
         <span class="spacer"></span>
         ${bolehKelola ? `<button class="chip chip-bahaya" type="button"
@@ -1076,10 +1186,16 @@
       };
     });
     $('tr-reset').onclick = () => {
-      // Kembalikan ke bawaan PRESET YANG DIPILIH (SmartBin / Basket), bukan
-      // selalu preset default.
-      const p = presetTerpilih();
-      const dasar = (p && p.par) || BAHAN.preset;
+      // Kembalikan ke bawaan. Untuk RF-DETR: bawaan RF-DETR dari server. Untuk
+      // YOLO: bawaan PRESET YANG DIPILIH (SmartBin / Basket), bukan selalu
+      // preset default.
+      let dasar;
+      if (arsitekturDipilih() === 'rfdetr') {
+        dasar = BAHAN.preset_rfdetr || {};
+      } else {
+        const p = presetTerpilih();
+        dasar = (p && p.par) || BAHAN.preset;
+      }
       document.querySelectorAll('#tr-form [data-par]').forEach((el) => {
         if (dasar[el.dataset.par] !== undefined) el.value = dasar[el.dataset.par];
       });
@@ -1101,11 +1217,15 @@
       const backend = ($('tr-backend') && $('tr-backend').value) || 'lokal';
       // preset (SmartBin/Basket) juga berlaku untuk seluruh kiriman.
       const preset = ($('tr-preset') && $('tr-preset').value) || 'rvm';
+      // Arsitektur & ukuran model RF-DETR juga sekali untuk SELURUH kiriman —
+      // seperti backend & preset — karena ia menukar bentuk parameternya.
+      const arsitektur = arsitekturDipilih();
+      const rfdetr_model = rfdetrModelDipilih();
       $('tr-jalankan').disabled = true;
       try {
         const j = await ambil('/api/latih/mulai', {
           method: 'POST', headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({versi, batch, backend, preset}),
+          body: JSON.stringify({versi, batch, backend, preset, arsitektur, rfdetr_model}),
         });
         if (!j.ok) { galat(j.error || 'gagal memulai'); return; }
         ANTREAN = [];
@@ -1225,10 +1345,27 @@
               $('tr-backend').onchange = terapkanBackend;
             }
           }
+          // Arsitektur (YOLO / RF-DETR). Selektornya hanya muncul kalau RF-DETR
+          // benar-benar bisa dipakai — terpasang di mesin ini ATAU lewat Kaggle
+          // — dan bawaannya tetap YOLO, jadi tampilan lama tak berubah sedikit
+          // pun bila RF-DETR tidak tersedia. Mengganti arsitektur menukar
+          // seluruh bentuk form (lihat terapkanArsitektur).
+          if ((BAHAN.rfdetr_siap || BAHAN.kaggle_siap) && $('tr-arsitektur-bungkus')) {
+            $('tr-arsitektur-bungkus').hidden = false;
+            if ($('tr-arsitektur')) {
+              $('tr-arsitektur').value = 'yolo';
+              $('tr-arsitektur').onchange = terapkanArsitektur;
+            }
+            if ($('tr-rfdetr-model')) {
+              $('tr-rfdetr-model').value =
+                (BAHAN.rfdetr_model && BAHAN.rfdetr_model[0]) || 'nano';
+            }
+          }
           // Dikatakan SEBELUM orang menyusun setelan, bukan sesudah ia menekan
-          // Jalankan dan menunggu kegagalan yang tidak dijelaskan. Gerbangnya
-          // mengikuti backend yang DIPILIH, bukan hanya kesiapan lokal.
-          terapkanBackend();
+          // Jalankan dan menunggu kegagalan yang tidak dijelaskan. Menata bentuk
+          // form sesuai arsitektur awal (YOLO) + menyegarkan gerbang tombol
+          // Jalankan (yang mengikuti backend DAN arsitektur yang dipilih).
+          terapkanArsitektur();
         }
       } catch (e) {
         galat('gagal memuat bahan form: ' + e);
