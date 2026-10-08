@@ -214,9 +214,15 @@ BATAS: dict[str, tuple] = {
 #                 boleh berputar bebas)
 #   flipud 0    : adegan basket tak pernah terbalik (RVM top-down, 0.3 wajar)
 #   scale 0.5   : variasi zoom pemain dekat-jauh (crop/zoom BOLEH)
-# WARNA: hsv_h/s/v + bgr DIWARISI dari v14 (variasi rona KUAT) — persis yang
-#   diminta: jersey beda tiap laga, jadi warna di-acak supaya model tak terpaku
-#   pada satu warna dan tahan antar-pertandingan. Gambar TETAP berwarna (bukan
+# WARNA: hsv_h/s/v DIWARISI dari v14 (variasi rona/saturasi/terang KUAT) —
+#   persis yang diminta: jersey beda tiap laga, jadi warna diacak supaya model
+#   tahan antar-pertandingan. TAPI bgr (tukar kanal merah<->biru) DIMATIKAN
+#   khusus basket. Alasannya: pergeseran hsv itu pemetaan SATU-KE-SATU seragam
+#   se-frame — dua warna beda tetap jadi dua warna beda, putih tetap putih,
+#   mustahil dua jersey menyatu jadi satu warna. Sedang bgr bisa membuat jersey
+#   MERAH tampil BIRU (menukar IDENTITAS warna pembeda tim). Untuk basket warna
+#   pembeda tiap tim WAJIB tetap beda dan tak tertukar, jadi bgr=0 di sini
+#   (RVM tetap bgr=0.10 — tak tersentuh). Gambar TETAP berwarna (bukan
 #   grayscale). mixup/cutmix/copy_paste tetap 0 -> TANPA occlusion/penghalang.
 #   Tak ada augmentasi blur. Karena warna sudah diurus preset ini, toggle
 #   Bentuk/Warna (mode_warna) TIDAK berlaku untuk preset basket.
@@ -228,6 +234,7 @@ PRESET_OLAHRAGA: dict = {
     "flipud": 0.0,
     "scale": 0.5,
     "translate": 0.10,
+    "bgr": 0.0,          # jangan tukar merah<->biru: warna pembeda tim harus tetap
 }
 
 # Registry preset yang ditawarkan di form. `warna=True` -> preset memakai toggle

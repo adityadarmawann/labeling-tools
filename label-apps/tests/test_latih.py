@@ -380,6 +380,12 @@ def test_preset_olahraga_beda_dan_warna_tetap_divariasi(tmp_path):
     assert b["par"]["degrees"] == 5.0         # broadcast ~datar
     assert b["par"]["scale"] == 0.5           # zoom/crop boleh
     assert b["par"]["hsv_h"] == 0.03          # variasi warna jersey TETAP ada
+    # bgr (tukar merah<->biru) DIMATIKAN khusus basket: warna pembeda tiap tim
+    # wajib tetap beda & tak tertukar jadi warna tim lain. hsv tetap variasi
+    # (satu-ke-satu, tak pernah menyatukan dua warna); bgr bisa menukar identitas.
+    assert b["par"]["bgr"] == 0.0
+    # RVM TIDAK ikut berubah — bgr-nya tetap 0.10.
+    assert latih.PRESET_V14["bgr"] == 0.10
     # TANPA occlusion/penghalang
     assert b["par"]["mixup"] == 0.0
     assert b["par"]["cutmix"] == 0.0
