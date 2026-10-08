@@ -451,9 +451,12 @@
     if (wbox) wbox.hidden = !presetPakaiWarna();   // false untuk rfdetr
     const ket = $('tr-arsitektur-ket');
     if (ket) ket.textContent = rf
-      ? 'Transformer (DINOv2). Unggul untuk objek kecil & berdesakan seperti '
-        + 'bola basket; tanpa jangkar, tanpa NMS. Resolusi kelipatan 56.'
-      : 'Ultralytics. Cepat dan hemat, cocok untuk kebanyakan kasus.';
+      ? 'Bagus untuk objek kecil yang berdesakan — misalnya bola dan pemain '
+        + 'basket. RF-DETR membuat variasi gambarnya sendiri saat berlatih '
+        + '(warna, ukuran, dan posisi diubah-ubah otomatis), jadi pakai versi '
+        + 'dataset yang biasa saja — tak perlu menyalakan efek tambahan '
+        + '(variasi warna, blur, dan sejenisnya) waktu membuat versinya.'
+      : 'Pilihan umum: cepat dan ringan, cocok untuk kebanyakan kebutuhan.';
     gambarForm();                 // tukar isian parameter (YOLO <-> RF-DETR)
     if (!rf) terapkanPreset();    // pulihkan bawaan preset YOLO
     terapkanBackend();            // segarkan gerbang tombol Jalankan
@@ -1064,6 +1067,9 @@
     $('tr-panel-isi').innerHTML = `
       <div class="tr-p-pita">
         <div><dt>Status</dt><dd>${LABEL_KEADAAN[t.keadaan] || t.keadaan}</dd></div>
+        <div><dt>Arsitektur</dt><dd>${t.arsitektur === 'rfdetr'
+          ? 'RF-DETR' + (t.rfdetr_model ? ' ' + esc(t.rfdetr_model) : '')
+          : 'YOLO'}</dd></div>
         <div><dt>Epoch</dt><dd>${
           t.persen_epoch != null
             ? `${angka(t.epoch_berjalan)} / ${angka(t.epochs)} <small>(${angka(t.persen_epoch, 0)}% epoch ini)</small>`
