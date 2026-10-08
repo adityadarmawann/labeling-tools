@@ -81,21 +81,43 @@ def test_skrip_resume_cari_checkpoint():
     assert "last.pt" in s and "LANJUT_DARI" in s
 
 
+def test_skrip_rfdetr_resume_stop_dan_epoch_global():
+    """Skrip RF-DETR: resume utamakan last.ckpt (state penuh), suntik stop
+    wall-clock lewat Trainer.__init__, lapor epoch GLOBAL, epochs = TOTAL."""
+    s = k.skrip_rfdetr("nano", {"epochs": 50, "resolution": 560},
+                       run="run-l1", resume=True, batas_jam=11.0)
+    assert "RESUME = True" in s
+    assert "last.ckpt" in s                       # resume state PENUH diutamakan
+    assert "pl.Trainer.__init__" in s and "should_stop" in s   # stop wall-clock
+    assert "BATAS_DETIK" in s and "11.0" in s     # batas_jam -> detik
+    assert "EPOCH_GLOBAL" in s                    # epoch kumulatif dilaporkan
+    s2 = k.skrip_rfdetr("small", {"epochs": 7}, run="r", resume=False)
+    assert "RESUME = False" in s2
+
+
 # ============================================================
 # SERAP KELUARAN → .latih/L<n>/ (murni)
 # ============================================================
 
-def _tulis_run(out_dir: Path, run: str, rows: int):
+def _tulis_run(out_dir: Path, run: str, rows: int, cum: int | None = None):
     r = out_dir / run
     (r / "weights").mkdir(parents=True)
     hdr = "epoch,time,metrics/mAP50(B)\n"
     body = "".join(f"{i+1},{(i+1)*5.0},0.6\n" for i in range(rows))
-    (r / "results.csv").write_text(hdr + body)
+    (r / "results.csv").write_text(hdr + body)                 # jalur YOLO
     (r / "weights" / "best.pt").write_bytes(b"PK\x03\x04b")
     (r / "weights" / "last.pt").write_bytes(b"PK\x03\x04l")
     (r / "results.png").write_bytes(b"\x89PNG")
-    # checkpoint RF-DETR (dipakai jalur rfdetr-Kaggle; diabaikan jalur YOLO).
+    # Artefak RF-DETR (dipakai jalur rfdetr-Kaggle; diabaikan jalur YOLO):
+    #   - checkpoint_best_total.pth -> weights/best.pt (deliverable)
+    #   - last.ckpt -> state penuh untuk resume berbilah
+    #   - metrics.csv -> epoch GLOBAL kumulatif (CSVLogger PTL, 0-indexed),
+    #     cum = total epoch yang sudah diselesaikan lintas-leg (default = rows).
     (r / "checkpoint_best_total.pth").write_bytes(b"PK\x03\x04pth")
+    (r / "last.ckpt").write_bytes(b"PK\x03\x04ckpt")
+    cum = rows if cum is None else cum
+    mrows = "".join(f"{i},{i*10},0.9\n" for i in range(cum))
+    (r / "metrics.csv").write_text("epoch,step,val/ema_map\n" + mrows)
 
 
 def test_serap_meratakan_ke_dir_latih(tmp_path):
@@ -233,6 +255,7 @@ class FakeKg:
     def __init__(self, nomor, legs):
         self.nomor, self.legs, self.i = nomor, legs, -1
         self.push = 0
+        self.cum = 0           # epoch GLOBAL kumulatif (jalur rfdetr)
 
     def __call__(self, args, token, timeout=0, masuk=None):
         a = list(args)
@@ -255,7 +278,9 @@ class FakeKg:
             if leg.get("quota") or leg.get("no_output"):
                 return 1, "output tidak tersedia"
             d = Path(a[a.index("-p") + 1])
-            _tulis_run(d, f"run-l{self.nomor}", leg.get("epochs", 1))
+            # cum berlanjut lintas-leg (rfdetr): epoch GLOBAL, bukan per-leg.
+            self.cum += leg.get("epochs", 1)
+            _tulis_run(d, f"run-l{self.nomor}", leg.get("epochs", 1), cum=self.cum)
             return 0, "downloaded"
         return 0, ""
 
@@ -372,7 +397,7 @@ def test_main_semua_kuota_habis_jadi_tertunda(siapkan_main):
 
 def test_main_rfdetr_kaggle_selesai(siapkan_main):
     """Arsitektur rfdetr + backend kaggle -> jalur _rfdetr_kaggle: ekspor COCO,
-    kernel rfdetr, tarik checkpoint .pth -> best.pt, selesai."""
+    kernel rfdetr, tarik checkpoint .pth -> best.pt + last.ckpt, selesai."""
     tmp_path, jalankan = siapkan_main
     rc, rek = jalankan(20, target=5, legs=[{"epochs": 5}],
                        pool=[{"user": "a", "token": "ta"}],
@@ -380,7 +405,28 @@ def test_main_rfdetr_kaggle_selesai(siapkan_main):
     assert rc == 0 and rek["keadaan"] == "selesai"
     dl = latih.dir_latih(tmp_path, 20)
     assert (dl / "weights" / "best.pt").exists()     # dari checkpoint_best_total.pth
+    assert (dl / "rfdetr" / "last.ckpt").exists()    # state penuh disimpan utk resume
     assert (dl / "results.csv").exists()
+    assert rek["kaggle"]["epochs_done"] == 5 and rek["kaggle"]["leg"] == 1
+
+
+def test_main_rfdetr_multi_leg_resume_bukan_dari_nol(siapkan_main, monkeypatch):
+    """RF-DETR BERBILAH: leg1 berhenti (batas waktu) di epoch 4, leg2 MELANJUTKAN
+    sampai 10 — epoch GLOBAL kumulatif, dan leg2 mengunggah checkpoint (resume),
+    BUKAN mulai dari nol."""
+    tmp_path, jalankan = siapkan_main
+    # Mata-matai: apakah checkpoint RF-DETR diunggah (= jalur resume ditempuh)?
+    diunggah = []
+    asli = k._unggah_checkpoint_rfdetr
+    monkeypatch.setattr(k, "_unggah_checkpoint_rfdetr",
+                        lambda ds, dl, akun, slug: (diunggah.append(slug) or asli(ds, dl, akun, slug)))
+    rc, rek = jalankan(22, target=10, legs=[{"epochs": 4}, {"epochs": 6}],
+                       pool=[{"user": "a", "token": "ta"}],
+                       arsitektur="rfdetr", rfdetr_model="nano")
+    assert rc == 0 and rek["keadaan"] == "selesai"
+    assert rek["kaggle"]["leg"] == 2
+    assert rek["kaggle"]["epochs_done"] == 10, "epoch harus KUMULATIF lintas-leg"
+    assert diunggah, "leg-2 harus mengunggah last.ckpt (resume), bukan mulai dari nol"
 
 
 def test_main_rfdetr_kaggle_rotasi_kuota(siapkan_main):
@@ -392,6 +438,21 @@ def test_main_rfdetr_kaggle_rotasi_kuota(siapkan_main):
                        arsitektur="rfdetr", rfdetr_model="nano")
     assert rc == 0 and rek["keadaan"] == "selesai"
     assert k._akun_habis(tmp_path / "_kaggle", "a") is True
+
+
+def test_main_rfdetr_resume_dari_tertunda(siapkan_main):
+    """Job RF-DETR tertunda di epoch 4 dengan last.ckpt tersimpan: disambung ->
+    resume dari last.ckpt (bukan nol) sampai target 10, satu leg lagi."""
+    tmp_path, jalankan = siapkan_main
+    dl = latih.dir_latih(tmp_path, 23)
+    (dl / "rfdetr").mkdir(parents=True, exist_ok=True)
+    (dl / "rfdetr" / "last.ckpt").write_bytes(b"CKPT")      # sisa leg sebelumnya
+    rc, rek = jalankan(23, target=10, legs=[{"epochs": 10}],
+                       pool=[{"user": "a", "token": "ta"}],
+                       kag_awal={"epochs_done": 4, "leg": 1},
+                       arsitektur="rfdetr", rfdetr_model="nano")
+    assert rc == 0 and rek["keadaan"] == "selesai"
+    assert rek["kaggle"]["epochs_done"] == 10
 
 
 def test_main_resume_dari_tertunda(siapkan_main):

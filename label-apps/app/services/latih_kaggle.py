@@ -430,8 +430,19 @@ def skrip_latih(tugas: str, bobot: str, par: dict, *, run: str,
 # Skrip kernel RF-DETR: pip install rfdetr sendiri (nol dampak lokal), cari
 # dataset COCO di /kaggle/input, RFDETR<ukuran>(resolution kelipatan-56).train(),
 # simpan checkpoint terbaik ke /kaggle/working/<run>. Augmentasi internal rfdetr.
+#
+# RESUME BERBILAH (seperti YOLO): kalau RESUME, utamakan last.ckpt (state PENUH
+# PyTorch-Lightning: optimizer+epoch) dari /kaggle/input; epochs = TOTAL target,
+# Lightning melanjutkan current_epoch -> max_epochs, BUKAN mengulang dari 0.
+#
+# STOP WALL-CLOCK: rfdetr membangun Trainer sendiri tanpa jalur max_time, jadi
+# callback stop DISUNTIK lewat monkeypatch pl.Trainer.__init__ (terbukti di
+# spike lokal). Stateless -> tiap leg dapat jatah segar, tak bentrok resume.
+# Berhenti RAPI di batas epoch sebelum batas keras Kaggle -> last.ckpt tersimpan
+# -> Kaggle commit output -> leg berikutnya lanjut dari situ (bukan di-kill, yang
+# mungkin tak menyimpan output).
 _SKRIP_RFDETR = '''
-import os, sys, glob, json, subprocess
+import os, sys, glob, json, csv, time, subprocess
 print("== pasang rfdetr ==", flush=True)
 subprocess.run([sys.executable, "-m", "pip", "install", "-q", "rfdetr[train]"], check=True)
 import torch
@@ -440,6 +451,28 @@ PAR = json.loads(r"""__PAR_JSON__""")
 MODEL = "__MODEL__"
 RUN = "__RUN__"
 RESUME = __RESUME__
+BATAS_DETIK = float(__BATAS_JAM__) * 3600.0
+
+# Suntik stop wall-clock ke SETIAP Trainer yang dibangun rfdetr. Callback tanpa
+# state -> tak di-restore saat resume, jadi tiap leg mulai hitung dari 0 lagi
+# (tepat: tiap kernel punya ~11 jam sendiri).
+import pytorch_lightning as pl
+from pytorch_lightning.callbacks import Callback
+class _StopJam(Callback):
+    def on_fit_start(self, trainer, pl_module):
+        self._t0 = time.time()
+    def on_train_epoch_end(self, trainer, pl_module):
+        if time.time() - getattr(self, "_t0", time.time()) > BATAS_DETIK:
+            print("STOP_WAKTU epoch", trainer.current_epoch, flush=True)
+            trainer.should_stop = True
+_orig_init = pl.Trainer.__init__
+def _init(self, *a, **k):
+    cbs = list(k.get("callbacks") or [])
+    cbs.append(_StopJam())
+    k["callbacks"] = cbs
+    return _orig_init(self, *a, **k)
+pl.Trainer.__init__ = _init
+
 cand = glob.glob("/kaggle/input/**/train/_annotations.coco.json", recursive=True)
 assert cand, "dataset COCO (train/_annotations.coco.json) tak ketemu di input"
 DS = os.path.dirname(os.path.dirname(sorted(cand, key=len)[0]))
@@ -456,25 +489,42 @@ kw = dict(dataset_dir=DS, output_dir=OUT, epochs=int(PAR.get("epochs", 100)),
           warmup_epochs=float(PAR.get("warmup_epochs", 0.0)),
           early_stopping=bool(PAR.get("early_stopping", False)))
 if RESUME:
-    ck = sorted(glob.glob("/kaggle/input/**/best.pt", recursive=True)
-                + glob.glob("/kaggle/input/**/*.pth", recursive=True), key=len)
+    # Utamakan last.ckpt (state PTL penuh: optimizer+scheduler+epoch) supaya
+    # resume MELANJUTKAN; baru .pth (bobot+epoch saja) sebagai cadangan.
+    ck = (sorted(glob.glob("/kaggle/input/**/last.ckpt", recursive=True), key=len)
+          or sorted(glob.glob("/kaggle/input/**/checkpoint_best_total.pth", recursive=True), key=len)
+          or sorted(glob.glob("/kaggle/input/**/*.pth", recursive=True), key=len))
     if ck:
         kw["resume"] = ck[0]; print("RESUME_DARI", ck[0], flush=True)
-print("MODEL", MODEL, "res", res, flush=True)
+print("MODEL", MODEL, "res", res, "epochs", kw["epochs"], "resume", RESUME, flush=True)
 Model(resolution=res).train(**kw)
-best = (glob.glob(OUT + "/checkpoint_best_total.pth") or glob.glob(OUT + "/*best*.pth")
-        or glob.glob(OUT + "/*.pth"))
-print("EPOCH_LEG", int(PAR.get("epochs", 0)), flush=True)
+# Epoch KUMULATIF global dari metrics.csv (CSVLogger PTL melanjutkan penomoran
+# epoch lintas-resume), supaya orkestrator tahu sudah berapa epoch keseluruhan.
+mc = sorted(glob.glob(OUT + "/**/metrics.csv", recursive=True), key=len)
+gmax = -1
+if mc:
+    for row in csv.DictReader(open(mc[0])):
+        e = row.get("epoch")
+        if e not in (None, ""):
+            try: gmax = max(gmax, int(float(e)))
+            except ValueError: pass
+best = (glob.glob(OUT + "/**/checkpoint_best_total.pth", recursive=True)
+        or glob.glob(OUT + "/**/*best*.pth", recursive=True) or glob.glob(OUT + "/**/*.pth", recursive=True))
+last = glob.glob(OUT + "/**/last.ckpt", recursive=True)
+print("EPOCH_GLOBAL", gmax + 1, flush=True)
+print("LAST_CKPT", bool(last), flush=True)
 print("BEST_EXISTS", bool(best), (os.path.getsize(best[0]) if best else 0), flush=True)
 '''
 
 
-def skrip_rfdetr(model: str, par: dict, *, run: str, resume: bool = False) -> str:
+def skrip_rfdetr(model: str, par: dict, *, run: str, resume: bool = False,
+                 batas_jam: float = BATAS_JAM) -> str:
     """Rakit skrip kernel RF-DETR. Murni -> diuji tanpa jaringan."""
     return (_SKRIP_RFDETR
             .replace("__PAR_JSON__", json.dumps(par))
             .replace("__MODEL__", str(model))
             .replace("__RUN__", str(run))
+            .replace("__BATAS_JAM__", repr(float(batas_jam)))
             .replace("__RESUME__", "True" if resume else "False"))
 
 
@@ -509,6 +559,67 @@ def serap_keluaran(out_dir: Path, run: str, dir_latih: Path) -> int:
         except OSError:
             pass
     return _epoch_csv(dir_latih)
+
+
+def _epoch_map_metrics(out_dir: Path) -> tuple[int, float | None]:
+    """Baca metrics.csv RF-DETR (CSVLogger PTL): kembalikan (jumlah_epoch_global,
+    mAP_terakhir|None). Epoch rfdetr 0-indexed dan BERLANJUT lintas-resume, jadi
+    max(epoch)+1 = jumlah epoch yang sudah diselesaikan keseluruhan."""
+    mc = sorted(Path(out_dir).rglob("metrics.csv"), key=lambda p: len(str(p)))
+    if not mc:
+        return 0, None
+    import csv as _csv
+    emax = -1
+    mp = None
+    try:
+        for row in _csv.DictReader(open(mc[0], encoding="utf-8")):
+            e = row.get("epoch")
+            if e not in (None, ""):
+                try:
+                    emax = max(emax, int(float(e)))
+                except ValueError:
+                    pass
+            # kolom mAP rfdetr bervariasi (val/ema_map, metrics/mAP50-95, …) —
+            # ambil nilai map apa pun yang terisi, yang terakhir menang.
+            for kcol, v in row.items():
+                if kcol and "map" in kcol.lower() and v not in (None, ""):
+                    try:
+                        mp = float(v)
+                    except ValueError:
+                        pass
+    except OSError:
+        return 0, None
+    return (emax + 1 if emax >= 0 else 0), mp
+
+
+def _serap_rfdetr(out_dir: Path, dir_latih: Path) -> int:
+    """Serap hasil kernel RF-DETR ke .latih/L<n>/ untuk jalur Kaggle berbilah:
+    - checkpoint_best_total.pth -> weights/best.pt (deliverable; punya_bobot/unduh)
+    - last.ckpt -> rfdetr/last.ckpt (STATE PENUH untuk resume leg berikutnya)
+    - PNG grafik -> kartu; results.csv minimal dari epoch+mAP metrics.csv
+    Kembalikan jumlah epoch GLOBAL (kumulatif lintas-leg)."""
+    out_dir, dir_latih = Path(out_dir), Path(dir_latih)
+    (dir_latih / "weights").mkdir(parents=True, exist_ok=True)
+    (dir_latih / "rfdetr").mkdir(parents=True, exist_ok=True)
+    best = (sorted(out_dir.rglob("checkpoint_best_total.pth"))
+            or sorted(out_dir.rglob("*best*.pth")) or sorted(out_dir.rglob("*.pth")))
+    if best:
+        shutil.copy2(best[0], dir_latih / "weights" / "best.pt")
+    last = sorted(out_dir.rglob("last.ckpt"))
+    if last:
+        shutil.copy2(last[0], dir_latih / "rfdetr" / "last.ckpt")
+    for png in out_dir.rglob("*.png"):
+        try:
+            shutil.copy2(png, dir_latih / png.name)
+        except OSError:
+            pass
+    ep, mp = _epoch_map_metrics(out_dir)
+    rp = dir_latih / "results.csv"
+    if mp is not None:
+        rp.write_text(f"epoch,metrics/mAP50-95(B)\n{ep},{mp}\n")
+    elif ep:
+        rp.write_text(f"epoch\n{ep}\n")
+    return latih.baca_hasil_csv(dir_latih).get("epoch") or ep
 
 
 # ============================================================
@@ -577,6 +688,38 @@ def _unggah_checkpoint(ds, dir_latih: Path, akun: dict, slug: str) -> str:
                           token, timeout=600)
         if rc != 0:
             raise RuntimeError(f"unggah checkpoint gagal: {out[-300:]}")
+    for _ in range(30):
+        _tidur(5)
+        rc, out = _kg(["datasets", "status", dsid], token, timeout=120)
+        if "ready" in out.lower():
+            break
+    return dsid
+
+
+def _unggah_checkpoint_rfdetr(ds, dir_latih: Path, akun: dict, slug: str) -> str:
+    """Kemas last.ckpt RF-DETR (state PENUH PTL: optimizer+scheduler+epoch) jadi
+    dataset kecil untuk leg lanjutan. Selalu versi baru (checkpoint berubah tiap
+    leg). Kernel me-resume dari last.ckpt ini -> MELANJUTKAN, bukan dari nol."""
+    user, token = akun["user"], akun["token"]
+    dsid = f"{user}/{slug}"
+    with tempfile.TemporaryDirectory() as tmp:
+        paket = Path(tmp) / "ck"
+        paket.mkdir(parents=True)
+        src = Path(dir_latih) / "rfdetr" / "last.ckpt"
+        if not src.exists():
+            raise FileNotFoundError("last.ckpt RF-DETR tak ada untuk disambung")
+        shutil.copy2(src, paket / "last.ckpt")
+        (paket / "dataset-metadata.json").write_text(
+            json.dumps(_meta_dataset(user, slug, slug), indent=2))
+        rc, out = _kg(["datasets", "status", dsid], token, timeout=120)
+        if rc == 0:
+            rc, out = _kg(["datasets", "version", "-p", str(paket), "-r", "zip",
+                           "-m", "leg", "-q"], token, timeout=600)
+        else:
+            rc, out = _kg(["datasets", "create", "-p", str(paket), "-r", "zip", "-q"],
+                          token, timeout=600)
+        if rc != 0:
+            raise RuntimeError(f"unggah checkpoint RF-DETR gagal: {out[-300:]}")
     for _ in range(30):
         _tidur(5)
         rc, out = _kg(["datasets", "status", dsid], token, timeout=120)
@@ -675,7 +818,7 @@ def batalkan_remote(settings, kernel_id: str, akun_user: str) -> tuple[bool, str
 # habis tetap berlaku. Dipanggil dari main() -> ikut except->gagal di sana.
 
 def _rfdetr_kaggle(ds: Path, nomor: int, isi: dict, settings, basis, pool) -> int:
-    from . import buatversi, ekspor_coco, latih_rfdetr
+    from . import buatversi, ekspor_coco
 
     versi = int(isi["versi"])
     versi_dir = buatversi.dir_versi(ds, versi)
@@ -689,6 +832,11 @@ def _rfdetr_kaggle(ds: Path, nomor: int, isi: dict, settings, basis, pool) -> in
     (dl / "weights").mkdir(parents=True, exist_ok=True)
 
     kag = dict(isi.get("kaggle") or {})
+    leg = int(kag.get("leg") or 0)
+    # Epoch KUMULATIF lintas-leg dari rekaman (fallback results.csv). Beda dari
+    # YOLO: rfdetr me-resume dengan last.ckpt (state penuh), jadi penomoran epoch
+    # BERLANJUT — _serap_rfdetr mengembalikan epoch GLOBAL, bukan per-leg.
+    epochs_done = int(kag.get("epochs_done") or 0) or _epoch_csv(dl)
 
     def lapor(**kv):
         kag.update(kv)
@@ -696,17 +844,17 @@ def _rfdetr_kaggle(ds: Path, nomor: int, isi: dict, settings, basis, pool) -> in
 
     latih.perbarui(ds, nomor, keadaan="jalan", mulai_pada=_sekarang(),
                    pid=os.getpid(), galat="")
-    lapor(pesan="menyiapkan RF-DETR di Kaggle…")
+    lapor(leg=leg, epochs_done=epochs_done, pesan="menyiapkan RF-DETR di Kaggle…")
 
     coco_root = Path(tempfile.mkdtemp(prefix="higolab-coco-"))
     try:
-        sumber = coco_root / "coco"
-        ekspor_coco.versi_ke_coco(versi_dir, sumber)        # YOLO versi -> COCO
+        sumber_coco = coco_root / "coco"
+        ekspor_coco.versi_ke_coco(versi_dir, sumber_coco)   # YOLO versi -> COCO
         ds_slug = nama_dataset(ds, versi, "rfdetr")
         judul = f"HIGOLAB {Path(ds).name} v{versi} (COCO)"
         run = f"run-l{nomor}"
         percubaan = 0
-        while True:
+        while epochs_done < target:
             akun = _pilih_akun(basis, pool)
             if akun is None:
                 latih.perbarui(ds, nomor, keadaan="tertunda", selesai_pada=_sekarang(),
@@ -714,35 +862,51 @@ def _rfdetr_kaggle(ds: Path, nomor: int, isi: dict, settings, basis, pool) -> in
                                      "training bisa dilanjutkan nanti atau tambah akun")
                 lapor(pesan="tertunda: kuota semua akun menipis")
                 return 0
-            lapor(akun=akun["user"], pesan=f"unggah dataset COCO ke {akun['user']}…")
-            dsid = _unggah_dataset(basis, sumber, akun, ds_slug, judul)
-            slug_k = nama_kernel(ds, nomor, 0)
-            skrip = skrip_rfdetr(model, par, run=run)
-            kid, url = _push_kernel(akun, slug_k, skrip, [dsid])
+
+            # Resume kalau leg sebelumnya meninggalkan last.ckpt (state penuh).
+            resume = epochs_done > 0 and (dl / "rfdetr" / "last.ckpt").exists()
+            par_leg = dict(par)
+            par_leg["epochs"] = target        # TOTAL — Lightning lanjut ke max_epochs
+            slug_k = nama_kernel(ds, nomor, leg)
+            lapor(akun=akun["user"], leg=leg,
+                  pesan=f"unggah dataset COCO ke {akun['user']}…")
+
+            dsid = _unggah_dataset(basis, sumber_coco, akun, ds_slug, judul)
+            sumber = [dsid]
+            if resume:
+                ck_slug = _slug(f"higolab-ckdetr-l{nomor}")
+                ckid = _unggah_checkpoint_rfdetr(ds, dl, akun, ck_slug)
+                sumber.append(ckid)
+
+            skrip = skrip_rfdetr(model, par_leg, run=run, resume=resume,
+                                 batas_jam=BATAS_JAM)
+            kid, url = _push_kernel(akun, slug_k, skrip, sumber)
             lapor(kernel=kid, kernel_url=url, remote="queued",
-                  pesan=f"RF-DETR {model} berjalan di Kaggle ({akun['user']})")
+                  pesan=f"RF-DETR {model} leg {leg+1} di Kaggle ({akun['user']})")
 
             t0 = time.time()
             hasil, teks = _poll_kernel(akun, kid, lambda s: lapor(remote=s))
             _catat_pakai(basis, akun["user"], (time.time() - t0) / 3600.0)
 
-            ep = 0
+            # Tarik hasil leg; _serap_rfdetr -> epoch GLOBAL + simpan last.ckpt
+            # ke dl/rfdetr/ untuk leg berikutnya, best.pt ke weights/.
+            ep_global = epochs_done
             with tempfile.TemporaryDirectory() as tmp:
                 try:
                     _tarik_keluaran(akun, kid, Path(tmp))
-                    ep = latih_rfdetr._serap(
-                        Path(tmp), dl,
-                        {"epoch": target if hasil == "complete" else 0, "map": None})
+                    ep_global = _serap_rfdetr(Path(tmp), dl)
                 except Exception:                           # noqa: BLE001
                     if hasil == "complete":
                         raise
-                    ep = 0
+                    ep_global = epochs_done
 
-            if (dl / "weights" / "best.pt").exists() and hasil == "complete":
-                latih.perbarui(ds, nomor, keadaan="selesai", selesai_pada=_sekarang())
-                lapor(epochs_done=ep or target,
-                      pesan=f"selesai — RF-DETR {model}, {ep or target} epoch")
-                return 0
+            if ep_global > epochs_done:                     # leg maju -> lanjut
+                epochs_done = ep_global
+                leg += 1
+                percubaan = 0
+                lapor(leg=leg, epochs_done=epochs_done,
+                      pesan=f"leg {leg} selesai — {epochs_done}/{target} epoch")
+                continue
 
             if _galat_kuota(teks):
                 _tandai_habis(basis, akun["user"])
@@ -752,6 +916,11 @@ def _rfdetr_kaggle(ds: Path, nomor: int, isi: dict, settings, basis, pool) -> in
             if percubaan >= MAKS_COBA_LEG:
                 raise RuntimeError(f"RF-DETR di Kaggle gagal {percubaan}x: {teks[-200:]}")
             lapor(pesan=f"gagal (mungkin sesaat) — coba ulang {percubaan}/{MAKS_COBA_LEG-1}")
+
+        latih.perbarui(ds, nomor, keadaan="selesai", selesai_pada=_sekarang())
+        lapor(epochs_done=epochs_done,
+              pesan=f"selesai — RF-DETR {model}, {epochs_done} epoch dalam {leg} leg")
+        return 0
     finally:
         shutil.rmtree(coco_root, ignore_errors=True)
 
