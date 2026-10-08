@@ -352,6 +352,66 @@ def test_nama_kosong_diberi_nama_bawaan(tmp_path):
     assert isi["nama"] == f"Latihan {isi['nomor']}"
 
 
+# ============================================================
+# PRESET: SmartBin (RVM) vs Basket/Olahraga
+# ============================================================
+
+def test_preset_rvm_bawaan_tak_berubah(tmp_path):
+    """Default (tanpa preset) = RVM, persis perilaku lama: imgsz 640, flipud 0.3,
+    dan mode Bentuk/Warna tetap berlaku (hsv dikunci untuk mode warna)."""
+    _tulis_versi_yaml(tmp_path, 1, ["botol", "kaleng"])
+    r = latih.siapkan(tmp_path, nama="r", versi_nomor=1, tugas="detect",
+                      bobot="y.pt", par={}, oleh="u")
+    assert r["preset"] == "rvm"
+    assert r["par"]["imgsz"] == 640 and r["par"]["flipud"] == 0.3
+    # mode warna -> hsv_h dikunci 0 (mesin RVM lama tak tersentuh)
+    w = latih.siapkan(tmp_path, nama="w", versi_nomor=1, tugas="detect",
+                      bobot="y.pt", par={}, oleh="u", warna={"mode": "warna"})
+    assert w["par"]["hsv_h"] == 0.0
+
+
+def test_preset_olahraga_beda_dan_warna_tetap_divariasi(tmp_path):
+    _tulis_versi_yaml(tmp_path, 1, ["player", "ball"])
+    b = latih.siapkan(tmp_path, nama="b", versi_nomor=1, tugas="detect",
+                      bobot="y.pt", par={}, oleh="u", preset="olahraga")
+    assert b["preset"] == "olahraga"
+    assert b["par"]["imgsz"] == 1280          # resolusi tinggi utk bola kecil
+    assert b["par"]["flipud"] == 0.0          # tak pernah terbalik
+    assert b["par"]["degrees"] == 5.0         # broadcast ~datar
+    assert b["par"]["scale"] == 0.5           # zoom/crop boleh
+    assert b["par"]["hsv_h"] == 0.03          # variasi warna jersey TETAP ada
+    # TANPA occlusion/penghalang
+    assert b["par"]["mixup"] == 0.0
+    assert b["par"]["cutmix"] == 0.0
+    assert b["par"]["copy_paste"] == 0.0
+
+
+def test_preset_olahraga_abaikan_mode_warna(tmp_path):
+    """Basket mengurus warnanya sendiri; toggle Bentuk/Warna tak berlaku, jadi
+    hsv_h tetap dari preset (0.03), bukan dikunci 0 oleh mode warna."""
+    _tulis_versi_yaml(tmp_path, 1, ["player"])
+    b = latih.siapkan(tmp_path, nama="b", versi_nomor=1, tugas="detect",
+                      bobot="y.pt", par={}, oleh="u", preset="olahraga",
+                      warna={"mode": "warna"})
+    assert b["par"]["hsv_h"] == 0.03
+    assert b["warna"] == {}
+
+
+def test_preset_asing_jatuh_ke_rvm(tmp_path):
+    _tulis_versi_yaml(tmp_path, 1, ["x"])
+    b = latih.siapkan(tmp_path, nama="x", versi_nomor=1, tugas="detect",
+                      bobot="y.pt", par={}, oleh="u", preset="ngasal")
+    assert b["preset"] == "rvm"
+
+
+def test_saring_par_dasar_olahraga(tmp_path):
+    par, galat = latih._saring_par({"imgsz": 960, "ngawur": 1},
+                                   dasar=latih.PRESET_OLAHRAGA)
+    assert not galat and par["imgsz"] == 960 and "ngawur" not in par
+    _, g2 = latih._saring_par({"imgsz": 99}, dasar=latih.PRESET_OLAHRAGA)
+    assert g2, "imgsz di luar BATAS harus ditolak"
+
+
 def test_bobot_tersedia_selalu_menawarkan_sesuatu():
     """Tanpa berkas lokal pun orang harus bisa mulai melatih."""
     b = latih.bobot_tersedia()

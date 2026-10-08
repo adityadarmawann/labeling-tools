@@ -52,6 +52,15 @@
                  placeholder="mis. percobaan pertama, 250 epoch">
         </label>
 
+        {#- JENIS PRESET: resep augmentasi + setelan yang COCOK untuk jenis
+            datanya. Ditaruh paling atas karena ia mengubah seluruh setelan di
+            bawahnya. Namanya ditulis untuk orang awam ("SmartBin" vs "Basket")
+            dan penjelasannya muncul di bawah selektor. -#}
+        <label class="tr-label">Jenis preset
+          <select id="tr-preset"></select>
+          <span class="tr-bantu" id="tr-preset-ket"></span>
+        </label>
+
         {#- DI MANA training dijalankan. Tersembunyi sampai JS memastikan backend
             Kaggle memang terkonfigurasi (BAHAN.kaggle_siap) — kalau tidak, satu-
             satunya jalur adalah GPU mesin ini dan pilihan ini cuma mengganggu.

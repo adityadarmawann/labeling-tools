@@ -103,7 +103,15 @@ async def bahan(sess: Session = Depends(current_session_api),
             "kaggle_akun": await asyncio.to_thread(svc_kaggle.ringkas_akun, settings),
             "versi": versi_siap,
             "bobot": await asyncio.to_thread(svc.bobot_tersedia),
-            "preset": svc.PRESET_V14,
+            # Registry preset untuk selektor "Jenis preset" di form. `preset`
+            # (par bawaan) dipertahankan untuk render awal; `preset_daftar`
+            # memberi semua pilihan + penjelasan awam + apakah pakai toggle warna.
+            "preset": svc.preset_par(svc.PRESET_BAWAAN),
+            "preset_daftar": [
+                {"id": k, "nama": v["nama"], "jelas": v["jelas"],
+                 "warna": v["warna"], "par": v["par"]}
+                for k, v in svc.PRESET.items()],
+            "preset_bawaan": svc.PRESET_BAWAAN,
             "batas": {k: list(v) for k, v in svc.BATAS.items()},
             "tugas": list(svc.TUGAS)}
 
@@ -136,6 +144,9 @@ async def mulai(request: Request,
     backend = str(body.get("backend") or "lokal").strip().lower()
     if backend not in ("lokal", "kaggle"):
         backend = "lokal"
+    # Preset (resep augmentasi+hyperparameter): "rvm" (SmartBin) / "olahraga"
+    # (Basket). Berlaku untuk seluruh kiriman; divalidasi di siapkan().
+    preset = svc.preset_sah(str(body.get("preset") or "rvm").strip().lower())
     if backend == "kaggle":
         siap, alasan = svc_kaggle.siap(settings)
     else:
@@ -189,7 +200,7 @@ async def mulai(request: Request,
                 par=satu.get("par") or {},
                 oleh=sess.user,
                 catatan=str(satu.get("catatan") or ""),
-                warna=warna, backend=backend)
+                warna=warna, backend=backend, preset=preset)
         except ValueError as e:
             return {"ok": False, "error": str(e), "dibuat": dibuat}
         try:
@@ -260,7 +271,8 @@ async def lanjut(request: Request,
             svc.siapkan, d, nama=nama, versi_nomor=versi_nomor,
             tugas=str(sumber.get("tugas") or "segment"), bobot=str(bobot),
             par=par, oleh=sess.user, catatan=catatan,
-            warna=sumber.get("warna") or {}, lanjut_dari=dari)
+            warna=sumber.get("warna") or {}, lanjut_dari=dari,
+            preset=sumber.get("preset") or "rvm")
     except ValueError as e:
         return {"ok": False, "error": str(e)}
     try:

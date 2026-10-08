@@ -201,6 +201,72 @@ BATAS: dict[str, tuple] = {
     "mask_ratio": (1, 8),
 }
 
+# ============================================================
+# PRESET BASKET / OLAHRAGA
+# ============================================================
+#
+# Preset KEDUA di sebelah PRESET_V14 (RVM) — TIDAK mengubahnya. Dipilih orang
+# lewat selektor "Jenis preset" di form. Beda dari RVM, dan alasannya:
+#   imgsz 1280  : frame broadcast lebar, bola cuma ~10-20 px — resolusi adalah
+#                 tuas terbesar untuk objek kecil (RVM objeknya besar, 640 cukup)
+#   batch 8     : 1280 makan VRAM, jadi diturunkan dari 16
+#   degrees 5   : siaran olahraga ~datar (RVM 25 untuk konveyor yang objeknya
+#                 boleh berputar bebas)
+#   flipud 0    : adegan basket tak pernah terbalik (RVM top-down, 0.3 wajar)
+#   scale 0.5   : variasi zoom pemain dekat-jauh (crop/zoom BOLEH)
+# WARNA: hsv_h/s/v + bgr DIWARISI dari v14 (variasi rona KUAT) — persis yang
+#   diminta: jersey beda tiap laga, jadi warna di-acak supaya model tak terpaku
+#   pada satu warna dan tahan antar-pertandingan. Gambar TETAP berwarna (bukan
+#   grayscale). mixup/cutmix/copy_paste tetap 0 -> TANPA occlusion/penghalang.
+#   Tak ada augmentasi blur. Karena warna sudah diurus preset ini, toggle
+#   Bentuk/Warna (mode_warna) TIDAK berlaku untuk preset basket.
+PRESET_OLAHRAGA: dict = {
+    **PRESET_V14,
+    "imgsz": 1280,
+    "batch": 8,
+    "degrees": 5.0,
+    "flipud": 0.0,
+    "scale": 0.5,
+    "translate": 0.10,
+}
+
+# Registry preset yang ditawarkan di form. `warna=True` -> preset memakai toggle
+# Bentuk/Warna (hanya RVM). Nama & penjelasan ditulis untuk orang awam.
+PRESET: dict = {
+    "rvm": {
+        "nama": "SmartBin — botol · kaleng · tetra",
+        "jelas": "Objek sedang di konveyor. Warna diacak kuat supaya model "
+                 "memutuskan lewat BENTUK, bukan warna.",
+        "par": PRESET_V14,
+        "warna": True,
+    },
+    "olahraga": {
+        "nama": "Basket / Olahraga — pemain · bola · court",
+        "jelas": "Frame siaran lebar dengan objek kecil (bola). Resolusi tinggi, "
+                 "warna jersey divariasikan supaya tahan antar-laga, tak dibalik, "
+                 "tanpa occlusion/blur.",
+        "par": PRESET_OLAHRAGA,
+        "warna": False,
+    },
+}
+PRESET_BAWAAN = "rvm"
+
+
+def preset_sah(nama: str | None) -> str:
+    """Nama preset yang valid; jatuh ke bawaan (RVM) kalau asing/kosong."""
+    return nama if nama in PRESET else PRESET_BAWAAN
+
+
+def preset_par(nama: str | None) -> dict:
+    """Salinan par dasar sebuah preset."""
+    return dict(PRESET[preset_sah(nama)]["par"])
+
+
+def preset_pakai_warna(nama: str | None) -> bool:
+    """True kalau preset ini memakai toggle Bentuk/Warna (cuma RVM)."""
+    return bool(PRESET[preset_sah(nama)].get("warna"))
+
+
 TUGAS = ("segment", "detect", "pose")
 
 # Bobot awal yang boleh dipakai. Dicari di beberapa tempat supaya tidak
@@ -695,6 +761,7 @@ def status(ds, nomor: int) -> dict:
         # Di mana training ini berjalan + kemajuan khusus Kaggle (akun, leg,
         # tautan kernel, status remote). backend bawaan "lokal" untuk entri lama.
         "backend": isi.get("backend") or "lokal",
+        "preset": isi.get("preset") or "rvm",
         "kaggle": isi.get("kaggle") or {},
         "keadaan": keadaan,
         "epoch": ep, "epochs": epochs, "persen": persen,
@@ -733,18 +800,20 @@ def ada_yang_jalan(ds) -> dict | None:
 # MENJALANKAN
 # ============================================================
 
-def _saring_par(minta: dict) -> tuple[dict, list[str]]:
-    """Ambil PRESET_V14 lalu timpa yang diminta, dijepit ke BATAS."""
-    par = dict(PRESET_V14)
+def _saring_par(minta: dict, dasar: dict | None = None) -> tuple[dict, list[str]]:
+    """Ambil preset DASAR lalu timpa yang diminta, dijepit ke BATAS. dasar=None
+    -> PRESET_V14 (RVM), supaya pemanggil lama berperilaku sama persis."""
+    dasar = dasar if dasar is not None else PRESET_V14
+    par = dict(dasar)
     galat: list[str] = []
     for k, v in (minta or {}).items():
-        if k not in PRESET_V14:
+        if k not in dasar:
             continue                       # kunci asing diabaikan, bukan ditolak
         if k in BATAS:
             lo, hi = BATAS[k]
             try:
-                v = type(PRESET_V14[k])(v) if not isinstance(
-                    PRESET_V14[k], bool) else bool(v)
+                v = type(dasar[k])(v) if not isinstance(
+                    dasar[k], bool) else bool(v)
             except (TypeError, ValueError):
                 galat.append(f"{k} bukan angka")
                 continue
@@ -758,10 +827,11 @@ def _saring_par(minta: dict) -> tuple[dict, list[str]]:
 def siapkan(ds, *, nama: str, versi_nomor: int, tugas: str, bobot: str,
             par: dict, oleh: str, catatan: str = "",
             warna: dict | None = None, lanjut_dari: int | None = None,
-            backend: str = "lokal") -> dict:
+            backend: str = "lokal", preset: str = "rvm") -> dict:
     """Catat satu training baru. Belum dijalankan."""
     n = nomor_berikut(ds)
-    par_bersih, galat = _saring_par(par)
+    preset = preset_sah(preset)
+    par_bersih, galat = _saring_par(par, dasar=preset_par(preset))
     if galat:
         raise ValueError("; ".join(galat))
 
@@ -778,10 +848,17 @@ def siapkan(ds, *, nama: str, versi_nomor: int, tugas: str, bobot: str,
     # kombinasi yang salah: lewat permintaan yang dibuat sendiri, lewat batch
     # yang disalin dari percobaan lain, atau lewat orang yang mengubah satu
     # angka tanpa tahu pasangannya. Dipaksa di sini, jalan itu tertutup.
-    from . import mode_warna as mw
+    # Pemaksaan warna (Bentuk/Warna) HANYA untuk preset RVM — di situ hsv harus
+    # sejalan dengan cara versinya diaugmentasi. Preset basket mengurus warnanya
+    # sendiri (variasi rona kuat, baked di preset), jadi mode_warna dilewati dan
+    # angka warna preset dibiarkan apa adanya.
+    if preset_pakai_warna(preset):
+        from . import mode_warna as mw
 
-    mode = mw.sah((warna or {}).get("mode"))
-    par_bersih.update(mw.par_latih(mode))
+        mode = mw.sah((warna or {}).get("mode"))
+        par_bersih.update(mw.par_latih(mode))
+    else:
+        warna = {}                           # basket: tak ada toggle warna
     if tugas not in TUGAS:
         raise ValueError(f"tugas harus salah satu dari {TUGAS}")
     # Daftar kelas DIBEKUKAN di sini, sama alasannya dengan warna: versinya bisa
@@ -804,6 +881,9 @@ def siapkan(ds, *, nama: str, versi_nomor: int, tugas: str, bobot: str,
         # "kaggle" (offload ke GPU Kaggle lewat API, jalur latih_kaggle). Bawaan
         # lokal supaya perilaku lama tak berubah sama sekali.
         "backend": backend if backend in ("lokal", "kaggle") else "lokal",
+        # Preset yang dipakai: "rvm" (PRESET_V14, pakai toggle Bentuk/Warna) atau
+        # "olahraga" (basket — warna divariasikan di preset, tanpa toggle).
+        "preset": preset,
         "par": par_bersih,
         # Hasil periksa_warna DIBEKUKAN di sini, bukan dihitung ulang saat
         # ditampilkan: versinya bisa saja dihapus nanti, dan alasan sebuah

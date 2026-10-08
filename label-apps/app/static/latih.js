@@ -170,7 +170,8 @@
     const w = v.warna || {};
     const asal = w.mode || 'bentuk';
     const box = $('tr-warna');
-    box.hidden = false;
+    // Panel warna cuma untuk preset yang memakainya (SmartBin). Basket: sembunyi.
+    box.hidden = !presetPakaiWarna();
     const r = box.querySelector(`input[name="tr-mode"][value="${asal}"]`);
     if (r && !box.dataset.disentuh) r.checked = true;
     gambarMode();
@@ -180,6 +181,38 @@
     const r = document.querySelector('input[name="tr-mode"]:checked');
     return r ? r.value : 'bentuk';
   };
+
+  /* ---- Preset (SmartBin vs Basket) ------------------------------------- */
+  function presetTerpilih() {
+    const sel = $('tr-preset');
+    const id = sel ? sel.value : (BAHAN && BAHAN.preset_bawaan) || 'rvm';
+    const daftar = (BAHAN && BAHAN.preset_daftar) || [];
+    return daftar.find((p) => p.id === id) || daftar[0] || null;
+  }
+
+  // Panel Bentuk/Warna hanya untuk preset yang memakainya (SmartBin). Preset
+  // Basket mengurus warnanya sendiri (variasi rona di preset), jadi panelnya
+  // disembunyikan supaya tidak membingungkan.
+  function presetPakaiWarna() {
+    const p = presetTerpilih();
+    return p ? !!p.warna : true;
+  }
+
+  /* Terapkan preset terpilih: muat ulang nilai bawaan tiap kotak setelan dari
+     preset itu, perbarui penjelasan awam, dan tampilkan/sembunyikan panel
+     warna. Dipanggil saat init dan tiap selektor preset berubah. */
+  function terapkanPreset() {
+    const p = presetTerpilih();
+    if (!p) return;
+    document.querySelectorAll('#tr-form [data-par]').forEach((el) => {
+      const v = p.par[el.dataset.par];
+      if (v !== undefined) { el.value = v; el.dataset.bawaan = v; }
+    });
+    const ket = $('tr-preset-ket');
+    if (ket) ket.textContent = p.jelas || '';
+    const box = $('tr-warna');
+    if (box) box.hidden = !p.warna;
+  }
 
   /* Satu tempat yang menggambar seluruh panel warna, dipanggil ulang tiap
      kali versinya atau modenya berganti. Isinya ditulis dari sudut pandang
@@ -1043,8 +1076,12 @@
       };
     });
     $('tr-reset').onclick = () => {
+      // Kembalikan ke bawaan PRESET YANG DIPILIH (SmartBin / Basket), bukan
+      // selalu preset default.
+      const p = presetTerpilih();
+      const dasar = (p && p.par) || BAHAN.preset;
       document.querySelectorAll('#tr-form [data-par]').forEach((el) => {
-        el.value = BAHAN.preset[el.dataset.par];
+        if (dasar[el.dataset.par] !== undefined) el.value = dasar[el.dataset.par];
       });
     };
     $('tr-tambah').onclick = () => {
@@ -1062,11 +1099,13 @@
       // backend berlaku untuk SELURUH kiriman (satu pilihan "Jalankan di"),
       // bukan per-percobaan. Bawaan lokal kalau selektornya tak ada.
       const backend = ($('tr-backend') && $('tr-backend').value) || 'lokal';
+      // preset (SmartBin/Basket) juga berlaku untuk seluruh kiriman.
+      const preset = ($('tr-preset') && $('tr-preset').value) || 'rvm';
       $('tr-jalankan').disabled = true;
       try {
         const j = await ambil('/api/latih/mulai', {
           method: 'POST', headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({versi, batch, backend}),
+          body: JSON.stringify({versi, batch, backend, preset}),
         });
         if (!j.ok) { galat(j.error || 'gagal memulai'); return; }
         ANTREAN = [];
@@ -1163,6 +1202,16 @@
             if (o) $('tr-tugas').value = o.dataset.tugas || 'segment';
           };
           gambarForm();
+          // Selektor "Jenis preset" (SmartBin / Basket) — ramah untuk awam.
+          // Mengganti preset memuat ulang bawaan setelan + menampilkan/
+          // menyembunyikan panel Bentuk/Warna sesuai presetnya.
+          if ($('tr-preset') && BAHAN.preset_daftar) {
+            $('tr-preset').innerHTML = BAHAN.preset_daftar.map((p) =>
+              `<option value="${esc(p.id)}">${esc(p.nama)}</option>`).join('');
+            $('tr-preset').value = BAHAN.preset_bawaan || 'rvm';
+            $('tr-preset').onchange = () => { terapkanPreset(); gambarMode(); };
+          }
+          terapkanPreset();
           $('tr-bobot').onchange();
           gambarAntrean();
           // Backend Kaggle, kalau terkonfigurasi: buka selektor "Jalankan di".
