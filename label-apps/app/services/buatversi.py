@@ -302,7 +302,11 @@ class Pekerjaan:
         # SEKALI di sini, bukan pada tiap gambar: satu versi bisa menempel
         # puluhan ribu kali, dan membaca ulang folder tiap kali berarti puluhan
         # ribu pembacaan disk untuk isi yang tidak berubah selama versi jalan.
-        self.pelat = olah.pelat_projek(ds)
+        # Pelat RVM bawaan HANYA untuk projek RVM. latar_bawaan default True ->
+        # RVM & versi lama tak berubah; projek NON-RVM (preset Basket menyetel
+        # False) tak kemasukan latar ruang RVM lewat fase crop/zoom.
+        self.pelat = olah.pelat_projek(
+            ds, pakai_bawaan=bool(self.resep.get("latar_bawaan", True)))
         # Giliran pelat PER KELAS. Tanpa ini pelatnya dipilih acak tiap kali
         # menempel, dan kelas yang sampelnya sedikit hanya menyentuh sebagian
         # kecil pelat: terukur pada 18 pelat, kelas dengan 6 sampel cuma

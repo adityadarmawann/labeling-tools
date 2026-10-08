@@ -143,6 +143,39 @@ def test_pelat_projek_ditambahkan_ke_bawaan_bukan_menggantikan(tmp_path):
     assert len(olah.pelat_projek(d)) == bawaan + 9
 
 
+def test_pelat_projek_pakai_bawaan_false_buang_pelat_rvm(tmp_path):
+    """BUG FATAL: pelat ruang RVM bawaan MENYUSUP ke projek NON-RVM (basket)
+    lewat fase crop/zoom, padahal tak ada gambar RVM yang dimasukkan. Perbaikan:
+    pakai_bawaan=False -> HANYA pelat projek; projek tanpa pelat sendiri ->
+    KOSONG (kanvas_latar jatuh ke warna polos, bukan ruang RVM). Default True
+    supaya RVM & versi lama byte-identik."""
+    d = tmp_path / "projek"
+    d.mkdir()
+    bawaan = len(olah.muat_pelat())
+    assert bawaan > 0
+    # Default (RVM/lama): tetap ada pelat RVM bawaan — tak berubah.
+    assert len(olah.pelat_projek(d)) == bawaan
+    # NON-RVM tanpa pelat sendiri: KOSONG, TAK ada satu pun pelat ruang RVM.
+    assert olah.pelat_projek(d, pakai_bawaan=False) == []
+    # NON-RVM dengan pelat sendiri: hanya pelat projek, TANPA bawaan RVM.
+    latar.tambah(d, "ruang.png", _foto_ruang())
+    assert len(olah.pelat_projek(d, pakai_bawaan=False)) == 9
+    assert len(olah.pelat_projek(d)) == bawaan + 9          # default tetap menambah
+
+
+def test_buatversi_latar_bawaan_false_tak_muat_pelat_rvm(tmp_path):
+    """Hulu-ke-hilir: resep latar_bawaan=False -> Pekerjaan.pelat TANPA pelat
+    ruang RVM bawaan (projek tanpa pelat sendiri -> kosong), jadi fase crop/zoom
+    tak bisa menempel objek ke ruang RVM. Tanpa flag -> default True -> tetap
+    memuat pelat bawaan (RVM & versi lama byte-identik)."""
+    from app.services import buatversi
+    job = buatversi.Pekerjaan(tmp_path, 1, [], {}, {"latar_bawaan": False}, {},
+                              kunci="t")
+    assert job.pelat == [], "NON-RVM tak boleh kemasukan pelat ruang RVM"
+    job2 = buatversi.Pekerjaan(tmp_path, 1, [], {}, {}, {}, kunci="t")
+    assert len(job2.pelat) == len(olah.muat_pelat()), "default RVM tak berubah"
+
+
 # ============================================================
 # RUTE
 # ============================================================

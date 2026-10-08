@@ -223,12 +223,19 @@ def warna_latar() -> tuple[int, int, int]:
     return _warna_latar or WARNA_LATAR_CADANGAN
 
 
-def pelat_projek(ds) -> list[np.ndarray]:
-    """Pelat bawaan DITAMBAH pelat milik projek `ds`, kalau ada.
+def pelat_projek(ds, pakai_bawaan: bool = True) -> list[np.ndarray]:
+    """Pelat milik projek `ds`, DITAMBAH pelat RVM bawaan kalau `pakai_bawaan`.
 
     Ditambah, bukan diganti: latar yang lebih beragam membuat model lebih
     sulit menghafal satu ruangan, dan membuang pelat bawaan berarti dataset
     kecil kehilangan variasi yang sudah ada tanpa mendapat gantinya.
+
+    `pakai_bawaan=False` -> HANYA pelat projek (TANPA 9 pelat ruang RVM bawaan di
+    app/data/latar-rvm). Dipakai projek NON-RVM (basket, dll): tanpa ini latar
+    ruang RVM menyusup ke dataset projek apa pun lewat fase crop/zoom. Projek
+    tanpa pelat sendiri -> daftar kosong -> kanvas_latar jatuh ke warna polos,
+    jadi tak ada ruang RVM yang menempel. Bawaannya True supaya RVM & versi lama
+    byte-identik.
 
     Tidak di-cache di modul ini. Cache global `_pelat` boleh ada karena isinya
     ikut dibundel bersama aplikasi dan tidak pernah berubah; pelat projek
@@ -238,7 +245,7 @@ def pelat_projek(ds) -> list[np.ndarray]:
     """
     from . import latar as svc_latar
 
-    bawaan = list(muat_pelat())
+    bawaan = list(muat_pelat()) if pakai_bawaan else []
     if ds is None:
         return bawaan
     projek = []

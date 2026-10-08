@@ -336,15 +336,25 @@
     { id: 'smartbin', nama: 'SmartBin', sub: 'botol · kaleng · tetra',
       jelas: 'Warna diacak kuat supaya model belajar BENTUK, bukan warna — '
            + 'cocok untuk benda yang bentuknya sama walau warnanya beda. '
-           + 'Ukuran 640×640.',
-      warna: 'bentuk', off: [], resize: { mode: 'fit', lebar: 640, tinggi: 640 } },
+           + 'Ukuran 640×640, memakai latar ruang detektor RVM.',
+      warna: 'bentuk', off: [], resize: { mode: 'fit', lebar: 640, tinggi: 640 },
+      // RVM: pakai pelat latar bawaan + fase crop/zoom & balans ukuran (perilaku lama).
+      latarRvm: true, fase: { crop_zoom: true, balans_skala: true } },
     { id: 'basket', nama: 'Basket / olahraga', sub: 'pemain · bola · lapangan',
       jelas: 'Warna tiap tim DIJAGA supaya bisa dibedakan, tanpa bayangan yang '
-           + 'menutupi pemain, dan tak dibalik atas-bawah. Frame video 16:9 '
-           + '(1280×720); blur/pecah dibiarkan karena crop 1 frame kadang jelek.',
+           + 'menutupi pemain, tak dibalik atas-bawah, dan TANPA latar ruang RVM. '
+           + 'Frame video 16:9 (1280×720); blur/pecah dibiarkan karena crop 1 '
+           + 'frame kadang jelek.',
       warna: 'warna', off: ['flip_v', 'bayangan'],
-      resize: { mode: 'regang', lebar: 1280, tinggi: 720 } },
+      resize: { mode: 'regang', lebar: 1280, tinggi: 720 },
+      // NON-RVM: jangan pakai pelat RVM bawaan; matikan fase yang menempel objek
+      // ke pelat (crop/zoom, balans ukuran) karena itu teknik khas ruang RVM.
+      latarRvm: false, fase: { crop_zoom: false, balans_skala: false } },
   ];
+  // Peta id-fase -> id checkbox di langkah 5 (kumpulkanResep membangun ulang
+  // resep.fase dari checkbox ini, jadi preset HARUS menyetel checkboxnya).
+  const FASE_CB = { crop_zoom: 'wz-f-crop', balans_skala: 'wz-f-skala',
+                    balans_kelas: 'wz-f-kelas', porsi_negatif: 'wz-f-neg' };
   // Semua operasi yang PERNAH dimatikan preset mana pun — direset tiap pindah
   // preset supaya tak ada sisa dari pilihan sebelumnya.
   const OP_OFF_SEMUA = [...new Set(PRESET_DETEKSI.flatMap((p) => p.off))];
@@ -381,6 +391,17 @@
       resep.pra = resep.pra || {};
       resep.pra.resize = { ...(resep.pra.resize || {}), aktif: true, ...p.resize };
     }
+    // 4) LATAR RVM: pelat ruang RVM bawaan HANYA untuk RVM. Non-RVM -> false,
+    //    supaya latar ruang RVM tak menyusup ke dataset lewat fase crop/zoom.
+    resep.latar_bawaan = (p.latarRvm !== false);
+    // 5) Fase pelat (crop/zoom, balans ukuran) = teknik ruang RVM. Setel LEWAT
+    //    CHECKBOX langkah 5 karena kumpulkanResep membangun resep.fase dari situ.
+    Object.entries(p.fase || {}).forEach(([oid, on]) => {
+      const cb = el(FASE_CB[oid]);
+      if (cb) cb.checked = !!on;
+      resep.fase = resep.fase || {};
+      resep.fase[oid] = { ...(resep.fase[oid] || {}), aktif: !!on };
+    });
     gambarOperasi();
     if (!el('op-dlg').hidden) gambarPopup();     // segarkan daftar di popup kalau terbuka
     tandaiPresetDeteksi();
@@ -423,6 +444,12 @@
     resep.warna = { mode: 'tidak-ada' };      // paksa dianggap berubah
     terapkanModeWarna(false);
     gambarOperasi();
+    // Pemilih "jenis dataset/proyek" di langkah 4 (Preprocessing): digambar
+    // sekali saat wizard dibuka, bukan di popup Augmentasi, supaya alurnya MAJU
+    // (pilih jenis -> resep resize langkah ini + warna/latar/fase langkah
+    // berikutnya ikut, bukan mengubah langkah sebelumnya).
+    gambarPresetDeteksi();
+    tandaiPresetDeteksi();
     await muatFilter();
     await muatSumber();
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -784,13 +811,6 @@
     // preprocessing ia cuma satu kotak lagi untuk dilewati.
     el('op-cari').hidden = Object.keys(katalog[tahap]).length <= 12;
     el('op-bawaan').textContent = 'Kembalikan ke bawaan';
-    // Saklar use-case hanya di tahap Augmentasi (ia mengatur operasi warna/
-    // bayangan yang semuanya augmentasi, bukan preprocessing).
-    const det = el('op-deteksi');
-    if (det) {
-      det.hidden = tahap !== 'aug';
-      if (tahap === 'aug') { gambarPresetDeteksi(); tandaiPresetDeteksi(); }
-    }
   }
 
   function bukaPopup(tahap) {

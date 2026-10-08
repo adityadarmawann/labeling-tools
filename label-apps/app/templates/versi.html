@@ -129,6 +129,17 @@
           <span class="wz-ringkas" id="wz-r3"></span>
           <button class="chip wz-ubah" type="button">Ubah</button></div>
         <div class="wz-isi">
+          {#- JENIS DATASET/PROYEK. Keputusan paling awal: ia menyetel default
+              langkah SESUDAHNYA — ukuran resize di sini DAN warna/latar/fase di
+              Augmentasi. Ditaruh paling atas di langkah PERTAMA yang ia
+              pengaruhi supaya alurnya MAJU; sebelumnya ia salah taruh di
+              Augmentasi sehingga memilih di sana malah mengubah langkah
+              Preprocessing yang lebih dulu. Kartu diisi JS dari registry. -#}
+          <div class="op-deteksi" id="op-deteksi">
+            <span class="op-deteksi-judul">Jenis dataset / proyek</span>
+            <div class="op-deteksi-pil" id="op-deteksi-pil"></div>
+            <p class="op-deteksi-ket" id="op-deteksi-ket"></p>
+          </div>
           <p class="halus">Dikenakan ke <b>setiap</b> gambar di train, valid, dan
             test, dan hasilnya sama tiap kali dijalankan. Itu syaratnya: valid
             dan test adalah alat ukur, dan alat ukur yang berubah-ubah membuat
@@ -279,18 +290,6 @@
           &#8592; Semua langkah</button>
         <h3 id="op-judul">Augmentasi</h3>
         <p class="halus" id="op-ket"></p>
-        {#- Saklar default use-case (hanya tahap Augmentasi). Menyetel sekali
-            untuk SmartBin (bawaan: warna diacak, belajar bentuk) atau Basket/
-            olahraga (warna tiap tim DIJAGA agar bisa dibedakan, tanpa bayangan
-            yang menutupi pemain, tak dibalik atas-bawah). Dibahasakan awam. -#}
-        <div class="op-deteksi" id="op-deteksi" hidden>
-          <span class="op-deteksi-judul">Jenis dataset / proyek</span>
-          {#- Kartu-kartu diisi JS dari registry PRESET_DETEKSI (versi.js), jadi
-              menambah jenis proyek baru = satu entri di registry, bukan tombol
-              hardcode. Kartunya membungkus sendiri kalau jenisnya bertambah. -#}
-          <div class="op-deteksi-pil" id="op-deteksi-pil"></div>
-          <p class="op-deteksi-ket" id="op-deteksi-ket"></p>
-        </div>
         <input class="op-cari" id="op-cari" type="search" hidden
                placeholder="cari operasi…" autocomplete="off">
       </div>
