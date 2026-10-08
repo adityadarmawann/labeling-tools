@@ -49,19 +49,110 @@ def _snap56(x: int) -> int:
     return x
 
 
+def _tulis_progres(dl: Path, baris: list[tuple]) -> None:
+    """Tulis results.csv (konvensi HIGOLAB) dari baris (epoch, detik, mAP|None),
+    supaya status() menampilkan epoch & waktu berlalu LIVE selagi latih jalan —
+    tanpa ini UI beku di 'epoch 1' sepanjang training yang berjam-jam."""
+    try:
+        teks = ["epoch,time,metrics/mAP50-95(B)"]
+        for ep, det, mp in baris:
+            teks.append(f"{ep},{round(det, 1)},{'' if mp is None else mp}")
+        (Path(dl) / "results.csv").write_text("\n".join(teks) + "\n")
+    except OSError:
+        pass
+
+
+# Checkpoint rfdetr -> lokasi HIGOLAB. checkpoint_best_total.pth = model terbaik
+# (best.pt); last_ema.pth = bobot epoch terakhir (last.pt); last.ckpt = state
+# penuh PTL untuk resume/Lanjutkan.
+_PETA_CKPT = (("checkpoint_best_total.pth", ("weights", "best.pt")),
+              ("last_ema.pth", ("weights", "last.pt")),
+              ("last.ckpt", ("rfdetr", "last.ckpt")))
+
+
+def _sync_ckpt(out_dir: Path, dl: Path, mt: dict) -> None:
+    """Salin checkpoint terbaru dari out_dir ke folder HIGOLAB — TIAP EPOCH yang
+    berubah. Tujuannya: begitu training dihentikan di tengah, best.pt/last.pt
+    (dan last.ckpt untuk Lanjutkan) SUDAH ADA dan mutakhir, tak hilang bersama
+    proses. Disalin hanya saat mtime berubah supaya I/O tak boros."""
+    out_dir, dl = Path(out_dir), Path(dl)
+    for nama, (sub, tuju_nama) in _PETA_CKPT:
+        kand = sorted(out_dir.rglob(nama), key=lambda p: len(str(p)))
+        if not kand:
+            continue
+        src = kand[0]
+        try:
+            m = src.stat().st_mtime
+        except OSError:
+            continue
+        if mt.get(nama) == m:
+            continue
+        tuju = dl / sub / tuju_nama
+        tuju.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            shutil.copy2(src, tuju)
+            mt[nama] = m
+        except OSError:
+            pass
+
+
 def _latih_rfdetr_asli(coco_dir: Path, out_dir: Path, model: str, par: dict,
-                       lapor, resume: str | None = None) -> dict:
+                       lapor, resume: str | None = None,
+                       dl_progres: Path | None = None) -> dict:
     """Jalankan training RF-DETR SUNGGUHAN. Satu-satunya tempat `rfdetr` diimpor
     -> seam yang dipalsukan di tes. Kembalikan {"epoch": n, "map": x|None}.
 
     resume = path last.ckpt (state penuh PyTorch-Lightning): dipakai jalur
     "Lanjutkan" supaya training MELANJUTKAN dari checkpoint (epochs = TOTAL baru,
-    Lightning lanjut current_epoch -> max_epochs), bukan mulai dari nol."""
+    Lightning lanjut current_epoch -> max_epochs), bukan mulai dari nol.
+
+    dl_progres = folder .latih/L<n>/: kalau diisi, sebuah callback menulis
+    results.csv tiap epoch -> status()/kartu menampilkan kemajuan LIVE (epoch,
+    waktu, perkiraan sisa), bukan beku di epoch 1 sampai training selesai."""
     import rfdetr
 
     Model = getattr(rfdetr, _KELAS_RFDETR.get(model, "RFDETRNano"))
     res = _snap56(int(par.get("resolution") or 560))
     lapor(pesan=f"melatih RF-DETR {model} @ {res}px…")
+
+    # Suntik callback progres lewat monkeypatch pl.Trainer.__init__ (rfdetr
+    # membangun Trainer sendiri; pola sama dengan stop wall-clock kernel Kaggle).
+    if dl_progres is not None:
+        import pytorch_lightning as pl
+        from pytorch_lightning.callbacks import Callback
+
+        class _Progres(Callback):
+            def on_fit_start(self, trainer, pl_module):
+                self._t0 = time.time()
+                self._rows: list[tuple] = []
+                self._mt: dict = {}
+
+            def on_train_epoch_end(self, trainer, pl_module):
+                ep = int(trainer.current_epoch) + 1
+                det = time.time() - getattr(self, "_t0", time.time())
+                mp = None
+                for k, v in (trainer.callback_metrics or {}).items():
+                    if "map" in str(k).lower():
+                        try:
+                            mp = float(v)
+                        except (TypeError, ValueError):
+                            pass
+                self._rows = getattr(self, "_rows", [])
+                self._rows.append((ep, det, mp))
+                _tulis_progres(dl_progres, self._rows)
+                # Salin checkpoint terbaru -> stop di tengah tetap meninggalkan
+                # best.pt/last.pt/last.ckpt yang mutakhir.
+                _sync_ckpt(out_dir, dl_progres, getattr(self, "_mt", {}))
+
+        _orig_init = pl.Trainer.__init__
+
+        def _init(self, *a, **k):
+            cbs = list(k.get("callbacks") or [])
+            cbs.append(_Progres())
+            k["callbacks"] = cbs
+            return _orig_init(self, *a, **k)
+        pl.Trainer.__init__ = _init
+
     m = Model(resolution=res)
     kw = dict(
         dataset_dir=str(coco_dir), output_dir=str(out_dir),
@@ -111,10 +202,15 @@ def _serap(out_dir: Path, dir_latih: Path, hasil: dict) -> int:
     epoch = int(hasil.get("epoch") or 0)
     mp = hasil.get("map")
     rp = dir_latih / "results.csv"
-    if mp is not None:
-        rp.write_text(f"epoch,metrics/mAP50-95(B)\n{epoch},{mp}\n")
-    elif epoch:
-        rp.write_text(f"epoch\n{epoch}\n")
+    # Kalau callback progres sudah menulis results.csv (jalur lokal biasa), JANGAN
+    # ditimpa: punyanya lebih kaya (epoch + WAKTU per epoch), jadi kartu hasil
+    # tetap menampilkan "Lama" yang benar. Hanya tulis kalau belum ada (mis.
+    # training tanpa callback).
+    if not (rp.exists() and rp.stat().st_size > 0):
+        if mp is not None:
+            rp.write_text(f"epoch,metrics/mAP50-95(B)\n{epoch},{mp}\n")
+        elif epoch:
+            rp.write_text(f"epoch\n{epoch}\n")
     return latih.baca_hasil_csv(dir_latih).get("epoch") or epoch
 
 
@@ -166,15 +262,20 @@ def main() -> int:
         if resume_ckpt:
             lapor(pesan="melanjutkan dari checkpoint (resume state penuh)…")
 
+        # out_dir PERSISTEN di .latih/L<n>/rfdetr/out (BUKAN folder sementara):
+        # kalau training dihentikan di tengah, checkpoint tiap epoch TETAP ADA di
+        # sini dan sudah disalin ke weights/ oleh callback -> stop awal tetap
+        # meninggalkan best.pt/last.pt yang bisa dipakai. (COCO tetap sementara —
+        # cuma input, diekspor ulang tiap run.)
+        out_dir = dl / "rfdetr" / "out"
+        out_dir.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory() as tmp:
             coco_dir = Path(tmp) / "coco"
             lapor(pesan="ekspor versi ke COCO…")
             ring = ekspor_coco.versi_ke_coco(versi_dir, coco_dir)
             print(f"  COCO: {ring}", flush=True)
-            out_dir = Path(tmp) / "out"
-            out_dir.mkdir()
             hasil = _latih_rfdetr_asli(coco_dir, out_dir, model, par, lapor,
-                                       resume=resume_ckpt)
+                                       resume=resume_ckpt, dl_progres=dl)
             epoch = _serap(out_dir, dl, hasil)
 
         latih.perbarui(ds, nomor, keadaan="selesai", selesai_pada=_sekarang(),

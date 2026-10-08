@@ -110,7 +110,7 @@ def test_worker_main_fake_train(tmp_path, monkeypatch):
         "nomor": 1, "versi": 1, "arsitektur": "rfdetr", "rfdetr_model": "nano",
         "tugas": "detect", "par": dict(latih.PRESET_RFDETR), "keadaan": "antre", "pid": 0})
 
-    def fake_asli(coco_dir, out_dir, model, par, lapor, resume=None):
+    def fake_asli(coco_dir, out_dir, model, par, lapor, resume=None, dl_progres=None):
         # COCO harus sudah ter-ekspor oleh worker SEBELUM ini
         assert (Path(coco_dir) / "train" / "_annotations.coco.json").exists()
         assert resume is None, "training segar tak boleh resume"
@@ -151,7 +151,7 @@ def test_worker_main_resume_dari_seed(tmp_path, monkeypatch):
 
     dilihat = {}
 
-    def fake_asli(coco_dir, out_dir, model, par, lapor, resume=None):
+    def fake_asli(coco_dir, out_dir, model, par, lapor, resume=None, dl_progres=None):
         dilihat["resume"] = resume
         (Path(out_dir) / "checkpoint_best_total.pth").write_bytes(b"PK\x03\x04fake")
         return {"epoch": int(par["epochs"]), "map": None}
@@ -172,3 +172,36 @@ def test_serap_simpan_last_ckpt(tmp_path):
     latih_rfdetr._serap(out, dl, {"epoch": 3, "map": 0.4})
     assert (dl / "weights" / "best.pt").exists()
     assert (dl / "rfdetr" / "last.ckpt").exists()
+
+
+def test_tulis_progres_results_csv_live(tmp_path):
+    """Callback progres menulis results.csv tiap epoch -> status() baca epoch &
+    waktu BERLALU live, bukan beku di epoch 1 sampai training selesai."""
+    latih_rfdetr._tulis_progres(tmp_path, [(1, 90.0, 0.4), (2, 185.0, 0.55)])
+    d = latih.baca_hasil_csv(tmp_path)
+    assert d.get("epoch") == 2            # epoch TERKINI terbaca
+    assert d.get("detik") == 185.0        # waktu berlalu terbaca -> ETA bisa dihitung
+    # mAP boleh None (sebelum ada val) -> results.csv tetap sah
+    latih_rfdetr._tulis_progres(tmp_path, [(1, 30.0, None)])
+    assert latih.baca_hasil_csv(tmp_path).get("epoch") == 1
+
+
+def test_sync_ckpt_salin_best_last_dan_cache_mtime(tmp_path):
+    """Checkpoint disalin ke lokasi HIGOLAB tiap epoch -> stop di tengah tetap
+    meninggalkan best.pt/last.pt/last.ckpt mutakhir. Disalin ulang hanya saat
+    berubah (cache mtime) supaya I/O tak boros."""
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "checkpoint_best_total.pth").write_bytes(b"best1")
+    (out / "last_ema.pth").write_bytes(b"ema1")
+    (out / "last.ckpt").write_bytes(b"ckpt1")
+    dl = tmp_path / "L1"
+    mt: dict = {}
+    latih_rfdetr._sync_ckpt(out, dl, mt)
+    assert (dl / "weights" / "best.pt").read_bytes() == b"best1"
+    assert (dl / "weights" / "last.pt").read_bytes() == b"ema1"
+    assert (dl / "rfdetr" / "last.ckpt").read_bytes() == b"ckpt1"
+    assert len(mt) == 3
+    # Tanpa perubahan -> tak disalin lagi (cache mtime tetap 3 entri).
+    latih_rfdetr._sync_ckpt(out, dl, mt)
+    assert len(mt) == 3

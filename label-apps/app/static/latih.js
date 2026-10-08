@@ -567,8 +567,9 @@
         ${t.punya_bobot ? `<span class="tr-unduh">Unduh sementara
           <a class="chip" href="/latih/bobot?nomor=${t.nomor}&jenis=best" download
              title="Bobot mAP terbaik SEJAUH INI — bisa diunduh selagi training jalan">best.pt</a>
-          ${rf ? '' : `<a class="chip" href="/latih/bobot?nomor=${t.nomor}&jenis=last" download
-             title="Bobot epoch terakhir yang selesai — untuk melanjutkan training. Kalau kebetulan diunduh tepat saat epoch berakhir bisa separuh; unduh ulang.">last.pt</a>`}
+          <a class="chip" href="/latih/bobot?nomor=${t.nomor}&jenis=last" download
+             title="${rf ? 'Bobot EMA epoch terakhir SEJAUH INI (diperbarui tiap epoch)'
+                         : 'Bobot epoch terakhir yang selesai — untuk melanjutkan training. Kalau kebetulan diunduh tepat saat epoch berakhir bisa separuh; unduh ulang.'}">last.pt</a>
         </span>` : ''}
         <span class="spacer"></span>
         ${bolehKelola ? `<button class="chip chip-bahaya" type="button"
@@ -639,8 +640,9 @@
           <a class="chip" href="/latih/bobot?nomor=${t.nomor}&jenis=best" download
              title="${rf ? 'Checkpoint RF-DETR terbaik (.pth dikemas sebagai .pt)'
                          : 'Bobot dengan metrik terbaik selama training'}">best.pt</a>
-          ${rf ? '' : `<a class="chip" href="/latih/bobot?nomor=${t.nomor}&jenis=last" download
-             title="Bobot epoch terakhir, untuk melanjutkan training">last.pt</a>`}
+          <a class="chip" href="/latih/bobot?nomor=${t.nomor}&jenis=last" download
+             title="${rf ? 'Bobot EMA epoch terakhir RF-DETR'
+                         : 'Bobot epoch terakhir, untuk melanjutkan training'}">last.pt</a>
         </span>` : ''}
         <span class="spacer"></span>
         ${bolehKelola ? `<button class="chip chip-bahaya" type="button"
