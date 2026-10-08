@@ -2740,14 +2740,16 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
   border:1px solid var(--line2);border-radius:7px}
 .op-cari:focus{outline:2px solid var(--ok);outline-offset:-1px}
 
-/* Saklar default use-case (SmartBin vs Basket) di kepala popup Augmentasi. */
+/* Pemilih "jenis dataset/proyek" di kepala popup Augmentasi. Kartu-kartunya
+   digambar dari registry (versi.js) dan MEMBUNGKUS sendiri — tak terbatas dua,
+   jadi menambah jenis proyek baru tidak merusak tata letaknya. */
 .op-deteksi{margin-top:12px}
 .op-deteksi-judul{display:block;font-size:10px;text-transform:uppercase;
   letter-spacing:.04em;color:var(--ink-faint);margin-bottom:6px}
-.op-deteksi-pil{display:flex;gap:8px}
-.op-det-b{flex:1;display:flex;flex-direction:column;gap:3px;text-align:left;
-  padding:9px 11px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;
-  color:var(--ink);background:var(--panel);
+.op-deteksi-pil{display:flex;flex-wrap:wrap;gap:8px}
+.op-det-b{flex:1 1 150px;min-width:140px;display:flex;flex-direction:column;
+  gap:3px;text-align:left;padding:9px 11px;font:inherit;font-size:13px;
+  font-weight:600;cursor:pointer;color:var(--ink);background:var(--panel);
   border:1px solid var(--line2);border-radius:9px}
 .op-det-b small{font-weight:400;font-size:11px;color:var(--ink-dim)}
 .op-det-b:hover{border-color:var(--ok-pudar);background:var(--ok-lembut)}
@@ -2755,6 +2757,8 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
 .op-det-aktif{border-color:var(--aksi);background:var(--ok-lembut);
   box-shadow:inset 0 0 0 1px var(--aksi)}
 .op-det-aktif small{color:var(--ink)}
+/* Keterangan awam dari preset yang terpilih — satu baris, tenang. */
+.op-deteksi-ket{margin:8px 0 0;font-size:12px;line-height:1.5;color:var(--ink-dim)}
 .op-cacah{float:right;font-size:11.5px;color:var(--ink-faint);
   font-variant-numeric:tabular-nums}
 .op-gulung{flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;

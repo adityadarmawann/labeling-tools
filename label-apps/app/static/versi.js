@@ -316,53 +316,87 @@
     }
   }
   wz.querySelectorAll('input[name="wz-warna"]').forEach((r) => {
-    r.addEventListener('change', () => { terapkanModeWarna(); tandaiPresetDeteksi(); });
+    // Menyetel mode warna langsung = menyimpang dari preset; lupakan preset
+    // terpilih supaya penanda jatuh kembali ke tebakan dari mode.
+    r.addEventListener('change', () => {
+      presetDipilih = null; terapkanModeWarna(); tandaiPresetDeteksi();
+    });
   });
 
-  /* Saklar default use-case di popup Augmentasi. Satu klik menyetel sekelompok
-     langkah sekaligus, dibahasakan awam, supaya orang tak perlu tahu istilah
-     "mode warna" atau operasi mana yang cocok:
-       SmartBin  -> bawaan: warna diacak (belajar bentuk), semua langkah default.
-       Basket    -> warna tiap tim DIJAGA (6 operasi pengubah warna dimatikan),
-                    TANPA "bayangan" (RandomShadow bisa menutupi pemain), dan
-                    TIDAK dibalik atas-bawah (flip_v) karena basket tak pernah
-                    terbalik. Blur/pecah/downscale sengaja DIBIARKAN — crop dari
-                    satu frame memang kadang berkualitas jelek.
-     Ia cuma menggerakkan mekanisme yang sudah ada (resep.warna.mode + aktif per
-     operasi), jadi server tak perlu tahu soal "preset" ini. */
-  const OFF_BASKET = ['flip_v', 'bayangan'];
+  /* Registry "jenis dataset/proyek". Tiap entri menyetel default yang masuk akal
+     untuk use-case itu dalam SATU klik, dibahasakan awam. Menambah jenis baru =
+     menambah SATU entri di sini; kartunya digambar otomatis dan membungkus
+     sendiri — tak ada tombol yang di-hardcode di HTML, tak terbatas dua.
+       warna  : mode warna ('bentuk' = warna diacak / 'warna' = warna dijaga)
+       off    : operasi augmentasi non-warna yang dimatikan
+       resize : ukuran preprocessing {mode, lebar, tinggi}
+     Hanya menggerakkan mekanisme resep yang sudah ada -> server tak perlu tahu;
+     SmartBin = bawaan lama, jalur RVM tak berubah. */
+  const PRESET_DETEKSI = [
+    { id: 'smartbin', nama: 'SmartBin', sub: 'botol · kaleng · tetra',
+      jelas: 'Warna diacak kuat supaya model belajar BENTUK, bukan warna — '
+           + 'cocok untuk benda yang bentuknya sama walau warnanya beda. '
+           + 'Ukuran 640×640.',
+      warna: 'bentuk', off: [], resize: { mode: 'fit', lebar: 640, tinggi: 640 } },
+    { id: 'basket', nama: 'Basket / olahraga', sub: 'pemain · bola · lapangan',
+      jelas: 'Warna tiap tim DIJAGA supaya bisa dibedakan, tanpa bayangan yang '
+           + 'menutupi pemain, dan tak dibalik atas-bawah. Frame video 16:9 '
+           + '(1280×720); blur/pecah dibiarkan karena crop 1 frame kadang jelek.',
+      warna: 'warna', off: ['flip_v', 'bayangan'],
+      resize: { mode: 'regang', lebar: 1280, tinggi: 720 } },
+  ];
+  // Semua operasi yang PERNAH dimatikan preset mana pun — direset tiap pindah
+  // preset supaya tak ada sisa dari pilihan sebelumnya.
+  const OP_OFF_SEMUA = [...new Set(PRESET_DETEKSI.flatMap((p) => p.off))];
+  let presetDipilih = null;
 
-  function terapkanPresetDeteksi(nama) {
-    const mode = nama === 'basket' ? 'warna' : 'bentuk';
-    const r = wz.querySelector(`input[name="wz-warna"][value="${mode}"]`);
+  function gambarPresetDeteksi() {
+    const pil = el('op-deteksi-pil');
+    if (!pil) return;
+    pil.innerHTML = PRESET_DETEKSI.map((p) =>
+      `<button type="button" class="op-det-b" data-deteksi="${p.id}">`
+      + `${p.nama}<small>${p.sub}</small></button>`).join('');
+    pil.querySelectorAll('.op-det-b').forEach((b) => {
+      b.onclick = () => terapkanPresetDeteksi(b.dataset.deteksi);
+    });
+  }
+
+  function terapkanPresetDeteksi(id) {
+    const p = PRESET_DETEKSI.find((x) => x.id === id);
+    if (!p) return;
+    presetDipilih = id;
+    // 1) mode warna -> nyala/matikan 6 operasi warna lewat mekanisme yang ada.
+    const r = wz.querySelector(`input[name="wz-warna"][value="${p.warna}"]`);
     if (r) r.checked = true;
     resep.warna = { mode: '__paksa__' };        // paksa terapkanModeWarna anggap berubah
-    terapkanModeWarna(false);                   // nyalakan/matikan 6 operasi warna
-    OFF_BASKET.forEach((oid) => {
+    terapkanModeWarna(false);
+    // 2) operasi non-warna yang dimatikan preset ini (reset semua kandidat dulu).
+    OP_OFF_SEMUA.forEach((oid) => {
       if (!(katalog && katalog.aug && katalog.aug[oid])) return;
-      if (nama === 'basket') {
-        resep.aug[oid] = { ...(resep.aug[oid] || {}), aktif: false };
-      } else {
-        delete resep.aug[oid];                  // SmartBin: kembali ke bawaan katalog
-      }
+      if (p.off.includes(oid)) resep.aug[oid] = { ...(resep.aug[oid] || {}), aktif: false };
+      else delete resep.aug[oid];
     });
+    // 3) ukuran resize (preprocessing, langkah 4).
+    if (p.resize) {
+      resep.pra = resep.pra || {};
+      resep.pra.resize = { ...(resep.pra.resize || {}), aktif: true, ...p.resize };
+    }
     gambarOperasi();
     if (!el('op-dlg').hidden) gambarPopup();     // segarkan daftar di popup kalau terbuka
     tandaiPresetDeteksi();
   }
 
-  // Tandai tombol mana yang aktif — dibaca dari mode warna (warna=basket,
-  // bentuk=smartbin), bukan dari field preset, supaya tetap benar walau orang
-  // menyetel mode warna langsung lewat radio di langkah 5.
   function tandaiPresetDeteksi() {
-    const m = (resep.warna || {}).mode;
-    const nama = m === 'warna' ? 'basket' : 'smartbin';
+    // Preset terpilih diingat sepanjang sesi; kalau belum pernah diklik, tebak
+    // dari mode warna (warna -> basket, lainnya -> smartbin).
+    const id = presetDipilih
+      || ((resep.warna || {}).mode === 'warna' ? 'basket' : 'smartbin');
     document.querySelectorAll('.op-det-b').forEach((b) =>
-      b.classList.toggle('op-det-aktif', b.dataset.deteksi === nama));
+      b.classList.toggle('op-det-aktif', b.dataset.deteksi === id));
+    const p = PRESET_DETEKSI.find((x) => x.id === id);
+    const ket = el('op-deteksi-ket');
+    if (ket) ket.textContent = p ? p.jelas : '';
   }
-  document.querySelectorAll('.op-det-b').forEach((b) => {
-    b.onclick = () => terapkanPresetDeteksi(b.dataset.deteksi);
-  });
 
   wz.querySelectorAll('[data-lanjut]').forEach((b) => {
     b.onclick = () => buka(Number(b.closest('.wz-item').dataset.langkah) + 1);
@@ -755,7 +789,7 @@
     const det = el('op-deteksi');
     if (det) {
       det.hidden = tahap !== 'aug';
-      if (tahap === 'aug') tandaiPresetDeteksi();
+      if (tahap === 'aug') { gambarPresetDeteksi(); tandaiPresetDeteksi(); }
     }
   }
 
