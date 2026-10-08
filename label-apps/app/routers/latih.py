@@ -113,7 +113,14 @@ async def bahan(sess: Session = Depends(current_session_api),
                 for k, v in svc.PRESET.items()],
             "preset_bawaan": svc.PRESET_BAWAAN,
             "batas": {k: list(v) for k, v in svc.BATAS.items()},
-            "tugas": list(svc.TUGAS)}
+            "tugas": list(svc.TUGAS),
+            # Arsitektur training (YOLO / RF-DETR) + hyperparameter khusus RF-DETR,
+            # untuk selektor "Arsitektur" di form (S5).
+            "arsitektur": list(svc.ARSITEKTUR),
+            "rfdetr_siap": svc.siap_rfdetr()[0],
+            "rfdetr_model": list(svc.RFDETR_MODEL),
+            "preset_rfdetr": svc.PRESET_RFDETR,
+            "batas_rfdetr": {k: list(v) for k, v in svc.BATAS_RFDETR.items()}}
 
 
 @router.get("/api/latih/daftar")
@@ -147,7 +154,16 @@ async def mulai(request: Request,
     # Preset (resep augmentasi+hyperparameter): "rvm" (SmartBin) / "olahraga"
     # (Basket). Berlaku untuk seluruh kiriman; divalidasi di siapkan().
     preset = svc.preset_sah(str(body.get("preset") or "rvm").strip().lower())
-    if backend == "kaggle":
+    # Arsitektur: "yolo" (default) / "rfdetr". RF-DETR hanya LOKAL untuk sekarang
+    # (Kaggle-RF-DETR menyusul); gerbang kesiapannya pun beda (butuh paket rfdetr).
+    arsitektur = svc.arsitektur_sah(str(body.get("arsitektur") or "yolo").strip().lower())
+    rfdetr_model = str(body.get("rfdetr_model") or "").strip().lower()
+    if arsitektur == "rfdetr":
+        if backend == "kaggle":
+            return {"ok": False,
+                    "error": "RF-DETR di Kaggle belum didukung — pilih 'PC ini'"}
+        siap, alasan = svc.siap_rfdetr()
+    elif backend == "kaggle":
         siap, alasan = svc_kaggle.siap(settings)
     else:
         siap, alasan = svc.siap_latih()
@@ -200,7 +216,9 @@ async def mulai(request: Request,
                 par=satu.get("par") or {},
                 oleh=sess.user,
                 catatan=str(satu.get("catatan") or ""),
-                warna=warna, backend=backend, preset=preset)
+                warna=warna, backend=backend, preset=preset,
+                arsitektur=arsitektur,
+                rfdetr_model=str(satu.get("rfdetr_model") or rfdetr_model))
         except ValueError as e:
             return {"ok": False, "error": str(e), "dibuat": dibuat}
         try:

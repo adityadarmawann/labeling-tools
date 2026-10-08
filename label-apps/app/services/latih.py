@@ -267,6 +267,66 @@ def preset_pakai_warna(nama: str | None) -> bool:
     return bool(PRESET[preset_sah(nama)].get("warna"))
 
 
+# ============================================================
+# ARSITEKTUR: YOLO (ultralytics) vs RF-DETR
+# ============================================================
+#
+# Dimensi BARU, ortogonal terhadap preset/backend/tugas. "yolo" = jalur lama
+# tak berubah; "rfdetr" = transformer DETR dari Roboflow (unggul objek kecil/
+# okludsi — bola basket). Keduanya hidup di .venv-gpu; user memilih di form.
+ARSITEKTUR = ("yolo", "rfdetr")
+
+# Ukuran model RF-DETR yang ditawarkan (resolusi native naik seiring ukuran).
+RFDETR_MODEL = ("nano", "small", "medium", "large")
+RFDETR_MODEL_BAWAAN = "nano"
+
+# Hyperparameter RF-DETR (beda total dari YOLO). Nilai & alasan dari docs/
+# notebook Roboflow:
+#   batch_size 4 x grad_accum 4 = effective 16  (resep T4 di notebook; rfdetr
+#       juga punya auto_batch_target_effective=16 — ini menyetelnya eksplisit)
+#   lr 1e-4, lr_encoder 1.5e-4   (encoder DINOv2 di-lr lebih kecil — default lib)
+#   resolution 560 = kelipatan 56 (patch 14 x num_windows 4); makin tinggi makin
+#       baik untuk bola kecil, tapi makan VRAM. Worker menjepit ke kelipatan 56.
+#   early_stopping default mati (seperti lib), use_ema ditangani default lib.
+PRESET_RFDETR: dict = {
+    "epochs": 100,
+    "batch_size": 4,
+    "grad_accum_steps": 4,
+    "resolution": 560,
+    "lr": 0.0001,
+    "lr_encoder": 0.00015,
+    "warmup_epochs": 0.0,
+    "early_stopping": False,
+}
+BATAS_RFDETR: dict[str, tuple] = {
+    "epochs": (1, 1000),
+    "batch_size": (1, 64),
+    "grad_accum_steps": (1, 64),
+    "resolution": (280, 1288),      # dijepit ke kelipatan 56 oleh worker
+    "lr": (1e-6, 0.01),
+    "lr_encoder": (1e-6, 0.01),
+    "warmup_epochs": (0.0, 20.0),
+}
+
+
+def arsitektur_sah(nama: str | None) -> str:
+    return nama if nama in ARSITEKTUR else "yolo"
+
+
+def rfdetr_model_sah(nama: str | None) -> str:
+    return nama if nama in RFDETR_MODEL else RFDETR_MODEL_BAWAAN
+
+
+def siap_rfdetr() -> tuple[bool, str]:
+    """Server ini bisa melatih RF-DETR lokal atau tidak. Butuh paket `rfdetr`
+    (hanya terpasang di .venv-gpu). Di server CPU -> tidak bisa."""
+    import importlib.util
+    if importlib.util.find_spec("rfdetr") is None:
+        return False, ("Server ini tanpa paket 'rfdetr' (hanya ada di .venv-gpu). "
+                       "Nyalakan dengan LABELAPP_OLAH=gpu untuk melatih RF-DETR.")
+    return True, ""
+
+
 TUGAS = ("segment", "detect", "pose")
 
 # Bobot awal yang boleh dipakai. Dicari di beberapa tempat supaya tidak
@@ -614,8 +674,9 @@ def hidup(pid) -> bool:
     # selamanya.
     try:
         cmd = Path(f"/proc/{pid}/cmdline").read_bytes().decode("utf8", "replace")
-        # Dua worker sah: latih_jalan (lokal) dan latih_kaggle (poller offload).
-        return "latih_jalan" in cmd or "latih_kaggle" in cmd
+        # Worker sah: latih_jalan (YOLO lokal), latih_kaggle (offload), latih_rfdetr.
+        return any(w in cmd for w in
+                   ("latih_jalan", "latih_kaggle", "latih_rfdetr"))
     except OSError:
         return True
 
@@ -762,6 +823,9 @@ def status(ds, nomor: int) -> dict:
         # tautan kernel, status remote). backend bawaan "lokal" untuk entri lama.
         "backend": isi.get("backend") or "lokal",
         "preset": isi.get("preset") or "rvm",
+        "arsitektur": isi.get("arsitektur") or "yolo",
+        "rfdetr_model": isi.get("rfdetr_model") or "",
+        "rfdetr": isi.get("rfdetr") or {},
         "kaggle": isi.get("kaggle") or {},
         "keadaan": keadaan,
         "epoch": ep, "epochs": epochs, "persen": persen,
@@ -800,17 +864,20 @@ def ada_yang_jalan(ds) -> dict | None:
 # MENJALANKAN
 # ============================================================
 
-def _saring_par(minta: dict, dasar: dict | None = None) -> tuple[dict, list[str]]:
-    """Ambil preset DASAR lalu timpa yang diminta, dijepit ke BATAS. dasar=None
-    -> PRESET_V14 (RVM), supaya pemanggil lama berperilaku sama persis."""
+def _saring_par(minta: dict, dasar: dict | None = None,
+                batas: dict | None = None) -> tuple[dict, list[str]]:
+    """Ambil preset DASAR lalu timpa yang diminta, dijepit ke BATAS. dasar/batas
+    =None -> PRESET_V14/BATAS (RVM-YOLO), supaya pemanggil lama sama persis.
+    RF-DETR memakai dasar=PRESET_RFDETR, batas=BATAS_RFDETR."""
     dasar = dasar if dasar is not None else PRESET_V14
+    batas = batas if batas is not None else BATAS
     par = dict(dasar)
     galat: list[str] = []
     for k, v in (minta or {}).items():
         if k not in dasar:
             continue                       # kunci asing diabaikan, bukan ditolak
-        if k in BATAS:
-            lo, hi = BATAS[k]
+        if k in batas:
+            lo, hi = batas[k]
             try:
                 v = type(dasar[k])(v) if not isinstance(
                     dasar[k], bool) else bool(v)
@@ -827,11 +894,19 @@ def _saring_par(minta: dict, dasar: dict | None = None) -> tuple[dict, list[str]
 def siapkan(ds, *, nama: str, versi_nomor: int, tugas: str, bobot: str,
             par: dict, oleh: str, catatan: str = "",
             warna: dict | None = None, lanjut_dari: int | None = None,
-            backend: str = "lokal", preset: str = "rvm") -> dict:
+            backend: str = "lokal", preset: str = "rvm",
+            arsitektur: str = "yolo", rfdetr_model: str = "") -> dict:
     """Catat satu training baru. Belum dijalankan."""
     n = nomor_berikut(ds)
     preset = preset_sah(preset)
-    par_bersih, galat = _saring_par(par, dasar=preset_par(preset))
+    arsitektur = arsitektur_sah(arsitektur)
+    rfdetr_model = rfdetr_model_sah(rfdetr_model) if arsitektur == "rfdetr" else ""
+    # RF-DETR punya hyperparameter & batas sendiri, dan TIDAK memakai preset
+    # augmentasi/mode_warna YOLO (augmentasinya internal di lib).
+    if arsitektur == "rfdetr":
+        par_bersih, galat = _saring_par(par, dasar=PRESET_RFDETR, batas=BATAS_RFDETR)
+    else:
+        par_bersih, galat = _saring_par(par, dasar=preset_par(preset))
     if galat:
         raise ValueError("; ".join(galat))
 
@@ -852,13 +927,13 @@ def siapkan(ds, *, nama: str, versi_nomor: int, tugas: str, bobot: str,
     # sejalan dengan cara versinya diaugmentasi. Preset basket mengurus warnanya
     # sendiri (variasi rona kuat, baked di preset), jadi mode_warna dilewati dan
     # angka warna preset dibiarkan apa adanya.
-    if preset_pakai_warna(preset):
+    if arsitektur == "yolo" and preset_pakai_warna(preset):
         from . import mode_warna as mw
 
         mode = mw.sah((warna or {}).get("mode"))
         par_bersih.update(mw.par_latih(mode))
     else:
-        warna = {}                           # basket: tak ada toggle warna
+        warna = {}                           # basket / RF-DETR: tak ada toggle warna
     if tugas not in TUGAS:
         raise ValueError(f"tugas harus salah satu dari {TUGAS}")
     # Daftar kelas DIBEKUKAN di sini, sama alasannya dengan warna: versinya bisa
@@ -884,6 +959,10 @@ def siapkan(ds, *, nama: str, versi_nomor: int, tugas: str, bobot: str,
         # Preset yang dipakai: "rvm" (PRESET_V14, pakai toggle Bentuk/Warna) atau
         # "olahraga" (basket — warna divariasikan di preset, tanpa toggle).
         "preset": preset,
+        # Arsitektur: "yolo" (ultralytics, jalur lama) atau "rfdetr" (transformer
+        # DETR). rfdetr_model = ukuran (nano/small/medium/large) saat rfdetr.
+        "arsitektur": arsitektur,
+        "rfdetr_model": rfdetr_model,
         "par": par_bersih,
         # Hasil periksa_warna DIBEKUKAN di sini, bukan dihitung ulang saat
         # ditampilkan: versinya bisa saja dihapus nanti, dan alasan sebuah
@@ -950,8 +1029,15 @@ def jalankan(ds, nomor: int) -> dict:
     # Keduanya subproses terlepas dengan kontrak yang sama: menulis
     # results.csv + weights/best.pt ke .latih/L<n>/ dan memperbarui keadaan,
     # sehingga status()/hidup(pid) berlaku tanpa pembedaan.
-    modul = ("app.services.latih_kaggle"
-             if isi.get("backend") == "kaggle" else "app.services.latih_jalan")
+    #   rfdetr -> latih_rfdetr (RF-DETR lokal di .venv-gpu; Kaggle-RF-DETR = S4,
+    #            ditolak lebih dulu di router). yolo + kaggle -> latih_kaggle.
+    #            yolo + lokal -> latih_jalan.
+    if isi.get("arsitektur") == "rfdetr":
+        modul = "app.services.latih_rfdetr"
+    elif isi.get("backend") == "kaggle":
+        modul = "app.services.latih_kaggle"
+    else:
+        modul = "app.services.latih_jalan"
     perintah = [sys.executable, "-m", modul,
                 str(Path(ds).resolve()), str(nomor)]
     env = dict(os.environ)

@@ -76,3 +76,10 @@ onnxruntime-gpu
 # jalur lain. Ia membawa nvidia-ml-py dan psutil, yang justru dipakai halaman
 # training untuk melaporkan VRAM, suhu, dan RAM selagi training berjalan.
 ultralytics
+
+# RF-DETR: arsitektur training KEDUA (pilihan "Arsitektur" di form), di samping
+# ultralytics/YOLO. Torch/torchvision dipakai BERSAMA (tak menimpa torch 2.14
+# ultralytics — terverifikasi: ultralytics tetap melatih setelah rfdetr pasang).
+# Hanya jalur GPU: CPU .venv sengaja tanpa rfdetr; modul latih_rfdetr mengimpor
+# rfdetr secara lazy agar tetap aman diimpor di venv tanpa torch.
+rfdetr[train]>=1.4.0
