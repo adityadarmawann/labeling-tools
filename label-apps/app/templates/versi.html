@@ -279,6 +279,19 @@
           &#8592; Semua langkah</button>
         <h3 id="op-judul">Augmentasi</h3>
         <p class="halus" id="op-ket"></p>
+        {#- Saklar default use-case (hanya tahap Augmentasi). Menyetel sekali
+            untuk SmartBin (bawaan: warna diacak, belajar bentuk) atau Basket/
+            olahraga (warna tiap tim DIJAGA agar bisa dibedakan, tanpa bayangan
+            yang menutupi pemain, tak dibalik atas-bawah). Dibahasakan awam. -#}
+        <div class="op-deteksi" id="op-deteksi" hidden>
+          <span class="op-deteksi-judul">Dataset ini untuk apa?</span>
+          <div class="op-deteksi-pil">
+            <button type="button" class="op-det-b" data-deteksi="smartbin">
+              SmartBin<small>botol · kaleng · tetra — warna diacak</small></button>
+            <button type="button" class="op-det-b" data-deteksi="basket">
+              Basket / olahraga<small>pemain · bola — warna tim dijaga, tanpa bayangan</small></button>
+          </div>
+        </div>
         <input class="op-cari" id="op-cari" type="search" hidden
                placeholder="cari operasi…" autocomplete="off">
       </div>

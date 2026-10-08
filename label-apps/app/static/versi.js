@@ -316,7 +316,52 @@
     }
   }
   wz.querySelectorAll('input[name="wz-warna"]').forEach((r) => {
-    r.addEventListener('change', terapkanModeWarna);
+    r.addEventListener('change', () => { terapkanModeWarna(); tandaiPresetDeteksi(); });
+  });
+
+  /* Saklar default use-case di popup Augmentasi. Satu klik menyetel sekelompok
+     langkah sekaligus, dibahasakan awam, supaya orang tak perlu tahu istilah
+     "mode warna" atau operasi mana yang cocok:
+       SmartBin  -> bawaan: warna diacak (belajar bentuk), semua langkah default.
+       Basket    -> warna tiap tim DIJAGA (6 operasi pengubah warna dimatikan),
+                    TANPA "bayangan" (RandomShadow bisa menutupi pemain), dan
+                    TIDAK dibalik atas-bawah (flip_v) karena basket tak pernah
+                    terbalik. Blur/pecah/downscale sengaja DIBIARKAN — crop dari
+                    satu frame memang kadang berkualitas jelek.
+     Ia cuma menggerakkan mekanisme yang sudah ada (resep.warna.mode + aktif per
+     operasi), jadi server tak perlu tahu soal "preset" ini. */
+  const OFF_BASKET = ['flip_v', 'bayangan'];
+
+  function terapkanPresetDeteksi(nama) {
+    const mode = nama === 'basket' ? 'warna' : 'bentuk';
+    const r = wz.querySelector(`input[name="wz-warna"][value="${mode}"]`);
+    if (r) r.checked = true;
+    resep.warna = { mode: '__paksa__' };        // paksa terapkanModeWarna anggap berubah
+    terapkanModeWarna(false);                   // nyalakan/matikan 6 operasi warna
+    OFF_BASKET.forEach((oid) => {
+      if (!(katalog && katalog.aug && katalog.aug[oid])) return;
+      if (nama === 'basket') {
+        resep.aug[oid] = { ...(resep.aug[oid] || {}), aktif: false };
+      } else {
+        delete resep.aug[oid];                  // SmartBin: kembali ke bawaan katalog
+      }
+    });
+    gambarOperasi();
+    if (!el('op-dlg').hidden) gambarPopup();     // segarkan daftar di popup kalau terbuka
+    tandaiPresetDeteksi();
+  }
+
+  // Tandai tombol mana yang aktif — dibaca dari mode warna (warna=basket,
+  // bentuk=smartbin), bukan dari field preset, supaya tetap benar walau orang
+  // menyetel mode warna langsung lewat radio di langkah 5.
+  function tandaiPresetDeteksi() {
+    const m = (resep.warna || {}).mode;
+    const nama = m === 'warna' ? 'basket' : 'smartbin';
+    document.querySelectorAll('.op-det-b').forEach((b) =>
+      b.classList.toggle('op-det-aktif', b.dataset.deteksi === nama));
+  }
+  document.querySelectorAll('.op-det-b').forEach((b) => {
+    b.onclick = () => terapkanPresetDeteksi(b.dataset.deteksi);
   });
 
   wz.querySelectorAll('[data-lanjut]').forEach((b) => {
@@ -705,6 +750,13 @@
     // preprocessing ia cuma satu kotak lagi untuk dilewati.
     el('op-cari').hidden = Object.keys(katalog[tahap]).length <= 12;
     el('op-bawaan').textContent = 'Kembalikan ke bawaan';
+    // Saklar use-case hanya di tahap Augmentasi (ia mengatur operasi warna/
+    // bayangan yang semuanya augmentasi, bukan preprocessing).
+    const det = el('op-deteksi');
+    if (det) {
+      det.hidden = tahap !== 'aug';
+      if (tahap === 'aug') tandaiPresetDeteksi();
+    }
   }
 
   function bukaPopup(tahap) {
