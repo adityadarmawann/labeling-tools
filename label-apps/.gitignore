@@ -1,6 +1,9 @@
 # Kredensial — jangan pernah masuk repo
 users.json
 .env
+# Berkas setelan rahasia per-mesin (dibaca start.sh: baris LABELAPP_*),
+# mis. path pool akun Kaggle. TAK PERNAH di-commit.
+env/rahasia.env
 
 # Virtualenv (312 MB, dibuat ulang dari requirements.txt)
 .venv/
