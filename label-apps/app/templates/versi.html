@@ -154,12 +154,13 @@
             Gambar aslinya tidak pernah diganti. Valid dan test tidak pernah
             diaugmentasi; kalau diaugmentasi, ia mengukur dirinya sendiri.
             <button class="chip km-buka" type="button">📖 Kamus parameter</button></p>
-          {#- Mode warna ditaruh PALING ATAS di langkah ini, sebelum salinan
-              dan sebelum daftar operasi, karena ia menentukan mana dari
-              operasi di bawahnya yang boleh menyala sama sekali. Menaruhnya
-              di bawah akan membuat orang menyetel belasan saklar lebih dulu
-              lalu menemukan separuhnya dimatikan oleh pilihan ini. -#}
-          <div class="wz-mode" id="wz-mode">
+          {#- Mode warna (peran warna di projek ini) DIGAMBAR DI DALAM popup
+              "Atur formula" Augmentasi, sebagai grup paling atas (baris saklar
+              kecil, pilih-salah-satu) — lihat gambarPopup() di versi.js.
+              Blok ini TETAP ADA tapi disembunyikan: radionya adalah sumber
+              kebenaran mode yang dibaca terapkanModeWarna() & preset, jadi
+              tidak boleh dihapus — hanya tak ditampilkan di badan langkah. -#}
+          <div class="wz-mode" id="wz-mode" hidden>
             <span class="menu-judul">Peran warna di projek ini</span>
             <label class="wz-mode-p">
               <input type="radio" name="wz-warna" value="bentuk" checked>

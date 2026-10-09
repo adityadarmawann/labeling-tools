@@ -1087,6 +1087,48 @@
       }
     }
 
+    // AUGMENTASI: grup PALING ATAS = PERAN WARNA di projek ini (bentuk / warna),
+    // baris SAKLAR KECIL (pilih salah satu), bukan card di badan langkah. Ia
+    // menentukan mana dari operasi penggeser rona di bawahnya yang boleh menyala.
+    // Radio #wz-mode (tersembunyi) tetap jadi sumber kebenaran; baris ini hanya
+    // menyetelnya. Disembunyikan saat sedang mencari.
+    if (tahap === 'aug' && !q) {
+      const hp = document.createElement('div');
+      hp.className = 'op-grup';
+      hp.textContent = 'Peran warna di projek ini';
+      wadah.appendChild(hp);
+      const modeKini = (resep.warna || {}).mode === 'warna' ? 'warna' : 'bentuk';
+      const MODE = [
+        { v: 'bentuk', nama: 'Bentuk yang menentukan kelas',
+          sub: 'Warna sengaja dirusak supaya model belajar bentuk — botol/kaleng/'
+             + 'tetra. Rona digeser lebar.' },
+        { v: 'warna', nama: 'Warna bagian dari kelas',
+          sub: 'Rona dipertahankan; hanya terang yang divariasikan — pengenalan '
+             + 'produk/SKU atau warna jersey tim. Penggeser rona dimatikan.' },
+      ];
+      for (const mo of MODE) {
+        const pil = document.createElement('div');
+        pil.className = 'op-pil';
+        const lab = document.createElement('label');
+        lab.className = 'sk';
+        lab.innerHTML =
+          `<input class="sk-in" type="checkbox" role="switch"${mo.v === modeKini ? ' checked' : ''}>`
+          + '<span class="sk-track"><span class="sk-knob"></span></span>'
+          + `<span class="sk-teks"><b>${mo.nama}</b><em>${mo.sub}</em></span>`;
+        // Pilih-salah-satu: setel radio kanonik lalu terapkanModeWarna (sinkron
+        // resep + saklar rona) + gambar ulang popup (baris & daftar ikut berubah).
+        lab.querySelector('.sk-in').onchange = () => {
+          const r = wz.querySelector(`input[name="wz-warna"][value="${mo.v}"]`);
+          if (r) r.checked = true;
+          presetDipilih = null;          // pilih mode manual = menyimpang dari preset
+          terapkanModeWarna();
+          gambarPopup();
+        };
+        pil.appendChild(lab);
+        wadah.appendChild(pil);
+      }
+    }
+
     // Operasi. Preprocessing -> SATU grup "Formula Preprocessing" (semua op);
     // Augmentasi -> tetap dipisah Bawaan/Opsional menurut bawaan_aktif.
     const grup = tahap === 'pra'
