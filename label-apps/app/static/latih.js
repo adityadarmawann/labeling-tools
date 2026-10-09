@@ -693,9 +693,11 @@
       <footer class="tr-k-aksi">
         <button class="chip chip-utama" type="button" data-rinci="${t.nomor}">Rincian</button>
         ${t.punya_bobot ? `<span class="tr-unduh">Unduh sementara
-          <a class="chip" href="/latih/bobot?nomor=${t.nomor}&jenis=best" download
+          <a class="chip" href="/latih/bobot?nomor=${t.nomor}&jenis=best"
+             download="L${t.nomor}-best.pt"
              title="Bobot mAP terbaik SEJAUH INI, bisa diunduh selagi training jalan">best.pt</a>
-          <a class="chip" href="/latih/bobot?nomor=${t.nomor}&jenis=last" download
+          <a class="chip" href="/latih/bobot?nomor=${t.nomor}&jenis=last"
+             download="L${t.nomor}-last.pt"
              title="${rf ? 'Bobot EMA epoch terakhir SEJAUH INI (diperbarui tiap epoch)'
                          : 'Bobot epoch terakhir yang selesai. Untuk melanjutkan training. Kalau kebetulan diunduh tepat saat epoch berakhir bisa separuh; unduh ulang.'}">last.pt</a>
         </span>` : ''}
