@@ -319,7 +319,8 @@
     // Menyetel mode warna langsung = menyimpang dari preset; lupakan preset
     // terpilih supaya penanda jatuh kembali ke tebakan dari mode.
     r.addEventListener('change', () => {
-      presetDipilih = null; terapkanModeWarna(); tandaiPresetDeteksi();
+      presetDipilih = null; terapkanModeWarna();
+      if (!el('op-dlg').hidden) gambarPopup();   // segarkan baris preset di popup
     });
   });
 
@@ -360,17 +361,6 @@
   const OP_OFF_SEMUA = [...new Set(PRESET_DETEKSI.flatMap((p) => p.off))];
   let presetDipilih = null;
 
-  function gambarPresetDeteksi() {
-    const pil = el('op-deteksi-pil');
-    if (!pil) return;
-    pil.innerHTML = PRESET_DETEKSI.map((p) =>
-      `<button type="button" class="op-det-b" data-deteksi="${p.id}">`
-      + `${p.nama}<small>${p.sub}</small></button>`).join('');
-    pil.querySelectorAll('.op-det-b').forEach((b) => {
-      b.onclick = () => terapkanPresetDeteksi(b.dataset.deteksi);
-    });
-  }
-
   function terapkanPresetDeteksi(id) {
     const p = PRESET_DETEKSI.find((x) => x.id === id);
     if (!p) return;
@@ -403,20 +393,9 @@
       resep.fase[oid] = { ...(resep.fase[oid] || {}), aktif: !!on };
     });
     gambarOperasi();
-    if (!el('op-dlg').hidden) gambarPopup();     // segarkan daftar di popup kalau terbuka
-    tandaiPresetDeteksi();
-  }
-
-  function tandaiPresetDeteksi() {
-    // Preset terpilih diingat sepanjang sesi; kalau belum pernah diklik, tebak
-    // dari mode warna (warna -> basket, lainnya -> smartbin).
-    const id = presetDipilih
-      || ((resep.warna || {}).mode === 'warna' ? 'basket' : 'smartbin');
-    document.querySelectorAll('.op-det-b').forEach((b) =>
-      b.classList.toggle('op-det-aktif', b.dataset.deteksi === id));
-    const p = PRESET_DETEKSI.find((x) => x.id === id);
-    const ket = el('op-deteksi-ket');
-    if (ket) ket.textContent = p ? p.jelas : '';
+    // Popup (kalau terbuka) digambar ulang -> baris preset yang aktif tampil
+    // nyala, lainnya mati (pilih-salah-satu).
+    if (!el('op-dlg').hidden) gambarPopup();
   }
 
   wz.querySelectorAll('[data-lanjut]').forEach((b) => {
@@ -444,12 +423,8 @@
     resep.warna = { mode: 'tidak-ada' };      // paksa dianggap berubah
     terapkanModeWarna(false);
     gambarOperasi();
-    // Pemilih "jenis dataset/proyek" di langkah 4 (Preprocessing): digambar
-    // sekali saat wizard dibuka, bukan di popup Augmentasi, supaya alurnya MAJU
-    // (pilih jenis -> resep resize langkah ini + warna/latar/fase langkah
-    // berikutnya ikut, bukan mengubah langkah sebelumnya).
-    gambarPresetDeteksi();
-    tandaiPresetDeteksi();
+    // Pemilih "jenis proyek" (SmartBin/Basket) kini digambar DI DALAM popup
+    // "Atur formula" Preprocessing (gambarPopup), jadi tak perlu dirender di sini.
     await muatFilter();
     await muatSumber();
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -745,7 +720,7 @@
       const tbl = document.querySelector(`[data-tambah="${tahap}"]`);
       if (tbl) {
         tbl.textContent =
-          `Atur langkah · ${nyala.length} dari ${Object.keys(katalog[tahap]).length} menyala`;
+          `Atur formula · ${nyala.length} dari ${Object.keys(katalog[tahap]).length} menyala`;
       }
     }
   }
@@ -1084,16 +1059,42 @@
     const wadah = el('op-isi');
     wadah.innerHTML = '';
     const semua = Object.keys(katalog[tahap]).filter((i) => i !== 'ubah_kelas');
-    const nyala = semua.filter((i) => aktif(tahap, i));
+    // PREPROCESSING: grup PALING ATAS = pemilih JENIS PROYEK (SmartBin / Basket),
+    // baris SAKLAR KECIL (pilih salah satu), bukan card. Ia menyetel default
+    // resize di sini + warna/latar/fase di Augmentasi. Hanya tahap 'pra', dan
+    // disembunyikan saat sedang mencari (biar tak mengganggu hasil pencarian).
+    if (tahap === 'pra' && !q) {
+      const hp = document.createElement('div');
+      hp.className = 'op-grup';
+      hp.textContent = 'Jenis proyek (default)';
+      wadah.appendChild(hp);
+      const aktifId = presetDipilih
+        || ((resep.warna || {}).mode === 'warna' ? 'basket' : 'smartbin');
+      for (const p of PRESET_DETEKSI) {
+        const pil = document.createElement('div');
+        pil.className = 'op-pil';
+        const lab = document.createElement('label');
+        lab.className = 'sk';
+        lab.innerHTML =
+          `<input class="sk-in" type="checkbox" role="switch"${p.id === aktifId ? ' checked' : ''}>`
+          + '<span class="sk-track"><span class="sk-knob"></span></span>'
+          + `<span class="sk-teks"><b>${p.nama}</b><em>${p.sub}</em></span>`;
+        // Pilih-salah-satu: klik mana pun MENERAPKAN preset itu lalu gambar ulang
+        // (yang aktif tampil nyala, lainnya mati) — tak ada keadaan kosong/dobel.
+        lab.querySelector('.sk-in').onchange = () => terapkanPresetDeteksi(p.id);
+        pil.appendChild(lab);
+        wadah.appendChild(pil);
+      }
+    }
 
-    // Dua kelompok, dinamai menurut AKIBATNYA — bukan asal-usulnya. Dengan
-    // begitu tidak ada operasi yang pernah hilang dari popup: dulu kelompok
-    // disaring "yang belum dipakai", dan begitu semuanya terpakai isinya jadi
-    // kalimat "Semuanya sudah dipakai" — jalan buntu yang tidak menawarkan
-    // satu pun tindakan.
-    for (const [kunci, judul] of [[true, 'Bawaan (menyala sejak awal)'],
-                                  [false, 'Opsional (mati sejak awal)']]) {
-      const ids = semua.filter((i) => !!katalog[tahap][i].bawaan_aktif === kunci
+    // Operasi. Preprocessing -> SATU grup "Formula Preprocessing" (semua op);
+    // Augmentasi -> tetap dipisah Bawaan/Opsional menurut bawaan_aktif.
+    const grup = tahap === 'pra'
+      ? [[null, 'Formula Preprocessing']]
+      : [[true, 'Bawaan (menyala sejak awal)'], [false, 'Opsional (mati sejak awal)']];
+    for (const [kunci, judul] of grup) {
+      const ids = semua.filter((i) =>
+        (kunci === null || !!katalog[tahap][i].bawaan_aktif === kunci)
         && (!q || (katalog[tahap][i].nama + ' ' + katalog[tahap][i].ket)
           .toLowerCase().includes(q)));
       if (!ids.length) continue;

@@ -129,23 +129,15 @@
           <span class="wz-ringkas" id="wz-r3"></span>
           <button class="chip wz-ubah" type="button">Ubah</button></div>
         <div class="wz-isi">
-          {#- JENIS DATASET/PROYEK. Keputusan paling awal: ia menyetel default
-              langkah SESUDAHNYA — ukuran resize di sini DAN warna/latar/fase di
-              Augmentasi. Ditaruh paling atas di langkah PERTAMA yang ia
-              pengaruhi supaya alurnya MAJU; sebelumnya ia salah taruh di
-              Augmentasi sehingga memilih di sana malah mengubah langkah
-              Preprocessing yang lebih dulu. Kartu diisi JS dari registry. -#}
-          <div class="op-deteksi" id="op-deteksi">
-            <span class="op-deteksi-judul">Jenis dataset / proyek</span>
-            <div class="op-deteksi-pil" id="op-deteksi-pil"></div>
-            <p class="op-deteksi-ket" id="op-deteksi-ket"></p>
-          </div>
+          {#- Pemilih "jenis proyek" (SmartBin/Basket) ADA DI DALAM popup "Atur
+              formula" (grup paling atas, baris saklar kecil), bukan card di
+              sini — lihat gambarPopup() di versi.js. -#}
           <p class="halus">Dikenakan ke <b>setiap</b> gambar di train, valid, dan
             test, dan hasilnya sama tiap kali dijalankan. Itu syaratnya: valid
             dan test adalah alat ukur, dan alat ukur yang berubah-ubah membuat
             angka dua versi tidak bisa dibandingkan.</p>
           <div class="op-daftar" id="wz-pra"></div>
-          <button class="op-atur" type="button" data-tambah="pra">Atur langkah</button>
+          <button class="op-atur" type="button" data-tambah="pra">Atur formula</button>
           <div class="wz-aksi">
             <button class="wz-tbl wz-tbl-sek" type="button" data-mundur>Kembali</button>
             <button class="wz-tbl wz-tbl-pri" type="button" data-lanjut>Lanjut</button></div>
@@ -189,7 +181,7 @@
           <label class="wz-salin">Salinan per gambar
             <input type="number" id="wz-salin" min="0" max="10" value="1"></label>
           <div class="op-daftar" id="wz-aug"></div>
-          <button class="op-atur" type="button" data-tambah="aug">Atur langkah</button>
+          <button class="op-atur" type="button" data-tambah="aug">Atur formula</button>
 
           <div class="wz-fase">
             <span class="menu-judul">Fase lanjutan</span>
