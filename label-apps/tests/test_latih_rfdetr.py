@@ -230,3 +230,35 @@ def test_sync_ckpt_fallback_best_ema(tmp_path):
     latih_rfdetr._sync_ckpt(out, dl, {})
     assert (dl / "weights" / "best.pt").read_bytes() == b"ema-best"
     assert (dl / "rfdetr" / "last.ckpt").exists()
+
+
+# ============================================================
+# UJI PRODUKSI RF-DETR: pemetaan kelas inferensi (evaluasi_jalan._utama_rfdetr)
+# ============================================================
+# Hanya logika pemetaan class_id->nama yang diuji di sini (tanpa GPU/rfdetr):
+# predict() mengembalikan class_id 0-indexed ke daftar kelas — TERVERIFIKASI pada
+# model basket lokal (id 8 -> 'referee', id 3 -> 'player').
+
+def test_utama_rfdetr_pemetaan_kelas_0indexed():
+    import types
+    import numpy as np
+    from app.services import evaluasi_jalan as ej
+    kelas = ["ball", "player", "referee", "rim"]
+
+    class _Det:
+        def __init__(self, ids, conf):
+            self.class_id = np.array(ids) if ids else np.array([], dtype=int)
+            self.confidence = np.array(conf) if conf else np.array([])
+
+    def model_predict(ids, conf):
+        return types.SimpleNamespace(predict=lambda rgb, threshold=0: _Det(ids, conf))
+
+    im = np.zeros((4, 4, 3), dtype=np.uint8)
+    # argmax confidence -> id 2 -> kelas[2] = 'referee'
+    nama, cf = ej._utama_rfdetr(model_predict([1, 2], [0.3, 0.9]), im, 0.25, kelas)
+    assert nama == "referee" and round(cf, 2) == 0.9
+    # tak ada deteksi -> (None, 0)
+    assert ej._utama_rfdetr(model_predict([], []), im, 0.25, kelas) == (None, 0.0)
+    # id di luar rentang -> fallback str(id), tak melempar
+    nama2, _ = ej._utama_rfdetr(model_predict([99], [0.5]), im, 0.25, kelas)
+    assert nama2 == "99"

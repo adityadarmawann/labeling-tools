@@ -47,12 +47,28 @@ def baca(ds, nomor: int) -> dict | None:
 
 
 def _utama(model, im, conf):
-    """Kelas dengan confidence tertinggi, atau (None, 0)."""
+    """YOLO: kelas dengan confidence tertinggi, atau (None, 0)."""
     r = model(im, imgsz=ev.IMGSZ, conf=conf, iou=ev.IOU, verbose=False)[0]
     if r.boxes is None or len(r.boxes) == 0:
         return None, 0.0
     j = int(np.argmax(r.boxes.conf.cpu().numpy()))
     return r.names[int(r.boxes.cls[j])], float(r.boxes.conf[j])
+
+
+def _utama_rfdetr(model, im, conf, kelas):
+    """RF-DETR: NAMA kelas dengan confidence tertinggi, atau (None, 0). predict()
+    mengembalikan class_id 0-indexed ke daftar `kelas` (terverifikasi pada model
+    basket lokal: id 8 -> 'referee', id 3 -> 'player'). Gambar cv2 BGR -> RGB."""
+    rgb = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
+    d = model.predict(rgb, threshold=conf)
+    cid = getattr(d, "class_id", None)
+    cf = getattr(d, "confidence", None)
+    if cid is None or len(cid) == 0:
+        return None, 0.0
+    j = int(np.argmax(np.asarray(cf)))
+    idx = int(cid[j])
+    nama = kelas[idx] if 0 <= idx < len(kelas) else str(idx)
+    return nama, float(cf[j])
 
 
 def main() -> int:
@@ -72,12 +88,11 @@ def main() -> int:
                            "best.pt belum ada. Trainingnya belum selesai"})
         return 1
 
+    arsitektur = (isi.get("arsitektur") or "yolo").strip().lower()
     _tulis(ds, nomor, {"keadaan": "jalan",
                        "mulai": datetime.now().strftime("%Y-%m-%d %H:%M")})
+    f_lock = None
     try:
-        os.environ.setdefault("YOLO_VERBOSE", "False")
-        from ultralytics import YOLO
-
         versi = int(isi["versi"])
         files = ev.foto_uji(ds, versi)
         if not files:
@@ -85,10 +100,43 @@ def main() -> int:
                                f"versi v{versi} tidak punya split test. "
                                "Tidak ada foto yang bisa diuji"})
             return 1
+        kelas = list(isi.get("kelas") or [])
 
-        model = YOLO(str(bobot))
+        # Pemuat model + fungsi "kelas teratas" PER ARSITEKTUR; sisa pipeline
+        # (perlakuan warna, akurasi, kelas default, putusan) identik.
+        if arsitektur == "rfdetr":
+            # Inferensi RF-DETR di GPU LOKAL (dataset versinya memang lokal).
+            # Antre GPU bersama training lewat flock SAMA supaya tak berebut VRAM.
+            import fcntl
+            from .latih_rfdetr import KUNCI_GPU, _KELAS_RFDETR
+            KUNCI_GPU.touch(exist_ok=True)
+            f_lock = open(KUNCI_GPU, "r+")
+            try:
+                fcntl.flock(f_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError:
+                _tulis(ds, nomor, {"keadaan": "jalan", "pesan": "menunggu giliran GPU…",
+                                   "mulai": datetime.now().strftime("%Y-%m-%d %H:%M")})
+                fcntl.flock(f_lock, fcntl.LOCK_EX)
+            import rfdetr
+            Model = getattr(rfdetr, _KELAS_RFDETR.get(isi.get("rfdetr_model") or "nano",
+                                                      "RFDETRNano"))
+            # TANPA resolution: biar rfdetr pilih ukuran valid per varian (res
+            # latih ÷56 bisa tak ÷ block_size inferensi; terbukti di validasi).
+            model = Model(pretrain_weights=str(bobot), num_classes=max(1, len(kelas)))
+
+            def top(im):
+                return _utama_rfdetr(model, im, ev.CONF, kelas)
+            print(f"  model : RF-DETR {isi.get('rfdetr_model')} {bobot}")
+        else:
+            os.environ.setdefault("YOLO_VERBOSE", "False")
+            from ultralytics import YOLO
+            model = YOLO(str(bobot))
+
+            def top(im):
+                return _utama(model, im, ev.CONF)
+            print(f"  model : {bobot}")
+
         rng = np.random.default_rng(0)
-        print(f"  model : {bobot}")
         print(f"  foto  : {len(files)} dari test v{versi}")
 
         # ---- 1 & 2: satu kali baca gambar, dipakai kedua pengukuran ----
@@ -100,7 +148,7 @@ def main() -> int:
             kelas_asli = ev.label_uji(ds, versi, p)
             baris = []
             for _nama, fn in ev.PERLAKUAN:
-                c, _cf = _utama(model, fn(im, rng), ev.CONF)
+                c, _cf = top(fn(im, rng))
                 baris.append(c)
             jawaban.append(baris)
             pasangan.append((kelas_asli, baris[0]))
@@ -118,7 +166,7 @@ def main() -> int:
                 if im is None:
                     continue
                 n_latar += 1
-                c, _ = _utama(model, im, ev.CONF)
+                c, _ = top(im)
                 if c:
                     tally[c] = tally.get(c, 0) + 1
         else:
@@ -128,7 +176,7 @@ def main() -> int:
                 if im is None:
                     continue
                 n_latar += 1
-                c, _ = _utama(model, ev.petak_kosong(im), ev.CONF)
+                c, _ = top(ev.petak_kosong(im))
                 if c:
                     tally[c] = tally.get(c, 0) + 1
 
@@ -147,6 +195,7 @@ def main() -> int:
             "selesai": datetime.now().strftime("%Y-%m-%d %H:%M"),
             "detik": round(time.time() - t0, 1),
             "versi": versi, "n_foto": len(jawaban),
+            "arsitektur": arsitektur,
             "perlakuan": [n for n, _ in ev.PERLAKUAN],
             "rona": list(ev.NAMA_RONA), "terang": list(ev.NAMA_TERANG),
             "mode": mode, "mode_ket": mw.KETERANGAN[mode],
@@ -170,6 +219,16 @@ def main() -> int:
         _tulis(ds, nomor, {"keadaan": "gagal", "galat": str(e)[:300]})
         traceback.print_exc()
         return 1
+    finally:
+        # Lepas flock GPU (hanya diambil jalur RF-DETR) supaya training berikutnya
+        # tak terkunci kalau eval gagal/berhenti.
+        if f_lock is not None:
+            try:
+                import fcntl
+                fcntl.flock(f_lock, fcntl.LOCK_UN)
+                f_lock.close()
+            except OSError:
+                pass
 
 
 if __name__ == "__main__":

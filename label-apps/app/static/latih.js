@@ -719,10 +719,10 @@
     const terbaik = t.terbaik || {};
     const utama = t.utama && terbaik[t.utama] !== undefined ? t.utama : null;
     const rusak = ['gagal', 'hilang'].includes(t.keadaan);
-    // RF-DETR: dua tindakan berikut adalah jalur KHAS YOLO, jadi disembunyikan.
-    // "Uji produksi" memuat .pt sebagai model Ultralytics untuk uji
-    // ketergantungan warna; "Lanjutkan" melatih ulang dari .pt lewat Ultralytics.
-    // Checkpoint RF-DETR (best.pt) bukan format itu — keduanya akan gagal.
+    // "Uji produksi" kini mendukung KEDUA arsitektur: evaluasi_jalan memuat
+    // model lewat rfdetr (bukan Ultralytics) saat arsitektur=rfdetr, dengan
+    // metrik yang SAMA (ketergantungan warna + akurasi). "Lanjutkan" tetap
+    // bercabang: RF-DETR punya jalur resume last.ckpt sendiri (t.rfdetr_ckpt).
     const rf = t.arsitektur === 'rfdetr';
     // Metrik pendukung: yang utama dibuang supaya tidak muncul dua kali.
     const lain = Object.keys(terbaik).filter((k) => k !== utama).slice(0, 3);
@@ -760,7 +760,7 @@
           <button class="chip chip-utama" type="button" data-sambung="${t.nomor}"
             title="Coba lagi sekarang: lanjutkan dari epoch terakhir di Kaggle">
             Lanjutkan di Kaggle</button>` : ''}
-        ${t.punya_bobot && bolehKelola && !rf ? `<button class="chip" type="button"
+        ${t.punya_bobot && bolehKelola ? `<button class="chip" type="button"
             data-uji="${t.nomor}">Uji produksi</button>` : ''}
         ${(bolehKelola && (rf ? t.rfdetr_ckpt : t.punya_bobot)) ? `<button class="chip" type="button"
             data-lanjut="${t.nomor}" data-nama="${esc(t.nama)}"
