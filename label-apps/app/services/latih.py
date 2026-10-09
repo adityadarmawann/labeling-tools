@@ -838,6 +838,7 @@ def status(ds, nomor: int) -> dict:
         "preset": isi.get("preset") or "rvm",
         "arsitektur": isi.get("arsitektur") or "yolo",
         "rfdetr_model": isi.get("rfdetr_model") or "",
+        "rfdetr_multigpu": bool(isi.get("rfdetr_multigpu")),
         "rfdetr": isi.get("rfdetr") or {},
         "kaggle": isi.get("kaggle") or {},
         "keadaan": keadaan,
@@ -912,12 +913,15 @@ def siapkan(ds, *, nama: str, versi_nomor: int, tugas: str, bobot: str,
             par: dict, oleh: str, catatan: str = "",
             warna: dict | None = None, lanjut_dari: int | None = None,
             backend: str = "lokal", preset: str = "rvm",
-            arsitektur: str = "yolo", rfdetr_model: str = "") -> dict:
+            arsitektur: str = "yolo", rfdetr_model: str = "",
+            rfdetr_multigpu: bool = False) -> dict:
     """Catat satu training baru. Belum dijalankan."""
     n = nomor_berikut(ds)
     preset = preset_sah(preset)
     arsitektur = arsitektur_sah(arsitektur)
     rfdetr_model = rfdetr_model_sah(rfdetr_model) if arsitektur == "rfdetr" else ""
+    # Saklar 2-GPU (Kaggle T4x2) — hanya bermakna untuk RF-DETR; default mati.
+    rfdetr_multigpu = bool(rfdetr_multigpu) and arsitektur == "rfdetr"
     # RF-DETR punya hyperparameter & batas sendiri, dan TIDAK memakai preset
     # augmentasi/mode_warna YOLO (augmentasinya internal di lib).
     if arsitektur == "rfdetr":
@@ -980,6 +984,7 @@ def siapkan(ds, *, nama: str, versi_nomor: int, tugas: str, bobot: str,
         # DETR). rfdetr_model = ukuran (nano/small/medium/large) saat rfdetr.
         "arsitektur": arsitektur,
         "rfdetr_model": rfdetr_model,
+        "rfdetr_multigpu": rfdetr_multigpu,
         "par": par_bersih,
         # Hasil periksa_warna DIBEKUKAN di sini, bukan dihitung ulang saat
         # ditampilkan: versinya bisa saja dihapus nanti, dan alasan sebuah

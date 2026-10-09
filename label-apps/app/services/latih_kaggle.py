@@ -496,6 +496,21 @@ if RESUME:
           or sorted(glob.glob("/kaggle/input/**/*.pth", recursive=True), key=len))
     if ck:
         kw["resume"] = ck[0]; print("RESUME_DARI", ck[0], flush=True)
+# 2-GPU (T4 x2) OPSIONAL — DEFAULT MATI. Kalau dinyalakan DAN ada >=2 GPU:
+# DDP spawn (aman di kernel Kaggle yang dijalankan sebagai notebook), dan
+# grad_accum DIBAGI jumlah GPU supaya batch efektif (batch x n_gpu x accum)
+# TETAP 16 sesuai resep Roboflow. Mati -> jalur 1-GPU yang sudah terbukti.
+MULTIGPU = __MULTIGPU__
+if MULTIGPU and torch.cuda.device_count() >= 2:
+    NG = torch.cuda.device_count()
+    kw["devices"] = NG
+    kw["strategy"] = "ddp_spawn"
+    ga = int(kw.get("grad_accum_steps", 1))
+    kw["grad_accum_steps"] = max(1, ga // NG)
+    print("MULTI_GPU AKTIF", NG, "GPU · grad_accum", ga, "->", kw["grad_accum_steps"],
+          "(batch efektif tetap)", flush=True)
+else:
+    print("MULTI_GPU nonaktif — 1 GPU", flush=True)
 print("MODEL", MODEL, "res", res, "epochs", kw["epochs"], "resume", RESUME, flush=True)
 Model(resolution=res).train(**kw)
 # Epoch KUMULATIF global dari metrics.csv (CSVLogger PTL melanjutkan penomoran
@@ -518,13 +533,17 @@ print("BEST_EXISTS", bool(best), (os.path.getsize(best[0]) if best else 0), flus
 
 
 def skrip_rfdetr(model: str, par: dict, *, run: str, resume: bool = False,
-                 batas_jam: float = BATAS_JAM) -> str:
-    """Rakit skrip kernel RF-DETR. Murni -> diuji tanpa jaringan."""
+                 batas_jam: float = BATAS_JAM, multigpu: bool = False) -> str:
+    """Rakit skrip kernel RF-DETR. Murni -> diuji tanpa jaringan.
+
+    multigpu=True -> pakai SEMUA GPU (T4 x2) lewat DDP spawn, grad_accum dibagi
+    jumlah GPU agar batch efektif tetap 16. Default False (1-GPU terbukti)."""
     return (_SKRIP_RFDETR
             .replace("__PAR_JSON__", json.dumps(par))
             .replace("__MODEL__", str(model))
             .replace("__RUN__", str(run))
             .replace("__BATAS_JAM__", repr(float(batas_jam)))
+            .replace("__MULTIGPU__", "True" if multigpu else "False")
             .replace("__RESUME__", "True" if resume else "False"))
 
 
@@ -827,6 +846,7 @@ def _rfdetr_kaggle(ds: Path, nomor: int, isi: dict, settings, basis, pool) -> in
             f"versi v{versi} belum punya data.yaml — tak bisa diekspor ke COCO")
     par = dict(isi.get("par") or {})
     model = isi.get("rfdetr_model") or "nano"
+    multigpu = bool(isi.get("rfdetr_multigpu"))   # saklar 2-GPU (T4x2); default mati
     target = int(par.get("epochs") or 0)
     dl = latih.dir_latih(ds, nomor)
     (dl / "weights").mkdir(parents=True, exist_ok=True)
@@ -879,7 +899,7 @@ def _rfdetr_kaggle(ds: Path, nomor: int, isi: dict, settings, basis, pool) -> in
                 sumber.append(ckid)
 
             skrip = skrip_rfdetr(model, par_leg, run=run, resume=resume,
-                                 batas_jam=BATAS_JAM)
+                                 batas_jam=BATAS_JAM, multigpu=multigpu)
             kid, url = _push_kernel(akun, slug_k, skrip, sumber)
             lapor(kernel=kid, kernel_url=url, remote="queued",
                   pesan=f"RF-DETR {model} leg {leg+1} di Kaggle ({akun['user']})")

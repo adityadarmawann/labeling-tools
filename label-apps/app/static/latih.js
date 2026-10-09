@@ -416,6 +416,9 @@
     if (b === 'kaggle') { siap = BAHAN.kaggle_siap; alasan = BAHAN.kaggle_alasan; }
     else if (rf) { siap = BAHAN.rfdetr_siap; alasan = BAHAN.rfdetr_alasan; }
     else { siap = BAHAN.siap; alasan = BAHAN.alasan; }
+    // Saklar 2-GPU hanya relevan untuk RF-DETR + Kaggle (T4x2). Dev lokal 1 GPU.
+    const mg = $('tr-rfdetr-multigpu-bungkus');
+    if (mg) mg.hidden = !(rf && b === 'kaggle');
     if ($('tr-jalankan')) $('tr-jalankan').disabled = (siap === false);
     if ($('tr-tambah')) $('tr-tambah').disabled = (siap === false);
     galat(siap === false ? (alasan || 'backend ini belum siap') : '');
@@ -1248,11 +1251,15 @@
       // seperti backend & preset — karena ia menukar bentuk parameternya.
       const arsitektur = arsitekturDipilih();
       const rfdetr_model = rfdetrModelDipilih();
+      // Saklar 2-GPU (T4x2) — hanya saat RF-DETR + Kaggle; else selalu mati.
+      const rfdetr_multigpu = (arsitektur === 'rfdetr' && backend === 'kaggle'
+        && $('tr-rfdetr-multigpu') && $('tr-rfdetr-multigpu').checked) || false;
       $('tr-jalankan').disabled = true;
       try {
         const j = await ambil('/api/latih/mulai', {
           method: 'POST', headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({versi, batch, backend, preset, arsitektur, rfdetr_model}),
+          body: JSON.stringify({versi, batch, backend, preset, arsitektur,
+                                rfdetr_model, rfdetr_multigpu}),
         });
         if (!j.ok) { galat(j.error || 'gagal memulai'); return; }
         ANTREAN = [];

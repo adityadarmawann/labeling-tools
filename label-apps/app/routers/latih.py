@@ -160,6 +160,7 @@ async def mulai(request: Request,
     # (Kaggle-RF-DETR menyusul); gerbang kesiapannya pun beda (butuh paket rfdetr).
     arsitektur = svc.arsitektur_sah(str(body.get("arsitektur") or "yolo").strip().lower())
     rfdetr_model = str(body.get("rfdetr_model") or "").strip().lower()
+    rfdetr_multigpu = bool(body.get("rfdetr_multigpu"))   # saklar T4x2 (Kaggle), default mati
     if backend == "kaggle":
         # RF-DETR di Kaggle: kernelnya pip-install rfdetr sendiri, jadi server
         # ini TIDAK perlu rfdetr lokal — cukup akun Kaggle terkonfigurasi.
@@ -219,7 +220,8 @@ async def mulai(request: Request,
                 catatan=str(satu.get("catatan") or ""),
                 warna=warna, backend=backend, preset=preset,
                 arsitektur=arsitektur,
-                rfdetr_model=str(satu.get("rfdetr_model") or rfdetr_model))
+                rfdetr_model=str(satu.get("rfdetr_model") or rfdetr_model),
+                rfdetr_multigpu=rfdetr_multigpu)
         except ValueError as e:
             return {"ok": False, "error": str(e), "dibuat": dibuat}
         try:

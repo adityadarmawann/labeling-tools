@@ -75,6 +75,16 @@
           </select>
         </label>
 
+        {#- Saklar 2-GPU (Kaggle T4 x2). Hanya muncul untuk RF-DETR + Kaggle,
+            karena DDP cuma berguna di sana (dev lokal 1 GPU). EKSPERIMENTAL:
+            dimatikan secara bawaan — jalur 1-GPU sudah terbukti. -#}
+        <label class="tr-label tr-cek" id="tr-rfdetr-multigpu-bungkus" hidden>
+          <input type="checkbox" id="tr-rfdetr-multigpu">
+          Pakai 2 GPU (Kaggle T4&times;2) — eksperimental
+          <span class="tr-bantu">Memakai kedua T4 sekaligus (lebih cepat). Belum
+            diuji end-to-end; kalau ragu, biarkan mati.</span>
+        </label>
+
         {#- JENIS PRESET: resep augmentasi + setelan yang COCOK untuk jenis
             datanya. Ditaruh paling atas karena ia mengubah seluruh setelan di
             bawahnya. Namanya ditulis untuk orang awam ("SmartBin" vs "Basket")

@@ -39,6 +39,17 @@ def test_siapkan_rfdetr_pakai_preset_rfdetr(tmp_path):
     assert r["warna"] == {}                   # rfdetr tak pakai mode_warna
 
 
+def test_siapkan_rfdetr_multigpu_saklar(tmp_path):
+    """Saklar 2-GPU tersimpan di rekaman untuk RF-DETR; untuk YOLO diabaikan."""
+    _versi(tmp_path, 1, ["a"])
+    r = latih.siapkan(tmp_path, nama="x", versi_nomor=1, tugas="detect", bobot="",
+                      par={}, oleh="u", arsitektur="rfdetr", rfdetr_multigpu=True)
+    assert r["rfdetr_multigpu"] is True
+    r2 = latih.siapkan(tmp_path, nama="y", versi_nomor=1, tugas="detect", bobot="y.pt",
+                       par={}, oleh="u", rfdetr_multigpu=True)   # yolo
+    assert r2["rfdetr_multigpu"] is False       # hanya bermakna untuk rfdetr
+
+
 def test_siapkan_rfdetr_clamp_batas(tmp_path):
     _versi(tmp_path, 1, ["a"])
     r = latih.siapkan(tmp_path, nama="x", versi_nomor=1, tugas="detect", bobot="",

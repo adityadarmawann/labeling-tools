@@ -95,6 +95,17 @@ def test_skrip_rfdetr_resume_stop_dan_epoch_global():
     assert "RESUME = False" in s2
 
 
+def test_skrip_rfdetr_saklar_multigpu():
+    """Saklar 2-GPU (T4x2): nyala -> skrip pakai devices + ddp_spawn + bagi
+    grad_accum (batch efektif tetap 16); default MATI -> jalur 1-GPU terbukti."""
+    on = k.skrip_rfdetr("small", {"epochs": 5}, run="r", multigpu=True)
+    assert "MULTIGPU = True" in on
+    assert "ddp_spawn" in on and 'kw["devices"] = NG' in on
+    assert "// NG" in on                          # grad_accum dibagi jumlah GPU
+    off = k.skrip_rfdetr("small", {"epochs": 5}, run="r")
+    assert "MULTIGPU = False" in off              # bawaan: mati
+
+
 # ============================================================
 # SERAP KELUARAN → .latih/L<n>/ (murni)
 # ============================================================
