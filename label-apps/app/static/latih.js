@@ -434,6 +434,131 @@
           + 'lokal; run panjang disambung otomatis'
         : 'GPU mesin ini, satu training pada satu waktu';
     }
+    gambarAkun();                 // panel kelola akun Kaggle ikut backend
+  }
+
+  /* ---- Akun Kaggle PER-USER (panel di form Setup Training) ----
+     Tiap user mendaftarkan akun Kaggle-nya sendiri: tempel username + API token,
+     tekan Test (kernel uji GPU di akunnya -> Berhasil/Gagal), lalu Simpan. Token
+     dikirim lewat BODY (tak masuk URL/log) dan tak pernah kembali kecuali dimask. */
+  function gambarAkun() {
+    const wrap = $('tr-akun');
+    if (!wrap || !BAHAN) return;
+    const b = ($('tr-backend') && $('tr-backend').value) || 'lokal';
+    wrap.hidden = !(b === 'kaggle' && BAHAN.kaggle_mungkin);
+    if (wrap.hidden) return;
+    const daftar = $('tr-akun-daftar');
+    const akun = BAHAN.kaggle_akun || [];
+    if (!akun.length) {
+      daftar.innerHTML = '<p class="tr-bantu">Belum ada akun. Tekan "+ Tambah akun", '
+        + 'tempel username + API token Kaggle, lalu Test.</p>';
+    } else {
+      daftar.innerHTML = akun.map((a) => `
+        <div class="tr-akun-baris">
+          <span class="tr-akun-nama">${esc(a.user)}${a.utama ? ' <b>(utama)</b>' : ''}</span>
+          <span class="tr-akun-stat">${a.habis ? 'kuota habis' : 'sisa ~' + a.sisa_jam + 'j'}`
+        + ` · ${esc(a.token_mask || '')}</span>
+          <span class="spacer"></span>
+          ${a.utama ? '' : `<button class="chip" type="button" data-utama="${esc(a.user)}">Jadikan utama</button>`}
+          <button class="chip tr-akun-hapus" type="button" data-hapus="${esc(a.user)}">Hapus</button>
+        </div>`).join('');
+      daftar.querySelectorAll('[data-utama]').forEach((btn) => {
+        btn.onclick = () => aksiAkun('/api/latih/akun/utama', { kaggle_user: btn.dataset.utama });
+      });
+      daftar.querySelectorAll('[data-hapus]').forEach((btn) => {
+        btn.onclick = async () => {
+          if (!confirm(`Hapus akun Kaggle "${btn.dataset.hapus}"?`)) return;
+          await aksiAkun('/api/latih/akun/hapus', { kaggle_user: btn.dataset.hapus });
+        };
+      });
+    }
+    const mon = $('tr-akun-monitor');
+    if (mon) mon.hidden = !BAHAN.admin;
+  }
+
+  async function aksiAkun(url, payload) {
+    try {
+      const r = await ambil(url, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (r.ok === false) { galat(r.error || 'gagal'); return; }
+      if (r.akun) BAHAN.kaggle_akun = r.akun;
+      BAHAN.kaggle_siap = (BAHAN.kaggle_akun || []).length > 0;
+      gambarAkun(); terapkanBackend();
+    } catch (e) { galat('gagal: ' + e); }
+  }
+
+  let _verifPoll = null;
+  function setelTest(keadaan, pesan) {
+    const h = $('tr-akun-hasil');
+    if (h) { h.textContent = pesan || ''; h.className = 'tr-bantu tr-test-' + (keadaan || ''); }
+  }
+
+  // SATU alur ringkas: Test (verifikasi GPU penuh) -> kalau Berhasil, langsung
+  // SIMPAN otomatis; kalau Gagal, tampilkan alasan. Tak ada langkah "Simpan"
+  // terpisah supaya tak membingungkan.
+  async function testAkun() {
+    const user = ($('tr-akun-user').value || '').trim();
+    const tok = ($('tr-akun-token').value || '').trim();
+    if (!user || !tok) { setelTest('gagal', 'isi username Kaggle dan API token dulu'); return; }
+    const tbl = $('tr-akun-test');
+    setelTest('', 'menguji akun di Kaggle (menjalankan kernel GPU kecil, beberapa menit)…');
+    if (tbl) tbl.disabled = true;
+    let id;
+    try {
+      const r = await ambil('/api/latih/akun/test', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kaggle_user: user, token: tok }),
+      });
+      if (r.ok === false) { setelTest('gagal', r.error || 'gagal memulai Test'); if (tbl) tbl.disabled = false; return; }
+      id = r.id;
+    } catch (e) { setelTest('gagal', 'gagal: ' + e); if (tbl) tbl.disabled = false; return; }
+    if (_verifPoll) clearInterval(_verifPoll);
+    _verifPoll = setInterval(async () => {
+      try {
+        const s = await ambil('/api/latih/akun/test-status?id=' + encodeURIComponent(id));
+        const st = s.status || {};
+        if (st.keadaan === 'pending') return;
+        clearInterval(_verifPoll); _verifPoll = null;
+        if (st.keadaan === 'berhasil') { await _simpanAkun(user, tok); }
+        else { if (tbl) tbl.disabled = false; setelTest('gagal', '✗ Gagal: ' + (st.alasan || st.keadaan)); }
+      } catch (e) { /* biarkan poll lanjut sampai jawaban berikut */ }
+    }, 5000);
+  }
+
+  async function _simpanAkun(user, tok) {
+    const tbl = $('tr-akun-test');
+    try {
+      const r = await ambil('/api/latih/akun/simpan', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kaggle_user: user, token: tok }),
+      });
+      if (tbl) tbl.disabled = false;
+      if (r.ok === false) { setelTest('gagal', r.error || 'gagal menyimpan'); return; }
+      if (r.akun) BAHAN.kaggle_akun = r.akun;
+      $('tr-akun-user').value = ''; $('tr-akun-token').value = '';
+      $('tr-akun-form').hidden = true; setelTest('', '');
+      BAHAN.kaggle_siap = true; BAHAN.kaggle_alasan = '';
+      gambarAkun(); terapkanBackend();
+    } catch (e) { if (tbl) tbl.disabled = false; setelTest('gagal', 'gagal menyimpan: ' + e); }
+  }
+
+  async function muatMonitorAkun() {
+    const isi = $('tr-akun-monitor-isi');
+    if (!isi) return;
+    isi.textContent = 'memuat…';
+    try {
+      const r = await ambil('/api/latih/akun/semua');
+      if (r.ok === false) { isi.textContent = r.error || 'gagal'; return; }
+      const semua = r.semua || [];
+      if (!semua.length) { isi.textContent = 'belum ada user yang mendaftarkan akun Kaggle.'; return; }
+      isi.innerHTML = semua.map((u) =>
+        `<div class="tr-akun-mon-user"><b>${esc(u.pemilik)}</b>: `
+        + (u.akun || []).map((a) =>
+          `${esc(a.user)} (${a.habis ? 'habis' : 'sisa ~' + a.sisa_jam + 'j'})`).join(', ')
+        + '</div>').join('');
+    } catch (e) { isi.textContent = 'gagal memuat: ' + e; }
   }
 
   /* Mengganti Arsitektur menukar SELURUH bentuk form: RF-DETR menyembunyikan
@@ -1368,16 +1493,39 @@
           terapkanPreset();
           $('tr-bobot').onchange();
           gambarAntrean();
-          // Backend Kaggle, kalau terkonfigurasi: buka selektor "Jalankan di".
-          // Server CPU bisa saja tak bisa melatih lokal (siap=false) tapi tetap
-          // boleh offload ke Kaggle — jadi pilihannya default ke yang siap.
-          if (BAHAN.kaggle_siap && $('tr-backend-bungkus')) {
+          // Backend Kaggle: buka selektor "Jalankan di" kalau paket kaggle ADA di
+          // server (kaggle_mungkin) — BUKAN cuma kalau user sudah punya akun —
+          // supaya user bisa MENAMBAH akun pertamanya lewat panel di bawahnya.
+          if (BAHAN.kaggle_mungkin && $('tr-backend-bungkus')) {
             $('tr-backend-bungkus').hidden = false;
             if ($('tr-backend')) {
               $('tr-backend').value =
                 (BAHAN.siap === false && BAHAN.kaggle_siap) ? 'kaggle' : 'lokal';
               $('tr-backend').onchange = terapkanBackend;
             }
+          }
+          // Handler panel akun Kaggle (statis di form; aman dipasang sekali).
+          if ($('tr-akun-tambah')) {
+            $('tr-akun-tambah').onclick = () => {
+              const f = $('tr-akun-form');
+              if (f) { f.hidden = !f.hidden; setelTest('', ''); }
+            };
+          }
+          if ($('tr-akun-batal')) {
+            $('tr-akun-batal').onclick = () => {
+              $('tr-akun-user').value = ''; $('tr-akun-token').value = '';
+              $('tr-akun-form').hidden = true; setelTest('', '');
+            };
+          }
+          if ($('tr-akun-test')) $('tr-akun-test').onclick = testAkun;
+          // Mengetik ulang membersihkan pesan hasil sebelumnya.
+          ['tr-akun-user', 'tr-akun-token'].forEach((id) => {
+            if ($(id)) $(id).oninput = () => setelTest('', '');
+          });
+          if ($('tr-akun-monitor')) {
+            $('tr-akun-monitor').addEventListener('toggle', () => {
+              if ($('tr-akun-monitor').open) muatMonitorAkun();
+            });
           }
           // Arsitektur (YOLO / RF-DETR). Selektornya hanya muncul kalau RF-DETR
           // benar-benar bisa dipakai — terpasang di mesin ini ATAU lewat Kaggle

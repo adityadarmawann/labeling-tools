@@ -10,6 +10,8 @@ percabangan backend di latih.siapkan()/jalankan().
 from __future__ import annotations
 
 import json
+import os
+import time
 from pathlib import Path
 from types import SimpleNamespace as NS
 
@@ -513,3 +515,118 @@ def test_main_gagal_setelah_maks_coba(siapkan_main, monkeypatch):
                        pool=[{"user": "a", "token": "ta"}])
     assert rc == 1 and rek["keadaan"] == "gagal"
     assert "gagal" in (rek.get("galat") or "").lower()
+
+
+# ============================================================
+# AKUN KAGGLE PER-USER (tambah/test/hapus/utama/isolasi/mask)
+# ============================================================
+
+def _ns(tmp):
+    return NS(uploads_root=tmp, kaggle_akun_file=None, kaggle_user="",
+              kaggle_token_file=None)
+
+
+def test_akun_user_crud_isolasi_dan_mask(tmp_path):
+    s = _ns(tmp_path)
+    k.tambah_akun_user(s, "budi", "kBudi", "KGAT_" + "b" * 28)
+    k.tambah_akun_user(s, "budi", "kBudi2", "KGAT_" + "c" * 28)
+    k.tambah_akun_user(s, "siti", "kSiti", "KGAT_" + "d" * 28)
+    rb = k.ringkas_akun_user(s, "budi")
+    assert [a["user"] for a in rb] == ["kBudi2", "kBudi"]      # terbaru = utama
+    assert rb[0]["utama"] and not rb[1]["utama"]
+    # token MENTAH tak pernah keluar; hanya mask
+    assert all("token" not in a for a in rb)
+    assert all(a["token_mask"].startswith("KGAT_") and a["token_mask"].endswith("…")
+               for a in rb)
+    # isolasi antar-user
+    assert [a["user"] for a in k.ringkas_akun_user(s, "siti")] == ["kSiti"]
+    # akun_pool_user milik budi tak memuat akun siti
+    assert {a["user"] for a in k.akun_pool_user(s, "budi")} == {"kBudi", "kBudi2"}
+    # jadikan utama + hapus
+    assert k.set_primer_user(s, "budi", "kBudi") is True
+    assert k.ringkas_akun_user(s, "budi")[0]["user"] == "kBudi"
+    assert k.hapus_akun_user(s, "budi", "kBudi2") is True
+    assert [a["user"] for a in k.ringkas_akun_user(s, "budi")] == ["kBudi"]
+    assert k.hapus_akun_user(s, "budi", "tak-ada") is False
+
+
+def test_akun_user_store_chmod_600(tmp_path):
+    s = _ns(tmp_path)
+    k.tambah_akun_user(s, "budi", "kBudi", "KGAT_" + "b" * 28)
+    p = k._akun_user_path(k.basis_ledger(s))
+    assert (os.stat(p).st_mode & 0o777) == 0o600
+
+
+def test_ringkas_semua_untuk_admin_tanpa_token(tmp_path):
+    s = _ns(tmp_path)
+    k.tambah_akun_user(s, "budi", "kBudi", "KGAT_" + "b" * 28)
+    k.tambah_akun_user(s, "siti", "kSiti", "KGAT_" + "d" * 28)
+    semua = {x["pemilik"]: x["akun"] for x in k.ringkas_semua_akun(s)}
+    assert set(semua) == {"budi", "siti"}
+    for lst in semua.values():
+        assert all("token" not in a for a in lst)             # token tak bocor ke monitor
+
+
+def test_siap_user_kosong_lalu_ada(tmp_path, monkeypatch):
+    monkeypatch.setattr(k, "paket_ada", lambda: True)
+    s = _ns(tmp_path)
+    ok, alasan = k.siap_user(s, "budi")
+    assert ok is False and "Tambah" in alasan
+    k.tambah_akun_user(s, "budi", "kBudi", "KGAT_" + "b" * 28)
+    assert k.siap_user(s, "budi")[0] is True
+
+
+def test_verif_akun_berhasil(tmp_path, monkeypatch):
+    monkeypatch.setattr(k, "_tidur", lambda d: None)
+
+    def fake(args, token, timeout=0, masuk=None):
+        if args[:2] == ["kernels", "output"]:
+            p = Path(args[args.index("-p") + 1])
+            (p / "log.txt").write_text("N_GPU 2\nINTERNET_OK\nVERIF_DONE\n")
+            return 0, ""
+        if args[:2] == ["kernels", "status"]:
+            return 0, 'has status "KernelWorkerStatus.complete"'
+        return 0, ""
+    monkeypatch.setattr(k, "_kg", fake)
+    ok, alasan = k.verif_akun("kBudi", "KGAT_x", batas_detik=5)
+    assert ok is True and alasan == ""
+
+
+def test_verif_akun_gagal_tanpa_gpu(tmp_path, monkeypatch):
+    monkeypatch.setattr(k, "_tidur", lambda d: None)
+
+    def fake(args, token, timeout=0, masuk=None):
+        if args[:2] == ["kernels", "output"]:
+            p = Path(args[args.index("-p") + 1])
+            (p / "log.txt").write_text("N_GPU 0\nVERIF_DONE\n")
+            return 0, ""
+        if args[:2] == ["kernels", "status"]:
+            return 0, 'status "KernelWorkerStatus.complete"'
+        return 0, ""
+    monkeypatch.setattr(k, "_kg", fake)
+    ok, alasan = k.verif_akun("kBudi", "KGAT_x", batas_detik=5)
+    assert ok is False and "GPU" in alasan
+
+
+def test_verif_akun_push_gagal_token_tak_bocor(tmp_path, monkeypatch):
+    monkeypatch.setattr(k, "_tidur", lambda d: None)
+    rahasia = "KGAT_rahasia_jangan_pernah_bocor_0001"
+    monkeypatch.setattr(k, "_kg",
+                        lambda args, token, timeout=0, masuk=None: (1, f"error token={token}"))
+    ok, alasan = k.verif_akun("kBudi", rahasia, batas_detik=5)
+    assert ok is False
+    assert rahasia not in alasan and "<token>" in alasan       # token dibersihkan dari galat
+
+
+def test_verif_lolos_cocokkan_hash_token(tmp_path):
+    s = _ns(tmp_path)
+    tok = "KGAT_" + "z" * 28
+    assert k.verif_lolos(s, "kBudi", tok) is False             # belum pernah Test berhasil
+    vdir = k._verif_dir(s)
+    vdir.mkdir(parents=True, exist_ok=True)
+    (vdir / "job1.json").write_text(json.dumps({
+        "keadaan": "berhasil", "kaggle_user": "kBudi",
+        "tok_hash": k._hash_token(tok), "ts": time.time()}))
+    assert k.verif_lolos(s, "kBudi", tok) is True
+    assert k.verif_lolos(s, "kBudi", "token-beda") is False    # hash tak cocok
+    assert k.verif_lolos(s, "kLain", tok) is False             # user Kaggle beda

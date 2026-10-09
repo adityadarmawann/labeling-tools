@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 
 import pytest
 
@@ -858,3 +859,82 @@ def test_mulai_ditolak_lebih_dulu_kalau_server_belum_siap(
     assert r["ok"] is False
     assert "LABELAPP_OLAH=gpu" in r["error"]
     assert latih.nomor_berikut(d) == 1, "manifes sempat dibuat padahal ditolak"
+
+
+# ============================================================
+# AKUN KAGGLE PER-USER lewat rute (/api/latih/akun/*)
+# ============================================================
+# Token masuk lewat BODY JSON (bukan query), tak pernah kembali kecuali dimask,
+# dan isolasi antar-user + gate admin pada monitor dijaga di sini.
+from conftest import PW_ANGGI       # noqa: E402
+
+
+def _set_admin(lingkungan, nama, nilai):
+    p = lingkungan["users"]
+    d = json.loads(p.read_text())
+    d[nama]["admin"] = nilai
+    p.write_text(json.dumps(d))
+
+
+def test_akun_kaggle_per_user_isolasi_crud(klien, lingkungan, monkeypatch):
+    # Lolos verifikasi tanpa jaringan (Test sudah kuuji di test_latih_kaggle).
+    monkeypatch.setattr("app.services.latih_kaggle.verif_lolos", lambda *a, **kw: True)
+    masuk(klien, "paul", PW_PAUL)
+    tok = "KGAT_" + "p" * 28
+    r = klien.post("/api/latih/akun/simpan",
+                   json={"kaggle_user": "kPaul", "token": tok}).json()
+    assert r["ok"] is True
+    assert [a["user"] for a in r["akun"]] == ["kPaul"]
+    # Token TAK PERNAH kembali ke klien kecuali dimask.
+    assert tok not in json.dumps(r)
+    assert r["akun"][0]["token_mask"].endswith("…")
+    # GET akun sendiri.
+    g = klien.get("/api/latih/akun").json()
+    assert [a["user"] for a in g["akun"]] == ["kPaul"]
+    # User lain tak melihat akun paul (isolasi).
+    masuk(klien, "anggi", PW_ANGGI)
+    assert klien.get("/api/latih/akun").json()["akun"] == []
+    # Paul: tambah satu lagi, set utama, hapus.
+    masuk(klien, "paul", PW_PAUL)
+    klien.post("/api/latih/akun/simpan",
+               json={"kaggle_user": "kPaul2", "token": "KGAT_" + "q" * 28})
+    u = klien.post("/api/latih/akun/utama", json={"kaggle_user": "kPaul"}).json()
+    assert u["akun"][0]["user"] == "kPaul"
+    h = klien.post("/api/latih/akun/hapus", json={"kaggle_user": "kPaul2"}).json()
+    assert [a["user"] for a in h["akun"]] == ["kPaul"]
+
+
+def test_akun_simpan_tanpa_test_ditolak(klien, lingkungan):
+    masuk(klien, "paul", PW_PAUL)
+    r = klien.post("/api/latih/akun/simpan",
+                   json={"kaggle_user": "kX", "token": "KGAT_" + "x" * 28}).json()
+    assert r["ok"] is False and "Test" in r["error"]
+
+
+def test_akun_monitor_semua_hanya_admin(klien, lingkungan):
+    _set_admin(lingkungan, "paul", True)
+    _set_admin(lingkungan, "anggi", False)
+    masuk(klien, "anggi", PW_ANGGI)
+    r = klien.get("/api/latih/akun/semua").json()
+    assert r["ok"] is False and "admin" in r["error"]
+    masuk(klien, "paul", PW_PAUL)
+    r2 = klien.get("/api/latih/akun/semua").json()
+    assert r2["ok"] is True and "semua" in r2
+
+
+def test_akun_test_async_berhasil(klien, lingkungan, monkeypatch):
+    monkeypatch.setattr("app.services.latih_kaggle._tidur", lambda d: None)
+    monkeypatch.setattr("app.services.latih_kaggle.verif_akun",
+                        lambda u, t, **kw: (True, ""))
+    masuk(klien, "paul", PW_PAUL)
+    r = klien.post("/api/latih/akun/test",
+                   json={"kaggle_user": "kPaul", "token": "KGAT_" + "p" * 28}).json()
+    assert r["ok"] is True and r["id"]
+    jid = r["id"]
+    st = {"keadaan": "pending"}
+    for _ in range(60):
+        st = klien.get("/api/latih/akun/test-status", params={"id": jid}).json()["status"]
+        if st["keadaan"] != "pending":
+            break
+        time.sleep(0.05)
+    assert st["keadaan"] == "berhasil"

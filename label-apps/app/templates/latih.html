@@ -107,6 +107,40 @@
           <span class="tr-bantu" id="tr-backend-ket"></span>
         </label>
 
+        {#- Akun Kaggle PER-USER: tiap orang mendaftarkan akun Kaggle-nya sendiri
+            di sini (token diverifikasi dgn kernel uji GPU lalu disimpan aman di
+            server, tak pernah ditampilkan ulang). Muncul saat backend = Kaggle;
+            diisi oleh gambarAkun() di latih.js. -#}
+        <div class="tr-akun" id="tr-akun" hidden>
+          <div class="tr-akun-atas">
+            <b>Akun Kaggle kamu</b>
+            <button class="chip" type="button" id="tr-akun-tambah">+ Tambah akun</button>
+          </div>
+          <div class="tr-akun-daftar" id="tr-akun-daftar"></div>
+
+          <div class="tr-akun-form" id="tr-akun-form" hidden>
+            <label class="tr-label">Username Kaggle
+              <input type="text" id="tr-akun-user" autocomplete="off"
+                     spellcheck="false" placeholder="mis. darmaditya"></label>
+            <label class="tr-label">API token Kaggle (KGAT_…)
+              <input type="password" id="tr-akun-token" autocomplete="off"
+                     spellcheck="false" placeholder="tempel API token di sini"></label>
+            <p class="tr-bantu">Token diuji dengan menjalankan kernel GPU kecil di
+              akunmu (beberapa menit), lalu disimpan aman di server. Token tak
+              pernah ditampilkan lagi setelah disimpan.</p>
+            <div class="tr-akun-aksi">
+              <button class="cta" type="button" id="tr-akun-test">Test &amp; simpan</button>
+              <button class="chip" type="button" id="tr-akun-batal">Batal</button>
+              <span class="tr-bantu" id="tr-akun-hasil"></span>
+            </div>
+          </div>
+
+          <details class="tr-akun-monitor" id="tr-akun-monitor" hidden>
+            <summary>Monitor akun Kaggle (semua user)</summary>
+            <div class="tr-bantu" id="tr-akun-monitor-isi">memuat…</div>
+          </details>
+        </div>
+
         <label class="tr-label">Sumber dataset
           <select id="tr-versi"></select>
           <span class="tr-bantu" id="tr-versi-ket">memuat daftar versi…</span>

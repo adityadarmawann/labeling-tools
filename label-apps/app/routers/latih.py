@@ -21,11 +21,26 @@ from ..log import catat
 from ..services import latih as svc
 from ..services import latih_kaggle as svc_kaggle
 from ..services import projek, tugas as svc_tugas, versi as svc_versi
+from ..security import is_admin, load_users
 from ..session import Session
 from ..templating import templates
 
 router = APIRouter()
 _log = catat("labelapp.latih")
+
+
+class _Tolak(Exception):
+    """Dilempar saat aksi khusus-admin diminta non-admin (ditangkap -> {ok:False})."""
+
+
+def _wajib_admin(sess: Session, settings: Settings) -> None:
+    users = load_users(settings.users_file)
+    if not is_admin(users, sess.user):
+        raise _Tolak("aksi ini hanya untuk admin")
+
+
+def _apakah_admin(sess: Session, settings: Settings) -> bool:
+    return is_admin(load_users(settings.users_file), sess.user)
 
 
 def _projek(sess: Session, settings: Settings, ds: str) -> Path | None:
@@ -48,13 +63,16 @@ async def halaman(request: Request, ds: str = "",
     pr = await asyncio.to_thread(projek.konteks, d, settings.uploads_root,
                                  sess.user)
     tdata = svc_tugas.baca_projek(d, settings.uploads_root)
-    kaggle_siap, _ = svc_kaggle.siap(settings)
+    # Akun Kaggle PER-USER: kesiapan & daftar akun milik user yang login.
+    kaggle_siap, _ = svc_kaggle.siap_user(settings, sess.user)
     return templates.TemplateResponse(request, "latih.html", {
         "sess": sess, "projek": pr, "pr": pr, "aktif": "latih",
         "boleh_kelola": svc_tugas.boleh_kelola(tdata, sess.user),
         # Pilihan "Jalankan di: Kaggle" hanya muncul kalau backend terkonfigurasi.
         "kaggle_siap": kaggle_siap,
-        "kaggle_akun": svc_kaggle.ringkas_akun(settings),
+        "kaggle_akun": svc_kaggle.ringkas_akun_user(settings, sess.user),
+        # Panel "Monitor akun (semua user)" hanya untuk admin.
+        "admin": _apakah_admin(sess, settings),
     })
 
 
@@ -94,14 +112,21 @@ async def bahan(sess: Session = Depends(current_session_api),
             "warna": svc.periksa_warna(penuh, kat),
         })
     siap, alasan = svc.siap_latih()
-    kaggle_siap, kaggle_alasan = svc_kaggle.siap(settings)
+    # Kesiapan & akun Kaggle PER-USER (milik user yang login).
+    kaggle_siap, kaggle_alasan = svc_kaggle.siap_user(settings, sess.user)
     return {"ok": True, "siap": siap, "alasan": alasan,
             # Kesiapan backend Kaggle terpisah: server CPU bisa saja tak bisa
             # melatih lokal (siap=False) tapi tetap boleh offload ke Kaggle.
             "kaggle_siap": kaggle_siap, "kaggle_alasan": kaggle_alasan,
-            # Status tiap akun pool (jam terpakai 7-hari, sisa, habis) — supaya
-            # form bisa menunjukkan akun mana yang masih punya jatah minggu ini.
-            "kaggle_akun": await asyncio.to_thread(svc_kaggle.ringkas_akun, settings),
+            # Paket kaggle ADA di server (walau user belum punya akun) -> tetap
+            # tawarkan panel kelola akun supaya bisa menambah akun pertama.
+            "kaggle_mungkin": svc_kaggle.paket_ada(),
+            # Admin: boleh membuka panel "Monitor akun (semua user)".
+            "admin": _apakah_admin(sess, settings),
+            # Status tiap akun milik user ini (jam terpakai 7-hari, sisa, habis,
+            # utama, token dimask) — supaya form bisa menampilkannya.
+            "kaggle_akun": await asyncio.to_thread(
+                svc_kaggle.ringkas_akun_user, settings, sess.user),
             "versi": versi_siap,
             "bobot": await asyncio.to_thread(svc.bobot_tersedia),
             # Registry preset untuk selektor "Jenis preset" di form. `preset`
@@ -163,8 +188,8 @@ async def mulai(request: Request,
     rfdetr_multigpu = bool(body.get("rfdetr_multigpu"))   # saklar T4x2 (Kaggle), default mati
     if backend == "kaggle":
         # RF-DETR di Kaggle: kernelnya pip-install rfdetr sendiri, jadi server
-        # ini TIDAK perlu rfdetr lokal — cukup akun Kaggle terkonfigurasi.
-        siap, alasan = svc_kaggle.siap(settings)
+        # ini TIDAK perlu rfdetr lokal — cukup akun Kaggle user ini terkonfigurasi.
+        siap, alasan = svc_kaggle.siap_user(settings, sess.user)
     elif arsitektur == "rfdetr":
         siap, alasan = svc.siap_rfdetr()
     else:
@@ -278,7 +303,7 @@ async def lanjut(request: Request,
     if arsitektur == "rfdetr":
         backend = sumber.get("backend") or "lokal"
         if backend == "kaggle":
-            siap, alasan = svc_kaggle.siap(settings)
+            siap, alasan = svc_kaggle.siap_user(settings, sess.user)
         else:
             siap, alasan = svc.siap_rfdetr()
         if not siap:
@@ -388,7 +413,8 @@ async def sambung_kaggle(nomor: int = 0,
         return {"ok": False, "error": "hanya training Kaggle yang bisa disambung begini"}
     if rek.get("keadaan") in svc.BERJALAN:
         return {"ok": False, "error": "training itu masih berjalan"}
-    siap, alasan = svc_kaggle.siap(settings)
+    # Akun Kaggle milik PEMBUAT training (field `oleh`), bukan si penyambung.
+    siap, alasan = svc_kaggle.siap_user(settings, rek.get("oleh") or sess.user)
     if not siap:
         return {"ok": False, "error": alasan}
     await asyncio.to_thread(svc_kaggle.reset_habis,
@@ -422,6 +448,109 @@ async def batal(nomor: int = 0, sess: Session = Depends(current_session_api),
             await asyncio.to_thread(svc_kaggle.batalkan_remote, settings,
                                     kag["kernel"], kag.get("akun"))
     return {"ok": True}
+
+
+# ============================================================
+# AKUN KAGGLE PER-USER — dikelola dari form Setup Training
+# ============================================================
+# Tiap user HIGOLAB menyimpan akun Kaggle-nya SENDIRI; training Kaggle-nya pakai
+# akun itu. Token MASUK lewat BODY JSON (bukan query -> tak bocor ke log/URL/
+# riwayat), disimpan server-side (chmod 600, di luar git), dan TAK PERNAH dikirim
+# balik ke browser kecuali dimask. Tidak butuh projek terbuka (level user).
+
+@router.get("/api/latih/akun")
+async def akun_saya(sess: Session = Depends(current_session_api),
+                    settings: Settings = Depends(get_settings)):
+    """Akun Kaggle milik user yang login + statusnya (token dimask)."""
+    return {"ok": True, "admin": _apakah_admin(sess, settings),
+            "akun": await asyncio.to_thread(
+                svc_kaggle.ringkas_akun_user, settings, sess.user)}
+
+
+@router.post("/api/latih/akun/test")
+async def akun_test(request: Request,
+                    sess: Session = Depends(current_session_api),
+                    settings: Settings = Depends(get_settings)):
+    """Mulai verifikasi PENUH (dorong kernel uji GPU+internet ke akun). Async ->
+    kembalikan id; klien poll /akun/test-status untuk Berhasil/Gagal. Token lewat
+    BODY (tak ter-log)."""
+    body = await bodi_json(request)
+    kaggle_user = str(body.get("kaggle_user") or "").strip()
+    token = str(body.get("token") or "").strip()
+    if not kaggle_user or not token:
+        return {"ok": False, "error": "username Kaggle dan API token wajib diisi"}
+    jid = await asyncio.to_thread(svc_kaggle.mulai_verif, settings,
+                                  kaggle_user, token)
+    return {"ok": True, "id": jid}
+
+
+@router.get("/api/latih/akun/test-status")
+async def akun_test_status(id: str = "",
+                           sess: Session = Depends(current_session_api),
+                           settings: Settings = Depends(get_settings)):
+    return {"ok": True, "status": await asyncio.to_thread(
+        svc_kaggle.status_verif, settings, id)}
+
+
+@router.post("/api/latih/akun/simpan")
+async def akun_simpan(request: Request,
+                      sess: Session = Depends(current_session_api),
+                      settings: Settings = Depends(get_settings)):
+    """Simpan akun ke user yang login. SYARAT: ada hasil Test BERHASIL baru-baru
+    ini untuk (username, token) ini (dicocokkan lewat hash, bukan token)."""
+    body = await bodi_json(request)
+    kaggle_user = str(body.get("kaggle_user") or "").strip()
+    token = str(body.get("token") or "").strip()
+    if not kaggle_user or not token:
+        return {"ok": False, "error": "username Kaggle dan API token wajib diisi"}
+    if not await asyncio.to_thread(svc_kaggle.verif_lolos, settings,
+                                   kaggle_user, token):
+        return {"ok": False,
+                "error": "Tekan Test dulu dan pastikan BERHASIL sebelum menyimpan"}
+    try:
+        await asyncio.to_thread(svc_kaggle.tambah_akun_user, settings,
+                                sess.user, kaggle_user, token)
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
+    return {"ok": True, "akun": await asyncio.to_thread(
+        svc_kaggle.ringkas_akun_user, settings, sess.user)}
+
+
+@router.post("/api/latih/akun/hapus")
+async def akun_hapus(request: Request,
+                     sess: Session = Depends(current_session_api),
+                     settings: Settings = Depends(get_settings)):
+    body = await bodi_json(request)
+    kaggle_user = str(body.get("kaggle_user") or "").strip()
+    ok = await asyncio.to_thread(svc_kaggle.hapus_akun_user, settings,
+                                 sess.user, kaggle_user)
+    return {"ok": True, "terhapus": ok, "akun": await asyncio.to_thread(
+        svc_kaggle.ringkas_akun_user, settings, sess.user)}
+
+
+@router.post("/api/latih/akun/utama")
+async def akun_utama(request: Request,
+                     sess: Session = Depends(current_session_api),
+                     settings: Settings = Depends(get_settings)):
+    body = await bodi_json(request)
+    kaggle_user = str(body.get("kaggle_user") or "").strip()
+    ok = await asyncio.to_thread(svc_kaggle.set_primer_user, settings,
+                                 sess.user, kaggle_user)
+    return {"ok": ok, "error": ("" if ok else "akun tak ditemukan"),
+            "akun": await asyncio.to_thread(
+                svc_kaggle.ringkas_akun_user, settings, sess.user)}
+
+
+@router.get("/api/latih/akun/semua")
+async def akun_semua(sess: Session = Depends(current_session_api),
+                     settings: Settings = Depends(get_settings)):
+    """MONITOR ADMIN: semua user HIGOLAB + akun Kaggle-nya (dimask) + status."""
+    try:
+        _wajib_admin(sess, settings)
+    except _Tolak as e:
+        return {"ok": False, "error": str(e)}
+    return {"ok": True, "semua": await asyncio.to_thread(
+        svc_kaggle.ringkas_semua_akun, settings)}
 
 
 @router.post("/api/latih/hapus")

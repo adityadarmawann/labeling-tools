@@ -26,6 +26,7 @@ suite tak pernah menyentuh Kaggle.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -33,8 +34,10 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import traceback
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -292,6 +295,326 @@ def ringkas_akun(settings) -> list[dict]:
             "habis": _akun_habis(basis, a["user"]),
         })
     return out
+
+
+# ============================================================
+# AKUN PER-USER (tiap user HIGOLAB punya akun Kaggle sendiri)
+# ============================================================
+#
+# Berbeda dari pool server lama (kaggle_akun_file, dipakai semua). Di sini tiap
+# user HIGOLAB menyimpan akun Kaggle MILIKNYA; training Kaggle-nya memakai akun
+# itu. Store: <uploads_root>/_kaggle/akun-user.json (di luar git, chmod 600):
+#   {"<user_higolab>": [{"user": "<kaggle>", "token"|"token_file": ..., "verified_at": ...}]}
+# Urutan daftar = prioritas (elemen[0] = utama). TIDAK jatuh ke pool server
+# supaya akun antar-user terisolasi. Token TAK PERNAH dikirim balik ke browser;
+# yang keluar hanya mask.
+
+def _mask_token(tok: str) -> str:
+    tok = str(tok or "")
+    return (tok[:9] + "\u2026") if len(tok) > 11 else "\u2026"
+
+
+def _bersih_token(teks: str, token: str) -> str:
+    """Buang token dari teks (mis. pesan galat) supaya tak pernah ter-log."""
+    return teks.replace(token, "<token>") if token else teks
+
+
+def _hash_token(tok: str) -> str:
+    return hashlib.sha256((tok or "").encode("utf-8")).hexdigest()
+
+
+def _akun_user_path(basis) -> Path:
+    return Path(basis) / "akun-user.json"
+
+
+def _baca_akun_user(basis) -> dict:
+    p = _akun_user_path(basis)
+    try:
+        d = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _tulis_akun_user(basis, data: dict) -> None:
+    """Tulis store akun per-user secara atomik + chmod 600 (berisi token)."""
+    p = _akun_user_path(basis)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(data, indent=1))
+    try:
+        os.chmod(tmp, 0o600)
+    except OSError:
+        pass
+    os.replace(tmp, p)
+    try:
+        os.chmod(p, 0o600)
+    except OSError:
+        pass
+
+
+def _spec_list_user(basis, u: str) -> list[dict]:
+    return [s for s in (_baca_akun_user(basis).get(u) or [])
+            if isinstance(s, dict) and str(s.get("user") or "").strip()]
+
+
+def akun_pool_user(settings, u: str) -> list[dict]:
+    """Akun [{user, token}] milik user HIGOLAB `u` (token diselesaikan), urut
+    prioritas (elemen[0] utama). Tak jatuh ke pool server -> isolasi antar-user."""
+    basis = basis_ledger(settings)
+    out, lihat = [], set()
+    for spec in _spec_list_user(basis, u):
+        user = str(spec.get("user") or "").strip()
+        tok = _token_dari_spec(spec)
+        if user and tok and user not in lihat:
+            lihat.add(user)
+            out.append({"user": user, "token": tok})
+    return out
+
+
+def paket_ada() -> bool:
+    """True kalau paket `kaggle` terpasang di venv server ini. Dipakai UI untuk
+    MENAWARKAN pengelolaan akun (tambah akun pertama) walau user belum punya akun
+    -> `siap_user` masih False, tapi panel akunnya tetap muncul."""
+    import importlib.util
+    return importlib.util.find_spec("kaggle") is not None
+
+
+def siap_user(settings, u: str) -> tuple[bool, str]:
+    """Backend Kaggle bisa dipakai oleh user `u` atau tidak, beserta alasan."""
+    if not paket_ada():
+        return False, "Paket 'kaggle' belum terpasang di venv server ini."
+    if not akun_pool_user(settings, u):
+        return False, ("Belum ada akun Kaggle. Tambah lewat '+ Tambah akun' di "
+                       "form training lalu tekan Test.")
+    return True, ""
+
+
+def ringkas_akun_user(settings, u: str) -> list[dict]:
+    """Status akun milik `u` TANPA token (hanya mask): user, pakai/sisa jam,
+    habis, utama (elemen[0]), token_mask, verified_at."""
+    basis = basis_ledger(settings)
+    led = _baca_ledger(basis)
+    spec = {s["user"]: s for s in _spec_list_user(basis, u)}
+    out = []
+    for i, a in enumerate(akun_pool_user(settings, u)):
+        pakai = round(_pakai_7hari(led, a["user"]), 1)
+        out.append({
+            "user": a["user"],
+            "pakai_jam": pakai,
+            "kuota_jam": KUOTA_MINGGU_JAM,
+            "sisa_jam": round(max(0.0, KUOTA_MINGGU_JAM - pakai), 1),
+            "habis": _akun_habis(basis, a["user"]),
+            "utama": i == 0,
+            "token_mask": _mask_token(a["token"]),
+            "verified_at": (spec.get(a["user"]) or {}).get("verified_at", ""),
+        })
+    return out
+
+
+def ringkas_semua_akun(settings) -> list[dict]:
+    """Untuk MONITOR ADMIN: tiap user HIGOLAB + akun Kaggle-nya (dimask) + status.
+    Token tak pernah ikut."""
+    basis = basis_ledger(settings)
+    d = _baca_akun_user(basis)
+    return [{"pemilik": u, "akun": ringkas_akun_user(settings, u)}
+            for u in sorted(d.keys()) if _spec_list_user(basis, u)]
+
+
+def tambah_akun_user(settings, u: str, kaggle_user: str, token: str) -> None:
+    """Simpan/segarkan akun Kaggle milik `u` (token INLINE, store chmod 600).
+    Dedup per kaggle_user; akun baru jadi UTAMA (ditaruh paling depan)."""
+    kaggle_user = str(kaggle_user or "").strip()
+    token = str(token or "").strip()
+    if not kaggle_user or not token:
+        raise ValueError("username Kaggle dan API token wajib diisi")
+    basis = basis_ledger(settings)
+    d = _baca_akun_user(basis)
+    sisa = [s for s in (d.get(u) or []) if isinstance(s, dict)
+            and str(s.get("user") or "").strip() != kaggle_user]
+    d[u] = [{"user": kaggle_user, "token": token, "verified_at": _sekarang()}] + sisa
+    _tulis_akun_user(basis, d)
+
+
+def hapus_akun_user(settings, u: str, kaggle_user: str) -> bool:
+    """Hapus satu akun Kaggle milik `u`. True kalau ada yang terhapus."""
+    kaggle_user = str(kaggle_user or "").strip()
+    basis = basis_ledger(settings)
+    d = _baca_akun_user(basis)
+    lama = d.get(u) or []
+    baru = [s for s in lama if isinstance(s, dict)
+            and str(s.get("user") or "").strip() != kaggle_user]
+    if len(baru) == len(lama):
+        return False
+    d[u] = baru
+    _tulis_akun_user(basis, d)
+    return True
+
+
+def set_primer_user(settings, u: str, kaggle_user: str) -> bool:
+    """Jadikan `kaggle_user` akun utama milik `u` (pindah ke depan)."""
+    kaggle_user = str(kaggle_user or "").strip()
+    basis = basis_ledger(settings)
+    d = _baca_akun_user(basis)
+    lst = d.get(u) or []
+    depan = [s for s in lst if isinstance(s, dict)
+             and str(s.get("user") or "").strip() == kaggle_user]
+    if not depan:
+        return False
+    sisa = [s for s in lst if isinstance(s, dict)
+            and str(s.get("user") or "").strip() != kaggle_user]
+    d[u] = depan + sisa
+    _tulis_akun_user(basis, d)
+    return True
+
+
+# ------------------------------------------------------------
+# VERIFIKASI "Test": dorong kernel uji KECIL GPU+internet ke akun, buktikan
+# akun benar-benar verified & bisa T4. Jalan async (thread) karena ~menit.
+# ------------------------------------------------------------
+
+_SKRIP_VERIF = (
+    "import sys\n"
+    "try:\n"
+    "    import torch; ng = torch.cuda.device_count()\n"
+    "except Exception as e:\n"
+    "    print('NO_TORCH', str(e)[:80], flush=True); ng = 0\n"
+    "print('N_GPU', ng, flush=True)\n"
+    "try:\n"
+    "    import urllib.request\n"
+    "    urllib.request.urlopen('https://pypi.org/simple/', timeout=20)\n"
+    "    print('INTERNET_OK', flush=True)\n"
+    "except Exception as e:\n"
+    "    print('INTERNET_FAIL', str(e)[:80], flush=True)\n"
+    "print('VERIF_DONE', flush=True)\n"
+)
+
+
+def verif_akun(kaggle_user: str, token: str, *, batas_detik: float = 360.0) -> tuple[bool, str]:
+    """Dorong kernel uji kecil GPU+internet ke akun, tunggu selesai, cek
+    N_GPU>=1, lalu HAPUS kernelnya. (True,'') kalau akun benar-benar bisa
+    T4+internet; (False, alasan) kalau tidak. Lewat seam _kg (tes mem-patch-nya),
+    jadi suite tak menyentuh jaringan. Pesan galat dibersihkan dari token."""
+    kaggle_user = str(kaggle_user or "").strip()
+    token = str(token or "").strip()
+    if not kaggle_user or not token:
+        return False, "username Kaggle / API token kosong"
+    slug = "higolab-verif-" + uuid.uuid4().hex[:10]
+    kid = f"{kaggle_user}/{slug}"
+    meta = {"id": kid, "title": slug[:50], "code_file": "main.py",
+            "language": "python", "kernel_type": "script", "is_private": True,
+            "enable_gpu": True, "enable_tpu": False, "enable_internet": True,
+            "keywords": [], "dataset_sources": [], "kernel_sources": [],
+            "competition_sources": [], "model_sources": []}
+    with tempfile.TemporaryDirectory() as tmp:
+        d = Path(tmp)
+        (d / "main.py").write_text(_SKRIP_VERIF)
+        (d / "kernel-metadata.json").write_text(json.dumps(meta))
+        rc, out = _kg(["kernels", "push", "-p", str(d)], token, timeout=300)
+    if rc != 0:
+        return False, _bersih_token(
+            "gagal mendorong kernel uji (cek username & API token benar): "
+            + out.strip()[-180:], token)
+    t0, hasil = time.time(), "timeout"
+    while time.time() - t0 < batas_detik:
+        _tidur(20)
+        low = _kg(["kernels", "status", kid], token, timeout=120)[1].lower()
+        if "complete" in low:
+            hasil = "complete"
+            break
+        if "error" in low or "cancel" in low:
+            hasil = "error"
+            break
+    teks = ""
+    with tempfile.TemporaryDirectory() as tmp:
+        _kg(["kernels", "output", kid, "-p", tmp], token, timeout=300)
+        for lg in list(Path(tmp).rglob("*.log")) + list(Path(tmp).rglob("*.txt")):
+            try:
+                teks += Path(lg).read_text(errors="replace")
+            except OSError:
+                pass
+    _kg(["kernels", "delete", kid, "-y"], token, timeout=120)   # bersih-bersih
+    ng = 0
+    for m in re.finditer(r"N_GPU\D{0,4}(\d+)", teks):
+        ng = max(ng, int(m.group(1)))
+    if hasil != "complete":
+        return False, ("kernel uji tak selesai (" + hasil + "). Akun mungkin "
+                       "belum 'verified' di Kaggle (GPU+internet butuh verifikasi "
+                       "nomor telepon).")
+    if ng < 1:
+        return False, ("kernel jalan tapi GPU tak terbaca. Pastikan akun sudah "
+                       "'verified' untuk GPU di Kaggle.")
+    return True, ""
+
+
+def _verif_dir(settings) -> Path:
+    return basis_ledger(settings) / "verif"
+
+
+def mulai_verif(settings, kaggle_user: str, token: str) -> str:
+    """Mulai job verifikasi di thread latar; kembalikan id. Token TAK ditulis ke
+    disk (hanya hash, untuk mencocokkan saat simpan) -> dilindungi."""
+    jid = uuid.uuid4().hex[:12]
+    vdir = _verif_dir(settings)
+    vdir.mkdir(parents=True, exist_ok=True)
+    jp = vdir / (jid + ".json")
+
+    def _tulis(obj):
+        tmp = jp.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(obj))
+        try:
+            os.chmod(tmp, 0o600)
+        except OSError:
+            pass
+        os.replace(tmp, jp)
+
+    _tulis({"keadaan": "pending", "kaggle_user": kaggle_user,
+            "tok_hash": _hash_token(token), "ts": time.time()})
+
+    def _jalan():
+        try:
+            ok, alasan = verif_akun(kaggle_user, token)
+        except Exception as e:                      # pragma: no cover
+            ok, alasan = False, _bersih_token(str(e)[:180], token)
+        _tulis({"keadaan": "berhasil" if ok else "gagal", "alasan": alasan,
+                "kaggle_user": kaggle_user, "tok_hash": _hash_token(token),
+                "ts": time.time()})
+
+    threading.Thread(target=_jalan, daemon=True).start()
+    return jid
+
+
+def status_verif(settings, jid: str) -> dict:
+    """Baca status job verifikasi (tanpa token/tok_hash yang keluar ke klien)."""
+    jid = re.sub(r"[^A-Za-z0-9]", "", str(jid or ""))[:32]
+    jp = _verif_dir(settings) / (jid + ".json")
+    try:
+        d = json.loads(jp.read_text())
+    except (OSError, ValueError):
+        return {"keadaan": "tak-ada"}
+    return {"keadaan": d.get("keadaan", "tak-ada"), "alasan": d.get("alasan", ""),
+            "kaggle_user": d.get("kaggle_user", "")}
+
+
+def verif_lolos(settings, kaggle_user: str, token: str, *, maks_umur: float = 3600.0) -> bool:
+    """True kalau ada job verifikasi BERHASIL baru-baru ini untuk (user, token)
+    ini -> syarat sebelum 'Simpan'. Mencocokkan hash token, bukan tokennya."""
+    kaggle_user = str(kaggle_user or "").strip()
+    th = _hash_token(token)
+    vdir = _verif_dir(settings)
+    if not vdir.exists():
+        return False
+    for jp in vdir.glob("*.json"):
+        try:
+            d = json.loads(jp.read_text())
+        except (OSError, ValueError):
+            continue
+        if (d.get("keadaan") == "berhasil"
+                and d.get("kaggle_user") == kaggle_user
+                and d.get("tok_hash") == th
+                and time.time() - float(d.get("ts") or 0) <= maks_umur):
+            return True
+    return False
 
 
 # ============================================================
@@ -821,6 +1144,30 @@ def _galat_kuota(teks: str) -> bool:
     return any(k in low for k in _KATA_KUOTA)
 
 
+def _token_untuk(settings, kaggle_user: str) -> str:
+    """Cari token untuk sebuah username KAGGLE, baik di pool server lama MAUPUN
+    di store per-user mana pun (username Kaggle unik lintas-user HIGOLAB)."""
+    kaggle_user = str(kaggle_user or "").strip()
+    if not kaggle_user:
+        return ""
+    for a in akun_pool(settings):
+        if a["user"] == kaggle_user:
+            return a["token"]
+    # Store per-user (butuh uploads_root). Best-effort: settings tanpa uploads_root
+    # (atau store tak terbaca) tak boleh menggagalkan pembatalan -> lewati saja.
+    try:
+        d = _baca_akun_user(basis_ledger(settings))
+    except Exception:                                # noqa: BLE001
+        return ""
+    for lst in d.values():
+        for spec in (lst or []):
+            if isinstance(spec, dict) and str(spec.get("user") or "").strip() == kaggle_user:
+                tok = _token_dari_spec(spec)
+                if tok:
+                    return tok
+    return ""
+
+
 def batalkan_remote(settings, kernel_id: str, akun_user: str) -> tuple[bool, str]:
     """Best-effort: HAPUS kernel yang sedang jalan di Kaggle supaya kuota GPU tak
     terus terpakai setelah orang menekan Hentikan. `kernels delete` terbukti
@@ -829,10 +1176,9 @@ def batalkan_remote(settings, kernel_id: str, akun_user: str) -> tuple[bool, str
     walau langkah ini gagal."""
     if not kernel_id or not akun_user:
         return False, "tak ada kernel/akun untuk dibatalkan"
-    tok = next((a["token"] for a in akun_pool(settings)
-                if a["user"] == akun_user), None)
+    tok = _token_untuk(settings, akun_user)
     if not tok:
-        return False, f"token akun {akun_user} tak tersedia di pool"
+        return False, f"token akun {akun_user} tak tersedia"
     try:
         rc, out = _kg(["kernels", "delete", kernel_id], tok, timeout=120,
                       masuk="yes\nyes\n")
@@ -977,10 +1323,16 @@ def main() -> int:
 
     from ..config import get_settings
     settings = get_settings()
-    pool = akun_pool(settings)
+    # Akun Kaggle milik PEMBUAT training (per-user): field `oleh` = user HIGOLAB
+    # yang meluncurkan. Rekaman lama tanpa `oleh` jatuh ke pool server lama ->
+    # training yang sudah berjalan tak terganggu.
+    pemilik = str(isi.get("oleh") or "").strip()
+    pool = akun_pool_user(settings, pemilik) if pemilik else akun_pool(settings)
     if not pool:
         latih.perbarui(ds, nomor, keadaan="gagal",
-                       galat="tidak ada akun Kaggle terkonfigurasi",
+                       galat=("akun Kaggle milik user ini belum ada — tambahkan "
+                              "lewat '+ Tambah akun' di form training"
+                              if pemilik else "tidak ada akun Kaggle terkonfigurasi"),
                        selesai_pada=_sekarang())
         return 1
     basis = basis_ledger(settings)          # ledger kuota GLOBAL, bukan per-projek
