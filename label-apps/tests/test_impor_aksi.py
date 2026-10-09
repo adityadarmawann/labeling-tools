@@ -11,12 +11,17 @@ Tak butuh ffmpeg/torch: importer hanya menyalin berkas + menulis metadata.
 """
 from __future__ import annotations
 
+import io
 import json
+import time
+import zipfile
 from pathlib import Path
 
 import pytest
 
 from app.services import impor_aksi, projek, tugas, versi
+from tests.conftest import PW_PAUL, masuk
+from tests.test_video_unggah import _buat_projek
 
 
 def _dataset(root: Path, train: dict[str, int], val: dict[str, int]) -> tuple[Path, Path]:
@@ -126,3 +131,76 @@ def test_rencana_laporkan_masalah_tanpa_menulis(tmp_path):
     assert rc["kelas"] == ["a"]                   # hanya a di dua split
     assert "stand" in rc["train_saja"]
     assert rc["jumlah"] == {"train": 2, "valid": 1}
+
+
+# ──────────────────────────────── temukan_dataset ─────────────────────────
+def test_temukan_dataset_bersarang_dan_alias_val(tmp_path):
+    # Zip membungkus satu folder atas; valid bernama 'valid'
+    base = tmp_path / "nest" / "v1"
+    for s in ("train", "valid"):
+        (base / s / "a").mkdir(parents=True)
+        (base / s / "a" / "a.mp4").write_bytes(b"x")
+    assert impor_aksi.temukan_dataset(tmp_path / "nest") == (base / "train", base / "valid")
+    # Datar di root, split validasi bernama 'val'
+    flat = tmp_path / "flat"
+    for s in ("train", "val"):
+        (flat / s / "a").mkdir(parents=True)
+        (flat / s / "a" / "a.mp4").write_bytes(b"x")
+    assert impor_aksi.temukan_dataset(flat) == (flat / "train", flat / "val")
+
+
+def test_temukan_dataset_tak_ketemu(tmp_path):
+    (tmp_path / "train" / "a").mkdir(parents=True)   # train saja, tanpa val
+    (tmp_path / "train" / "a" / "a.mp4").write_bytes(b"x")
+    assert impor_aksi.temukan_dataset(tmp_path) is None
+
+
+# ──────────────────────────────── rute .zip (HTTP) ────────────────────────
+def _zip_dataset(train: dict[str, int], val: dict[str, int], atas: str = "ds") -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for split, counts in (("train", train), ("valid", val)):
+            for k, n in counts.items():
+                for i in range(n):
+                    z.writestr(f"{atas}/{split}/{k}/{k}_x{i}.mp4", b"x")
+    return buf.getvalue()
+
+
+def _poll_impor(klien, ds, maks=200):
+    k = {}
+    for _ in range(maks):
+        k = klien.get(f"/api/aksi/impor/kemajuan?ds={ds}").json()
+        if k.get("selesai") or k.get("galat"):
+            break
+        time.sleep(0.05)
+    return k
+
+
+def test_rute_impor_zip_bangun_versi(klien, lingkungan):
+    masuk(klien, "paul", PW_PAUL)
+    _buat_projek(klien, "aksi-imp", "video")
+    data = _zip_dataset({"shoot": 2, "pass": 2}, {"shoot": 1, "pass": 1})
+
+    r = klien.post("/api/aksi/impor?ds=aksi-imp", content=data).json()
+    assert r.get("ok") and r.get("mulai"), r
+    k = _poll_impor(klien, "aksi-imp")
+    assert k.get("selesai") and not k.get("galat"), k
+    assert k.get("nomor") == 1
+
+    proj = lingkungan["ruang"] / "aksi-imp"
+    vd = proj / ".versi" / "v1"
+    assert (vd / "aksi.yaml").is_file()
+    assert len(list((vd / "train" / "shoot").glob("*.mp4"))) == 2
+    assert len(list((vd / "valid" / "pass").glob("*.mp4"))) == 1
+    assert not (proj / "_impor_tmp").exists()        # staging + zip dibersihkan
+    aksi = [v for v in versi.daftar(proj)
+            if (v.get("hasil") or {}).get("jenis") == "aksi"]
+    assert len(aksi) == 1 and aksi[0]["kelas"] == 2
+
+
+def test_rute_impor_tolak_projek_image(klien, lingkungan):
+    masuk(klien, "paul", PW_PAUL)
+    _buat_projek(klien, "img-imp", "image")
+    data = _zip_dataset({"a": 2, "b": 2}, {"a": 1, "b": 1})
+    r = klien.post("/api/aksi/impor?ds=img-imp", content=data).json()
+    assert r.get("ok") is False, r

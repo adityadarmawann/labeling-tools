@@ -62,6 +62,16 @@
       <button class="chip ak-batal-versi" type="button" id="ak-batal-versi" hidden
               title="Hentikan pembuatan versi">Hentikan</button>
       <p class="halus ak-versi-maju" id="ak-versi-maju" hidden></p>
+
+      {#- Impor dataset klip JADI (.zip): train/ + val|valid/ folder-per-kelas
+          yang sudah di-split + augmentasi DI LUAR HIGOLAB. Dibongkar lalu
+          didaftarkan apa adanya sebagai versi, tanpa proses ulang. Kelas auto
+          (yang ada di train & val). Unggah .zip lebih aman daripada path mentah. -#}
+      <label class="chip aksi ak-impor-lbl" id="ak-impor-lbl"
+             title="Impor .zip berisi train/ + val/ (folder per kelas) sebagai versi siap-latih">
+        Impor dataset (.zip)
+        <input type="file" id="ak-impor-file" accept=".zip,application/zip" hidden></label>
+      <p class="halus ak-impor-maju" id="ak-impor-maju" hidden></p>
       {% endif %}
 
       {#- Versi terlatih: unduhan arsip klip (folder per kelas, train/valid).

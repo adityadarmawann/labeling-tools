@@ -14,6 +14,8 @@ kemajuan beruntun) menyusul di Langkah berikutnya. Yang dijaga sekarang: izin
 from __future__ import annotations
 
 import asyncio
+import logging
+import shutil
 import threading
 from pathlib import Path
 
@@ -24,11 +26,13 @@ from ..config import (KLIP, KLIP_BURUK, KLIP_DITOLAK, SUMBER_VIDEO, VIDEO_EXT,
                       Settings, get_settings)
 from ..deps import bodi_json, current_session, current_session_api
 from ..security import safe_relpath, safe_slug
-from ..services import (eval_aksi, export, klip, klip_filter, klip_olah,
-                        klip_scan, klip_tag, latih_aksi, projek, tugas, versi,
-                        video_ingest)
+from ..services import (arsip, eval_aksi, export, impor_aksi, klip,
+                        klip_filter, klip_olah, klip_scan, klip_tag, latih_aksi,
+                        projek, tugas, versi, video_ingest)
 from ..session import Session
 from ..templating import templates
+
+log = logging.getLogger("labelapp.video")
 
 router = APIRouter(tags=["video"])
 
@@ -678,6 +682,116 @@ async def aksi_versi_batal(ds: str = "",
     dibuang oleh pekerjaannya sendiri)."""
     klip_olah.minta_batal(_kunci_versi_aksi(sess.user, ds))
     return {"ok": True}
+
+
+# ============================================================
+# IMPOR dataset klip JADI (.zip) -> versi siap-latih
+# ============================================================
+# Kadang klip sudah dipotong+dilabeli+di-split+di-augmentasi DI LUAR HIGOLAB.
+# Alih-alih menempel path server mentah (rawan), user mengunggah .zip berisi
+# train/ + val|valid/ folder-per-kelas; dibongkar (arsip.bongkar, berbatas
+# byte/entri) lalu didaftarkan apa adanya sebagai satu versi (impor_aksi) tanpa
+# proses ulang. Digerbang seperti build versi: pemilik/Editor + projek video.
+
+
+def _kunci_impor_aksi(user: str, ds: str) -> str:
+    return f"aksi-impor:{user}:{ds}"
+
+
+def _impor_zip_kerja(d: Path, zpath: Path, tmp_dir: Path, kunci: str, oleh: str,
+                     kelas, negatif: str, maks_byte: int, maks_entri: int) -> None:
+    """Bongkar zip di thread latar -> temukan train/val -> daftarkan versi.
+    Kemajuan & galat ditulis ke _maju lewat `kunci` (dipoll peramban)."""
+    try:
+        staging = tmp_dir / "isi"
+        shutil.rmtree(staging, ignore_errors=True)
+        staging.mkdir(parents=True, exist_ok=True)
+        arsip.bongkar(zpath, staging, maks_byte=maks_byte, maks_entri=maks_entri,
+                      video=True)
+        pair = impor_aksi.temukan_dataset(staging)
+        if pair is None:
+            raise impor_aksi.ImporTolak(
+                "zip tak berisi folder train/ + val|valid/ berisi subfolder "
+                "kelas .mp4")
+        tr, va = pair
+        klip_olah.catat_maju(kunci, jalan=True, persen=45,
+                             fase_nama="Menyalin + mendaftarkan versi")
+        r = impor_aksi.impor(d, tr, va, oleh=oleh, kelas=kelas, negatif=negatif)
+        klip_olah.catat_maju(kunci, jalan=False, selesai=True,
+                             nomor=r["nomor"], ringkas=r)
+    except (impor_aksi.ImporTolak, arsip.ArsipTolak) as e:
+        klip_olah.catat_maju(kunci, jalan=False, galat=str(e)[:200])
+    except Exception as e:                           # noqa: BLE001
+        log.exception("impor aksi zip gagal")
+        klip_olah.catat_maju(kunci, jalan=False, galat=str(e)[:200])
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)   # buang zip + staging
+
+
+@router.post("/api/aksi/impor")
+async def aksi_impor(request: Request, ds: str = "", kelas: str = "",
+                     negatif: str = "",
+                     sess: Session = Depends(current_session_api),
+                     settings: Settings = Depends(get_settings)):
+    """Impor dataset klip jadi dari unggahan .zip sebagai versi siap-latih.
+
+    Body = berkas .zip (dialirkan langsung ke disk, tak ditahan di memori).
+    `kelas` (csv) opsional override; kosong = auto (kelas yang ada di train &
+    val). Digerbang pemilik/Editor + video (_projek_video). Zip dibongkar +
+    diimpor di thread latar; kemajuan di-poll lewat /api/aksi/impor/kemajuan."""
+    d, err = _projek_video(sess, settings, ds)
+    if err:
+        return {"ok": False, "error": err}
+    kunci = _kunci_impor_aksi(sess.user, ds)
+    if klip_olah.kemajuan(kunci).get("jalan"):
+        return {"ok": False, "error": "masih ada impor yang berjalan"}
+
+    tmp_dir = d / "_impor_tmp"
+    shutil.rmtree(tmp_dir, ignore_errors=True)
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    zpath = tmp_dir / "impor.zip"
+    maks = settings.max_zip_bytes
+    size = 0
+    try:
+        with open(zpath, "wb") as f:
+            async for chunk in request.stream():
+                size += len(chunk)
+                if size > maks:
+                    shutil.rmtree(tmp_dir, ignore_errors=True)
+                    return {"ok": False, "error": (
+                        f"arsip terlalu besar (maks {settings.max_zip_mb} MB)")}
+                f.write(chunk)
+    except Exception:                                # noqa: BLE001
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        raise
+    if size == 0:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        return {"ok": False, "error": "tak ada data terkirim"}
+
+    oleh = sess.user
+    kl = [k.strip() for k in kelas.split(",") if k.strip()] or None
+    neg = negatif.strip()
+    maks_byte = settings.max_zip_bytes * settings.zip_ratio_max
+    maks_entri = settings.zip_entries_max
+
+    def _kerja():
+        _impor_zip_kerja(d, zpath, tmp_dir, kunci, oleh, kl, neg,
+                         maks_byte, maks_entri)
+
+    klip_olah.bersihkan_maju(kunci)
+    klip_olah.catat_maju(kunci, jalan=True, persen=10,
+                         fase_nama="Membongkar arsip")
+    threading.Thread(target=_kerja, daemon=True).start()
+    return {"ok": True, "mulai": True}
+
+
+@router.get("/api/aksi/impor/kemajuan")
+async def aksi_impor_kemajuan(ds: str = "",
+                              sess: Session = Depends(current_session_api),
+                              settings: Settings = Depends(get_settings)):
+    """Kemajuan impor .zip untuk projek ini (polling). Kunci diturunkan dari
+    user+ds di server, jadi hanya impor sendiri yang terlihat."""
+    return {"ok": True, **klip_olah.kemajuan(_kunci_impor_aksi(sess.user, ds))}
 
 
 # ============================================================

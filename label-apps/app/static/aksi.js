@@ -299,6 +299,57 @@ if (btnVersi) {
   });
 }
 
+// -- impor dataset klip jadi (.zip) (pemilik/Editor) ------------------------
+// Unggah .zip berisi train/ + val|valid/ folder-per-kelas; server membongkar +
+// mendaftarkannya sebagai versi tanpa proses ulang. POST mengunggah + memulai;
+// kemajuan (bongkar + salin) di-poll seperti build versi. Elemen cuma ada untuk
+// pemilik/Editor (dirender bersyarat di aksi.html), jadi bisa saja tak ada.
+const impFile = el('ak-impor-file');
+if (impFile) {
+  const impMaju = el('ak-impor-maju');
+  let impPoll = null;
+
+  function impTampil(k) {
+    impMaju.hidden = false;
+    if (k.galat) { impMaju.textContent = 'Gagal: ' + k.galat; return; }
+    if (k.selesai) { impMaju.textContent = `Versi v${k.nomor || ''} selesai.`; return; }
+    const p = (k.persen != null) ? ` ${k.persen}%` : '';
+    impMaju.textContent = (k.fase_nama || 'Memproses') + p;
+  }
+
+  async function impPantau() {
+    const k = await send(`/api/aksi/impor/kemajuan?ds=${EDS}`);
+    if (!k || !k.ok) return;
+    impTampil(k);
+    if (k.selesai || k.galat) {
+      if (impPoll) { clearInterval(impPoll); impPoll = null; }
+      if (k.selesai && k.nomor && !versiData.some(v => v.nomor === k.nomor)) {
+        const rk = k.ringkas || {};
+        versiData.unshift({ nomor: k.nomor, n: rk.n || 0,
+          kelas: rk.kelas || 0, jumlah: rk.jumlah || {} });
+        renderVersi();
+        toast(`Versi v${k.nomor} diimpor`);
+      }
+    }
+  }
+
+  impFile.addEventListener('change', async () => {
+    const f = impFile.files && impFile.files[0];
+    if (!f) return;
+    impMaju.hidden = false;
+    impMaju.textContent = `Mengunggah ${(f.size / 1048576).toFixed(0)} MB…`;
+    const r = await send(`/api/aksi/impor?ds=${EDS}`, { method: 'POST', body: f });
+    impFile.value = '';     // boleh pilih berkas yang sama lagi nanti
+    if (!r || !r.ok) {
+      impMaju.textContent = (r && r.error) ? r.error : 'gagal';
+      toast((r && r.error) || 'gagal impor');
+      return;
+    }
+    impPoll = setInterval(impPantau, 1000);
+    impPantau();
+  });
+}
+
 // -- latih model (Langkah 9, pemilik/Editor) --------------------------------
 // Pemilih backend hanya menawarkan yang pustakanya terpasang (siap_latih_aksi).
 // POST hanya memulai; kemajuan + daftar run di-poll dari server (status dibaca

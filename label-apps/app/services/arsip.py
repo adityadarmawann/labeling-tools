@@ -31,12 +31,13 @@ def _didalam(anak: Path, induk: Path) -> bool:
 
 
 def bongkar(zip_path: Path, tujuan: Path, *, maks_byte: int,
-            maks_entri: int = 200_000) -> dict:
+            maks_entri: int = 200_000, video: bool = False) -> dict:
     """
     Bongkar `zip_path` ke dalam `tujuan`. -> ringkasan dict.
 
     Yang DILEWATI tanpa menggagalkan seluruh proses: folder, berkas berekstensi
-    di luar daftar (termasuk .zip di dalam .zip), dan nama yang memuat `..`.
+    di luar daftar (ekstensi gambar; bila `video=True` ekstensi video juga
+    diterima, mis. impor dataset klip aksi), dan nama yang memuat `..`.
     Yang MENGGAGALKAN: arsip rusak, jumlah entri berlebihan, atau total isi
     melebihi `maks_byte` — dua terakhir adalah tanda zip bomb.
 
@@ -73,7 +74,7 @@ def bongkar(zip_path: Path, tujuan: Path, *, maks_byte: int,
         for info in entri:
             if info.is_dir():
                 continue
-            rel = safe_relpath(info.filename)
+            rel = safe_relpath(info.filename, video=video)
             if not rel:
                 dilewati += 1
                 if len(contoh_dilewati) < 5:

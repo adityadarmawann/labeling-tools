@@ -103,6 +103,28 @@ def rencana(train_dir: Path, val_dir: Path, kelas: list[str] | None = None) -> d
             "val_saja": sorted(set(k_val) - set(k_train)), "masalah": masalah}
 
 
+def temukan_dataset(root: Path) -> tuple[Path, Path] | None:
+    """Di dalam folder hasil ekstrak .zip, temukan pasangan (train, val|valid)
+    yang masing-masing berisi subfolder kelas ber-*.mp4.
+
+    Zip sering membungkus satu folder atas (mis. 'v2.1-dan-spacejam-aug/train'),
+    jadi dicari di root dan sampai kedalaman wajar (3 tingkat). Pasangan pertama
+    yang sah dikembalikan."""
+    root = Path(root)
+    kandidat = [root]
+    for p in sorted(root.rglob("*")):
+        if p.is_dir() and len(p.relative_to(root).parts) <= 3:
+            kandidat.append(p)
+    for base in kandidat:
+        tr = base / "train"
+        va = next((base / n for n in ("valid", "val") if (base / n).is_dir()),
+                  None)
+        if (tr.is_dir() and va is not None
+                and _kelas_folder(tr) and _kelas_folder(va)):
+            return tr, va
+    return None
+
+
 # ──────────────────────────────── impor ───────────────────────────────────
 def impor(ds: Path, train_dir: Path, val_dir: Path, *, oleh: str,
           kelas: list[str] | None = None, negatif: str = "",
