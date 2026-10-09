@@ -96,14 +96,21 @@ def test_skrip_rfdetr_resume_stop_dan_epoch_global():
 
 
 def test_skrip_rfdetr_saklar_multigpu():
-    """Saklar 2-GPU (T4x2): nyala -> skrip pakai devices + ddp_spawn + bagi
-    grad_accum (batch efektif tetap 16); default MATI -> jalur 1-GPU terbukti."""
+    """Saklar 2-GPU (T4x2): nyala -> skrip pakai devices + strategy "ddp"
+    (launcher subprocess Lightning, BUKAN spawn) + guard __main__ + bagi
+    grad_accum (batch efektif tetap 16); default MATI -> jalur 1-GPU terbukti.
+    Guard WAJIB: launcher DDP menjalankan ulang skrip per rank, tanpa guard tiap
+    worker mengulang seluruh skrip (rekursi). Terbukti di smoke akun 058: spawn
+    gagal 'guards the main', "ddp"+guard jalan bersih 2xT4."""
     on = k.skrip_rfdetr("small", {"epochs": 5}, run="r", multigpu=True)
     assert "MULTIGPU = True" in on
-    assert "ddp_spawn" in on and 'kw["devices"] = NG' in on
-    assert "// NG" in on                          # grad_accum dibagi jumlah GPU
+    assert 'kw["strategy"] = "ddp"' in on and 'kw["devices"] = NG' in on
+    assert 'kw["strategy"] = "ddp_spawn"' not in on   # spawn gagal di kernel Kaggle
+    assert 'if __name__ == "__main__":' in on         # guard pelindung rekursi DDP
+    assert "// NG" in on                              # grad_accum dibagi jumlah GPU
     off = k.skrip_rfdetr("small", {"epochs": 5}, run="r")
-    assert "MULTIGPU = False" in off              # bawaan: mati
+    assert "MULTIGPU = False" in off                  # bawaan: mati
+    assert 'if __name__ == "__main__":' in off        # guard ada juga di 1-GPU (aman)
 
 
 # ============================================================

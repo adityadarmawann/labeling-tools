@@ -497,14 +497,18 @@ if RESUME:
     if ck:
         kw["resume"] = ck[0]; print("RESUME_DARI", ck[0], flush=True)
 # 2-GPU (T4 x2) OPSIONAL — DEFAULT MATI. Kalau dinyalakan DAN ada >=2 GPU:
-# DDP spawn (aman di kernel Kaggle yang dijalankan sebagai notebook), dan
-# grad_accum DIBAGI jumlah GPU supaya batch efektif (batch x n_gpu x accum)
-# TETAP 16 sesuai resep Roboflow. Mati -> jalur 1-GPU yang sudah terbukti.
+# DDP lewat launcher SUBPROCESS Lightning (strategy "ddp"): skrip dijalankan
+# ULANG sekali per rank, bukan spawn. rfdetr MENULIS-ULANG "ddp_spawn"/
+# "ddp_notebook" jadi spawn, dan spawn di kernel Kaggle menuntut guard __main__
+# lalu tetap rekursif (worker mengulang seluruh skrip) -> gagal. "ddp" lolos
+# murni ke launcher subprocess; terbukti di smoke akun 058: 2xT4 jalan paralel,
+# TANPA rekursi, checkpoint+metrics tertulis. grad_accum DIBAGI jumlah GPU supaya
+# batch efektif (batch x n_gpu x accum) TETAP 16. Mati -> jalur 1-GPU terbukti.
 MULTIGPU = __MULTIGPU__
 if MULTIGPU and torch.cuda.device_count() >= 2:
     NG = torch.cuda.device_count()
     kw["devices"] = NG
-    kw["strategy"] = "ddp_spawn"
+    kw["strategy"] = "ddp"
     ga = int(kw.get("grad_accum_steps", 1))
     kw["grad_accum_steps"] = max(1, ga // NG)
     print("MULTI_GPU AKTIF", NG, "GPU · grad_accum", ga, "->", kw["grad_accum_steps"],
@@ -512,23 +516,33 @@ if MULTIGPU and torch.cuda.device_count() >= 2:
 else:
     print("MULTI_GPU nonaktif — 1 GPU", flush=True)
 print("MODEL", MODEL, "res", res, "epochs", kw["epochs"], "resume", RESUME, flush=True)
-Model(resolution=res).train(**kw)
-# Epoch KUMULATIF global dari metrics.csv (CSVLogger PTL melanjutkan penomoran
-# epoch lintas-resume), supaya orkestrator tahu sudah berapa epoch keseluruhan.
-mc = sorted(glob.glob(OUT + "/**/metrics.csv", recursive=True), key=len)
-gmax = -1
-if mc:
-    for row in csv.DictReader(open(mc[0])):
-        e = row.get("epoch")
-        if e not in (None, ""):
-            try: gmax = max(gmax, int(float(e)))
-            except ValueError: pass
-best = (glob.glob(OUT + "/**/checkpoint_best_total.pth", recursive=True)
-        or glob.glob(OUT + "/**/*best*.pth", recursive=True) or glob.glob(OUT + "/**/*.pth", recursive=True))
-last = glob.glob(OUT + "/**/last.ckpt", recursive=True)
-print("EPOCH_GLOBAL", gmax + 1, flush=True)
-print("LAST_CKPT", bool(last), flush=True)
-print("BEST_EXISTS", bool(best), (os.path.getsize(best[0]) if best else 0), flush=True)
+# GUARD __main__ WAJIB: launcher DDP subprocess menjalankan ULANG skrip ini untuk
+# rank>0, jadi .train() harus di dalam guard. Tanpa guard tiap worker mengulang
+# seluruh skrip (pip, dataset, train) -> rekursi. Di 1-GPU guard selalu True
+# (satu proses), jadi jalur terbukti itu tak berubah.
+if __name__ == "__main__":
+    Model(resolution=res).train(**kw)
+    # Pasca-latih HANYA di rank 0: di DDP rank>0 ikut berlatih tapi tak perlu
+    # melapor, dan checkpoint ditulis rank 0 ke OUT yang sama. LOCAL_RANK tak ada
+    # di 1-GPU -> dianggap 0 -> tetap melapor seperti biasa.
+    if int((os.environ.get("LOCAL_RANK") or os.environ.get("RANK") or "0")) == 0:
+        # Epoch KUMULATIF global dari metrics.csv (CSVLogger PTL melanjutkan
+        # penomoran epoch lintas-resume), supaya orkestrator tahu sudah berapa
+        # epoch keseluruhan.
+        mc = sorted(glob.glob(OUT + "/**/metrics.csv", recursive=True), key=len)
+        gmax = -1
+        if mc:
+            for row in csv.DictReader(open(mc[0])):
+                e = row.get("epoch")
+                if e not in (None, ""):
+                    try: gmax = max(gmax, int(float(e)))
+                    except ValueError: pass
+        best = (glob.glob(OUT + "/**/checkpoint_best_total.pth", recursive=True)
+                or glob.glob(OUT + "/**/*best*.pth", recursive=True) or glob.glob(OUT + "/**/*.pth", recursive=True))
+        last = glob.glob(OUT + "/**/last.ckpt", recursive=True)
+        print("EPOCH_GLOBAL", gmax + 1, flush=True)
+        print("LAST_CKPT", bool(last), flush=True)
+        print("BEST_EXISTS", bool(best), (os.path.getsize(best[0]) if best else 0), flush=True)
 '''
 
 
@@ -536,8 +550,9 @@ def skrip_rfdetr(model: str, par: dict, *, run: str, resume: bool = False,
                  batas_jam: float = BATAS_JAM, multigpu: bool = False) -> str:
     """Rakit skrip kernel RF-DETR. Murni -> diuji tanpa jaringan.
 
-    multigpu=True -> pakai SEMUA GPU (T4 x2) lewat DDP spawn, grad_accum dibagi
-    jumlah GPU agar batch efektif tetap 16. Default False (1-GPU terbukti)."""
+    multigpu=True -> pakai SEMUA GPU (T4 x2) lewat DDP (launcher subprocess
+    Lightning, strategy "ddp" + guard __main__), grad_accum dibagi jumlah GPU
+    agar batch efektif tetap 16. Default False (1-GPU terbukti)."""
     return (_SKRIP_RFDETR
             .replace("__PAR_JSON__", json.dumps(par))
             .replace("__MODEL__", str(model))
