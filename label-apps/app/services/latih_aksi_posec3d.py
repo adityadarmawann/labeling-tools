@@ -26,7 +26,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import latih, latih_aksi_umum as U
+from . import latih as svc_latih, latih_aksi_umum as U
 from . import posec3d_model as P
 
 CFG = dict(P.KONFIG)
@@ -228,9 +228,12 @@ def _proses_klip(path, label_idx, m_pose, m_objek, device, pakai_bola):
 
 
 def _cari_model(nama_kandidat: list[str]) -> str | None:
-    """Cari berkas .pt pertama yang cocok di latih.dir_bobot(). None kalau tak
-    ada (pemanggil memutuskan: unduh via ultralytics, atau matikan fiturnya)."""
-    for d in latih.dir_bobot():
+    """Cari berkas .pt pertama yang cocok di svc_latih.dir_bobot(). None kalau tak
+    ada (pemanggil memutuskan: unduh via ultralytics, atau matikan fiturnya).
+
+    Dialias svc_latih (bukan `latih`) karena fungsi entri trainer di berkas ini
+    juga bernama `latih` dan akan membayangi impor modulnya di global."""
+    for d in svc_latih.dir_bobot():
         for nama in nama_kandidat:
             p = Path(d) / nama
             if p.is_file():
@@ -333,7 +336,7 @@ def latih(*, versi_dir: Path, run_dir: Path, par: dict, progres, device: str,
             if not m.any():
                 return koor, conf
             cx = koor[..., 0][m].mean(); cy = koor[..., 1][m].mean()
-            rentang = max(koor[..., 0][m].ptp(), koor[..., 1][m].ptp(), 1.0)
+            rentang = max(np.ptp(koor[..., 0][m]), np.ptp(koor[..., 1][m]), 1.0)
             if random.random() < CFG["aug_flip"]:
                 koor[..., 0] = 2 * cx - koor[..., 0]
                 for a, b in _PASANGAN_LR:
@@ -382,9 +385,13 @@ def latih(*, versi_dir: Path, run_dir: Path, par: dict, progres, device: str,
                                    label_smoothing=CFG["label_smoothing"])
     optim = torch.optim.AdamW(model.parameters(), lr=lr,
                               weight_decay=CFG["weight_decay"])
+    # epochs boleh 1..1000 (latih_aksi.PAR). Kalau epochs <= warmup_epoch,
+    # warmup/epochs bisa >= 1 dan OneCycleLR menolak pct_start di luar (0,1) —
+    # batasi <= 0,5 supaya run pendek (uji cepat) tak gagal keras.
+    pct_start = min(0.5, CFG["warmup_epoch"] / max(epochs, 1))
     sched = torch.optim.lr_scheduler.OneCycleLR(
         optim, max_lr=lr, epochs=epochs, steps_per_epoch=max(len(dl_tr), 1),
-        pct_start=CFG["warmup_epoch"] / max(epochs, 1))
+        pct_start=pct_start)
     scaler = torch.amp.GradScaler("cuda") if dev == "cuda" else None
 
     def akurasi_rata_kelas(benar, pred):
