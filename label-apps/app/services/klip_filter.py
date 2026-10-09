@@ -456,7 +456,7 @@ def _siapkan_yolo(konfig: dict) -> tuple[object, list[int], dict]:
     if path is None:
         raise FilterTolak(
             f"model objek '{konfig['model']}' tidak ditemukan di direktori "
-            "bobot — taruh berkas .pt-nya di sana atau pakai metode warna")
+            "bobot. Taruh berkas .pt-nya di sana atau pakai metode warna")
     try:
         model = _muat_yolo(path)
     except Exception as e:                        # noqa: BLE001

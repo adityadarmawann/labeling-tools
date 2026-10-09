@@ -256,7 +256,7 @@
         if (nVideo) apa.push(`${nVideo} video`);
         kosong.innerHTML =
           `<b>${apa.join(' dan ')} siap diunggah</b>`
-          + 'Arsip dan video tak perlu pratinjau — isinya dibongkar/diekstrak '
+          + 'Arsip dan video tak perlu pratinjau. Isinya dibongkar/diekstrak '
           + 'di server. Klik <b>“Simpan dan lanjutkan &rarr;”</b> di atas, lalu '
           + '<b>Unggah</b>, untuk memprosesnya.';
       } else {
@@ -549,10 +549,10 @@
         + (videoGagal ? `, ${videoGagal} video gagal` : '')
       : (videoGagal ? ` · ${videoGagal} video gagal diekstrak` : '');
     const pesan = gagal
-      ? `Selesai — ${(berhasil.size).toLocaleString('id-ID')} terkirim, `
+      ? `Selesai, ${(berhasil.size).toLocaleString('id-ID')} terkirim, `
         + `${gagal} gagal · ${nTotal.toLocaleString('id-ID')} gambar di dataset`
         + ekstra
-      : `Selesai — ${nTotal.toLocaleString('id-ID')} gambar di dataset` + ekstra;
+      : `Selesai, ${nTotal.toLocaleString('id-ID')} gambar di dataset` + ekstra;
     pr.selesai(pesan);
     $('ug-batal').hidden = true;
     $('ug-coba-lagi').hidden = true;
@@ -568,13 +568,13 @@
     if (totalMasuk > 0 && sisaMentah === 0) {
       lanjut.href = '/versi?ds=' + encodeURIComponent(PROJEK);
       lanjut.textContent = 'Buat versi →';
-      ket.textContent = `${totalMasuk.toLocaleString('id-ID')} gambar sudah berlabel — `
+      ket.textContent = `${totalMasuk.toLocaleString('id-ID')} gambar sudah berlabel, `
         + 'otomatis masuk dataset. Berikutnya: buat Versi lalu latih model.';
     } else if (totalMasuk > 0) {
       lanjut.href = '/bagi?ds=' + encodeURIComponent(PROJEK);
       lanjut.textContent = 'Bagi tugas →';
       ket.textContent = `${totalMasuk.toLocaleString('id-ID')} gambar berlabel otomatis masuk dataset; `
-        + `${sisaMentah.toLocaleString('id-ID')} gambar belum berlabel — bagi ke pelabel dulu.`;
+        + `${sisaMentah.toLocaleString('id-ID')} gambar belum berlabel, bagi ke pelabel dulu.`;
     } else {
       lanjut.href = '/bagi?ds=' + encodeURIComponent(PROJEK);
       lanjut.textContent = 'Bagi tugas →';
@@ -731,9 +731,9 @@
     const segPreset = $('ug-preset');
     if (segPreset) {
       const HINT = {
-        jarang: 'Jarang — paling sedikit frame (video 1 mnt ≈ 30 gambar).',
-        sedang: 'Sedang — seimbang (video 1 mnt ≈ 60 gambar).',
-        rapat: 'Rapat — paling rapat (video 1 mnt ≈ 100 gambar).',
+        jarang: 'Jarang, paling sedikit frame (video 1 mnt ≈ 30 gambar).',
+        sedang: 'Sedang, seimbang (video 1 mnt ≈ 60 gambar).',
+        rapat: 'Rapat, paling rapat (video 1 mnt ≈ 100 gambar).',
       };
       const tandaiPreset = () => {
         const c = segPreset.querySelector('input:checked');

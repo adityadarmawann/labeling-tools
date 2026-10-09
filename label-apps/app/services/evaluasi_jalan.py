@@ -69,7 +69,7 @@ def main() -> int:
     bobot = latih.dir_latih(ds, nomor) / "weights" / "best.pt"
     if not bobot.exists():
         _tulis(ds, nomor, {"keadaan": "gagal", "galat":
-                           "best.pt belum ada — trainingnya belum selesai"})
+                           "best.pt belum ada. Trainingnya belum selesai"})
         return 1
 
     _tulis(ds, nomor, {"keadaan": "jalan",
@@ -82,8 +82,8 @@ def main() -> int:
         files = ev.foto_uji(ds, versi)
         if not files:
             _tulis(ds, nomor, {"keadaan": "gagal", "galat":
-                               f"versi v{versi} tidak punya split test — "
-                               "tidak ada foto yang bisa diuji"})
+                               f"versi v{versi} tidak punya split test. "
+                               "Tidak ada foto yang bisa diuji"})
             return 1
 
         model = YOLO(str(bobot))

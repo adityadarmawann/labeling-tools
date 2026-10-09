@@ -58,8 +58,8 @@
             menukar seluruh isian parameter di bawah. -#}
         <label class="tr-label" id="tr-arsitektur-bungkus" hidden>Arsitektur
           <select id="tr-arsitektur">
-            <option value="yolo">YOLO — cepat, serbaguna (bawaan)</option>
-            <option value="rfdetr">RF-DETR — transformer, unggul objek kecil</option>
+            <option value="yolo">YOLO, cepat, serbaguna (bawaan)</option>
+            <option value="rfdetr">RF-DETR, transformer, unggul objek kecil</option>
           </select>
           <span class="tr-bantu" id="tr-arsitektur-ket"></span>
         </label>
@@ -68,10 +68,10 @@
             muncul saat Arsitektur = RF-DETR. -#}
         <label class="tr-label" id="tr-rfdetr-model-bungkus" hidden>Ukuran model RF-DETR
           <select id="tr-rfdetr-model">
-            <option value="nano">Nano — paling ringan/cepat</option>
+            <option value="nano">Nano, paling ringan/cepat</option>
             <option value="small">Small</option>
             <option value="medium">Medium</option>
-            <option value="large">Large — paling akurat/berat</option>
+            <option value="large">Large, paling akurat/berat</option>
           </select>
         </label>
 
@@ -80,7 +80,7 @@
             dimatikan secara bawaan — jalur 1-GPU sudah terbukti. -#}
         <label class="tr-label tr-cek" id="tr-rfdetr-multigpu-bungkus" hidden>
           <input type="checkbox" id="tr-rfdetr-multigpu">
-          Pakai 2 GPU (Kaggle T4&times;2) — eksperimental
+          Pakai 2 GPU (Kaggle T4&times;2), eksperimental
           <span class="tr-bantu">Memakai kedua T4 sekaligus (lebih cepat). Belum
             diuji end-to-end; kalau ragu, biarkan mati.</span>
         </label>
@@ -101,8 +101,8 @@
             bisa di-offload ke GPU Kaggle, berbarengan dengan training lokal. -#}
         <label class="tr-label" id="tr-backend-bungkus" hidden>Jalankan di
           <select id="tr-backend">
-            <option value="lokal">PC ini — GPU lokal</option>
-            <option value="kaggle">Kaggle — GPU gratis (cadangan)</option>
+            <option value="lokal">PC ini, GPU lokal</option>
+            <option value="kaggle">Kaggle, GPU gratis (cadangan)</option>
           </select>
           <span class="tr-bantu" id="tr-backend-ket"></span>
         </label>
@@ -132,7 +132,7 @@
               <input type="radio" name="tr-mode" value="bentuk" checked>
               <span><b>Bentuk &amp; struktur yang utama</b>
                 <em>Model dipaksa mengabaikan warna. Untuk botol / kaleng /
-                  tetra — bendanya tetap sama apa pun warnanya.</em></span>
+                  tetra, bendanya tetap sama apa pun warnanya.</em></span>
             </label>
             <label class="tr-mode-p">
               <input type="radio" name="tr-mode" value="warna">
@@ -252,8 +252,8 @@
       <p class="tr-bantu" id="tr-lanjut-ket"></p>
       <label class="tr-dl-baris" id="tr-lanjut-jenis-baris">Titik awal bobot
         <select id="tr-lanjut-jenis">
-          <option value="best">best.pt — metrik terbaik</option>
-          <option value="last">last.pt — epoch terakhir</option>
+          <option value="best">best.pt, metrik terbaik</option>
+          <option value="last">last.pt, epoch terakhir</option>
         </select>
       </label>
       <label class="tr-dl-baris"><span id="tr-lanjut-epochs-label">Jumlah epoch</span>

@@ -374,7 +374,7 @@ async def versi_estimasi(request: Request, split: str = "", belah: str = "",
                                                     sess.src, resep)
     if not items:
         return {"ok": False,
-                "error": "filter batch/tag membuang semua gambar — longgarkan filternya"}
+                "error": "filter batch/tag membuang semua gambar. Longgarkan filternya"}
     rasio = split or "8:1:1"
     rencana = _rencana(sess, belah)
     bagian = await asyncio.to_thread(export.bagi_split, items,
@@ -408,7 +408,7 @@ async def versi_mulai(request: Request, split: str = "", catatan: str = "",
                                               sess.src, resep)
     if not items:
         return {"ok": False,
-                "error": "filter batch/tag membuang semua gambar — longgarkan filternya"}
+                "error": "filter batch/tag membuang semua gambar. Longgarkan filternya"}
     rasio = split or "8:1:1"
     rencana = _rencana(sess, belah)
     bagian = await asyncio.to_thread(export.bagi_split, items,

@@ -120,7 +120,7 @@ def impor_folder(sumber: Path, tujuan: Path, *, batal=None, kunci: str = "",
     if not sumber.is_dir():
         raise ImporTolak("folder sumber tidak ada di server")
     if _didalam(tujuan, sumber):
-        raise ImporTolak("tujuan berada di dalam folder sumber — akan berulang "
+        raise ImporTolak("tujuan berada di dalam folder sumber. Akan berulang "
                          "menyalin dirinya sendiri")
 
     s = survei(sumber)
@@ -132,7 +132,7 @@ def impor_folder(sumber: Path, tujuan: Path, *, batal=None, kunci: str = "",
     if sisa - s["bytes"] < SISA_MIN_BYTE:
         raise ImporTolak(
             f"perlu {s['bytes'] / 1073741824:.1f} GB sementara sisa disk "
-            f"{sisa / 1073741824:.1f} GB — terlalu mepet")
+            f"{sisa / 1073741824:.1f} GB, terlalu mepet")
 
     catat_maju(kunci, tahap="salin", total=s["berkas"], total_bytes=s["bytes"])
     ditulis = dilewati = sudah_ada = 0

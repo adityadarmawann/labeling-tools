@@ -925,21 +925,21 @@ def _rfdetr_kaggle(ds: Path, nomor: int, isi: dict, settings, basis, pool) -> in
                 leg += 1
                 percubaan = 0
                 lapor(leg=leg, epochs_done=epochs_done,
-                      pesan=f"leg {leg} selesai — {epochs_done}/{target} epoch")
+                      pesan=f"leg {leg} selesai. {epochs_done}/{target} epoch")
                 continue
 
             if _galat_kuota(teks):
                 _tandai_habis(basis, akun["user"])
-                lapor(pesan=f"akun {akun['user']} kehabisan kuota — rotasi ke akun berikut")
+                lapor(pesan=f"akun {akun['user']} kehabisan kuota. Rotasi ke akun berikut")
                 continue
             percubaan += 1
             if percubaan >= MAKS_COBA_LEG:
                 raise RuntimeError(f"RF-DETR di Kaggle gagal {percubaan}x: {teks[-200:]}")
-            lapor(pesan=f"gagal (mungkin sesaat) — coba ulang {percubaan}/{MAKS_COBA_LEG-1}")
+            lapor(pesan=f"gagal (mungkin sesaat). Coba ulang {percubaan}/{MAKS_COBA_LEG-1}")
 
         latih.perbarui(ds, nomor, keadaan="selesai", selesai_pada=_sekarang())
         lapor(epochs_done=epochs_done,
-              pesan=f"selesai — RF-DETR {model}, {epochs_done} epoch dalam {leg} leg")
+              pesan=f"selesai. RF-DETR {model}, {epochs_done} epoch dalam {leg} leg")
         return 0
     finally:
         shutil.rmtree(coco_root, ignore_errors=True)
@@ -1070,27 +1070,27 @@ def main() -> int:
                 leg += 1
                 percubaan = 0
                 lapor(leg=leg, epochs_done=epochs_done,
-                      pesan=f"leg {leg} selesai — {epochs_done}/{target} epoch")
+                      pesan=f"leg {leg} selesai. {epochs_done}/{target} epoch")
                 continue
 
             # Tak ada kemajuan. Kuota habis -> rotasi akun (bukan coba-ulang).
             if _galat_kuota(teks):
                 _tandai_habis(basis, akun["user"])
-                lapor(pesan=f"akun {akun['user']} kehabisan kuota — "
-                            "rotasi ke akun berikutnya")
+                lapor(pesan=f"akun {akun['user']} kehabisan kuota. "
+                            "Rotasi ke akun berikutnya")
                 continue
             # Selain kuota: anggap sesaat, coba ulang leg yang SAMA beberapa kali.
             percubaan += 1
             if percubaan >= MAKS_COBA_LEG:
                 raise RuntimeError(
                     f"leg {leg+1} gagal {percubaan}x berturut di Kaggle: {teks[-200:]}")
-            lapor(pesan=f"leg {leg+1} gagal (mungkin sesaat) — coba ulang "
+            lapor(pesan=f"leg {leg+1} gagal (mungkin sesaat). Coba ulang "
                         f"{percubaan}/{MAKS_COBA_LEG-1}")
             continue
 
         latih.perbarui(ds, nomor, keadaan="selesai", selesai_pada=_sekarang())
         lapor(epochs_done=epochs_done,
-              pesan=f"selesai — {epochs_done} epoch dalam {leg} leg")
+              pesan=f"selesai. {epochs_done} epoch dalam {leg} leg")
         return 0
     except Exception as e:                       # noqa: BLE001
         latih.perbarui(ds, nomor, keadaan="gagal", galat=str(e)[:300],

@@ -1103,7 +1103,7 @@ def buang(ds, nomor: int) -> bool:
     if isi is None:
         return False
     if isi.get("keadaan") in BERJALAN and hidup(isi.get("pid")):
-        raise ValueError("training itu masih berjalan — hentikan dulu")
+        raise ValueError("training itu masih berjalan. Hentikan dulu")
     shutil.rmtree(dir_latih(ds, nomor), ignore_errors=True)
     # SELURUH berkas milik nomor ini disapu dengan pola, bukan disebut satu per
     # satu. Versi sebelumnya menyebut L<n>.json dan L<n>.log saja, dan ketika
@@ -1204,7 +1204,7 @@ def jalankan_evaluasi(ds, nomor: int) -> dict:
     if isi is None:
         raise ValueError(f"training L{nomor} tidak ada")
     if not (dir_latih(ds, nomor) / "weights" / "best.pt").exists():
-        raise ValueError("belum ada best.pt — trainingnya belum selesai")
+        raise ValueError("belum ada best.pt. Trainingnya belum selesai")
 
     akar = Path(__file__).resolve().parents[2]
     log_p = _dir(ds) / f"L{nomor}.eval.log"

@@ -291,7 +291,7 @@ def main() -> int:
 
         latih.perbarui(ds, nomor, keadaan="selesai", selesai_pada=_sekarang(),
                        detik_total=round(time.time() - t0, 1))
-        lapor(pesan=f"selesai — RF-DETR {model}, {epoch} epoch")
+        lapor(pesan=f"selesai. RF-DETR {model}, {epoch} epoch")
         print(f"  bobot terbaik: {dl / 'weights' / 'best.pt'}")
         return 0
     except Exception as e:                       # noqa: BLE001

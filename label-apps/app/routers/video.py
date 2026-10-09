@@ -839,11 +839,11 @@ async def aksi_latih_mulai(request: Request, ds: str = "",
     if not await asyncio.to_thread(latih_aksi.versi_aksi_siap, d, nomor_versi):
         return {"ok": False,
                 "error": f"versi v{nomor_versi} belum terbangun (aksi.yaml / klip "
-                         "train tak ada) — bangun dulu versinya"}
+                         "train tak ada). Bangun dulu versinya"}
 
     if await asyncio.to_thread(latih_aksi.ada_yang_jalan, d):
-        return {"ok": False, "error": "masih ada training aksi yang berjalan — "
-                                      "tunggu atau hentikan dulu"}
+        return {"ok": False, "error": "masih ada training aksi yang berjalan. "
+                                      "Tunggu atau hentikan dulu"}
 
     try:
         isi = await asyncio.to_thread(

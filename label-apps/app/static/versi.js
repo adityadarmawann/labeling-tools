@@ -106,7 +106,7 @@
       </div>`;
     }).join('');
     const kaki = negatif
-      ? `<div class="vk-baris vk-negatif" title="Gambar tanpa objek — sampel negatif yang disengaja">
+      ? `<div class="vk-baris vk-negatif" title="Gambar tanpa objek, sampel negatif yang disengaja">
            <span class="vk-nama"><i class="vk-kosong"></i>sampel negatif</span>
            <span class="vk-bar"></span>
            <b class="vk-n">${negatif.toLocaleString('id')}</b>
@@ -122,8 +122,8 @@
         Terbanyak <b>${kelas[0][0]}</b> berbanding tersedikit
         <b>${kelas[kelas.length - 1][0]}</b> =
         <b>${desimal(rasio)}&times;</b>${timpang
-          ? ' — cukup timpang. "Seimbangkan jumlah kelas" di langkah 5 memperkecil selisih ini.'
-          : ' — cukup seimbang.'}</p>` : ''}
+          ? ', cukup timpang. "Seimbangkan jumlah kelas" di langkah 5 memperkecil selisih ini.'
+          : ', cukup seimbang.'}</p>` : ''}
     </div>`;
   }
 
@@ -335,8 +335,8 @@
      SmartBin = bawaan lama, jalur RVM tak berubah. */
   const PRESET_DETEKSI = [
     { id: 'smartbin', nama: 'SmartBin', sub: 'botol · kaleng · tetra',
-      jelas: 'Warna diacak kuat supaya model belajar BENTUK, bukan warna — '
-           + 'cocok untuk benda yang bentuknya sama walau warnanya beda. '
+      jelas: 'Warna diacak kuat supaya model belajar BENTUK, bukan warna. '
+           + 'Cocok untuk benda yang bentuknya sama walau warnanya beda. '
            + 'Ukuran 640×640, memakai latar ruang detektor RVM.',
       warna: 'bentuk', off: [], resize: { mode: 'fit', lebar: 640, tinggi: 640 },
       // RVM: pakai pelat latar bawaan + fase crop/zoom & balans ukuran (perilaku lama).
@@ -464,7 +464,7 @@
     ket.classList.toggle('wz-filter-awas', banjir);
     ket.textContent = !buang ? ''
       : banjir
-        ? `⚠ Filter membuang ${buang} gambar (${Math.round(frac * 100)}%) — `
+        ? `⚠ Filter membuang ${buang} gambar (${Math.round(frac * 100)}%), `
           + `dari ${asli} jadi ${r.n_sumber}. Pastikan ini disengaja: versi yang `
           + `terlalu kecil bikin model lemah.`
         : `${buang} gambar dibuang dari versi ini oleh filter `
@@ -959,7 +959,7 @@
         // cuma berisi contoh negatif dan tak bisa melatih apa pun.
         if (!cb.checked && jumlahDipakai() < 1) {
           cb.checked = true;
-          toast('Sisakan minimal satu kelas — versi tanpa kelas cuma berisi latar.');
+          toast('Sisakan minimal satu kelas. Versi tanpa kelas cuma berisi latar.');
           return;
         }
         baris.classList.toggle('kl-latar', !cb.checked);
@@ -1100,10 +1100,10 @@
       const modeKini = (resep.warna || {}).mode === 'warna' ? 'warna' : 'bentuk';
       const MODE = [
         { v: 'bentuk', nama: 'Bentuk yang menentukan kelas',
-          sub: 'Warna sengaja dirusak supaya model belajar bentuk — botol/kaleng/'
+          sub: 'Warna sengaja dirusak supaya model belajar bentuk, botol/kaleng/'
              + 'tetra. Rona digeser lebar.' },
         { v: 'warna', nama: 'Warna bagian dari kelas',
-          sub: 'Rona dipertahankan; hanya terang yang divariasikan — pengenalan '
+          sub: 'Rona dipertahankan; hanya terang yang divariasikan, pengenalan '
              + 'produk/SKU atau warna jersey tim. Penggeser rona dimatikan.' },
       ];
       for (const mo of MODE) {
@@ -1434,7 +1434,7 @@
   const KET_MODE = {
     netral: 'Warna lampu pada foto dibuang, lalu tiap pelat diberi sedikit '
       + 'variasi suhu warna. Pilih ini kalau lampu ruanganmu berganti-ganti '
-      + 'warna — augmentasi akan menambahkan warna lampunya sendiri, dan '
+      + 'warna. Augmentasi akan menambahkan warna lampunya sendiri, dan '
       + 'warna yang terlanjur terekam di foto akan bertumpuk dengannya.',
     asli: 'Warna foto tidak disentuh sama sekali; yang berubah hanya '
       + 'terang-gelapnya. Pilih ini kalau lampu ruanganmu memang selalu satu '

@@ -92,8 +92,8 @@
         kirim = dipilih.filter(u => u.dataset.label === '1');
         if (!kirim.length) {
           alert(`${polos.length} gambar yang dipilih belum dianotasi.\n\n`
-            + 'Hanya gambar yang sudah dianotasi — berlabel atau ditandai '
-            + 'latar — yang bisa masuk dataset. Anotasi dulu, atau tandai latar '
+            + 'Hanya gambar yang sudah dianotasi, berlabel atau ditandai '
+            + 'latar, yang bisa masuk dataset. Anotasi dulu, atau tandai latar '
             + 'kalau memang tanpa objek.');
           return;
         }
@@ -139,7 +139,7 @@
     if (!dipilih.length) return;
     if (!confirm(
         `Hapus ${dipilih.length} gambar dari projek?\n\n`
-        + 'Gambar dan anotasinya dipindah ke tempat sampah projek — bisa '
+        + 'Gambar dan anotasinya dipindah ke tempat sampah projek. Bisa '
         + 'dipulihkan dari sana, tetapi hilang dari grid, tugas, dan dataset.')) return;
 
     $('jb-hapus').disabled = true;

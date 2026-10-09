@@ -235,7 +235,7 @@ async def upload(request: Request, ds: str = "", name: str = "",
     if dest.exists() and dest.suffix.lower() not in ARSIP_EXT:
         return {"ok": False, "name": fn, "bytes": 0, "arsip": False,
                 "sudah_ada": True,
-                "error": f"'{fn}' sudah ada di projek ini — ganti namanya "
+                "error": f"'{fn}' sudah ada di projek ini. Ganti namanya "
                          f"dulu, atau hapus yang lama"}
     dest.parent.mkdir(parents=True, exist_ok=True)
     # Tulis ke .part dulu, ganti nama setelah lengkap, supaya koneksi yang

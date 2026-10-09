@@ -109,7 +109,7 @@ def siap_ingest() -> tuple[bool, str]:
     import importlib.util
 
     if importlib.util.find_spec("yt_dlp") is None:
-        return False, ("yt-dlp belum terpasang di server ini — pasang dengan "
+        return False, ("yt-dlp belum terpasang di server ini. Pasang dengan "
                        "`pip install yt-dlp` (lihat requirements.txt)")
     return klip.siap_video()
 

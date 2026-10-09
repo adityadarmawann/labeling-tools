@@ -273,7 +273,7 @@ def latih(*, versi_dir: Path, run_dir: Path, par: dict, progres, device: str,
 
     kelas = U.kelas_dari_yaml(versi_dir)
     if len(kelas) < 2:
-        raise ValueError("versi ini punya < 2 kelas aksi — tak bisa dilatih")
+        raise ValueError("versi ini punya < 2 kelas aksi. Tak bisa dilatih")
     c2i = {c: i for i, c in enumerate(kelas)}
     epochs = int(par.get("epochs") or 60)
     batch = int(par.get("batch") or 16)

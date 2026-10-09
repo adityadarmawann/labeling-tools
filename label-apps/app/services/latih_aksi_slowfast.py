@@ -52,7 +52,7 @@ def latih(*, versi_dir: Path, run_dir: Path, par: dict, progres, device: str,
 
     kelas = U.kelas_dari_yaml(versi_dir)
     if len(kelas) < 2:
-        raise ValueError("versi ini punya < 2 kelas aksi — tak bisa dilatih")
+        raise ValueError("versi ini punya < 2 kelas aksi. Tak bisa dilatih")
     epochs = int(par.get("epochs") or 80)
     batch_size = int(par.get("batch") or 2)
     dev = torch.device(device if device in ("cuda", "cpu") else "cpu")
@@ -69,7 +69,7 @@ def latih(*, versi_dir: Path, run_dir: Path, par: dict, progres, device: str,
 
     train_s, val_s, c2i = U.baca_dataset(versi_dir, kelas)
     if not train_s or not val_s:
-        raise ValueError("train/ atau valid/ kosong — versi belum siap dilatih")
+        raise ValueError("train/ atau valid/ kosong. Versi belum siap dilatih")
 
     def load_pathways(path, is_train):
         try:
@@ -245,7 +245,7 @@ def latih(*, versi_dir: Path, run_dir: Path, par: dict, progres, device: str,
     for n, p in model.named_parameters():
         p.requires_grad = n.startswith(hp)
     if sum(p.numel() for p in model.parameters() if p.requires_grad) == 0:
-        raise ValueError(f"tak ada parameter terlatih di '{hp}' — struktur "
+        raise ValueError(f"tak ada parameter terlatih di '{hp}'. Struktur "
                          "SlowFast tak dikenali")
     optimizer = torch.optim.AdamW(
         [p for p in model.parameters() if p.requires_grad],

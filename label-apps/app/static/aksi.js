@@ -359,7 +359,7 @@ if (trWrap) {
     // Tak ada versi -> beri tahu, tombol dimatikan (tak ada yang bisa dilatih).
     btnMulai.disabled = !(adaSiap && adaVersi);
     if (adaSiap && !adaVersi) ketEl.textContent =
-      'Belum ada versi dataset aksi — buat versi dulu sebelum melatih.';
+      'Belum ada versi dataset aksi. Buat versi dulu sebelum melatih.';
   }
 
   function barisRun(s) {
@@ -449,7 +449,7 @@ if (trWrap) {
     if (ev.keadaan === 'antre' || ev.keadaan === 'jalan') {
       const m = ev.maju;
       panel.textContent = 'Evaluasi ' + ev.keadaan
-        + (m ? ` — klip ${m.sudah}/${m.total}` : '...');
+        + (m ? `, klip ${m.sudah}/${m.total}` : '...');
       btn.disabled = true;
       return;
     }
@@ -466,9 +466,9 @@ if (trWrap) {
     const vonis = document.createElement('p');
     vonis.className = 'ak-eval-vonis';
     vonis.dataset.tingkat = mk.tingkat || '';
-    const ak = mk.akurasi != null ? (mk.akurasi * 100).toFixed(1) + '%' : '—';
+    const ak = mk.akurasi != null ? (mk.akurasi * 100).toFixed(1) + '%' : '-';
     const rk = mk.akurasi_rerata_kelas != null
-      ? (mk.akurasi_rerata_kelas * 100).toFixed(1) + '%' : '—';
+      ? (mk.akurasi_rerata_kelas * 100).toFixed(1) + '%' : '-';
     vonis.innerHTML = `<b>${(mk.tingkat || '').toUpperCase()}</b> · `
       + `akurasi ${ak} · rata-kelas ${rk}`;
     panel.appendChild(vonis);
@@ -521,7 +521,7 @@ if (trWrap) {
       const aktif = (r.daftar || []).find(
         s => s.keadaan === 'jalan' || s.keadaan === 'antre');
       if (aktif) majuEl.textContent =
-        `${aktif.backend_nama || ''} ${aktif.keadaan} — epoch `
+        `${aktif.backend_nama || ''} ${aktif.keadaan}, epoch `
         + `${aktif.epoch || 0}/${aktif.epochs || 0} (${aktif.persen || 0}%)`;
     } else {
       if (pollTr) { clearInterval(pollTr); pollTr = null; }

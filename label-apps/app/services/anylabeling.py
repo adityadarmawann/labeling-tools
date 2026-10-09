@@ -79,5 +79,5 @@ def pick_dir(start: str | None = None):
         out = r.stdout.strip()
         return (out, None) if out else (None, "dibatalkan")
     except Exception:
-        return None, ("tidak ada dialog sistem yang tersedia — pasang zenity, "
+        return None, ("tidak ada dialog sistem yang tersedia. Pasang zenity, "
                       "atau pakai kotak path di halaman ini")

@@ -55,7 +55,7 @@ def main() -> int:
     if best is None:
         eval_aksi.tulis_hasil(ds, nomor, {
             "keadaan": "gagal", "selesai": _sekarang(),
-            "galat": "best.pt belum ada — trainingnya belum selesai"})
+            "galat": "best.pt belum ada. Trainingnya belum selesai"})
         print("GAGAL: best.pt belum ada", file=sys.stderr)
         return 1
 

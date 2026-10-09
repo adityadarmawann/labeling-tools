@@ -139,7 +139,7 @@ def _ubah_profil(settings: Settings, akun: str, nama: str, email: str) -> dict:
     """Ubah nama tampil + email akun INI. Tak menyentuh `admin` atau akun lain."""
     users = load_users(settings.users_file)
     if akun not in users:
-        raise Tolak("akunmu tidak ada lagi — coba masuk ulang")
+        raise Tolak("akunmu tidak ada lagi. Coba masuk ulang")
     rec = dict(users[akun])
 
     email = (email or "").strip()
@@ -174,7 +174,7 @@ def _ubah_sandi(settings: Settings, akun: str, lama: str, baru: str) -> dict:
     users = load_users(settings.users_file)
     rec = users.get(akun)
     if not rec:
-        raise Tolak("akunmu tidak ada lagi — coba masuk ulang")
+        raise Tolak("akunmu tidak ada lagi. Coba masuk ulang")
     if not verify_password(lama or "", rec.get("hash") or ""):
         raise Tolak("kata sandi sekarang salah")
     if len(baru or "") < MIN_SANDI:
@@ -238,7 +238,7 @@ def _simpan_foto(settings: Settings, akun: str, data: bytes) -> dict:
     cap = hashlib.sha256(jpg).hexdigest()[:12]
     users = load_users(settings.users_file)
     if akun not in users:
-        raise Tolak("akunmu tidak ada lagi — coba masuk ulang")
+        raise Tolak("akunmu tidak ada lagi. Coba masuk ulang")
     rec = dict(users[akun])
     rec["foto"] = cap
     users[akun] = rec

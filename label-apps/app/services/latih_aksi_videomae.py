@@ -55,7 +55,7 @@ def latih(*, versi_dir: Path, run_dir: Path, par: dict, progres, device: str,
 
     kelas = U.kelas_dari_yaml(versi_dir)
     if len(kelas) < 2:
-        raise ValueError("versi ini punya < 2 kelas aksi — tak bisa dilatih")
+        raise ValueError("versi ini punya < 2 kelas aksi. Tak bisa dilatih")
     epochs = int(par.get("epochs") or 80)
     batch_size = int(par.get("batch") or 6)
     dev = torch.device(device if device in ("cuda", "cpu") else "cpu")
@@ -72,7 +72,7 @@ def latih(*, versi_dir: Path, run_dir: Path, par: dict, progres, device: str,
 
     train_s, val_s, c2i = U.baca_dataset(versi_dir, kelas)
     if not train_s or not val_s:
-        raise ValueError("train/ atau valid/ kosong — versi belum siap dilatih")
+        raise ValueError("train/ atau valid/ kosong. Versi belum siap dilatih")
 
     # ---------- pemuat frame (port load_frames) ----------
     def load_frames(path, is_train):

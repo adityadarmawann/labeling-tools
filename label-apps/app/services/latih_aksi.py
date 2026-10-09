@@ -562,7 +562,7 @@ def buang(ds, nomor: int) -> bool:
     if isi is None:
         return False
     if isi.get("keadaan") in BERJALAN and hidup(isi.get("pid")):
-        raise ValueError("training itu masih berjalan — hentikan dulu")
+        raise ValueError("training itu masih berjalan. Hentikan dulu")
     shutil.rmtree(dir_latih(ds, nomor), ignore_errors=True)
     # Sapu SEMUA berkas milik nomor ini dengan pola (A<n>.json, A<n>.log,
     # A<n>.json.tmp). Nomor tak pernah dipakai ulang, jadi pola A<n>.* tak

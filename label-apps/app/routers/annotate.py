@@ -471,7 +471,7 @@ async def api_simpan(request: Request, sess: Session = Depends(current_session_a
         if jenis not in scanner.JENIS_BENTUK:
             jenis = "polygon"
         if not label:
-            return {"ok": False, "error": "ada bentuk tanpa kelas — pilih kelasnya dulu"}
+            return {"ok": False, "error": "ada bentuk tanpa kelas. Pilih kelasnya dulu"}
         # Tiap tipe punya jumlah titik minimal sendiri (shape.py AnyLabeling):
         # point 1, rectangle/circle/line/linestrip 2, polygon 3. Tanpa
         # pembedaan ini, titik dan garis akan terbuang diam-diam.

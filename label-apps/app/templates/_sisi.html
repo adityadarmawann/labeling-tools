@@ -48,7 +48,7 @@
        {% if aktif == 'anotasi' %}data-on aria-current="page"{% endif %}>
       <span class="sisi-ikon" aria-hidden="true">&#9998;</span>Anotasi
       {%- if pr.belum %}<b class="sisi-angka"
-        title="{{ pr.belum }} gambar belum masuk dataset — buka sebuah tugas lalu saring 'Belum di dataset' untuk memasukkannya">{{ pr.belum }}</b>{% endif %}</a>
+        title="{{ pr.belum }} gambar belum masuk dataset. Buka sebuah tugas lalu saring 'Belum di dataset' untuk memasukkannya">{{ pr.belum }}</b>{% endif %}</a>
     {% endif %}
 
     <a class="sisi-item" href="/?ds={{ pr.ds | urlquote }}"

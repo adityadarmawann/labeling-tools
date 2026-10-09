@@ -47,11 +47,11 @@
             dataset lewat <b>Tambahkan ke dataset</b> di halaman Anotasi.</p>
           <div class="wz-angka" id="wz-sumber">memuat…</div>
           <details class="wz-filter" id="wz-filter" hidden>
-            <summary>Filter sumber — buang batch/tag tertentu untuk versi ini</summary>
+            <summary>Filter sumber, buang batch/tag tertentu untuk versi ini</summary>
             <p class="halus">Buang foto web/katalog. <b>Dataset sumber tidak
-              diubah</b> — filter hanya berlaku untuk versi ini.</p>
+              diubah</b>. Filter hanya berlaku untuk versi ini.</p>
             <label class="wz-filter-kat"><input type="checkbox" id="wz-buang-katalog">
-              <span><b>Buang foto katalog otomatis</b> — produk di latar putih
+              <span><b>Buang foto katalog otomatis</b>. Produk di latar putih
               polos (kurang 3D), dideteksi dari kecerahan latar. Tak perlu
               menandai apa pun.</span></label>
             <div class="wz-filter-grup" id="wz-filter-batch"></div>
@@ -72,7 +72,7 @@
             centangnya dilepas <b>jadi latar</b> (contoh negatif): objeknya tak
             dilabeli, dan gambar yang isinya hanya kelas itu jadi sampel negatif.
             Bisa juga digabung ke kelas lain atau diganti namanya. Dataset
-            sumber tidak diubah — ini hanya berlaku untuk versi ini.</p>
+            sumber tidak diubah. Ini hanya berlaku untuk versi ini.</p>
           <div class="wz-kelas" id="wz-kelas">memuat…</div>
           <div class="wz-aksi">
             <button class="wz-tbl wz-tbl-sek" type="button" data-mundur>Kembali</button>
@@ -166,14 +166,14 @@
               <input type="radio" name="wz-warna" value="bentuk" checked>
               <span><b>Bentuk yang menentukan kelas</b>
                 <em>Warna sengaja dirusak supaya model belajar bentuk. Untuk
-                  botol / kaleng / tetra — sebuah botol tetap botol apa pun
+                  botol / kaleng / tetra, sebuah botol tetap botol apa pun
                   warnanya. Rona digeser lebar di augmentasi.</em></span>
             </label>
             <label class="wz-mode-p">
               <input type="radio" name="wz-warna" value="warna">
               <span><b>Warna bagian dari kelas</b>
                 <em>Rona dipertahankan; hanya terang yang divariasikan. Untuk
-                  pengenalan produk — warna kemasan yang membedakan satu SKU
+                  pengenalan produk, warna kemasan yang membedakan satu SKU
                   dari yang lain. Operasi penggeser rona dimatikan.</em></span>
             </label>
             <p class="wz-mode-ket" id="wz-mode-ket"></p>

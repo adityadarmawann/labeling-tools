@@ -2442,9 +2442,9 @@ function perbaruiLatar() {
   // membatalkannya. Ikonnya tetap, cuma keadaannya yang berubah.
   btn.toggleAttribute('data-on', !!sudahLatar);
   btn.title = sudahLatar
-    ? 'Gambar ini latar — klik untuk membatalkan (kembali belum dilabeli)'
+    ? 'Gambar ini latar. Klik untuk membatalkan (kembali belum dilabeli)'
     : (S.shapes.length
-        ? `Tandai latar — ${S.shapes.length} objeknya akan dihapus lebih dulu`
+        ? `Tandai latar. ${S.shapes.length} objeknya akan dihapus lebih dulu`
         : 'Tandai gambar ini sebagai latar (tanpa objek)');
 }
 
@@ -2468,14 +2468,14 @@ async function toggleLatar() {
     status('Tanda latar dilepas');
     renderBerkas();
     perbaruiLatar();
-    toast('Tanda latar dilepas — gambar kembali belum dilabeli');
+    toast('Tanda latar dilepas. Gambar kembali belum dilabeli');
     return;
   }
   // Tandai latar: kosongkan objeknya lalu simpan. Menyimpan tanpa objek
   // menuliskannya sebagai latar (lihat /api/simpan).
   if (S.shapes.length && !confirm(
       `Hapus ${S.shapes.length} objek dan tandai gambar ini sebagai latar?\n\n`
-      + 'Latar berarti gambar sengaja dinyatakan tanpa objek — contoh negatif.')) return;
+      + 'Latar berarti gambar sengaja dinyatakan tanpa objek, contoh negatif.')) return;
   simpanUndo();
   S.shapes = [];
   S.sel = -1;
@@ -3053,7 +3053,7 @@ el('kelasbaru').addEventListener('keydown', ev => {
       (r.kelas_awal || []).forEach(k => { if (!S.kelas.includes(k)) S.kelas.push(k); });
       S.kelas.sort();
       render();
-      toast(`Set kelas Basket dimuat — ${(r.kelas_awal || []).length} kelas.`);
+      toast(`Set kelas Basket dimuat, ${(r.kelas_awal || []).length} kelas.`);
     } catch (e) { toast('gagal: ' + e); }
     finally { bb.disabled = false; }
   };
@@ -3497,9 +3497,9 @@ function petunjukPose() {
   if (!info) return;
   const t = skelTpl().titik || [];
   info.textContent = (S.pose && S.pose.idx < t.length)
-    ? `Keypoint — taruh: ${t[S.pose.idx]} (${S.pose.idx + 1}/${t.length}) · `
+    ? `Keypoint. Taruh: ${t[S.pose.idx]} (${S.pose.idx + 1}/${t.length}) · `
       + `Shift = occluded · tombol "Lewati" = absen`
-    : `Keypoint — klik objek untuk mulai instance baru (${t.length} titik)`;
+    : `Keypoint. Klik objek untuk mulai instance baru (${t.length} titik)`;
 }
 
 function tempatKeypoint(x, y, v) {
@@ -3587,7 +3587,7 @@ function dropTemplate() {
   });
   perbaruiBbox(gid);
   tandaiKotor(); setMode('edit'); render();
-  toast('Template dijatuhkan — di mode Sunting geser tiap titik ke posisinya');
+  toast('Template dijatuhkan. Di mode Sunting geser tiap titik ke posisinya');
 }
 
 function visibilitasKeypoint(v) {
@@ -3868,7 +3868,7 @@ function jadikanNegatif(gid) {
   S.sel = -1; S.selv = -1; S.terpilih = [];
   tandaiKotor(); render();
   toast(S.shapes.length ? 'Instance dibuang'
-        : 'Gambar kosong — jadi contoh negatif (disengaja)');
+        : 'Gambar kosong, jadi contoh negatif (disengaja)');
 }
 
 /* Menu klik-kanan untuk SATU keypoint (point ber-group). Semua butir menumpang

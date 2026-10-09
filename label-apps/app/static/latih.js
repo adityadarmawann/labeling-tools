@@ -117,7 +117,7 @@
      'Gambar diproses pada ukuran ini. Lebih tinggi = objek kecil (bola) lebih terbaca, tapi lebih berat. Dibulatkan ke kelipatan 56'],
     ['lr', 'Laju belajar', '', 'Seberapa besar langkah perbaikan pada kepala deteksi'],
     ['lr_encoder', 'Laju belajar encoder', '',
-     'Laju belajar untuk backbone DINOv2 — lebih kecil karena sudah pralatih'],
+     'Laju belajar untuk backbone DINOv2, lebih kecil karena sudah pralatih'],
     ['warmup_epochs', 'Pemanasan', 'epoch',
      'Epoch awal dengan laju belajar dinaikkan pelan'],
   ];
@@ -428,11 +428,11 @@
       // sisa jatah minggu ini tiap akun, supaya terlihat mana yang masih bisa.
       const akun = (BAHAN.kaggle_akun || []).map((a) =>
         a.habis ? `${a.user} (kuota habis)` : `${a.user} (sisa ~${a.sisa_jam}j)`
-      ).join(' · ') || '—';
+      ).join(' · ') || '-';
       ket.textContent = b === 'kaggle'
         ? `akun: ${akun} · di luar PC ini, boleh berbarengan dengan training `
           + 'lokal; run panjang disambung otomatis'
-        : 'GPU mesin ini — satu training pada satu waktu';
+        : 'GPU mesin ini, satu training pada satu waktu';
     }
   }
 
@@ -454,10 +454,10 @@
     if (wbox) wbox.hidden = !presetPakaiWarna();   // false untuk rfdetr
     const ket = $('tr-arsitektur-ket');
     if (ket) ket.textContent = rf
-      ? 'Bagus untuk objek kecil yang berdesakan — misalnya bola dan pemain '
+      ? 'Bagus untuk objek kecil yang berdesakan, misalnya bola dan pemain '
         + 'basket. RF-DETR membuat variasi gambarnya sendiri saat berlatih '
         + '(warna, ukuran, dan posisi diubah-ubah otomatis), jadi pakai versi '
-        + 'dataset yang biasa saja — tak perlu menyalakan efek tambahan '
+        + 'dataset yang biasa saja, tak perlu menyalakan efek tambahan '
         + '(variasi warna, blur, dan sejenisnya) waktu membuat versinya.'
       : 'Pilihan umum: cepat dan ringan, cocok untuk kebanyakan kebutuhan.';
     gambarForm();                 // tukar isian parameter (YOLO <-> RF-DETR)
@@ -569,10 +569,10 @@
         <button class="chip chip-utama" type="button" data-rinci="${t.nomor}">Rincian</button>
         ${t.punya_bobot ? `<span class="tr-unduh">Unduh sementara
           <a class="chip" href="/latih/bobot?nomor=${t.nomor}&jenis=best" download
-             title="Bobot mAP terbaik SEJAUH INI — bisa diunduh selagi training jalan">best.pt</a>
+             title="Bobot mAP terbaik SEJAUH INI, bisa diunduh selagi training jalan">best.pt</a>
           <a class="chip" href="/latih/bobot?nomor=${t.nomor}&jenis=last" download
              title="${rf ? 'Bobot EMA epoch terakhir SEJAUH INI (diperbarui tiap epoch)'
-                         : 'Bobot epoch terakhir yang selesai — untuk melanjutkan training. Kalau kebetulan diunduh tepat saat epoch berakhir bisa separuh; unduh ulang.'}">last.pt</a>
+                         : 'Bobot epoch terakhir yang selesai. Untuk melanjutkan training. Kalau kebetulan diunduh tepat saat epoch berakhir bisa separuh; unduh ulang.'}">last.pt</a>
         </span>` : ''}
         <span class="spacer"></span>
         ${bolehKelola ? `<button class="chip chip-bahaya" type="button"
@@ -760,21 +760,21 @@
     if (t.backend !== 'kaggle') return '';
     const k = t.kaggle || {};
     const rem = (k.remote || '').replace(/.*status\s*"?KernelWorkerStatus\.?/i, '')
-      .replace(/"$/, '').trim() || '—';
+      .replace(/"$/, '').trim() || '-';
     const url = k.kernel_url
       ? `<a class="chip" href="${esc(k.kernel_url)}" target="_blank"
             rel="noopener">buka kernel ↗</a>` : '';
     return `<div class="tr-p-blok">
       <h4>Dijalankan di Kaggle (GPU cadangan)</h4>
       <div class="tr-kv-grid">
-        <span class="tr-kv"><i>Akun</i><b>${esc(k.akun || '—')}</b></span>
+        <span class="tr-kv"><i>Akun</i><b>${esc(k.akun || '-')}</b></span>
         <span class="tr-kv"><i>Leg (sesi)</i><b>${angka(k.leg || 0)}</b></span>
         <span class="tr-kv"><i>Epoch kumulatif</i><b>${angka(k.epochs_done || 0)} / ${angka(t.epochs)}</b></span>
         <span class="tr-kv"><i>Status remote</i><b>${esc(rem)}</b></span>
       </div>
       ${k.pesan ? `<p class="tr-warna-pesan" style="margin-top:6px">${esc(k.pesan)}</p>` : ''}
       ${url ? `<p style="margin-top:6px">${url}
-        <small class="tr-bantu">log langsung ada di halaman kernel — API tak menyiarkannya</small></p>` : ''}
+        <small class="tr-bantu">log langsung ada di halaman kernel. API tak menyiarkannya</small></p>` : ''}
     </div>`;
   }
 
@@ -810,14 +810,14 @@
         <div class="tr-uji-angka">
           <span data-tingkat="${e.mode === 'warna' ? 'netral' : esc(w.tingkat)}">
             <i>Berubah karena RONA</i>
-            <b>${w.tingkat === 'tak-terukur' ? '—' : angka(w.skor_rona, 0) + '%'}</b>
+            <b>${w.tingkat === 'tak-terukur' ? '-' : angka(w.skor_rona, 0) + '%'}</b>
             <u>${e.mode === 'warna'
                  ? 'wajar di mode ini, rona memang penentu kelas'
                  : angka(w.berubah_rona) + ' dari ' + angka(w.total) + ' berubah'}</u></span>
           <span data-tingkat="${w.skor_terang >= 50 ? 'buruk'
                               : (w.skor_terang >= 20 ? 'sedang' : 'baik')}">
             <i>Berubah karena TERANG</i>
-            <b>${w.tingkat === 'tak-terukur' ? '—' : angka(w.skor_terang, 0) + '%'}</b>
+            <b>${w.tingkat === 'tak-terukur' ? '-' : angka(w.skor_terang, 0) + '%'}</b>
             <u>buruk di mode mana pun${w.kosong
                  ? ' · ' + angka(w.kosong) + ' tidak terdeteksi' : ''}</u></span>
           ${a.n ? `<span><i>Akurasi di test</i><b>${angka(a.persen, 0)}%</b>
@@ -970,7 +970,7 @@
   function blokKelas(kelas) {
     if (!Array.isArray(kelas) || !kelas.length) {
       return `<div class="tr-p-blok"><h4>Kelas model</h4>
-        <p class="tr-bantu">Daftar kelas tidak tersedia — versi sumbernya sudah dihapus.</p></div>`;
+        <p class="tr-bantu">Daftar kelas tidak tersedia. Versi sumbernya sudah dihapus.</p></div>`;
     }
     const cip = kelas.map((n, i) =>
       `<span class="tr-kcip"><i>${i}</i>${esc(n)}</span>`).join('');
@@ -1090,7 +1090,7 @@
       </div>
       ${blokKaggle(t)}
       ${vm ? `<div class="tr-p-blok">
-        <h4>Dataset yang dilatih — versi v${t.versi}</h4>
+        <h4>Dataset yang dilatih, versi v${t.versi}</h4>
         <div class="tr-kv-grid">
           <span class="tr-kv"><i>Dibuat</i><b>${esc(vm.dibuat || '?')}${
             vm.oleh ? ' · ' + esc(vm.oleh) : ''}</b></span>
@@ -1104,7 +1104,7 @@
         ${vm.catatan ? `<p class="tr-warna-pesan" style="margin-top:6px">
           <i>Catatan versi:</i> ${esc(vm.catatan)}</p>` : ''}
       </div>` : `<div class="tr-p-blok">
-        <h4>Dataset yang dilatih — versi v${t.versi}</h4>
+        <h4>Dataset yang dilatih, versi v${t.versi}</h4>
         <p class="tr-diam">Versi ini sudah dihapus, jadi rincian dataset &amp;
           catatannya tak tersedia lagi. Kelas yang dibekukan tetap di bawah.</p>
       </div>`}
@@ -1142,7 +1142,7 @@
       // RF-DETR = resume sejati: epoch LANJUT (optimizer+epoch ikut), jadi yang
       // diisi adalah TOTAL epoch baru, wajib lebih besar dari epoch sumber.
       $('tr-lanjut-ket').textContent =
-        `Melanjutkan L${nomor} dari checkpoint terakhirnya — resume state penuh `
+        `Melanjutkan L${nomor} dari checkpoint terakhirnya, resume state penuh `
         + `(optimizer & epoch ikut lanjut), bukan dari nol. Isi TOTAL epoch yang `
         + `diinginkan, harus lebih besar dari ${epochs}.`;
       $('tr-lanjut-epochs-label').textContent = `Total epoch (sumber ${epochs})`;
@@ -1151,7 +1151,7 @@
     } else {
       $('tr-lanjut-ket').textContent =
         `Training baru dimulai dari bobot L${nomor}. Setelannya (versi, hsv, mode `
-        + `warna) diwarisi apa adanya — hanya jumlah epoch yang diganti.`;
+        + `warna) diwarisi apa adanya, hanya jumlah epoch yang diganti.`;
       $('tr-lanjut-epochs-label').textContent = 'Jumlah epoch';
       $('tr-lanjut-epochs').min = 1;
       $('tr-lanjut-epochs').value = epochs || 400;

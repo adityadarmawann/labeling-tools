@@ -868,7 +868,7 @@ def _punya_alur_dataset(data: dict) -> str:
     berkasnya dari disk.
     """
     if not data["pemilik"]:
-        return ("folder dataset bersama tidak punya alur dataset — salin dulu "
+        return ("folder dataset bersama tidak punya alur dataset. Salin dulu "
                 "ke ruang kerjamu lewat halaman Unggah")
     return ""
 
@@ -1110,7 +1110,7 @@ async def ke_dataset(request: Request,
         belum = len(kunci) - len(berlabel)
         if not berlabel:
             return {"ok": False, "ditolak": ditolak, "belum_dianotasi": belum,
-                    "error": f"{belum} gambar belum dianotasi — hanya gambar "
+                    "error": f"{belum} gambar belum dianotasi. Hanya gambar "
                              "yang sudah dianotasi (berlabel atau ditandai "
                              "latar) yang bisa masuk dataset"}
         kunci = berlabel

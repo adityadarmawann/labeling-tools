@@ -156,7 +156,7 @@ def hitung_metrik(y_true, y_pred, kelas) -> dict:
     if degenerate:
         satu = kelas[next(iter(kelas_ditebak))]
         tingkat = "buruk"
-        pesan = (f"Model menebak `{satu}` untuk SEMUA {n} klip — ia tak belajar "
+        pesan = (f"Model menebak `{satu}` untuk SEMUA {n} klip. Ia tak belajar "
                  f"membedakan kelas. Akurasi-rata-rata-kelas {akurasi_rerata_kelas:.2f} "
                  f"hanya sebesar tebakan acak (~{acak:.2f}). JANGAN dikirim.")
     elif akurasi_rerata_kelas is None:
@@ -471,7 +471,7 @@ def evaluasi(ds, nomor: int, *, device: str = "cuda", progres=None) -> dict:
         raise ValueError(f"training aksi A{nomor} tidak ada")
     best_pt = latih_aksi.bobot_training(ds, nomor, "best")
     if best_pt is None:
-        raise FileNotFoundError("best.pt belum ada — trainingnya belum selesai")
+        raise FileNotFoundError("best.pt belum ada. Trainingnya belum selesai")
     backend = isi.get("backend") or ""
     versi_nomor = int(isi.get("versi") or 0)
     versi_dir = klip_olah.dir_versi(Path(ds), versi_nomor)
@@ -577,7 +577,7 @@ def jalankan(ds, nomor: int) -> dict:
     if isi is None:
         raise ValueError(f"training aksi A{nomor} tidak ada")
     if latih_aksi.bobot_training(ds, nomor, "best") is None:
-        raise ValueError("belum ada best.pt — trainingnya belum selesai")
+        raise ValueError("belum ada best.pt. Trainingnya belum selesai")
     if ada_yang_jalan(ds, nomor):
         raise ValueError("evaluasi untuk training ini masih berjalan")
 

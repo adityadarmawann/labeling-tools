@@ -81,7 +81,7 @@ def mark_background(it: dict) -> Path:
                             if b.strip())
         n = di_disk_n or len(it["shapes"])
         if n:
-            raise Menolak(f"gambar ini punya {n} objek — hapus dulu anotasinya")
+            raise Menolak(f"gambar ini punya {n} objek. Hapus dulu anotasinya")
         lp.parent.mkdir(parents=True, exist_ok=True)
         tulis_aman(lp, "")                     # label .txt kosong = latar
         it["shapes"] = []
@@ -94,13 +94,13 @@ def mark_background(it: dict) -> Path:
         try:
             di_disk = json.loads(jp.read_text(encoding="utf-8")).get("shapes") or []
         except (OSError, ValueError):
-            raise Menolak("berkas anotasi rusak — periksa atau hapus manual dulu")
+            raise Menolak("berkas anotasi rusak. Periksa atau hapus manual dulu")
     n = len(di_disk) or len(it["shapes"])
     if n:
-        raise Menolak(f"gambar ini punya {n} objek — "
-                      "hapus dulu anotasinya di AnyLabeling")
+        raise Menolak(f"gambar ini punya {n} objek. "
+                      "Hapus dulu anotasinya di AnyLabeling")
     if "berkas anotasi rusak" in it["issues"]:
-        raise Menolak("berkas anotasi rusak — periksa atau hapus manual dulu")
+        raise Menolak("berkas anotasi rusak. Periksa atau hapus manual dulu")
     tulis_aman(jp, json.dumps({
         "version": LABELME_VERSION, "flags": {}, "shapes": [],
         "imagePath": it["img"].name, "imageData": None,
@@ -115,7 +115,7 @@ def unmark_background(it: dict) -> Path:
     # Sama alasannya dengan mark_background: ingatan sesi bisa basi. Di sini
     # pemeriksaan disknya memang sudah ada sejak awal, di bawah.
     if it["shapes"]:
-        raise Menolak("gambar ini punya anotasi — tidak dihapus")
+        raise Menolak("gambar ini punya anotasi, tidak dihapus")
     # Cerminan mark_background: untuk YOLO, penanda latar ada di labels/*.txt.
     if it.get("yolo"):
         lp = it.get("labels") or (it["img"].parent.parent / "labels"
@@ -123,7 +123,7 @@ def unmark_background(it: dict) -> Path:
         if lp.exists():
             if any(b.strip() for b in
                    lp.read_text(encoding="utf-8", errors="ignore").splitlines()):
-                raise Menolak("berkas anotasi tidak kosong — tidak dihapus")
+                raise Menolak("berkas anotasi tidak kosong, tidak dihapus")
             lp.unlink()
         it["issues"] = ["belum dilabeli"]
         return lp
@@ -131,7 +131,7 @@ def unmark_background(it: dict) -> Path:
     if jp.exists():
         try:
             if json.loads(jp.read_text(encoding="utf-8")).get("shapes"):
-                raise Menolak("berkas anotasi tidak kosong — tidak dihapus")
+                raise Menolak("berkas anotasi tidak kosong, tidak dihapus")
         except Menolak:
             raise
         except Exception:

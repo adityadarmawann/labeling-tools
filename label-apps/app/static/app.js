@@ -930,7 +930,7 @@ const Progres = (() => {
         // dikatakan terang-terangan. Test kosong tidak diperingatkan — itu
         // lumrah di dataset kecil; yang mematikan evaluasi cuma valid.
         + (j.valid_kosong
-           ? '<br><span class="split-warn">split validasi kosong — dataset '
+           ? '<br><span class="split-warn">split validasi kosong. Dataset '
              + 'terlalu kecil untuk pembagian otomatis, model akan dilatih '
              + 'tanpa validasi. Tambah gambar, atau jalankan splitting '
              + 'anti-bocor di bawah.</span>' : '')
@@ -1483,7 +1483,7 @@ const Progres = (() => {
       + '<div class="sampah-ket">'
       + '<b>Kembalikan</b> mengembalikan projek utuh. '
       + '<b>Hapus permanen</b> menghapus berkasnya dari disk dan membebaskan '
-      + 'ruang — tidak bisa dibatalkan.</div>';
+      + 'ruang. Tidak bisa dibatalkan.</div>';
     perbaruiPilihSampah();
     if (!sampahDisorotSekali && location.hash === '#sampah') {
       sampahDisorotSekali = true;
@@ -1654,7 +1654,7 @@ const Progres = (() => {
   if (gridTamuVid) gridTamuVid.addEventListener('click', ev => {
     if (!ev.target.closest('.pcard')) return;
     ev.preventDefault();
-    toast('Pelabelan video sedang disiapkan — projek ini belum bisa dibuka.');
+    toast('Pelabelan video sedang disiapkan. Projek ini belum bisa dibuka.');
   });
 
   // Centang berubah (pilih semua / per-baris) → perbarui tombol borongan.
@@ -1679,11 +1679,11 @@ const Progres = (() => {
       // banyak projek sekaligus, jadi konfirmasinya satu kata tegas: "HAPUS".
       const jwb = prompt(
         `HAPUS PERMANEN ${folders.length} projek dari disk?\n\n`
-        + 'Berkasnya dihapus betulan dan ruang disk dibebaskan — '
+        + 'Berkasnya dihapus betulan dan ruang disk dibebaskan. '
         + 'TIDAK BISA dikembalikan lagi.\n\n'
         + 'Ketik HAPUS untuk melanjutkan:');
       if (jwb !== 'HAPUS') {
-        if (jwb !== null) toast('Dibatalkan — ketik HAPUS persis');
+        if (jwb !== null) toast('Dibatalkan. Ketik HAPUS persis');
         return;
       }
       // Satu bilah progres untuk seluruh rentetan, bukan satu per projek.
@@ -1722,7 +1722,7 @@ const Progres = (() => {
       const nama = hapus.dataset.nama || '';
       const jwb = prompt(
         `HAPUS PERMANEN projek "${nama}" dari disk?\n\n`
-        + 'Berkasnya dihapus betulan dan ruang disk dibebaskan — '
+        + 'Berkasnya dihapus betulan dan ruang disk dibebaskan. '
         + 'TIDAK BISA dikembalikan lagi.\n\n'
         + 'Ketik nama projeknya untuk melanjutkan:');
       if (jwb !== nama) {
@@ -1846,7 +1846,7 @@ const Progres = (() => {
   segPasang(document.getElementById('dlg-jenis'), v => {
     const ket = document.getElementById('dlg-jenis-ket');
     if (ket) ket.textContent = v === 'video'
-      ? 'Projek video: pelabelan video sedang disiapkan — projeknya tetap dibuat '
+      ? 'Projek video: pelabelan video sedang disiapkan. Projeknya tetap dibuat '
         + 'dan muncul di tab Video.'
       : 'Projek image: unggah gambar (atau video yang otomatis diekstrak jadi frame).';
   });
@@ -2259,7 +2259,7 @@ window.pilihRentang = function (wadah, sel, saatUbah) {
     if (!confirm(
         `${pilih.length} gambar dikeluarkan dari dataset dan kembali ke kolom `
         + '"Belum ditugaskan" di halaman Anotasi.\n\n'
-        + 'Anotasinya TIDAK dihapus — yang berubah hanya keanggotaan dataset, '
+        + 'Anotasinya TIDAK dihapus. Yang berubah hanya keanggotaan dataset, '
         + 'dan gambarnya bisa dimasukkan lagi kapan saja.')) return;
     tombol.disabled = true;
     const pr = Progres.mulai(
