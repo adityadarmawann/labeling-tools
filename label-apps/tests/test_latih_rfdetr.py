@@ -39,6 +39,22 @@ def test_siapkan_rfdetr_pakai_preset_rfdetr(tmp_path):
     assert r["warna"] == {}                   # rfdetr tak pakai mode_warna
 
 
+def test_siapkan_rfdetr_memaksa_tugas_detect(tmp_path):
+    """RF-DETR deteksi kotak saja (tak punya keypoint/mask), jadi tugas pose/
+    segment DIPAKSA jadi detect di server — UI menyaring, server menjaga."""
+    _versi(tmp_path, 1, ["player", "ball"])
+    r = latih.siapkan(tmp_path, nama="r", versi_nomor=1, tugas="pose", bobot="",
+                      par={}, oleh="u", arsitektur="rfdetr", rfdetr_model="nano")
+    assert r["tugas"] == "detect"
+    rs = latih.siapkan(tmp_path, nama="s", versi_nomor=1, tugas="segment", bobot="",
+                       par={}, oleh="u", arsitektur="rfdetr", rfdetr_model="nano")
+    assert rs["tugas"] == "detect"
+    # YOLO tetap boleh pose.
+    ry = latih.siapkan(tmp_path, nama="y", versi_nomor=1, tugas="pose",
+                       bobot="yolov8n-pose.pt", par={}, oleh="u", arsitektur="yolo")
+    assert ry["tugas"] == "pose"
+
+
 def test_siapkan_rfdetr_multigpu_saklar(tmp_path):
     """Saklar 2-GPU tersimpan di rekaman untuk RF-DETR; untuk YOLO diabaikan."""
     _versi(tmp_path, 1, ["a"])

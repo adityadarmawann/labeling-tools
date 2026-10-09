@@ -205,6 +205,7 @@
     } else {
       $('tr-tugas-ket').textContent = '';
     }
+    terapkanFilterPose();          // tugas bisa berubah -> saring arsitektur
 
     // Bawaannya mengikuti cara versinya dibuat — itu yang hampir selalu
     // benar. Orang tetap boleh menggantinya, dan kalau berbeda, peringatannya
@@ -572,6 +573,28 @@
     gambarForm();                 // tukar isian parameter (YOLO <-> RF-DETR)
     if (!rf) terapkanPreset();    // pulihkan bawaan preset YOLO
     terapkanBackend();            // segarkan gerbang tombol Jalankan
+    terapkanFilterPose();         // pose -> hanya YOLO (RF-DETR tak punya keypoint)
+  }
+
+  /* FILTER: pose/keypoint hanya bisa dilatih YOLO — RF-DETR deteksi kotak saja,
+     tak punya keypoint. Jadi saat tugas = pose, opsi RF-DETR DIMATIKAN di selektor
+     arsitektur; kalau RF-DETR terlanjur terpilih, balik ke YOLO. */
+  function terapkanFilterPose() {
+    const tsel = $('tr-tugas');
+    const asel = $('tr-arsitektur');
+    if (!tsel || !asel) return;
+    const pose = tsel.value === 'pose';
+    const opt = asel.querySelector('option[value="rfdetr"]');
+    if (opt) {
+      opt.disabled = pose;
+      opt.textContent = pose
+        ? 'RF-DETR (tak mendukung pose/keypoint)'
+        : 'RF-DETR, transformer, unggul objek kecil';
+    }
+    if (pose && asel.value === 'rfdetr') {   // jaring pengaman
+      asel.value = 'yolo';
+      terapkanArsitektur();
+    }
   }
 
   // ============================================================
@@ -1465,7 +1488,10 @@
             $('tr-bobot-ket').textContent =
               (BAHAN.bobot.find((b) => b.path === $('tr-bobot').value) || {}).ket || '';
             if (o) $('tr-tugas').value = o.dataset.tugas || 'segment';
+            terapkanFilterPose();      // bobot pose -> tugas pose -> saring arsitektur
           };
+          // Ganti tugas manual (mis. ke pose) ikut menyaring arsitektur.
+          if ($('tr-tugas')) $('tr-tugas').onchange = terapkanFilterPose;
           gambarForm();
           // Selektor "Jenis preset" (SmartBin / Basket) — ramah untuk awam.
           // Mengganti preset memuat ulang bawaan setelan + menampilkan/

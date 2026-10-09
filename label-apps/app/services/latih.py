@@ -920,6 +920,10 @@ def siapkan(ds, *, nama: str, versi_nomor: int, tugas: str, bobot: str,
     preset = preset_sah(preset)
     arsitektur = arsitektur_sah(arsitektur)
     rfdetr_model = rfdetr_model_sah(rfdetr_model) if arsitektur == "rfdetr" else ""
+    # RF-DETR hanya deteksi kotak — tak punya keypoint/mask. Pose & segment HANYA
+    # YOLO. Dipaksa di server supaya UI (yang sudah menyaring) tak bisa dilewati.
+    if arsitektur == "rfdetr":
+        tugas = "detect"
     # Saklar 2-GPU (Kaggle T4x2) — hanya bermakna untuk RF-DETR; default mati.
     rfdetr_multigpu = bool(rfdetr_multigpu) and arsitektur == "rfdetr"
     # RF-DETR punya hyperparameter & batas sendiri, dan TIDAK memakai preset
