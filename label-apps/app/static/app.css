@@ -3026,9 +3026,10 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
 .tr-akun-aksi .tr-bantu{flex:1 1 100%}
 .tr-test-berhasil{color:var(--ok); font-weight:600}
 .tr-test-gagal{color:var(--bahaya, #c0392b); font-weight:600}
-.tr-akun-monitor{font-size:12px}
-.tr-akun-monitor summary{cursor:pointer; color:var(--ink-dim); font-size:11.5px}
-.tr-akun-mon-user{padding:3px 0}
+/* Monitor akun Kaggle tim di halaman Admin (#kaggle-monitor). */
+.akun-kaggle-baris{padding:5px 0; font-size:13px; line-height:1.5;
+  border-top:1px solid var(--line)}
+.akun-kaggle-baris:first-child{border-top:0}
 
 .tr-par-atas{display:flex; align-items:center; gap:8px}
 .tr-tandabawaan{

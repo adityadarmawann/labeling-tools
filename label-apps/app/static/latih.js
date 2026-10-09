@@ -453,11 +453,12 @@
       daftar.innerHTML = '<p class="tr-bantu">Belum ada akun. Tekan "+ Tambah akun", '
         + 'tempel username + API token Kaggle, lalu Test.</p>';
     } else {
+      // Hanya username + status kuota. TOKEN tak pernah ditampilkan (bahkan
+      // prefix ter-mask pun bocoran).
       daftar.innerHTML = akun.map((a) => `
         <div class="tr-akun-baris">
           <span class="tr-akun-nama">${esc(a.user)}${a.utama ? ' <b>(utama)</b>' : ''}</span>
-          <span class="tr-akun-stat">${a.habis ? 'kuota habis' : 'sisa ~' + a.sisa_jam + 'j'}`
-        + ` · ${esc(a.token_mask || '')}</span>
+          <span class="tr-akun-stat">${a.habis ? 'kuota habis' : 'sisa ~' + a.sisa_jam + 'j'}</span>
           <span class="spacer"></span>
           ${a.utama ? '' : `<button class="chip" type="button" data-utama="${esc(a.user)}">Jadikan utama</button>`}
           <button class="chip tr-akun-hapus" type="button" data-hapus="${esc(a.user)}">Hapus</button>
@@ -472,8 +473,6 @@
         };
       });
     }
-    const mon = $('tr-akun-monitor');
-    if (mon) mon.hidden = !BAHAN.admin;
   }
 
   async function aksiAkun(url, payload) {
@@ -543,23 +542,8 @@
       gambarAkun(); terapkanBackend();
     } catch (e) { if (tbl) tbl.disabled = false; setelTest('gagal', 'gagal menyimpan: ' + e); }
   }
-
-  async function muatMonitorAkun() {
-    const isi = $('tr-akun-monitor-isi');
-    if (!isi) return;
-    isi.textContent = 'memuat…';
-    try {
-      const r = await ambil('/api/latih/akun/semua');
-      if (r.ok === false) { isi.textContent = r.error || 'gagal'; return; }
-      const semua = r.semua || [];
-      if (!semua.length) { isi.textContent = 'belum ada user yang mendaftarkan akun Kaggle.'; return; }
-      isi.innerHTML = semua.map((u) =>
-        `<div class="tr-akun-mon-user"><b>${esc(u.pemilik)}</b>: `
-        + (u.akun || []).map((a) =>
-          `${esc(a.user)} (${a.habis ? 'habis' : 'sisa ~' + a.sisa_jam + 'j'})`).join(', ')
-        + '</div>').join('');
-    } catch (e) { isi.textContent = 'gagal memuat: ' + e; }
-  }
+  // Monitor "semua akun" ADA DI HALAMAN ADMIN (/akun), bukan di form training —
+  // lihat app.js. Di sini tiap user hanya mengelola akun miliknya sendiri.
 
   /* Mengganti Arsitektur menukar SELURUH bentuk form: RF-DETR menyembunyikan
      kendali khas YOLO (preset SmartBin/Basket, panel Bentuk/Warna, jenis
@@ -1524,11 +1508,6 @@
           ['tr-akun-user', 'tr-akun-token'].forEach((id) => {
             if ($(id)) $(id).oninput = () => setelTest('', '');
           });
-          if ($('tr-akun-monitor')) {
-            $('tr-akun-monitor').addEventListener('toggle', () => {
-              if ($('tr-akun-monitor').open) muatMonitorAkun();
-            });
-          }
           // Arsitektur (YOLO / RF-DETR). Selektornya hanya muncul kalau RF-DETR
           // benar-benar bisa dipakai — terpasang di mesin ini ATAU lewat Kaggle
           // — dan bawaannya tetap YOLO, jadi tampilan lama tak berubah sedikit

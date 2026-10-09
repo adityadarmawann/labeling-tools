@@ -1902,6 +1902,29 @@ const Progres = (() => {
  * Keduanya juga ditegakkan di server; yang di sini semata supaya salahnya
  * ketahuan sebelum permintaan dikirim.
  */
+// Monitor akun Kaggle tim — HANYA halaman Admin (/akun). Token tak pernah
+// diminta/ditampilkan; endpoint /api/latih/akun/semua sudah admin-gated server.
+(() => {
+  const box = document.getElementById('kaggle-monitor');
+  if (!box) return;
+  const esc = t => String(t == null ? '' : t).replace(/[&<>"']/g,
+    c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+  (async () => {
+    let j;
+    try { j = await (await fetch('/api/latih/akun/semua')).json(); }
+    catch (e) { box.textContent = 'gagal memuat'; return; }
+    if (!j || j.ok === false) { box.textContent = (j && j.error) || 'gagal memuat'; return; }
+    const semua = j.semua || [];
+    if (!semua.length) { box.textContent = 'Belum ada anggota yang mendaftarkan akun Kaggle.'; return; }
+    box.innerHTML = semua.map(u =>
+      `<div class="akun-kaggle-baris"><b>${esc(u.pemilik)}</b>: `
+      + (u.akun || []).map(a =>
+        `${esc(a.user)}${a.utama ? ' (utama)' : ''} (${a.habis ? 'kuota habis' : 'sisa ~' + a.sisa_jam + 'j'})`
+      ).join(', ')
+      + '</div>').join('');
+  })();
+})();
+
 (() => {
   const daftar = document.getElementById('akun-daftar');
   if (!daftar) return;

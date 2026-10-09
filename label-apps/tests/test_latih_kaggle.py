@@ -526,7 +526,7 @@ def _ns(tmp):
               kaggle_token_file=None)
 
 
-def test_akun_user_crud_isolasi_dan_mask(tmp_path):
+def test_akun_user_crud_isolasi_tanpa_token(tmp_path):
     s = _ns(tmp_path)
     k.tambah_akun_user(s, "budi", "kBudi", "KGAT_" + "b" * 28)
     k.tambah_akun_user(s, "budi", "kBudi2", "KGAT_" + "c" * 28)
@@ -534,10 +534,8 @@ def test_akun_user_crud_isolasi_dan_mask(tmp_path):
     rb = k.ringkas_akun_user(s, "budi")
     assert [a["user"] for a in rb] == ["kBudi2", "kBudi"]      # terbaru = utama
     assert rb[0]["utama"] and not rb[1]["utama"]
-    # token MENTAH tak pernah keluar; hanya mask
-    assert all("token" not in a for a in rb)
-    assert all(a["token_mask"].startswith("KGAT_") and a["token_mask"].endswith("…")
-               for a in rb)
+    # TOKEN tak pernah keluar sama sekali — tak ada "token" maupun "token_mask".
+    assert all("token" not in a and "token_mask" not in a for a in rb)
     # isolasi antar-user
     assert [a["user"] for a in k.ringkas_akun_user(s, "siti")] == ["kSiti"]
     # akun_pool_user milik budi tak memuat akun siti

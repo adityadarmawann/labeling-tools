@@ -885,9 +885,9 @@ def test_akun_kaggle_per_user_isolasi_crud(klien, lingkungan, monkeypatch):
                    json={"kaggle_user": "kPaul", "token": tok}).json()
     assert r["ok"] is True
     assert [a["user"] for a in r["akun"]] == ["kPaul"]
-    # Token TAK PERNAH kembali ke klien kecuali dimask.
+    # Token TAK PERNAH kembali ke klien — tak ada token penuh, tak ada mask.
     assert tok not in json.dumps(r)
-    assert r["akun"][0]["token_mask"].endswith("…")
+    assert all("token" not in a and "token_mask" not in a for a in r["akun"])
     # GET akun sendiri.
     g = klien.get("/api/latih/akun").json()
     assert [a["user"] for a in g["akun"]] == ["kPaul"]

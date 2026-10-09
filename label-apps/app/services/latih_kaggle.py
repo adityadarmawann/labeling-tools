@@ -309,11 +309,6 @@ def ringkas_akun(settings) -> list[dict]:
 # supaya akun antar-user terisolasi. Token TAK PERNAH dikirim balik ke browser;
 # yang keluar hanya mask.
 
-def _mask_token(tok: str) -> str:
-    tok = str(tok or "")
-    return (tok[:9] + "\u2026") if len(tok) > 11 else "\u2026"
-
-
 def _bersih_token(teks: str, token: str) -> str:
     """Buang token dari teks (mis. pesan galat) supaya tak pernah ter-log."""
     return teks.replace(token, "<token>") if token else teks
@@ -406,7 +401,8 @@ def ringkas_akun_user(settings, u: str) -> list[dict]:
             "sisa_jam": round(max(0.0, KUOTA_MINGGU_JAM - pakai), 1),
             "habis": _akun_habis(basis, a["user"]),
             "utama": i == 0,
-            "token_mask": _mask_token(a["token"]),
+            # TOKEN TIDAK PERNAH keluar ke klien — cukup username. Dulu sempat
+            # ada prefix ter-mask; itu pun bocoran, jadi dibuang total.
             "verified_at": (spec.get(a["user"]) or {}).get("verified_at", ""),
         })
     return out
