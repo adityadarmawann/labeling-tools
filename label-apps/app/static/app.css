@@ -3024,6 +3024,18 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
   border:1px dashed var(--line2); border-radius:8px; background:var(--ok-lembut)}
 .tr-akun-aksi{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
 .tr-akun-aksi .tr-bantu{flex:1 1 100%}
+/* "Test & simpan" dan "Batal" harus tampil sepasang: setinggi sama dan
+   sejajar. .cta global membawa margin-top:26px (warisan tombol hero) yang di
+   sini malah menjatuhkannya di bawah .chip, dan padding/font keduanya beda
+   tinggi. Dinetralkan HANYA dalam konteks ini — aturan global .cta/.chip tak
+   disentuh. height eksplisit + border-box menyerap selisih border 1px .chip,
+   jadi keduanya persis setinggi 32px; inline-flex menengahkan teksnya, dan
+   align-items:center pada barisnya meratakan keduanya di garis yang sama.
+   .cta tetap terisi (primer), .chip tetap bergaris (sekunder). */
+.tr-akun-aksi .cta,
+.tr-akun-aksi .chip{margin:0; box-sizing:border-box; height:32px;
+  display:inline-flex; align-items:center; justify-content:center;
+  padding:0 16px; font-size:13px; line-height:1; border-radius:7px}
 .tr-test-berhasil{color:var(--ok); font-weight:600}
 .tr-test-gagal{color:var(--bahaya, #c0392b); font-weight:600}
 /* Monitor akun Kaggle tim di halaman Admin (#kaggle-monitor). */
