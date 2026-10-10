@@ -501,6 +501,29 @@ async def halaman_aksi_versi(request: Request, ds: str = "",
     })
 
 
+@router.get("/aksi/latih", response_class=HTMLResponse)
+async def halaman_aksi_latih(request: Request, ds: str = "",
+                             sess: Session = Depends(current_session),
+                             settings: Settings = Depends(get_settings)):
+    """Tab TRAINING projek video (padanan /latih gambar, untuk KLIP): form latih
+    3 backend aksi + run list + Uji produksi (confusion matrix). Dipisah dari
+    halaman Label Aksi. Projek image dialihkan ke /latih biasa. Daftar run +
+    bahan diisi klien dari /api/aksi/latih/bahan + /kemajuan (rute tak berubah)."""
+    d = projek.temukan(settings.uploads_root, sess.user, ds)
+    if d is None:
+        return RedirectResponse("/pilih", status_code=303)
+    if projek.jenis_projek(d) != "video":
+        return RedirectResponse(f"/latih?ds={ds}", status_code=303)
+    if str(sess.src or "") != str(d):
+        await asyncio.to_thread(sess.load, d)
+    tdata = await asyncio.to_thread(tugas.baca_projek, d, settings.uploads_root)
+    pr = await asyncio.to_thread(projek.konteks, d, settings.uploads_root, sess.user)
+    return templates.TemplateResponse(request, "aksi_latih.html", {
+        "sess": sess, "pr": pr, "aktif": "latih", "awal": {"ds": pr["ds"]},
+        "boleh_latih": tugas.boleh_unggah(tdata, sess.user),
+    })
+
+
 @router.get("/api/aksi/keterangan")
 async def aksi_keterangan(ds: str = "", job: str = "",
                           sess: Session = Depends(current_session_api),

@@ -51,40 +51,13 @@
               title="Masukkan semua klip yang sudah kamu labeli ke dataset">
         Tambahkan berlabel ke dataset</button>
 
-      {#- Buat/impor versi dipindah ke TAB "Versi" sendiri (/aksi/versi), sejajar
-          alur image (Unggah -> Anotasi -> Dataset -> Versi -> Training). Di
-          halaman Label Aksi ini fokusnya melabeli klip. -#}
-      {% if boleh_kelola %}
-      <p class="halus ak-versi-tautan">Buat / impor / unduh versi ada di tab
-        <a href="/aksi/versi?ds={{ pr.ds | urlquote }}">Versi</a>.</p>
-      {% endif %}
-
-      {#- Latih model (Langkah 9): pemilik/Editor saja. Pemilih backend HANYA
-          menawarkan yang pustakanya terpasang di server ini (dari
-          siap_latih_aksi); versi = versi klip aksi yang sudah dibangun. POST
-          hanya memulai; kemajuan + daftar run di-poll. Checkpoint diunduh lewat
-          tautan di tiap run. Diisi aksi.js dari /api/aksi/latih/bahan. -#}
+      {#- Versi & Training kini punya tab sendiri (sejajar alur image: Unggah ->
+          Anotasi -> Dataset -> Versi -> Training). Halaman Label Aksi fokus
+          melabeli klip. -#}
       {% if boleh_latih %}
-      <h3 class="ak-judul">Latih model</h3>
-      <div class="ak-latih" id="ak-latih" hidden>
-        <label class="halus">Backend
-          <select id="ak-tr-backend"></select></label>
-        <p class="halus ak-tr-ket" id="ak-tr-ket"></p>
-        <label class="halus">Versi dataset
-          <select id="ak-tr-versi"></select></label>
-        <div class="ak-tr-par">
-          <label class="halus">Epoch <input type="number" id="ak-tr-epochs"
-                 min="1" max="1000" step="1"></label>
-          <label class="halus">Batch <input type="number" id="ak-tr-batch"
-                 min="1" max="64" step="1"></label>
-        </div>
-        <button class="chip aksi" type="button" id="ak-tr-mulai">Jalankan</button>
-        <p class="halus ak-tr-maju" id="ak-tr-maju" hidden></p>
-      </div>
-      <p class="halus ak-tr-nosiap" id="ak-tr-nosiap" hidden>
-        Server ini belum punya pustaka untuk melatih aksi (butuh venv GPU:
-        transformers / pytorchvideo / av / ultralytics).</p>
-      <ul class="ak-tr-daftar halus" id="ak-tr-daftar"></ul>
+      <p class="halus ak-tautan-tab">Buat / impor versi di tab
+        <a href="/aksi/versi?ds={{ pr.ds | urlquote }}">Versi</a> &middot; latih model di tab
+        <a href="/aksi/latih?ds={{ pr.ds | urlquote }}">Training</a>.</p>
       {% endif %}
 
       <h3 class="ak-judul">Pintasan papan tik</h3>

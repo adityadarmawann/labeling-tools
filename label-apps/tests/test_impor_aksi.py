@@ -360,10 +360,32 @@ def test_aksi_versi_image_dialihkan(klien, lingkungan):
 
 
 def test_aksi_labeling_tak_lagi_punya_kontrol_versi(klien, lingkungan):
-    """Halaman Label Aksi tak lagi menampung kontrol versi/impor (pindah ke tab
-    Versi) — tinggal menunjuk ke sana."""
+    """Halaman Label Aksi tak lagi menampung kontrol versi/impor/training
+    (pindah ke tab Versi + Training) — tinggal menunjuk ke sana."""
     masuk(klien, "paul", PW_PAUL)
     _buat_projek(klien, "vid-lbl", "video")
     html = klien.get("/aksi?ds=vid-lbl").text
     assert "ak-buat-versi" not in html and "ak-impor-file" not in html
-    assert "/aksi/versi?ds=" in html                             # pointer ke tab Versi
+    assert "ak-tr-backend" not in html and "ak-latih" not in html
+    assert "/aksi/versi?ds=" in html and "/aksi/latih?ds=" in html  # pointer ke tab
+
+
+# ──────────────────── tab TRAINING klip sendiri (/aksi/latih) ──────────────
+def test_aksi_latih_halaman_video(klien, lingkungan):
+    masuk(klien, "paul", PW_PAUL)
+    _buat_projek(klien, "vid-lat", "video")
+    r = klien.get("/aksi/latih?ds=vid-lat")
+    assert r.status_code == 200, r.text[:200]
+    html = r.text
+    assert "Training model aksi" in html
+    assert "ak-tr-backend" in html and "ak-tr-daftar" in html
+    assert "akl-awal" in html
+    assert "/aksi/latih?ds=" in html                 # sidebar Training -> tab video
+
+
+def test_aksi_latih_image_dialihkan(klien, lingkungan):
+    masuk(klien, "paul", PW_PAUL)
+    _buat_projek(klien, "img-lat", "image")
+    r = klien.get("/aksi/latih?ds=img-lat", follow_redirects=False)
+    assert r.status_code == 303
+    assert "/latih?ds=img-lat" in r.headers.get("location", "")

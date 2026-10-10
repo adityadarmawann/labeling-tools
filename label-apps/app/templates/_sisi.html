@@ -70,7 +70,9 @@
         baru latih. -#}
     <span class="sisi-judul">MODEL</span>
 
-    <a class="sisi-item" href="/latih?ds={{ pr.ds | urlquote }}"
+    {#- Projek video punya tab Training sendiri (/aksi/latih) untuk 3 backend
+        klip + Uji produksi. Projek image tetap ke /latih gambar. -#}
+    <a class="sisi-item" href="{% if pr.jenis == 'video' %}/aksi/latih{% else %}/latih{% endif %}?ds={{ pr.ds | urlquote }}"
        {% if aktif == 'latih' %}data-on aria-current="page"{% endif %}>
       <span class="sisi-ikon" aria-hidden="true">&#9670;</span>Training
       {%- if pr.latih_jalan %}<b class="sisi-angka sisi-angka-jalan"

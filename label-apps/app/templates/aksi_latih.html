@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block bodyclass %}berprojek{% endblock %}
+
+{#- Tab TRAINING untuk projek VIDEO (classifier aksi). Padanan /latih gambar,
+    tetapi untuk 3 backend klip (VideoMAE / SlowFast / PoseC3D) + Uji produksi
+    (confusion matrix). Dipisah dari halaman Label Aksi supaya alur video
+    bertab seperti image. Diisi aksi_latih.js dari /api/aksi/latih/bahan. -#}
+
+{% block body %}
+<header>
+  <div class="top">
+    <h1>{{ nama_app() }}</h1>
+    {% include "_header.html" %}
+  </div>
+</header>
+
+<main>
+{% include "_sisi.html" %}
+<div class="sisi-isi" id="akl-isi" data-ds="{{ pr.ds }}">
+
+  <h2 class="hal-judul">Training model aksi</h2>
+  <p class="halus hal-ket">Latih classifier aksi dari sebuah <b>versi</b> klip.
+    Backend yang ditawarkan hanya yang pustakanya terpasang di server ini. Tiap
+    run punya unduhan <code>best.pt</code> + <b>Uji produksi</b> (confusion
+    matrix). Buat versinya dulu di tab
+    <a href="/aksi/versi?ds={{ pr.ds | urlquote }}">Versi</a>.</p>
+
+  {% if boleh_latih %}
+  <section class="panel akl-panel">
+    <h3>Latih model</h3>
+    <div class="ak-latih" id="ak-latih" hidden>
+      <label class="halus">Backend
+        <select id="ak-tr-backend"></select></label>
+      <p class="halus ak-tr-ket" id="ak-tr-ket"></p>
+      <label class="halus">Versi dataset
+        <select id="ak-tr-versi"></select></label>
+      <div class="ak-tr-par">
+        <label class="halus">Epoch <input type="number" id="ak-tr-epochs"
+               min="1" max="1000" step="1"></label>
+        <label class="halus">Batch <input type="number" id="ak-tr-batch"
+               min="1" max="64" step="1"></label>
+      </div>
+      <button class="chip aksi" type="button" id="ak-tr-mulai">Jalankan</button>
+      <p class="halus ak-tr-maju" id="ak-tr-maju" hidden></p>
+    </div>
+    <p class="halus ak-tr-nosiap" id="ak-tr-nosiap" hidden>
+      Server ini belum punya pustaka untuk melatih aksi (butuh venv GPU:
+      transformers / pytorchvideo / av / ultralytics).</p>
+  </section>
+  {% endif %}
+
+  <h3 class="ak-judul">Run</h3>
+  <ul class="ak-tr-daftar halus" id="ak-tr-daftar"></ul>
+</div>
+</main>
+{% endblock %}
+
+{% block skrip %}
+<script id="akl-awal" type="application/json">{{ awal | tojson }}</script>
+<script src="{{ statik('aksi_latih.js') }}"></script>
+{% endblock %}
