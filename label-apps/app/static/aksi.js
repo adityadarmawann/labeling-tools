@@ -299,55 +299,85 @@ if (btnVersi) {
   });
 }
 
-// -- impor dataset klip jadi (.zip) (pemilik/Editor) ------------------------
-// Unggah .zip berisi train/ + val|valid/ folder-per-kelas; server membongkar +
-// mendaftarkannya sebagai versi tanpa proses ulang. POST mengunggah + memulai;
-// kemajuan (bongkar + salin) di-poll seperti build versi. Elemen cuma ada untuk
-// pemilik/Editor (dirender bersyarat di aksi.html), jadi bisa saja tak ada.
-const impFile = el('ak-impor-file');
-if (impFile) {
+// -- impor dataset klip jadi (pemilik/Editor: unggah .zip; admin: path server) --
+// Keduanya mendaftarkan dataset JADI sebagai versi tanpa proses ulang, dan
+// berbagi kemajuan (kunci sama) -> satu poll. Elemen dirender bersyarat di
+// aksi.html (unggah: pemilik/Editor; path: admin), jadi bisa saja tak ada.
+{
+  const impFile = el('ak-impor-file');
+  const pathBtn = el('ak-impor-path-btn');
   const impMaju = el('ak-impor-maju');
-  let impPoll = null;
+  if ((impFile || pathBtn) && impMaju) {
+    let impPoll = null;
 
-  function impTampil(k) {
-    impMaju.hidden = false;
-    if (k.galat) { impMaju.textContent = 'Gagal: ' + k.galat; return; }
-    if (k.selesai) { impMaju.textContent = `Versi v${k.nomor || ''} selesai.`; return; }
-    const p = (k.persen != null) ? ` ${k.persen}%` : '';
-    impMaju.textContent = (k.fase_nama || 'Memproses') + p;
-  }
+    function impTampil(k) {
+      impMaju.hidden = false;
+      if (k.galat) { impMaju.textContent = 'Gagal: ' + k.galat; return; }
+      if (k.selesai) { impMaju.textContent = `Versi v${k.nomor || ''} selesai.`; return; }
+      const p = (k.persen != null) ? ` ${k.persen}%` : '';
+      impMaju.textContent = (k.fase_nama || 'Memproses') + p;
+    }
 
-  async function impPantau() {
-    const k = await send(`/api/aksi/impor/kemajuan?ds=${EDS}`);
-    if (!k || !k.ok) return;
-    impTampil(k);
-    if (k.selesai || k.galat) {
-      if (impPoll) { clearInterval(impPoll); impPoll = null; }
-      if (k.selesai && k.nomor && !versiData.some(v => v.nomor === k.nomor)) {
-        const rk = k.ringkas || {};
-        versiData.unshift({ nomor: k.nomor, n: rk.n || 0,
-          kelas: rk.kelas || 0, jumlah: rk.jumlah || {} });
-        renderVersi();
-        toast(`Versi v${k.nomor} diimpor`);
+    async function impPantau() {
+      const k = await send(`/api/aksi/impor/kemajuan?ds=${EDS}`);
+      if (!k || !k.ok) return;
+      impTampil(k);
+      if (k.selesai || k.galat) {
+        if (impPoll) { clearInterval(impPoll); impPoll = null; }
+        if (k.selesai && k.nomor && !versiData.some(v => v.nomor === k.nomor)) {
+          const rk = k.ringkas || {};
+          versiData.unshift({ nomor: k.nomor, n: rk.n || 0,
+            kelas: rk.kelas || 0, jumlah: rk.jumlah || {} });
+          renderVersi();
+          toast(`Versi v${k.nomor} diimpor`);
+        }
       }
     }
-  }
 
-  impFile.addEventListener('change', async () => {
-    const f = impFile.files && impFile.files[0];
-    if (!f) return;
-    impMaju.hidden = false;
-    impMaju.textContent = `Mengunggah ${(f.size / 1048576).toFixed(0)} MB…`;
-    const r = await send(`/api/aksi/impor?ds=${EDS}`, { method: 'POST', body: f });
-    impFile.value = '';     // boleh pilih berkas yang sama lagi nanti
-    if (!r || !r.ok) {
-      impMaju.textContent = (r && r.error) ? r.error : 'gagal';
-      toast((r && r.error) || 'gagal impor');
-      return;
+    function mulaiPoll() {
+      if (!impPoll) impPoll = setInterval(impPantau, 1000);
+      impPantau();
     }
-    impPoll = setInterval(impPantau, 1000);
-    impPantau();
-  });
+
+    // Unggah .zip (data di komputermu).
+    if (impFile) {
+      impFile.addEventListener('change', async () => {
+        const f = impFile.files && impFile.files[0];
+        if (!f) return;
+        impMaju.hidden = false;
+        impMaju.textContent = `Mengunggah ${(f.size / 1048576).toFixed(0)} MB…`;
+        const r = await send(`/api/aksi/impor?ds=${EDS}`, { method: 'POST', body: f });
+        impFile.value = '';     // boleh pilih berkas yang sama lagi nanti
+        if (!r || !r.ok) {
+          impMaju.textContent = (r && r.error) ? r.error : 'gagal';
+          toast((r && r.error) || 'gagal impor');
+          return;
+        }
+        mulaiPoll();
+      });
+    }
+
+    // Path server (admin): data sudah ada di mesin server, tak perlu unggah.
+    if (pathBtn) {
+      const pathInp = el('ak-impor-path');
+      pathBtn.addEventListener('click', async () => {
+        const path = (pathInp && pathInp.value || '').trim();
+        if (!path) { toast('isi path-nya dulu'); return; }
+        impMaju.hidden = false;
+        impMaju.textContent = 'Memuat dari server…';
+        const r = await send(`/api/aksi/impor-path?ds=${EDS}`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path }),
+        });
+        if (!r || !r.ok) {
+          impMaju.textContent = (r && r.error) ? r.error : 'gagal';
+          toast((r && r.error) || 'gagal impor');
+          return;
+        }
+        mulaiPoll();
+      });
+    }
+  }
 }
 
 // -- latih model (Langkah 9, pemilik/Editor) --------------------------------

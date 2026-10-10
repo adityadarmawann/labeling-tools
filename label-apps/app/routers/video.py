@@ -22,10 +22,10 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
-from ..config import (KLIP, KLIP_BURUK, KLIP_DITOLAK, SUMBER_VIDEO, VIDEO_EXT,
-                      Settings, get_settings)
+from ..config import (ARSIP_EXT, KLIP, KLIP_BURUK, KLIP_DITOLAK, SUMBER_VIDEO,
+                      VIDEO_EXT, Settings, get_settings)
 from ..deps import bodi_json, current_session, current_session_api
-from ..security import safe_relpath, safe_slug
+from ..security import is_admin, load_users, safe_relpath, safe_slug
 from ..services import (arsip, eval_aksi, export, impor_aksi, klip,
                         klip_filter, klip_olah, klip_scan, klip_tag, latih_aksi,
                         projek, tugas, versi, video_ingest)
@@ -33,6 +33,10 @@ from ..session import Session
 from ..templating import templates
 
 log = logging.getLogger("labelapp.video")
+
+
+def _apakah_admin(sess: Session, settings: Settings) -> bool:
+    return is_admin(load_users(settings.users_file), sess.user)
 
 router = APIRouter(tags=["video"])
 
@@ -466,6 +470,9 @@ async def halaman_aksi(request: Request, ds: str = "", job: str = "",
         "boleh_kelola": tugas.boleh_kelola(tdata, sess.user),
         # Latih model: pemilik/Editor (boleh_unggah), sama dengan membangun versi.
         "boleh_latih": tugas.boleh_unggah(tdata, sess.user),
+        # Impor dari path server HANYA admin (membaca path server bebas; prod
+        # terbuka ke jaringan, jadi bukan hak yang diberikan ke sembarang Editor).
+        "admin": _apakah_admin(sess, settings),
     })
 
 
@@ -792,6 +799,98 @@ async def aksi_impor_kemajuan(ds: str = "",
     """Kemajuan impor .zip untuk projek ini (polling). Kunci diturunkan dari
     user+ds di server, jadi hanya impor sendiri yang terlihat."""
     return {"ok": True, **klip_olah.kemajuan(_kunci_impor_aksi(sess.user, ds))}
+
+
+def _impor_path_kerja(d: Path, sumber: Path, kunci: str, oleh: str, kelas,
+                      negatif: str, maks_byte: int, maks_entri: int) -> None:
+    """Impor dari PATH server: `sumber` sebuah .zip (dibongkar ke staging) atau
+    folder (dicari train/val langsung). Folder sumber TAK PERNAH dihapus — itu
+    data milik user di luar projek; hanya staging hasil bongkar yang dibersihkan."""
+    staging = None
+    try:
+        if sumber.is_file() and sumber.suffix.lower() in ARSIP_EXT:
+            staging = d / "_impor_tmp"
+            shutil.rmtree(staging, ignore_errors=True)
+            (staging / "isi").mkdir(parents=True, exist_ok=True)
+            klip_olah.catat_maju(kunci, jalan=True, persen=25,
+                                 fase_nama="Membongkar arsip")
+            arsip.bongkar(sumber, staging / "isi", maks_byte=maks_byte,
+                          maks_entri=maks_entri, video=True)
+            cari = staging / "isi"
+        else:
+            cari = sumber
+        pair = impor_aksi.temukan_dataset(cari)
+        if pair is None:
+            raise impor_aksi.ImporTolak(
+                "di path itu tak ada folder train/ + val|valid/ berisi "
+                "subfolder kelas .mp4")
+        tr, va = pair
+        klip_olah.catat_maju(kunci, jalan=True, persen=55,
+                             fase_nama="Menyalin + mendaftarkan versi")
+        r = impor_aksi.impor(d, tr, va, oleh=oleh, kelas=kelas, negatif=negatif)
+        klip_olah.catat_maju(kunci, jalan=False, selesai=True,
+                             nomor=r["nomor"], ringkas=r)
+    except (impor_aksi.ImporTolak, arsip.ArsipTolak) as e:
+        klip_olah.catat_maju(kunci, jalan=False, galat=str(e)[:200])
+    except Exception as e:                           # noqa: BLE001
+        log.exception("impor aksi path gagal")
+        klip_olah.catat_maju(kunci, jalan=False, galat=str(e)[:200])
+    finally:
+        if staging is not None:
+            shutil.rmtree(staging, ignore_errors=True)
+
+
+@router.post("/api/aksi/impor-path")
+async def aksi_impor_path(request: Request, ds: str = "",
+                          sess: Session = Depends(current_session_api),
+                          settings: Settings = Depends(get_settings)):
+    """Impor dataset dari PATH di server (ADMIN saja). Body JSON {path, kelas?,
+    negatif?}: `path` = folder berisi train/val ATAU sebuah .zip di server.
+
+    Karena datanya sudah ada di mesin server, menunjuk path jauh lebih ringkas
+    daripada mengunggah ratusan MB lewat peramban. Membaca path server bebas =
+    hak admin (prod terbuka ke jaringan). Jalan di thread latar; kemajuan dipoll
+    di /api/aksi/impor/kemajuan (kunci yang sama dengan impor .zip)."""
+    if not _apakah_admin(sess, settings):
+        return {"ok": False,
+                "error": "hanya admin yang boleh impor dari path server"}
+    d, err = _projek_video(sess, settings, ds)
+    if err:
+        return {"ok": False, "error": err}
+
+    body = await bodi_json(request)
+    raw = str(body.get("path") or "").strip()
+    if not raw:
+        return {"ok": False, "error": "path kosong"}
+    sumber = Path(raw).expanduser()
+    # Toleran: kalau menunjuk langsung ke folder train/val, pakai induknya
+    # (dataset ada di sampingnya).
+    if sumber.is_dir() and sumber.name in ("train", "val", "valid"):
+        sumber = sumber.parent
+    if not sumber.exists():
+        return {"ok": False, "error": f"path tak ada di server: {raw}"}
+    if sumber.is_file() and sumber.suffix.lower() not in ARSIP_EXT:
+        return {"ok": False,
+                "error": "berkas harus .zip, atau tunjuk sebuah folder dataset"}
+
+    kunci = _kunci_impor_aksi(sess.user, ds)
+    if klip_olah.kemajuan(kunci).get("jalan"):
+        return {"ok": False, "error": "masih ada impor yang berjalan"}
+
+    oleh = sess.user
+    kl = [k.strip() for k in str(body.get("kelas") or "").split(",")
+          if k.strip()] or None
+    neg = str(body.get("negatif") or "").strip()
+    maks_byte = settings.max_zip_bytes * settings.zip_ratio_max
+    maks_entri = settings.zip_entries_max
+
+    def _kerja():
+        _impor_path_kerja(d, sumber, kunci, oleh, kl, neg, maks_byte, maks_entri)
+
+    klip_olah.bersihkan_maju(kunci)
+    klip_olah.catat_maju(kunci, jalan=True, persen=5, fase_nama="Menyiapkan impor")
+    threading.Thread(target=_kerja, daemon=True).start()
+    return {"ok": True, "mulai": True}
 
 
 # ============================================================

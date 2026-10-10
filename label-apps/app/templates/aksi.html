@@ -71,6 +71,20 @@
              title="Impor .zip berisi train/ + val/ (folder per kelas) sebagai versi siap-latih">
         Impor dataset (.zip)
         <input type="file" id="ak-impor-file" accept=".zip,application/zip" hidden></label>
+
+      {#- Admin: impor langsung dari PATH di server. Karena datanya sering sudah
+          ada di mesin ini, menunjuk path jauh lebih ringkas daripada mengunggah
+          ratusan MB. Path = folder berisi train/val ATAU sebuah .zip di server.
+          Hanya admin (membaca path server bebas; prod terbuka ke jaringan). -#}
+      {% if admin %}
+      <div class="ak-impor-path-baris" id="ak-impor-path-baris">
+        <input type="text" id="ak-impor-path" class="ak-impor-path"
+               placeholder="/path/folder-dataset  atau  /path/arsip.zip"
+               title="Path di SERVER: folder berisi train/ + val/, atau sebuah .zip">
+        <button class="chip ak-impor-path-btn" type="button" id="ak-impor-path-btn"
+                title="Muat dataset dari path di server (admin)">Muat dari server</button>
+      </div>
+      {% endif %}
       <p class="halus ak-impor-maju" id="ak-impor-maju" hidden></p>
       {% endif %}
 

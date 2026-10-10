@@ -204,3 +204,74 @@ def test_rute_impor_tolak_projek_image(klien, lingkungan):
     data = _zip_dataset({"a": 2, "b": 2}, {"a": 1, "b": 1})
     r = klien.post("/api/aksi/impor?ds=img-imp", content=data).json()
     assert r.get("ok") is False, r
+
+
+# ──────────────────────── rute impor dari PATH server (admin) ──────────────
+def _set_admin(lingkungan, nama, nilai):
+    p = lingkungan["users"]
+    d = json.loads(p.read_text())
+    d[nama]["admin"] = nilai
+    p.write_text(json.dumps(d))
+
+
+def test_rute_impor_path_admin_folder(klien, lingkungan, tmp_path):
+    _set_admin(lingkungan, "paul", True)
+    masuk(klien, "paul", PW_PAUL)
+    _buat_projek(klien, "aksi-path", "video")
+    _dataset(tmp_path / "srv", {"shoot": 2, "pass": 2}, {"shoot": 1, "pass": 1})
+
+    r = klien.post("/api/aksi/impor-path?ds=aksi-path",
+                   json={"path": str(tmp_path / "srv")}).json()
+    assert r.get("ok") and r.get("mulai"), r
+    k = _poll_impor(klien, "aksi-path")
+    assert k.get("selesai") and not k.get("galat"), k
+    vd = lingkungan["ruang"] / "aksi-path" / ".versi" / "v1"
+    assert (vd / "aksi.yaml").is_file()
+    assert len(list((vd / "train" / "shoot").glob("*.mp4"))) == 2
+
+
+def test_rute_impor_path_tolak_non_admin(klien, lingkungan, tmp_path):
+    _set_admin(lingkungan, "paul", False)
+    masuk(klien, "paul", PW_PAUL)
+    _buat_projek(klien, "aksi-path2", "video")
+    _dataset(tmp_path / "srv2", {"a": 2, "b": 2}, {"a": 1, "b": 1})
+    r = klien.post("/api/aksi/impor-path?ds=aksi-path2",
+                   json={"path": str(tmp_path / "srv2")}).json()
+    assert r.get("ok") is False and "admin" in r.get("error", ""), r
+    assert not (lingkungan["ruang"] / "aksi-path2" / ".versi" / "v1").exists()
+
+
+def test_rute_impor_path_dari_zip_server(klien, lingkungan, tmp_path):
+    _set_admin(lingkungan, "paul", True)
+    masuk(klien, "paul", PW_PAUL)
+    _buat_projek(klien, "aksi-path3", "video")
+    zp = tmp_path / "ds.zip"
+    zp.write_bytes(_zip_dataset({"x": 2, "y": 2}, {"x": 1, "y": 1}))
+    r = klien.post("/api/aksi/impor-path?ds=aksi-path3",
+                   json={"path": str(zp)}).json()
+    assert r.get("ok"), r
+    k = _poll_impor(klien, "aksi-path3")
+    assert k.get("selesai") and not k.get("galat"), k
+    assert k.get("nomor") == 1
+
+
+def test_rute_impor_path_tunjuk_folder_train(klien, lingkungan, tmp_path):
+    # Menunjuk langsung ke folder 'train' -> pakai induknya (toleran).
+    _set_admin(lingkungan, "paul", True)
+    masuk(klien, "paul", PW_PAUL)
+    _buat_projek(klien, "aksi-path4", "video")
+    _dataset(tmp_path / "srv4", {"a": 2, "b": 2}, {"a": 1, "b": 1})
+    r = klien.post("/api/aksi/impor-path?ds=aksi-path4",
+                   json={"path": str(tmp_path / "srv4" / "train")}).json()
+    assert r.get("ok"), r
+    k = _poll_impor(klien, "aksi-path4")
+    assert k.get("selesai") and not k.get("galat"), k
+
+
+def test_rute_impor_path_tak_ada(klien, lingkungan):
+    _set_admin(lingkungan, "paul", True)
+    masuk(klien, "paul", PW_PAUL)
+    _buat_projek(klien, "aksi-path5", "video")
+    r = klien.post("/api/aksi/impor-path?ds=aksi-path5",
+                   json={"path": "/tidak/ada/di/mana/pun"}).json()
+    assert r.get("ok") is False and "tak ada" in r.get("error", ""), r
