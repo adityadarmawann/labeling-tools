@@ -40,7 +40,8 @@
 
 <div class="ug-halaman" id="ug-halaman"
      data-projek="{{ pr.ds }}" data-path="{{ projek.path }}"
-     data-berisi="{{ 1 if berisi else 0 }}" data-tata="{{ tata }}">
+     data-berisi="{{ 1 if berisi else 0 }}" data-tata="{{ tata }}"
+     data-jenis="{{ jenis }}" data-admin="{{ 1 if admin else 0 }}">
 
   {# ---------------------------------------------------------- nama & tag
      Dipakai bersama tahap 1 dan tahap 2: di Roboflow pun kolom ini tidak
@@ -146,7 +147,25 @@
         </div>
       </section>
 
+      {# Projek VIDEO: panel ini mendaftarkan dataset KLIP jadi (train/val
+         folder-per-kelas, atau .zip) sebagai VERSI aksi lewat /api/aksi/impor-
+         path — khusus admin (baca path server bebas). Projek gambar: jalur
+         impor gambar lama (salin ke ruang kerja). -#}
+      {% if jenis != 'video' or admin %}
       <section class="panel ug-server">
+        {% if jenis == 'video' %}
+        <h3>Ambil dataset klip dari folder di server</h3>
+        <p class="ug-server-ket">Folder berisi <b>train/</b> + <b>val/</b>
+          (sub-folder per kelas berisi <code>.mp4</code>) atau sebuah
+          <b>.zip</b> di server. Didaftarkan jadi <b>versi</b> apa adanya, tanpa
+          proses ulang. Folder aslinya tidak pernah disentuh.
+          <span class="halus">Khusus admin.</span></p>
+        <div class="row">
+          <input id="ug-server-path" type="text" class="mono"
+                 placeholder="/path/folder-dataset  atau  /path/arsip.zip">
+          <button class="cta" type="button" id="ug-server-impor">Muat dari server</button>
+        </div>
+        {% else %}
         <h3>Ambil dari folder di server</h3>
         <p class="ug-server-ket">Isinya <b>disalin</b> ke ruang kerjamu. Folder
           aslinya tidak pernah disentuh, jadi aman disunting dan ditambahi
@@ -156,6 +175,7 @@
                  placeholder="/home/paul/computer-vision/datasets/nama-folder">
           <button class="cta" type="button" id="ug-server-impor">Salin</button>
         </div>
+        {% endif %}
         <div class="jalur-status" id="ug-server-jalur"></div>
 
         {% if local %}
@@ -184,6 +204,7 @@
         </div>
         {% endif %}
       </section>
+      {% endif %}
     </div>
   </section>
 

@@ -26,6 +26,11 @@
      kosong lewat /upload, yang menerima apa saja termasuk .zip lalu dipindai
      dari nol. Yang menentukan keadaan projeknya, bukan pilihan pengguna. */
   const BERISI = halaman.dataset.berisi === '1';
+  // Projek VIDEO: "Ambil dari folder di server" mendaftarkan dataset KLIP
+  // (train/val folder-per-kelas atau .zip) sebagai VERSI aksi lewat
+  // /api/aksi/impor-path, bukan jalur salin-gambar. Hanya admin.
+  const JENIS = halaman.dataset.jenis || 'image';
+  const ADMIN = halaman.dataset.admin === '1';
 
   // Nama-nama ini harus sama dengan UP_EXT di app.js dan dengan
   // IMG_EXT + ANN_EXT + META_EXT + ARSIP_EXT di app/config.py.
@@ -601,11 +606,61 @@
      dan sebuah dialog confirm() menutupi persis angka yang perlu dibaca. */
   let survei = null;
 
+  // Projek VIDEO: dataset KLIP jadi -> versi aksi lewat /api/aksi/impor-path.
+  // Satu klik (tak perlu survei dua tahap): server membongkar (kalau .zip) +
+  // mendaftarkan apa adanya, progres dipoll dari /api/aksi/impor/kemajuan
+  // (kunci sama dengan impor .zip di halaman Label Aksi).
+  async function imporServerAksi(path) {
+    const tombol = $('ug-server-impor');
+    tombol.disabled = true;
+    keTahap(3);
+    $('ug-unggah-nama').textContent = PROJEK;
+    $('ug-lanjut').hidden = true;
+    $('ug-batal').hidden = true;
+    const pr = Progres.mulai('Memuat dataset klip ke ' + PROJEK,
+                             { di: $('ug-progres-jalur') });
+    pr.taktentu('Menyiapkan…');
+    const pantau = setInterval(async () => {
+      let k;
+      try {
+        k = await (await fetch('/api/aksi/impor/kemajuan?ds='
+                               + encodeURIComponent(PROJEK))).json();
+      } catch (e) { return; }
+      if (!k || !k.ok) return;
+      if (k.galat) {
+        clearInterval(pantau); pr.gagal(k.galat); tombol.disabled = false; return;
+      }
+      if (k.selesai) {
+        clearInterval(pantau);
+        pr.selesai(`Versi v${k.nomor || ''} dibuat di ${PROJEK}`);
+        $('ug-lanjut').hidden = false;
+        $('ug-unggah-ket').textContent =
+          'Dataset klip terdaftar sebagai versi. Buka Label Aksi untuk melatih.';
+        return;
+      }
+      pr.set((k.persen != null) ? (k.persen / 100) : 0, k.fase_nama || 'Memproses');
+    }, 700);
+    try {
+      const j = await send('/api/aksi/impor-path?ds=' + encodeURIComponent(PROJEK),
+        { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path }) });
+      if (!j.ok) {
+        clearInterval(pantau); pr.gagal(j.error || 'gagal'); tombol.disabled = false;
+      }
+    } catch (e) {
+      clearInterval(pantau); pr.gagal('Gagal menghubungi server'); tombol.disabled = false;
+    }
+  }
+
   async function imporServer() {
     const tombol = $('ug-server-impor');
     const jalur = $('ug-server-jalur');
     const path = ($('ug-server-path').value || '').trim();
     if (!path) { toast('Path masih kosong'); return; }
+
+    // Projek video: daftarkan dataset klip jadi sebagai versi (impor aksi),
+    // bukan jalur salin-gambar dua-tahap.
+    if (JENIS === 'video') { return imporServerAksi(path); }
 
     if (!survei || survei.path !== path) {
       const pr = Progres.mulai('Memeriksa isi folder', { di: jalur });
@@ -777,6 +832,7 @@
       };
     }
     $('ug-server-path').addEventListener('input', () => {
+      if (JENIS === 'video') return;   // video: satu klik, tak ada survei dua tahap
       // Path berubah berarti hasil surveinya sudah bukan milik path itu lagi.
       survei = null;
       const b = $('ug-server-impor');

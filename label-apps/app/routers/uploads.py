@@ -16,7 +16,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from ..config import ARSIP_EXT, SUMBER_VIDEO, VIDEO_EXT, Settings, get_settings
 from ..deps import current_session, current_session_api, is_local
-from ..security import safe_relpath, safe_slug
+from ..security import is_admin, load_users, safe_relpath, safe_slug
 from ..services import (arsip, ekstraksi, impor, projek, riwayat, scanner,
                         tambah, tugas)
 from ..session import Session
@@ -105,6 +105,12 @@ async def halaman_unggah(request: Request, ds: str = "",
         "berisi": berisi,
         "boleh_unggah": boleh_unggah,
         "pemilik": pemilik,
+        # Projek video: "Ambil dari folder di server" mendaftarkan dataset KLIP
+        # (train/val folder-per-kelas) sebagai versi aksi lewat /api/aksi/impor-
+        # path (admin), BUKAN jalur impor gambar. Jadi templat perlu tahu jenis
+        # + status admin untuk mengarahkan tombolnya.
+        "jenis": projek.jenis_projek(d),
+        "admin": is_admin(load_users(settings.users_file), sess.user),
         "tata": tambah.tata_letak(d) if berisi else "",
         "max_upload_mb": settings.max_upload_mb,
         "max_zip_mb": settings.max_zip_mb,

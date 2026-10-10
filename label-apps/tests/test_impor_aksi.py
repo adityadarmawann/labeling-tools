@@ -275,3 +275,31 @@ def test_rute_impor_path_tak_ada(klien, lingkungan):
     r = klien.post("/api/aksi/impor-path?ds=aksi-path5",
                    json={"path": "/tidak/ada/di/mana/pun"}).json()
     assert r.get("ok") is False and "tak ada" in r.get("error", ""), r
+
+
+# ──────────── halaman Unggah data: panel "Ambil dari folder" sadar-jenis ────
+def test_unggah_video_admin_panel_klip(klien, lingkungan):
+    _set_admin(lingkungan, "paul", True)
+    masuk(klien, "paul", PW_PAUL)
+    _buat_projek(klien, "vid-unggah", "video")
+    html = klien.get("/unggah?ds=vid-unggah").text
+    assert 'data-jenis="video"' in html
+    assert "Ambil dataset klip dari folder" in html   # mode video
+    assert "Muat dari server" in html
+
+
+def test_unggah_video_non_admin_sembunyikan_panel(klien, lingkungan):
+    _set_admin(lingkungan, "paul", False)
+    masuk(klien, "paul", PW_PAUL)
+    _buat_projek(klien, "vid-unggah2", "video")
+    html = klien.get("/unggah?ds=vid-unggah2").text
+    # impor path server = khusus admin -> panel server disembunyikan untuk video
+    assert "Ambil dataset klip dari folder" not in html
+
+
+def test_unggah_image_panel_tetap_lama(klien, lingkungan):
+    masuk(klien, "paul", PW_PAUL)
+    _buat_projek(klien, "img-unggah", "image")
+    html = klien.get("/unggah?ds=img-unggah").text
+    assert 'data-jenis="image"' in html
+    assert "Ambil dari folder di server" in html       # jalur gambar lama utuh
