@@ -129,7 +129,7 @@ def temukan_dataset(root: Path) -> tuple[Path, Path] | None:
 def impor(ds: Path, train_dir: Path, val_dir: Path, *, oleh: str,
           kelas: list[str] | None = None, negatif: str = "",
           nomor: int | None = None, salin: bool = True,
-          set_kelas: bool = True) -> dict:
+          set_kelas: bool = True, isi_klip: bool = True) -> dict:
     """Bangun `.versi/vN/` dari dataset jadi + daftarkan lewat versi.buat.
 
     `salin=True` menyalin berkas (versi mandiri, tahan kalau sumber dihapus);
@@ -222,7 +222,68 @@ def impor(ds: Path, train_dir: Path, val_dir: Path, *, oleh: str,
                f"impor dataset jadi ({len(pilih)} kelas)",
                resep=resep, nomor=n, hasil=ringkas)
     ringkas["nomor"] = n
+
+    # Isi juga klip MENTAH yang bisa dibuka per-video di halaman Label Aksi.
+    # Tanpa ini projek cuma punya versi beku tanpa satu pun klip yang bisa
+    # ditelusuri (keluhan nyata: "raw-nya tak ada, tiap video tak bisa dibuka").
+    if isi_klip:
+        try:
+            batch = safe_slug(Path(train_dir).parent.name) or "impor"
+            km = isi_klip_mentah(ds, train_dir, val_dir, pilih, batch=batch,
+                                 oleh=oleh)
+            ringkas["klip_mentah"] = km["klip"]
+            ringkas["batch"] = km["batch"]
+        except Exception:                            # noqa: BLE001
+            # Mengisi klip mentah adalah bonus telusur; kegagalannya tak boleh
+            # membatalkan versi yang sudah terdaftar.
+            ringkas["klip_mentah"] = 0
     return ringkas
+
+
+def isi_klip_mentah(ds: Path, train_dir: Path, val_dir: Path, kelas: list[str],
+                    *, batch: str = "impor", oleh: str = "") -> dict:
+    """Salin klip ASLI (bukan _aug_/_bal_) dari train+val ke `klip/<batch>/`,
+    beri label kelasnya, dan masukkan ke dataset — supaya tiap video bisa DIBUKA
+    & ditelusuri di halaman Label Aksi, bukan cuma beku di dalam versi.
+
+    Klip augmentasi/balance (_aug_/_bal_) DILEWATI: itu turunan sintetis yang
+    lahir saat build versi, bukan rekaman mentah yang perlu ditelusuri. Label +
+    keanggotaan dataset ditulis sekali-tulis (bukan per-klip) supaya ribuan klip
+    tak berarti ribuan tulis-ulang .klip.json."""
+    from . import klip_tag, tugas
+
+    slug_b = safe_slug(batch) or "impor"
+    bdir = Path(ds) / "klip" / slug_b
+    bdir.mkdir(parents=True, exist_ok=True)
+    data = klip_tag.baca(ds)
+    data.setdefault("klip", {})
+    rels: list[str] = []
+    seen: set[str] = set()
+    for split_dir in (Path(train_dir), Path(val_dir)):
+        for k in kelas:
+            kd = split_dir / k
+            if not kd.is_dir():
+                continue
+            for src in sorted(kd.glob("*.mp4")):
+                if "_aug_" in src.stem or "_bal_" in src.stem:
+                    continue
+                rel = f"klip/{slug_b}/{src.name}"
+                if rel in seen:              # nama sama di train & val (jarang)
+                    continue
+                seen.add(rel)
+                dst = bdir / src.name
+                if not dst.exists():
+                    shutil.copy2(src, dst)
+                rec = {"label": k, "batch": slug_b}
+                sid = _asal(src.name)
+                if sid and sid != "impor":
+                    rec["srcid"] = sid
+                data["klip"][rel] = rec
+                rels.append(rel)
+    klip_tag.tulis(ds, data)
+    if rels:
+        tugas.masukkan(Path(ds), rels, oleh)
+    return {"klip": len(rels), "batch": slug_b}
 
 
 # ──────────────────────────────── CLI ─────────────────────────────────────

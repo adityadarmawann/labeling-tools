@@ -25,13 +25,17 @@ from tests.test_video_unggah import _buat_projek
 
 
 def _dataset(root: Path, train: dict[str, int], val: dict[str, int]) -> tuple[Path, Path]:
-    """Dataset jadi tiruan: root/train/<k>/*.mp4 + root/val/<k>/*.mp4 (mp4 tiruan)."""
+    """Dataset jadi tiruan: root/train/<k>/*.mp4 + root/val/<k>/*.mp4 (mp4 tiruan).
+
+    train & val memakai srcid BERBEDA, seperti split anti-bocor sungguhan (klip
+    asli train dan val berasal dari video sumber yang berlainan) — jadi namanya
+    tak bentrok saat disalin ke satu folder klip/."""
     td, vd = root / "train", root / "val"
-    for base, counts in ((td, train), (vd, val)):
+    for base, counts, sid in ((td, train, "abcDEF01234"), (vd, val, "xyzGHI98765")):
         for k, n in counts.items():
             (base / k).mkdir(parents=True, exist_ok=True)
             for i in range(n):
-                (base / k / f"{k}_abcDEF01234_{i:04d}.mp4").write_bytes(b"x")
+                (base / k / f"{k}_{sid}_{i:04d}.mp4").write_bytes(b"x")
     return td, vd
 
 
@@ -64,6 +68,35 @@ def test_impor_bangun_versi_siap_latih(tmp_path):
     # kelas aksi projek ter-set
     data = tugas.baca(proj, "paul")
     assert sorted(data["aksi"]["kelas"]) == ["pass", "shoot"]
+
+
+def test_impor_isi_klip_mentah_browsable(tmp_path):
+    """Impor harus mengisi klip MENTAH (asli, bukan _aug_/_bal_) ke klip/<batch>/
+    + label + masuk dataset, supaya tiap video bisa dibuka di Label Aksi."""
+    from app.services import klip_tag, tugas
+    td, vd = _dataset(tmp_path / "ds", {"shoot": 3, "pass": 2}, {"shoot": 1, "pass": 1})
+    # klip augmentasi/balance di train -> harus DILEWATI dari klip mentah
+    (td / "shoot" / "shoot_abcDEF01234_aug_0001.mp4").write_bytes(b"x")
+    (td / "shoot" / "shoot_abcDEF01234_bal_0001.mp4").write_bytes(b"x")
+    proj = _projek_video(tmp_path / "ws")
+
+    r = impor_aksi.impor(proj, td, vd, oleh="paul")
+
+    assert r["klip_mentah"] == 7          # train 3+2 + val 1+1 (aug/bal dilewati)
+    bdir = proj / "klip" / r["batch"]
+    mp4s = sorted(p.name for p in bdir.glob("*.mp4"))
+    assert len(mp4s) == 7
+    assert not any("_aug_" in n or "_bal_" in n for n in mp4s)
+    # label + keanggotaan dataset tersimpan
+    kd = klip_tag.baca(proj)["klip"]
+    assert len(kd) == 7
+    data = tugas.baca(proj, "paul")
+    for rel, rec in kd.items():
+        assert rec["label"] in ("shoot", "pass")
+        assert rel.startswith("klip/")
+        assert tugas.sudah_dimasukkan(data, rel)
+    # versi beku tetap hanya klip asli di valid (invarian), tak terpengaruh
+    assert (proj / ".versi" / "v1" / "aksi.yaml").is_file()
 
 
 def test_impor_muncul_di_daftar_versi_aksi(tmp_path):
