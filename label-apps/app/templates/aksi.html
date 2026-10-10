@@ -51,49 +51,13 @@
               title="Masukkan semua klip yang sudah kamu labeli ke dataset">
         Tambahkan berlabel ke dataset</button>
 
-      {#- Buat versi aksi: hanya pemilik. Membekukan klip berlabel jadi dataset
-          aug+balanced di .versi/vN/ (belah per video sumber, valid klip asli
-          saja, kelas diseimbangkan). POST hanya memulai; kemajuan di-poll. -#}
+      {#- Buat/impor versi dipindah ke TAB "Versi" sendiri (/aksi/versi), sejajar
+          alur image (Unggah -> Anotasi -> Dataset -> Versi -> Training). Di
+          halaman Label Aksi ini fokusnya melabeli klip. -#}
       {% if boleh_kelola %}
-      <h3 class="ak-judul">Versi dataset</h3>
-      <button class="chip aksi ak-buat-versi" type="button" id="ak-buat-versi"
-              title="Bekukan klip berlabel jadi versi dataset (augmentasi + penyeimbang kelas)">
-        Buat versi aksi</button>
-      <button class="chip ak-batal-versi" type="button" id="ak-batal-versi" hidden
-              title="Hentikan pembuatan versi">Hentikan</button>
-      <p class="halus ak-versi-maju" id="ak-versi-maju" hidden></p>
-
-      {#- Impor dataset klip JADI (.zip): train/ + val|valid/ folder-per-kelas
-          yang sudah di-split + augmentasi DI LUAR HIGOLAB. Dibongkar lalu
-          didaftarkan apa adanya sebagai versi, tanpa proses ulang. Kelas auto
-          (yang ada di train & val). Unggah .zip lebih aman daripada path mentah. -#}
-      <label class="chip aksi ak-impor-lbl" id="ak-impor-lbl"
-             title="Impor .zip berisi train/ + val/ (folder per kelas) sebagai versi siap-latih">
-        Impor dataset (.zip)
-        <input type="file" id="ak-impor-file" accept=".zip,application/zip" hidden></label>
-
-      {#- Admin: impor langsung dari PATH di server. Karena datanya sering sudah
-          ada di mesin ini, menunjuk path jauh lebih ringkas daripada mengunggah
-          ratusan MB. Path = folder berisi train/val ATAU sebuah .zip di server.
-          Hanya admin (membaca path server bebas; prod terbuka ke jaringan). -#}
-      {% if admin %}
-      <div class="ak-impor-path-baris" id="ak-impor-path-baris">
-        <input type="text" id="ak-impor-path" class="ak-impor-path"
-               placeholder="/path/folder-dataset  atau  /path/arsip.zip"
-               title="Path di SERVER: folder berisi train/ + val/, atau sebuah .zip">
-        <button class="chip ak-impor-path-btn" type="button" id="ak-impor-path-btn"
-                title="Muat dataset dari path di server (admin)">Muat dari server</button>
-      </div>
+      <p class="halus ak-versi-tautan">Buat / impor / unduh versi ada di tab
+        <a href="/aksi/versi?ds={{ pr.ds | urlquote }}">Versi</a>.</p>
       {% endif %}
-      <p class="halus ak-impor-maju" id="ak-impor-maju" hidden></p>
-      {% endif %}
-
-      {#- Versi terlatih: unduhan arsip klip (folder per kelas, train/valid).
-          Tampil untuk SEMUA anggota (pemilik "biarkan terbuka" untuk keluaran
-          latih/ekspor), bukan hanya pemilik. Diisi aksi.js dari data awal, dan
-          bertambah sendiri begitu sebuah build selesai. -#}
-      <h3 class="ak-judul" id="ak-versi-judul" hidden>Versi terlatih</h3>
-      <ul class="ak-versi-list halus" id="ak-versi-list"></ul>
 
       {#- Latih model (Langkah 9): pemilik/Editor saja. Pemilih backend HANYA
           menawarkan yang pustakanya terpasang di server ini (dari

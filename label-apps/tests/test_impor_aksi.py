@@ -336,3 +336,34 @@ def test_unggah_image_panel_tetap_lama(klien, lingkungan):
     html = klien.get("/unggah?ds=img-unggah").text
     assert 'data-jenis="image"' in html
     assert "Ambil dari folder di server" in html       # jalur gambar lama utuh
+
+
+# ──────────────────── tab VERSI klip sendiri (/aksi/versi) ─────────────────
+def test_aksi_versi_halaman_video(klien, lingkungan):
+    masuk(klien, "paul", PW_PAUL)
+    _buat_projek(klien, "vid-ver", "video")
+    r = klien.get("/aksi/versi?ds=vid-ver")
+    assert r.status_code == 200, r.text[:200]
+    html = r.text
+    assert "Versi dataset klip" in html
+    assert "ak-buat-versi" in html and "ak-impor-file" in html   # buat + impor
+    assert "akv-awal" in html                                    # data awal
+    assert "/aksi/versi?ds=" in html                             # sidebar Versi -> tab video
+
+
+def test_aksi_versi_image_dialihkan(klien, lingkungan):
+    masuk(klien, "paul", PW_PAUL)
+    _buat_projek(klien, "img-ver", "image")
+    r = klien.get("/aksi/versi?ds=img-ver", follow_redirects=False)
+    assert r.status_code == 303
+    assert "/versi?ds=img-ver" in r.headers.get("location", "")
+
+
+def test_aksi_labeling_tak_lagi_punya_kontrol_versi(klien, lingkungan):
+    """Halaman Label Aksi tak lagi menampung kontrol versi/impor (pindah ke tab
+    Versi) — tinggal menunjuk ke sana."""
+    masuk(klien, "paul", PW_PAUL)
+    _buat_projek(klien, "vid-lbl", "video")
+    html = klien.get("/aksi?ds=vid-lbl").text
+    assert "ak-buat-versi" not in html and "ak-impor-file" not in html
+    assert "/aksi/versi?ds=" in html                             # pointer ke tab Versi

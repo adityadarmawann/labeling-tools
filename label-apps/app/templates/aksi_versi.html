@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block bodyclass %}berprojek{% endblock %}
+
+{#- Tab VERSI untuk projek VIDEO (classifier aksi). Padanan /versi gambar,
+    tetapi untuk KLIP: daftar versi beku yang bisa diunduh + Buat versi
+    (aug/balance) + Impor dataset jadi (.zip / path server). Dipisah dari
+    halaman Label Aksi supaya alur video bertab seperti image. Data awal
+    ditanam JSON, dibaca aksi_versi.js. -#}
+
+{% block body %}
+<header>
+  <div class="top">
+    <h1>{{ nama_app() }}</h1>
+    {% include "_header.html" %}
+  </div>
+</header>
+
+<main>
+{% include "_sisi.html" %}
+<div class="sisi-isi" id="akv-isi" data-ds="{{ pr.ds }}">
+
+  <h2 class="hal-judul">Versi dataset klip</h2>
+  <p class="halus hal-ket">Bekukan klip berlabel jadi versi dataset (augmentasi +
+    penyeimbang kelas), atau impor dataset yang sudah jadi. Versi inilah yang
+    dilatih di tab <b>Training</b>.</p>
+
+  {#- Buat / impor versi: hanya pemilik/Editor. -#}
+  {% if boleh_kelola %}
+  <section class="panel akv-panel">
+    <h3>Buat atau impor versi</h3>
+    <button class="chip aksi ak-buat-versi" type="button" id="ak-buat-versi"
+            title="Bekukan klip berlabel jadi versi dataset (augmentasi + penyeimbang kelas)">
+      Buat versi aksi</button>
+    <button class="chip ak-batal-versi" type="button" id="ak-batal-versi" hidden
+            title="Hentikan pembuatan versi">Hentikan</button>
+    <p class="halus ak-versi-maju" id="ak-versi-maju" hidden></p>
+
+    {#- Impor dataset klip JADI (.zip): train/ + val|valid/ folder-per-kelas yang
+        sudah di-split + augmentasi DI LUAR HIGOLAB. Dibongkar lalu didaftarkan
+        apa adanya sebagai versi, tanpa proses ulang. -#}
+    <label class="chip aksi ak-impor-lbl" id="ak-impor-lbl"
+           title="Impor .zip berisi train/ + val/ (folder per kelas) sebagai versi siap-latih">
+      Impor dataset (.zip)
+      <input type="file" id="ak-impor-file" accept=".zip,application/zip" hidden></label>
+
+    {#- Admin: impor langsung dari PATH di server (data sering sudah di mesin ini). -#}
+    {% if admin %}
+    <div class="ak-impor-path-baris" id="ak-impor-path-baris">
+      <input type="text" id="ak-impor-path" class="ak-impor-path"
+             placeholder="/path/folder-dataset  atau  /path/arsip.zip"
+             title="Path di SERVER: folder berisi train/ + val/, atau sebuah .zip">
+      <button class="chip ak-impor-path-btn" type="button" id="ak-impor-path-btn"
+              title="Muat dataset dari path di server (admin)">Muat dari server</button>
+    </div>
+    {% endif %}
+    <p class="halus ak-impor-maju" id="ak-impor-maju" hidden></p>
+  </section>
+  {% endif %}
+
+  {#- Versi beku: unduhan arsip klip (folder per kelas, train/valid). Tampil
+      untuk SEMUA anggota. Diisi aksi_versi.js dari data awal + bertambah saat
+      sebuah build/impor selesai. -#}
+  <h3 class="ak-judul" id="ak-versi-judul" hidden>Versi</h3>
+  <ul class="ak-versi-list halus" id="ak-versi-list"></ul>
+</div>
+</main>
+{% endblock %}
+
+{% block skrip %}
+<script id="akv-awal" type="application/json">{{ awal | tojson }}</script>
+<script src="{{ statik('aksi_versi.js') }}"></script>
+{% endblock %}
