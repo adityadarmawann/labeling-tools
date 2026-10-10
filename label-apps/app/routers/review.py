@@ -488,10 +488,18 @@ async def view(request: Request, path: str = "",
             status_code=404)
     with sess.lock:
         items = sess.items
-        i = items.index(it)
-        prev_it = items[i - 1] if i > 0 else None
-        next_it = items[i + 1] if i < len(items) - 1 else None
-        posisi = (i + 1, len(items))
+        # Identitas, BUKAN items.index(it): item memuat bentuk ber-`pts` array
+        # numpy, dan list.index (pakai `==`) melempar "truth value of an array
+        # is ambiguous". `it` objek yang sama dari sess.items (sess.find). Sama
+        # alasannya dengan annotate._nav.
+        i = next((j for j, x in enumerate(items) if x is it), -1)
+        if i < 0:
+            prev_it = next_it = None
+            posisi = (0, len(items))
+        else:
+            prev_it = items[i - 1] if i > 0 else None
+            next_it = items[i + 1] if i < len(items) - 1 else None
+            posisi = (i + 1, len(items))
 
     from ..services import tag as svc_tag
     from ..services import tugas as svc_tugas

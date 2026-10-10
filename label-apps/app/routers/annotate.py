@@ -186,7 +186,14 @@ def _nav(sess: Session, it: dict, *, job: str = "", saring: str = "semua",
         except OSError:
             daftar = None
     if daftar is None:                         # daftar penuh (perilaku lama)
-        i = items.index(it)
+        # Cari lewat IDENTITAS, bukan items.index(it): `it` adalah objek yang
+        # sama dari sess.items (sess.find / sess.items[0]), sedang tiap item
+        # memuat bentuk ber-`pts` array numpy — list.index memakai `==` yang
+        # pada array numpy melempar "truth value of an array is ambiguous".
+        # `is` menghindari perbandingan itu sekaligus lebih cepat.
+        i = next((j for j, x in enumerate(items) if x is it), -1)
+        if i < 0:                              # it tak ada di daftar (jaga-jaga)
+            return None, None, (0, len(items)), items
         prev_it = items[i - 1] if i > 0 else None
         next_it = items[i + 1] if i < len(items) - 1 else None
         return prev_it, next_it, (i + 1, len(items)), items
