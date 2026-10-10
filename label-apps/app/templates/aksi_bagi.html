@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block bodyclass %}berprojek{% endblock %}
+
+{#- Bagi tugas KLIP + kelola anggota (paritas /bagi gambar, unit = KLIP). Ubin
+    memakai poster DIAM (/aksi/thumb), bukan <video> auto-play. Kelola anggota
+    (undang/atur peran/scope/keluarkan) lewat /api/tugas/* yang tak menyentuh
+    pemindai gambar; pembagian klip lewat /api/aksi/bagi. -#}
+
+{% block body %}
+<header>
+  <div class="top">
+    <h1>{{ nama_app() }}</h1>
+    {% include "_header.html" %}
+  </div>
+</header>
+
+<main>
+{% include "_sisi.html" %}
+<div class="sisi-isi bg-isi" id="bg-isi"
+     data-ds="{{ pr.ds }}" data-pemilik="{{ pemilik }}"
+     data-n-belum="{{ n_belum }}"
+     data-batch="{{ batch }}">
+
+  <h2 class="hal-judul">Bagi tugas klip</h2>
+  {% include "_aksi_subnav.html" %}
+
+  {% if not boleh_bagi %}
+  <div class="pkosong" style="max-width:640px">
+    <b>Hanya pemilik atau editor yang membagi tugas</b>
+    Projek ini milik <b>{{ pemilik }}</b>. Kamu bisa melihat seluruh klipnya
+    dan mengerjakan yang menjadi bagianmu.
+    <span style="display:block;margin-top:10px">
+      <a href="/aksi?ds={{ pr.ds | urlquote }}">Buka grid klipnya</a></span>
+  </div>
+
+  {% else %}
+  <div class="bg-tata">
+    {# ---------------------------------------------------------- kiri #}
+    <section class="bg-media">
+      <div class="bg-kepala">
+        <div>
+          <h2 class="bg-judul">Belum ditugaskan</h2>
+          <span class="bg-sub">
+            {%- if n_belum %}<b id="bg-jumlah">{{ n_belum }}</b> klip
+            menunggu dibagi{% if n_dipotong %} &middot; {{ n_dipotong }} di
+            antaranya tidak digambar di sini, tetap ikut dibagi{% endif %}
+            {%- else %}Tidak ada klip yang menunggu dibagi{% endif %}</span>
+        </div>
+        <a class="chip" href="/unggah?ds={{ pr.ds | urlquote }}">Unggah lagi</a>
+      </div>
+
+      {% if n_belum %}
+      <div class="bg-kisi" id="bg-kisi">
+        {%- for it in belum %}
+        <figure class="bg-ubin" data-rel="{{ it.rel }}">
+          <span class="bg-gambar">
+            <img src="/aksi/thumb?ds={{ pr.ds | urlquote }}&rel={{ it.rel | urlquote }}&s=220"
+                 alt="" width="110" height="110" loading="lazy" decoding="async">
+          </span>
+          <figcaption class="bg-nama" title="{{ it.nama }}">{{ it.nama }}</figcaption>
+        </figure>
+        {%- endfor %}
+      </div>
+      {% else %}
+      <div class="pkosong" style="max-width:560px">
+        <b>Semua klip sudah ditugaskan, atau projek masih kosong</b>
+        Kamu tetap bisa mengelola anggota & perannya di panel kanan. Anggota
+        tak harus ditugaskan klip satu per satu. Perannya yang menentukan
+        hak aksesnya.
+      </div>
+      {% endif %}
+    </section>
+
+    {# ---------------------------------------------------------- kanan #}
+    <aside class="bg-panel">
+      <h3 class="bg-panel-judul">Anggota projek</h3>
+
+      <div class="bg-orang-kepala">
+        <span class="form-lbl" style="margin:0">Anggota &amp; peran</span>
+        <button class="chip" type="button" id="bg-tambah-orang">+ Anggota</button>
+      </div>
+      <div class="bg-orang" id="bg-orang">
+        <span class="halus">Memuat daftar anggota&hellip;</span>
+      </div>
+
+      <div class="bg-undang" id="bg-undang" hidden>
+        <div id="bg-undang-akun">
+          <label class="form-lbl" for="bg-email">Akun atau email</label>
+          <input type="text" id="bg-email" placeholder="rizky atau rizky@higo.id">
+        </div>
+        <div id="bg-undang-nama" class="form-lbl" hidden style="margin-top:0"></div>
+
+        <label class="form-lbl">Peran</label>
+        <div class="seg" id="bg-peran" role="group" aria-label="Peran anggota">
+          <label class="seg-opt" data-on>
+            <input type="radio" name="bg-peran" value="pelabel" checked> Labeler</label>
+          <label class="seg-opt">
+            <input type="radio" name="bg-peran" value="editor"> Editor</label>
+        </div>
+
+        <div id="bg-labeler-opsi">
+          <label class="form-lbl">Akses Labeler</label>
+          <div class="seg" id="bg-akses" role="group" aria-label="Akses labeler">
+            <label class="seg-opt" data-on>
+              <input type="radio" name="bg-akses" value="semua" checked> Menyeluruh</label>
+            <label class="seg-opt">
+              <input type="radio" name="bg-akses" value="spesifik"> Spesifik</label>
+          </div>
+          <div id="bg-scope" hidden>
+            <label class="form-lbl">Folder/batch klip yang boleh digarap</label>
+            <div class="bg-scope-list" id="bg-scope-list">
+              <span class="halus">Memuat daftar batch&hellip;</span>
+            </div>
+          </div>
+        </div>
+
+        <p class="halus" id="bg-peran-ket" style="margin:6px 0 0"></p>
+        <div class="row" style="margin-top:8px">
+          <button class="cta" type="button" id="bg-undang-kirim">Undang</button>
+          <button class="chip" type="button" id="bg-undang-batal" hidden>Batal</button>
+        </div>
+        <div class="jalur-status" id="bg-undang-jalur"></div>
+      </div>
+
+      {% if n_belum %}
+      <div class="bg-pisah"></div>
+      <h3 class="bg-panel-judul">Bagi tugas <span class="halus">(opsional)</span></h3>
+
+      <label class="form-lbl" for="bg-n">Berapa klip yang dibagikan</label>
+      <div class="bg-jumlah">
+        <input type="number" id="bg-n" min="1" max="{{ n_belum }}"
+               value="{{ n_belum }}" inputmode="numeric">
+        <span class="bg-dari">dari {{ n_belum }}</span>
+      </div>
+      <input type="range" id="bg-slider" min="1" max="{{ n_belum }}"
+             value="{{ n_belum }}" aria-label="Jumlah klip yang dibagikan">
+
+      <label class="bg-centang">
+        <input type="checkbox" id="bg-acak" checked><span class="cb"></span>
+        <span>Acak dulu sebelum dibagi</span></label>
+
+      <label class="form-lbl" for="bg-catatan">Catatan untuk pelabel</label>
+      <textarea id="bg-catatan" rows="2"
+        placeholder="mis. abaikan klip yang buram di awal"></textarea>
+
+      <p class="bg-acak-ket halus" id="bg-acak-ket"></p>
+      <div class="jalur-status" id="bg-jalur"></div>
+      <button class="cta bg-mulai" type="button" id="bg-mulai" disabled>
+        Pilih pelabel dulu</button>
+      {% endif %}
+    </aside>
+  </div>
+  {% endif %}
+</div>
+</main>
+{% endblock %}
+
+{% block skrip %}<script src="{{ statik('aksi_bagi.js') }}"></script>{% endblock %}

@@ -431,6 +431,27 @@ def test_aksi_grid_labeling_video(klien, lingkungan):
     assert "shoot" in html                          # kelas tertanam di data awal
 
 
+def test_aksi_thumb_poster_klip_nyata(klien, lingkungan):
+    """Poster nyata via ffmpeg (bukan jalur 404): klip asli -> JPG > 0 byte."""
+    import shutil
+    ref = Path("/home/paul/computer-vision/campus-league/basketball/dataset/"
+               "01-action/Video-MAE/action-v12/v2.1-dan-spacejam-aug/train/dribble")
+    src = next(iter(ref.glob("*.mp4")), None) if ref.is_dir() else None
+    if src is None:
+        pytest.skip("klip referensi tak tersedia")
+    masuk(klien, "paul", PW_PAUL)
+    _buat_video_aksi(klien, "th-real", kelas=("dribble",))
+    proj = lingkungan["ruang"] / "th-real"
+    rel = "klip/b1/" + src.name
+    dst = proj / rel
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(src, dst)
+    r = klien.get(f"/aksi/thumb?ds=th-real&rel={rel}")
+    assert r.status_code == 200, r.text[:120]
+    assert r.headers.get("content-type") == "image/jpeg"
+    assert len(r.content) > 500                    # poster nyata, bukan kosong
+
+
 def test_aksi_keluarkan_dari_dataset(klien, lingkungan):
     masuk(klien, "paul", PW_PAUL)
     _buat_video_aksi(klien, "aksi-ds", kelas=("shoot", "pass"))
@@ -444,3 +465,105 @@ def test_aksi_keluarkan_dari_dataset(klien, lingkungan):
     r = klien.post("/api/aksi/dataset/keluarkan?ds=aksi-ds", json={"klip": [rel]}).json()
     assert r["ok"] and r.get("dikeluarkan", 0) >= 1, r
     assert not tugas.sudah_dimasukkan(tugas.baca(proj, "paul"), rel)
+
+
+# ============================================ Fase 4b: papan + bagi tugas klip
+
+def test_aksi_papan_halaman_video(klien, lingkungan):
+    """Papan anotasi klip (paritas /anotasi): tiga kolom + sub-nav."""
+    masuk(klien, "paul", PW_PAUL)
+    _buat_video_aksi(klien, "vid-papan", kelas=("shoot", "pass"))
+    html = klien.get("/aksi/papan?ds=vid-papan").text
+    assert "an-papan" in html                          # tiga kolom
+    assert "Papan anotasi klip" in html
+    assert "aksi_papan.js" in html
+    assert "aksi-subnav" in html                        # strip sub-tab Grid/Papan/Bagi
+    assert "Belum ditugaskan" in html and "Dikerjakan" in html
+
+
+def test_aksi_papan_image_dialihkan(klien, lingkungan):
+    masuk(klien, "paul", PW_PAUL)
+    _buat_projek(klien, "img-papan", "image")
+    r = klien.get("/aksi/papan?ds=img-papan", follow_redirects=False)
+    assert r.status_code == 303
+    assert "/anotasi?ds=img-papan" in r.headers.get("location", "")
+
+
+def test_aksi_bagi_halaman_video(klien, lingkungan):
+    masuk(klien, "paul", PW_PAUL)
+    _buat_video_aksi(klien, "vid-bagi", kelas=("shoot",))
+    proj = lingkungan["ruang"] / "vid-bagi"
+    _klip(proj, "klip/b1/shoot_vid_t0001.mp4")
+    _klip(proj, "klip/b1/shoot_vid_t0002.mp4")
+    html = klien.get("/aksi/bagi?ds=vid-bagi").text
+    assert "bg-isi" in html and "aksi_bagi.js" in html
+    assert "aksi-subnav" in html
+    assert 'id="bg-jumlah"' in html and "menunggu dibagi" in html
+    # ubin memakai poster DIAM (/aksi/thumb), bukan <video>
+    assert "/aksi/thumb?ds=" in html
+
+
+def test_aksi_bagi_image_dialihkan(klien, lingkungan):
+    masuk(klien, "paul", PW_PAUL)
+    _buat_projek(klien, "img-bagi", "image")
+    r = klien.get("/aksi/bagi?ds=img-bagi", follow_redirects=False)
+    assert r.status_code == 303
+    assert "/bagi?ds=img-bagi" in r.headers.get("location", "")
+
+
+def test_aksi_bagi_assign_dan_papan_kartu(klien, lingkungan):
+    """Bagi klip ke anggota -> job dibuat dengan kunci klip -> papan tampil."""
+    masuk(klien, "paul", PW_PAUL)
+    _buat_video_aksi(klien, "vid-asg", kelas=("shoot",))
+    proj = lingkungan["ruang"] / "vid-asg"
+    for i in range(1, 5):
+        _klip(proj, f"klip/b1/shoot_vid_t000{i}.mp4")
+    r = klien.post("/api/aksi/bagi?ds=vid-asg",
+                   json={"pelabel": "anggi", "n": 2, "acak": False}).json()
+    assert r["ok"] and r["n"] == 2 and r["pelabel"] == "anggi", r
+    data = tugas.baca(proj, "paul")
+    jobs = [t for t in data["tugas"].values() if t["pelabel"] == "anggi"]
+    assert jobs and len(jobs[0]["gambar"]) == 2
+    assert all(k.startswith("klip/") for k in jobs[0]["gambar"])
+    # anggi otomatis jadi anggota (pelabel), dan kartunya muncul di papan
+    assert "anggi" in data["anggota"]
+    assert "anggi" in klien.get("/aksi/papan?ds=vid-asg").text
+
+
+def test_aksi_bagi_pelabel_tak_terdaftar_ditolak(klien, lingkungan):
+    masuk(klien, "paul", PW_PAUL)
+    _buat_video_aksi(klien, "vid-asg2", kelas=("shoot",))
+    proj = lingkungan["ruang"] / "vid-asg2"
+    _klip(proj, "klip/b1/shoot_vid_t0001.mp4")
+    r = klien.post("/api/aksi/bagi?ds=vid-asg2",
+                   json={"pelabel": "hantu", "n": 1}).json()
+    assert not r["ok"] and "terdaftar" in r["error"], r
+
+
+def test_aksi_bagi_batch_mempersempit(klien, lingkungan):
+    """n-based + batch hanya mengambil klip batch itu."""
+    masuk(klien, "paul", PW_PAUL)
+    _buat_video_aksi(klien, "vid-asg3", kelas=("shoot",))
+    proj = lingkungan["ruang"] / "vid-asg3"
+    _klip(proj, "klip/pagi/shoot_vid_t0001.mp4")
+    _klip(proj, "klip/sore/shoot_vid_t0002.mp4")
+    r = klien.post("/api/aksi/bagi?ds=vid-asg3",
+                   json={"pelabel": "anggi", "n": 99, "batch": "pagi"}).json()
+    assert r["ok"] and r["n"] == 1, r
+    data = tugas.baca(proj, "paul")
+    kunci = [k for t in data["tugas"].values() for k in t["gambar"]]
+    assert kunci == ["klip/pagi/shoot_vid_t0001.mp4"], kunci
+
+
+def test_calon_batch_dari_klip_video(klien, lingkungan):
+    """/api/tugas/calon pada projek VIDEO mengambil batch dari klip_scan, bukan
+    tag gambar yang memang kosong (scope Labeler spesifik klip)."""
+    masuk(klien, "paul", PW_PAUL)
+    _buat_video_aksi(klien, "vid-calon", kelas=("shoot",))
+    proj = lingkungan["ruang"] / "vid-calon"
+    _klip(proj, "klip/pagi/shoot_vid_t0001.mp4")
+    _klip(proj, "klip/sore/shoot_vid_t0002.mp4")
+    klien.get("/aksi/bagi?ds=vid-calon")                # buka -> sess.src terisi
+    j = klien.get("/api/tugas/calon").json()
+    assert j["ok"], j
+    assert set(j["batch_tersedia"]) >= {"pagi", "sore"}, j["batch_tersedia"]

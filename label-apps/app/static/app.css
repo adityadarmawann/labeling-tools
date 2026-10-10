@@ -3718,3 +3718,14 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
 .akg-label-x { background: #3a3f4b; color: #c7ccd6; }
 .akg-ds { position: absolute; top: 6px; right: 6px; font-size: 10px;
   background: #1f6f43; color: #fff; padding: 1px 6px; border-radius: 6px; }
+
+/* Strip sub-tab area ANOTASI klip (Grid · Papan · Bagi) — tiga permukaan
+   sejajar, dirender _aksi_subnav.html. Dipakai bersama ketiga halaman klip. */
+.aksi-subnav { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 14px;
+  border-bottom: 1px solid var(--line); padding-bottom: 10px; }
+.aksi-subnav a { text-decoration: none; font-size: 13px; font-weight: 600;
+  color: var(--ink-dim); padding: 6px 12px; border-radius: 7px;
+  border: 1px solid transparent; transition: background .12s, color .12s; }
+.aksi-subnav a:hover { color: var(--ink); background: var(--sunk); }
+.aksi-subnav a[data-on] { color: var(--ink); background: var(--panel);
+  border-color: var(--line); box-shadow: 0 1px 3px rgba(var(--bayang), .12); }

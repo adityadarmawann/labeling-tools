@@ -1,0 +1,258 @@
+{% extends "base.html" %}
+{% block bodyclass %}berprojek{% endblock %}
+
+{#- Papan ANOTASI klip (paritas /anotasi gambar, unit = KLIP): tiga kolom —
+    Belum ditugaskan / Dikerjakan / Dataset — siapa mengerjakan klip apa dan
+    sudah sejauh mana. Bahannya (berlabel/semua/batch) dari klip_scan, kolomnya
+    dirakit tugas.papan yang sama dengan gambar. "Lihat isinya" membuka grid
+    pelabelan tersaring ke job itu (/aksi?job=). Kelola job (tugaskan ulang,
+    catatan, judul, bubarkan) lewat menu tiga-titik → /api/tugas/*. -#}
+
+{% macro bilah(berlabel, jumlah) -%}
+<div class="lajur an-lajur">
+  {%- if berlabel %}<i class="p-ok" style="flex-grow:{{ berlabel }}"></i>{% endif -%}
+  {%- if jumlah - berlabel %}<i class="p-stop"
+      style="flex-grow:{{ jumlah - berlabel }}"></i>{% endif -%}
+</div>
+{%- endmacro %}
+
+{% block body %}
+<header>
+  <div class="top">
+    <h1>{{ nama_app() }}</h1>
+    {% include "_header.html" %}
+  </div>
+</header>
+
+<main>
+{% include "_sisi.html" %}
+<div class="sisi-isi" id="an-isi" data-ds="{{ pr.ds }}">
+
+  <h2 class="hal-judul">Papan anotasi klip</h2>
+  {% include "_aksi_subnav.html" %}
+
+  {# ---------------------------------------------------- ringkasan orang #}
+  {% if per_pelabel %}
+  <section class="an-orang">
+    {%- for o in per_pelabel %}
+    <div class="an-kartu-orang{% if o.pelabel == aku %} an-aku{% endif %}">
+      <div class="an-orang-atas">
+        <span class="bg-avatar">{{ o.pelabel[:1] | upper }}</span>
+        <span class="an-orang-teks">
+          <b>{{ o.pelabel }}{% if o.pelabel == aku %} (kamu){% endif %}</b>
+          <span class="halus">{{ o.job }} tugas &middot;
+            {{ o.jumlah }} klip</span>
+        </span>
+        <b class="an-persen">{{ o.persen }}%</b>
+      </div>
+      {{ bilah(o.berlabel, o.jumlah) }}
+      <span class="an-orang-kaki">{{ o.berlabel }} dikerjakan &middot;
+        {{ o.di_dataset }} di dataset</span>
+    </div>
+    {%- endfor %}
+  </section>
+  {% endif %}
+
+  {% if boleh_bagi and tanpa_tugas %}
+  <p class="an-tanpa-tugas">
+    <b>{{ tanpa_tugas | join(", ") }}</b>
+    sudah jadi anggota tapi belum kebagian tugas.
+    <a href="/aksi/bagi?ds={{ pr.ds | urlquote }}">Bagi sekarang &rarr;</a>
+  </p>
+  {% endif %}
+
+  <div class="an-kendali">
+  {# ---------------------------------------------------- urutan #}
+  <form class="an-urut an-kendali-baris" method="get" action="/aksi/papan">
+    <input type="hidden" name="ds" value="{{ pr.ds }}">
+    <label class="halus" for="an-urut">Urutkan</label>
+    <select class="chip" id="an-urut" name="urut" onchange="this.form.submit()">
+      {%- for nilai, nama in urut_pilihan.items() %}
+      <option value="{{ nilai }}"{% if urut == nilai %} selected{% endif %}>{{ nama }}</option>
+      {%- endfor %}
+    </select>
+    <noscript><button class="chip" type="submit">Terapkan</button></noscript>
+  </form>
+  </div>
+
+  {# ---------------------------------------------------- tiga kolom #}
+  <section class="an-papan">
+
+    <div class="an-kolom">
+      <div class="an-kolom-kepala">
+        <b>Belum ditugaskan</b>
+        <span class="an-hitung" title="{{ belum_ditugaskan }} klip">
+          {{ belum_ditugaskan }} klip</span>
+      </div>
+      {% if belum_ditugaskan %}
+      {#- Satu baris per UNGGAHAN (batch), bukan satu angka gabungan: keputusan
+          membaginya hampir selalu per unggahan. -#}
+      {%- for b in belum_batch %}
+      <article class="an-batch">
+        <div class="an-batch-atas">
+          <b class="an-batch-nama" title="{{ b.batch or 'tanpa nama unggahan' }}">
+            {{ b.batch or 'Tanpa nama unggahan' }}</b>
+          <span class="an-batch-n">{{ b.n }}</span>
+        </div>
+        {% if boleh_bagi %}
+        <a class="an-mulai" href="/aksi/bagi?ds={{ pr.ds | urlquote }}{% if b.batch %}&batch={{ b.batch | urlquote }}{% endif %}">
+          Bagi tugas &rarr;</a>
+        {% endif %}
+      </article>
+      {%- endfor %}
+      {% if not boleh_bagi %}
+      <span class="halus" style="text-align:center">Pemilik projek yang membaginya.</span>
+      {% endif %}
+      {% else %}
+      <div class="an-kosong"><b>Semuanya sudah dibagi</b>
+        <span class="halus">Tidak ada klip yang menganggur di projek ini.</span>
+      </div>
+      {% endif %}
+    </div>
+
+    {% set dikerjakan = kartu | rejectattr("keadaan", "equalto", "selesai") | list %}
+    {% set selesai = kartu | selectattr("keadaan", "equalto", "selesai") | list %}
+
+    <div class="an-kolom">
+      <div class="an-kolom-kepala">
+        <b>Dikerjakan</b>
+        <span class="an-hitung" title="{{ dikerjakan | length }} tugas">
+          {{ dikerjakan | length }} tugas</span>
+      </div>
+      {%- for k in dikerjakan %}
+      <article class="an-kartu{% if k.pelabel == aku %} an-aku{% endif %}"
+               data-id="{{ k.id }}" data-pelabel="{{ k.pelabel }}">
+        <div class="an-kartu-atas">
+          <span class="an-kartu-judul" title="{{ k.judul }}">{{ k.judul }}</span>
+          {% if boleh_bagi %}
+          <span class="menu an-menu" id="an-menu-{{ k.id }}">
+            <button class="an-titik" type="button" data-menu="{{ k.id }}"
+                    title="Kelola tugas ini" aria-label="Kelola">&#8942;</button>
+            <span class="menu-isi">
+              <a class="menu-aksi" href="/aksi?ds={{ pr.ds | urlquote }}&job={{ k.id | urlquote }}">
+                Lihat isinya</a>
+              <button class="menu-aksi" type="button" data-aksi="pelabel"
+                      data-id="{{ k.id }}">Tugaskan ulang&hellip;</button>
+              <button class="menu-aksi" type="button" data-aksi="catatan"
+                      data-id="{{ k.id }}">Ubah catatan&hellip;</button>
+              <button class="menu-aksi" type="button" data-aksi="judul"
+                      data-id="{{ k.id }}">Ganti judul&hellip;</button>
+              <span class="menu-pisah"></span>
+              <button class="menu-aksi menu-bahaya" type="button" data-aksi="bubar"
+                      data-id="{{ k.id }}">Bubarkan tugas</button>
+            </span>
+          </span>
+          {% endif %}
+        </div>
+        <span class="halus an-kartu-waktu">{{ k.pelabel }} &middot; dibagi {{ k.dibuat }}</span>
+        {%- if k.hilang %}
+        <p class="an-hilang">{{ k.n_asal }} klipnya sudah tidak ada di projek
+          ini. Bubarkan tugas ini lewat menu &#8942;.</p>
+        {%- else %}
+        {{ bilah(k.berlabel, k.jumlah) }}
+        <div class="an-kartu-angka">
+          <span><b>{{ k.berlabel }}</b> dikerjakan</span>
+          <span><b>{{ k.jumlah - k.berlabel }}</b> belum</span>
+          <b class="an-persen">{{ k.persen }}%</b>
+        </div>
+        {%- endif %}
+        {% if k.catatan %}
+        <p class="an-catatan">{{ k.catatan }}</p>
+        {% endif %}
+        <a class="an-mulai" href="/aksi?ds={{ pr.ds | urlquote }}&job={{ k.id | urlquote }}">
+          Lihat isinya &rarr;</a>
+      </article>
+      {%- else %}
+      <div class="an-kosong">
+        {%- if boleh_bagi %}
+        <b>Belum ada yang dikerjakan</b>
+        <span class="halus">Bagikan klip dari kolom kiri, lalu tugasnya
+          muncul di sini.</span>
+        {%- elif aku in anggota_semua %}
+        <b>Belum ada yang ditugaskan padamu</b>
+        <span class="halus">Kamu sudah jadi anggota projek ini. Mengundang
+          belum berarti membagi &mdash; <b>{{ pemilik }}</b> yang menentukan
+          klip mana jatahmu.</span>
+        {%- else %}
+        <b>Belum ada yang dikerjakan</b>
+        <span class="halus">Tugas yang sudah dibagi muncul di sini.</span>
+        {%- endif %}
+      </div>
+      {%- endfor %}
+    </div>
+
+    <div class="an-kolom">
+      <div class="an-kolom-kepala">
+        <b>Dataset</b>
+        <span class="an-hitung" title="{{ n_dataset }} klip di dataset">
+          {{ n_dataset }} klip</span>
+      </div>
+      <a class="an-lihat-semua" href="/aksi/dataset?ds={{ pr.ds | urlquote }}">
+        Lihat semua {{ n_dataset }} klip di dataset &rarr;</a>
+      {%- for dk in dataset_kartu %}
+      <article class="an-kartu an-selesai an-dataset-asal">
+        <div class="an-kartu-atas">
+          <span class="an-kartu-judul" title="{{ dk.batch or 'Klip di dataset' }}">
+            {{ dk.batch or 'Klip di dataset' }}</span>
+        </div>
+        <span class="halus an-kartu-waktu">
+          {%- if dk.batch %}{{ dk.batch }}{% else %}langsung masuk dataset{% endif %}
+          &middot; {% if dk.dibuat %}masuk {{ dk.dibuat }}{% else %}&mdash;{% endif %}</span>
+        {{ bilah(dk.jumlah, dk.jumlah) }}
+        <div class="an-kartu-angka">
+          <span><b>{{ dk.jumlah }}</b> klip masuk dataset</span>
+          <b class="an-persen">100%</b>
+        </div>
+        <a class="an-mulai" href="/aksi/dataset?ds={{ pr.ds | urlquote }}">Lihat di dataset &rarr;</a>
+      </article>
+      {%- endfor %}
+      {%- for k in selesai %}
+      <article class="an-kartu an-selesai" data-id="{{ k.id }}"
+               data-pelabel="{{ k.pelabel }}">
+        <div class="an-kartu-atas">
+          <span class="an-kartu-judul" title="{{ k.judul }}">{{ k.judul }}</span>
+          {% if boleh_bagi %}
+          <span class="menu an-menu" id="an-menu-{{ k.id }}">
+            <button class="an-titik" type="button" data-menu="{{ k.id }}"
+                    title="Kelola tugas ini" aria-label="Kelola">&#8942;</button>
+            <span class="menu-isi">
+              <a class="menu-aksi" href="/aksi?ds={{ pr.ds | urlquote }}&job={{ k.id | urlquote }}">
+                Lihat isinya</a>
+              <button class="menu-aksi" type="button" data-aksi="pelabel"
+                      data-id="{{ k.id }}">Tugaskan ulang&hellip;</button>
+              <button class="menu-aksi" type="button" data-aksi="catatan"
+                      data-id="{{ k.id }}">Ubah catatan&hellip;</button>
+              <button class="menu-aksi" type="button" data-aksi="judul"
+                      data-id="{{ k.id }}">Ganti judul&hellip;</button>
+              <span class="menu-pisah"></span>
+              <button class="menu-aksi menu-bahaya" type="button" data-aksi="bubar"
+                      data-id="{{ k.id }}">Bubarkan tugas</button>
+            </span>
+          </span>
+          {% endif %}
+        </div>
+        <span class="halus an-kartu-waktu">{{ k.pelabel }} &middot; dibagi {{ k.dibuat }}</span>
+        {{ bilah(k.berlabel, k.jumlah) }}
+        <div class="an-kartu-angka">
+          <span><b>{{ k.di_dataset }}</b> klip masuk dataset</span>
+          <b class="an-persen">{{ k.persen }}%</b>
+        </div>
+        <a class="an-mulai" href="/aksi?ds={{ pr.ds | urlquote }}&job={{ k.id | urlquote }}">
+          Lihat isinya &rarr;</a>
+      </article>
+      {%- endfor %}
+      {%- if not selesai and not dataset_kartu %}
+      <div class="an-kosong"><b>Belum ada yang masuk dataset</b>
+        <span class="halus">Tugas pindah ke sini setelah klipnya
+          dimasukkan ke dataset, bukan cuma dilabeli.</span></div>
+      {%- endif %}
+    </div>
+  </section>
+
+  <p class="an-kaki halus">{{ n_berlabel }} dari {{ n_semua }} klip sudah
+    dikerjakan &middot; {{ n_dataset }} sudah masuk dataset</p>
+</div>
+</main>
+{% endblock %}
+
+{% block skrip %}<script src="{{ statik('aksi_papan.js') }}"></script>{% endblock %}

@@ -47,6 +47,12 @@ KLIP_MIME = {".mp4": "video/mp4", ".webm": "video/webm",
              ".mkv": "video/x-matroska", ".mov": "video/quicktime",
              ".avi": "video/x-msvideo", ".m4v": "video/x-m4v"}
 
+# Ubin klip yang digambar di halaman /aksi/bagi. Lebih kecil dari gambar (400):
+# tiap ubin klip memicu satu poster ffmpeg (bukan resize gambar murah), jadi
+# membatasi ledakan permintaannya. Yang di luar batas tetap ikut dibagi — slider
+# memakai n_belum penuh, bukan jumlah ubin (sama seperti halaman gambar).
+MAKS_UBIN_KLIP = 240
+
 
 def _projek_video(sess: Session, settings: Settings, ds: str):
     """(folder, pesan_error). Gerbang izin + jenis untuk operasi klip.
@@ -465,10 +471,11 @@ async def halaman_aksi(request: Request, ds: str = "", job: str = "",
             **_awal_aksi(d, tdata, sess.user, pindai, job=job),
             "versi": await asyncio.to_thread(_versi_aksi, d)}
     return templates.TemplateResponse(request, "aksi.html", {
-        "sess": sess, "pr": pr, "aktif": "aksi",
+        "sess": sess, "pr": pr, "aktif": "aksi", "aktif_sub": "grid",
         "awal": awal,
         "saring": saring if saring in ("semua", "belum", "sudah") else "semua",
         "boleh_kelola": tugas.boleh_kelola(tdata, sess.user),
+        "boleh_bagi": tugas.boleh_bagi(tdata, sess.user),
         # Latih model: pemilik/Editor (boleh_unggah), sama dengan membangun versi.
         "boleh_latih": tugas.boleh_unggah(tdata, sess.user),
         # Impor dari path server HANYA admin (membaca path server bebas; prod
@@ -587,6 +594,154 @@ async def aksi_keterangan(ds: str = "", job: str = "",
         return {"ok": False, "error": err}
     pindai = await asyncio.to_thread(klip_scan.pindai, d)
     return {"ok": True, **_awal_aksi(d, tdata, sess.user, pindai, job=job)}
+
+
+# ---------------------------------------------------------------- papan & bagi
+# Paritas penuh dengan alur GAMBAR (/anotasi + /bagi), tetapi unit = KLIP. Papan
+# tiga kolom (Belum ditugaskan / Dikerjakan / Dataset) dan pembagian klip ke
+# anggota tim. Logika job/RBAC dipakai ulang apa adanya dari services/tugas —
+# kunci klip (`klip/<batch>/<file>`) adalah "kunci gambar" bagi mesin itu. Yang
+# beda cuma asal kunci: dari klip_scan.pindai, bukan pemindai gambar. Kelola job
+# (ubah/bubarkan) & anggota (undang/atur/keluarkan) tetap ke /api/tugas/* yang
+# tak menyentuh pemindai gambar; hanya pemilihan "belum ditugaskan" & daftar
+# batch yang perlu sadar-klip.
+
+def _belum_ditugaskan_klip(data: dict, pindai: dict, batch: str = "") -> list[str]:
+    """Kunci klip yang belum ditugaskan ke siapa pun & belum masuk dataset,
+    urut seperti di grid. Padanan tugas._belum_ditugaskan untuk klip.
+
+    Sama seperti gambar: yang sudah masuk dataset dianggap selesai (bukan
+    "belum ditugaskan"), jadi dikecualikan — kalau tidak, unggahan dataset
+    nangkring di kolom pertama. `batch` (opsional) mempersempit ke satu
+    unggahan, karena membagi hampir selalu per unggahan."""
+    ditugaskan = {k for t in data["tugas"].values()
+                  for k in (t.get("gambar") or [])}
+    out = []
+    for it in pindai["items"]:
+        rel = it["rel"]
+        if rel in ditugaskan:
+            continue
+        if tugas.sudah_dimasukkan(data, rel):
+            continue
+        if batch and it["batch"] != batch:
+            continue
+        out.append(rel)
+    return out
+
+
+@router.get("/aksi/papan", response_class=HTMLResponse)
+async def halaman_aksi_papan(request: Request, ds: str = "",
+                             urut: str = "terbaru",
+                             sess: Session = Depends(current_session),
+                             settings: Settings = Depends(get_settings)):
+    """Tab ANOTASI projek video (padanan /anotasi gambar, untuk KLIP): papan
+    tiga kolom — siapa mengerjakan klip apa, sudah sejauh mana. Dari kartu job
+    "Lihat isinya" membuka grid pelabelan tersaring ke job itu (/aksi?job=).
+    Projek image dialihkan ke /anotasi. Bahannya dihitung dari klip_scan, lalu
+    dirakit kolomnya oleh tugas.papan yang sama dengan gambar."""
+    d = projek.temukan(settings.uploads_root, sess.user, ds)
+    if d is None:
+        return RedirectResponse("/pilih", status_code=303)
+    if projek.jenis_projek(d) != "video":
+        return RedirectResponse(f"/anotasi?ds={ds}", status_code=303)
+    if str(sess.src or "") != str(d):
+        await asyncio.to_thread(sess.load, d)
+    data = await asyncio.to_thread(tugas.baca_projek, d, settings.uploads_root)
+    # Job 0-klip yang terlanjur ada (mis. klipnya sudah dibuang) dibersihkan,
+    # sejalan dengan papan gambar — tak ada kerja yang hilang, memang kosong.
+    if any(not (t.get("gambar") or []) for t in data.get("tugas", {}).values()):
+        await asyncio.to_thread(tugas.buang_job_kosong, d,
+                                data["pemilik"] or sess.user)
+        data = await asyncio.to_thread(tugas.baca_projek, d, settings.uploads_root)
+    pr = await asyncio.to_thread(projek.konteks, d, settings.uploads_root, sess.user)
+    pindai = await asyncio.to_thread(klip_scan.pindai, d)
+    papan = tugas.papan(data, pindai["berlabel"], pindai["semua"],
+                        pindai["batch_dari"], urut)
+    return templates.TemplateResponse(request, "aksi_papan.html", {
+        "sess": sess, "pr": pr, "aktif": "aksi", "aktif_sub": "papan",
+        "boleh_kelola": tugas.boleh_kelola(data, sess.user),
+        "boleh_bagi": tugas.boleh_bagi(data, sess.user),
+        "pemilik": data["pemilik"] or sess.user,
+        "aku": sess.user,
+        "anggota_semua": set(data["anggota"]),
+        "urut_pilihan": tugas.URUT_PAPAN,
+        **papan,
+    })
+
+
+@router.get("/aksi/bagi", response_class=HTMLResponse)
+async def halaman_aksi_bagi(request: Request, ds: str = "", batch: str = "",
+                            sess: Session = Depends(current_session),
+                            settings: Settings = Depends(get_settings)):
+    """Tab BAGI projek video (padanan /bagi gambar, untuk KLIP): bagi klip yang
+    belum ditugaskan ke anggota + kelola anggota/peran/scope. Projek image
+    dialihkan ke /bagi. Ubin memakai poster DIAM (/aksi/thumb), bukan <video>.
+    Kelola anggota tetap lewat /api/tugas/* (tak menyentuh pemindai gambar);
+    pembagian klip lewat /api/aksi/bagi yang memilih dari klip_scan."""
+    d = projek.temukan(settings.uploads_root, sess.user, ds)
+    if d is None:
+        return RedirectResponse("/pilih", status_code=303)
+    if projek.jenis_projek(d) != "video":
+        return RedirectResponse(f"/bagi?ds={ds}", status_code=303)
+    if str(sess.src or "") != str(d):
+        await asyncio.to_thread(sess.load, d)
+    data = await asyncio.to_thread(tugas.baca_projek, d, settings.uploads_root)
+    pr = await asyncio.to_thread(projek.konteks, d, settings.uploads_root, sess.user)
+    pindai = await asyncio.to_thread(klip_scan.pindai, d)
+    rel_dari = {it["rel"]: it for it in pindai["items"]}
+    belum = [rel_dari[r] for r in _belum_ditugaskan_klip(data, pindai, batch)]
+    # Hanya rel + nama + batch yang dipakai ubin; path objek tak bisa di-JSON.
+    ubin = [{"rel": it["rel"], "nama": Path(it["rel"]).name, "batch": it["batch"]}
+            for it in belum[:MAKS_UBIN_KLIP]]
+    return templates.TemplateResponse(request, "aksi_bagi.html", {
+        "sess": sess, "pr": pr, "aktif": "aksi", "aktif_sub": "bagi",
+        "boleh_bagi": tugas.boleh_bagi(data, sess.user),
+        "pemilik": data["pemilik"] or sess.user,
+        "batch": batch,
+        "belum": ubin,
+        "n_belum": len(belum),
+        "n_dipotong": max(0, len(belum) - MAKS_UBIN_KLIP),
+    })
+
+
+@router.post("/api/aksi/bagi")
+async def aksi_bagi(request: Request, ds: str = "",
+                    sess: Session = Depends(current_session_api),
+                    settings: Settings = Depends(get_settings)):
+    """Buat satu job klip: sekumpulan klip untuk satu pelabel. Padanan
+    /api/tugas/bagi untuk klip — memilih dari klip yang BELUM ditugaskan (via
+    klip_scan), bukan dari pemindai gambar. `n` menyerahkan pemilihan ke server
+    (dipakai halaman), `acak` mengacak dulu."""
+    d, tdata, err = _projek_aksi(sess, settings, ds)
+    if err:
+        return {"ok": False, "error": err}
+    if not tugas.boleh_bagi(tdata, sess.user):
+        return {"ok": False, "error": "hanya pemilik atau editor yang bisa membagi tugas"}
+    body = await bodi_json(request)
+    pelabel = str(body.get("pelabel") or "").strip()
+    if not pelabel or pelabel not in load_users(settings.users_file):
+        return {"ok": False, "error": f"akun '{pelabel[:40]}' tidak terdaftar"} \
+            if pelabel else {"ok": False, "error": "belum memilih pelabelnya"}
+    pindai = await asyncio.to_thread(klip_scan.pindai, d)
+    semua = _belum_ditugaskan_klip(tdata, pindai, str(body.get("batch") or ""))
+    if not semua:
+        return {"ok": False, "error": "tidak ada klip yang belum ditugaskan"}
+    try:
+        n = int(body.get("n"))
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "jumlah klip harus angka"}
+    n = max(1, min(n, len(semua)))
+    if body.get("acak"):
+        import random
+        semua = random.sample(semua, len(semua))
+    kunci = semua[:n]
+    r = await asyncio.to_thread(tugas.tugaskan, d, tdata["pemilik"], pelabel,
+                                kunci, str(body.get("catatan") or ""),
+                                str(body.get("judul") or ""))
+    if r.get("kosong"):
+        return {"ok": False, "error": "semua klip itu sudah ditugaskan ke job "
+                "lain — tidak ada job baru dibuat"}
+    return {"ok": True, **r}
 
 
 @router.get("/klip")

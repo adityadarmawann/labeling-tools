@@ -580,7 +580,16 @@ async def calon(sess: Session = Depends(current_session_api),
                     "akses": info.get("akses", ""),
                     "batch_scope": info.get("batch", [])})
     # Daftar batch yang ada di projek ini, untuk memilih scope Labeler spesifik.
-    batches = sorted(svc_tag.hitung(svc_tag.baca(sess.src))["batch"].keys())
+    # Projek VIDEO: unit kerjanya KLIP, bukan gambar — batch-nya datang dari
+    # klip_scan (folder di bawah klip/ + sidecar), bukan dari tag gambar yang
+    # memang kosong. Tanpa cabang ini, panel "Bagi tugas" klip menawarkan scope
+    # kosong padahal projeknya penuh batch klip.
+    if svc_projek.jenis_projek(sess.src) == "video":
+        from ..services import klip_scan
+        batches = sorted({b for b in
+                          klip_scan.pindai(sess.src)["batch_dari"].values() if b})
+    else:
+        batches = sorted(svc_tag.hitung(svc_tag.baca(sess.src))["batch"].keys())
     return {"ok": True, "akun": out, "pemilik": data["pemilik"],
             "anggota": sorted(data["anggota"]),
             "batch_tersedia": batches,
