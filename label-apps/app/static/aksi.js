@@ -1,240 +1,317 @@
 'use strict';
 
 /*
- * Pelabelan klip (classifier aksi video).
+ * Label Aksi (anotasi klip) — GRID + overlay pelabelan.
  *
- * Padanan label.js untuk klip: alih-alih canvas, sebuah <video> memutar klip
- * ~1 detik berulang, dan pelabel menekan angka kelas. Panah kiri-kanan
- * menyusuri subset penugasan ini; saring belum/sudah dikerjakan di peramban
- * atas subset yang sudah dimuat (sequential labeling, bukan grid besar).
+ * Padanan papan job gambar, untuk KLIP: grid klip dengan thumbnail DIAM (poster
+ * /aksi/thumb), filter Belum/Sudah dilabeli + Di/Belum dataset + kelas,
+ * multi-select + toolbar borongan (tambah ke dataset). Melabeli dilakukan di
+ * OVERLAY "Lihat / label": klip berputar (auto-play + loop) HANYA di sini +
+ * tombol kelas + prev/next dalam subset terfilter.
  *
- * Resumable: label tiap klip datang dari server (D.klips[i].label) dan
- * ditampilkan. Aman banyak orang: penjaga sungguhannya di server
- * (tugas.boleh_labeli per-klip); yang di sini hanya UX.
- *
- * Koordinat kebenaran tetap di server — tombol apa pun memanggil rute yang
- * memeriksa izin; tampilan hanya menyusul balasannya.
+ * Kebenaran tetap di server — tiap tombol memanggil rute yang memeriksa izin
+ * (tugas.boleh_labeli per-klip); tampilan hanya menyusul balasannya.
+ * send() + toast() global dari app.js.
  */
 
 const D = JSON.parse(document.getElementById('ak-awal').textContent);
 const EDS = encodeURIComponent(D.ds);
 const EJOB = D.job ? '&job=' + encodeURIComponent(D.job) : '';
-const el = id => document.getElementById(id);
 const enc = encodeURIComponent;
+const el = id => document.getElementById(id);
+const PER = 60;
 
-// Keadaan. `clips` adalah SELURUH subset pelabel ini (urut); `saring` memilih
-// yang tampil; `pos` indeks ke dalam daftar yang tampil.
-let clips = (D.klips || []).map(c => ({ ...c }));
-let saring = (document.querySelector('.ak-saring [data-on]') || {}).dataset
-  ? document.querySelector('.ak-saring [data-on]').dataset.saring : 'semua';
-let pos = 0;
-
-const video = el('ak-video');
-
-// Warna kelas: pakai warna projek kalau ada, kalau tidak turunkan HSL stabil
-// dari nama — supaya tombol yang sama selalu berwarna sama antar muat.
 function warnaKelas(nama, i) {
   if (D.warna && D.warna[i]) return D.warna[i];
   let h = 0;
   for (let k = 0; k < nama.length; k++) h = (h * 31 + nama.charCodeAt(k)) % 360;
   return `hsl(${h} 55% 45%)`;
 }
+const IDX_KELAS = {};
+(D.kelas || []).forEach((k, i) => { IDX_KELAS[k] = i; });
 
-// -- tombol kelas (sekali) ---------------------------------------------------
-const wadahKelas = el('ak-kelas');
-const tombolKelas = new Map();     // nama kelas -> <button>
+let clips = (D.klips || []).map(c => ({ ...c }));
+let saring = 'semua';   // semua | belum | sudah (status label)
+let dsf = 'semua';      // semua | di | belum (status dataset)
+let fkelas = '';        // filter kelas
+let hal = 0;
+const terpilih = new Set();
+
+const grid = el('ak-grid');
+const kosongEl = el('ak-kosong');
+const halEl = el('ak-hal');
+const selFKelas = el('ak-f-kelas');
+const cbSemua = el('ak-semua');
+const btnBulkDs = el('ak-bulk-ds');
+const nPilihEl = el('ak-npilih');
+
+// -- subset tampil (filter) --------------------------------------------------
+function tampil() {
+  let v = clips;
+  if (saring === 'belum') v = v.filter(c => !c.label);
+  else if (saring === 'sudah') v = v.filter(c => c.label);
+  if (dsf === 'di') v = v.filter(c => c.di_dataset);
+  else if (dsf === 'belum') v = v.filter(c => !c.di_dataset);
+  if (fkelas) v = v.filter(c => c.label === fkelas);
+  return v;
+}
+
+function angka() {
+  const n = clips.length;
+  const nl = clips.filter(c => c.label).length;
+  const nd = clips.filter(c => c.di_dataset).length;
+  el('ak-n-total').textContent = n.toLocaleString('id-ID');
+  el('ak-n-label').textContent = nl.toLocaleString('id-ID');
+  el('ak-n-ds').textContent = nd.toLocaleString('id-ID');
+}
+
+function isiFilterKelas() {
+  const ada = [...new Set(clips.map(c => c.label).filter(Boolean))].sort();
+  const lama = selFKelas.value;
+  selFKelas.innerHTML = '<option value="">Semua</option>'
+    + ada.map(k => `<option value="${k}">${k}</option>`).join('');
+  if (ada.includes(lama)) selFKelas.value = lama;
+}
+
+// -- grid --------------------------------------------------------------------
+function render() {
+  angka();
+  const v = tampil();
+  grid.innerHTML = '';
+  kosongEl.hidden = v.length > 0;
+  const potong = v.slice(hal * PER, hal * PER + PER);
+  potong.forEach(it => grid.appendChild(kartu(it, v)));
+  renderHal(v);
+  if (cbSemua) cbSemua.checked = potong.length > 0
+    && potong.every(it => terpilih.has(it.rel));
+  perbaruiBulk();
+}
+
+function kartu(it, v) {
+  const li = document.createElement('li');
+  li.className = 'akg-kartu';
+  const img = document.createElement('img');
+  img.className = 'akg-thumb'; img.loading = 'lazy'; img.alt = it.label || '';
+  img.src = `/aksi/thumb?ds=${EDS}&rel=${enc(it.rel)}&s=240`;
+  img.addEventListener('error', () => img.classList.add('akg-thumb-x'));
+  li.appendChild(img);
+
+  const lab = document.createElement('span');
+  if (it.label) {
+    lab.className = 'akg-label';
+    lab.style.background = warnaKelas(it.label, IDX_KELAS[it.label] ?? 0);
+    lab.textContent = it.label;
+  } else {
+    lab.className = 'akg-label akg-label-x';
+    lab.textContent = 'belum';
+  }
+  li.appendChild(lab);
+  if (it.di_dataset) {
+    const d = document.createElement('span');
+    d.className = 'akg-ds'; d.textContent = 'dataset'; li.appendChild(d);
+  }
+
+  const bar = document.createElement('div');
+  bar.className = 'akg-kartu-bar';
+  const lihat = document.createElement('button');
+  lihat.type = 'button'; lihat.className = 'chip akg-lihat';
+  lihat.textContent = 'Lihat / label';
+  lihat.addEventListener('click', () => bukaLabel(it, v));
+  bar.appendChild(lihat);
+  if (cbSemua) {
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.className = 'akg-cb';
+    cb.checked = terpilih.has(it.rel);
+    cb.addEventListener('change', () => {
+      if (cb.checked) terpilih.add(it.rel); else terpilih.delete(it.rel);
+      perbaruiBulk();
+    });
+    bar.appendChild(cb);
+  }
+  li.appendChild(bar);
+  return li;
+}
+
+function renderHal(v) {
+  halEl.innerHTML = '';
+  const n = Math.ceil(v.length / PER) || 1;
+  if (n <= 1) return;
+  const mk = (txt, ke) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'chip'; b.textContent = txt;
+    b.addEventListener('click', () => {
+      hal = ke; render(); window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+    return b;
+  };
+  if (hal > 0) halEl.appendChild(mk('‹', hal - 1));
+  halEl.appendChild(document.createTextNode(` ${hal + 1} / ${n} `));
+  if (hal < n - 1) halEl.appendChild(mk('›', hal + 1));
+}
+
+function perbaruiBulk() {
+  if (nPilihEl) nPilihEl.textContent = terpilih.size;
+  if (btnBulkDs) btnBulkDs.disabled = terpilih.size === 0;
+}
+
+function gantiSaring(baru) { saring = baru; hal = 0; render(); }
+function gantiDsf(baru) { dsf = baru; hal = 0; render(); }
+
+document.querySelectorAll('.ak-saring [data-saring]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.ak-saring [data-saring]').forEach(b => b.removeAttribute('data-on'));
+    btn.setAttribute('data-on', ''); gantiSaring(btn.dataset.saring);
+  });
+});
+document.querySelectorAll('.ak-dsf [data-dsf]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.ak-dsf [data-dsf]').forEach(b => b.removeAttribute('data-on'));
+    btn.setAttribute('data-on', ''); gantiDsf(btn.dataset.dsf);
+  });
+});
+selFKelas.addEventListener('change', () => { fkelas = selFKelas.value; hal = 0; render(); });
+
+// -- pilih semua (halaman ini) + toolbar borongan ---------------------------
+if (cbSemua) {
+  cbSemua.addEventListener('change', () => {
+    const potong = tampil().slice(hal * PER, hal * PER + PER);
+    potong.forEach(it => { if (cbSemua.checked) terpilih.add(it.rel); else terpilih.delete(it.rel); });
+    render();
+  });
+}
+if (btnBulkDs) {
+  btnBulkDs.addEventListener('click', () => kirimDataset([...terpilih]));
+}
+const btnDsSemua = el('ak-ds-semua');
+if (btnDsSemua) {
+  btnDsSemua.addEventListener('click', () =>
+    kirimDataset(clips.filter(c => c.label && !c.di_dataset).map(c => c.rel)));
+}
+
+async function kirimDataset(rels) {
+  rels = [...new Set(rels)];
+  if (!rels.length) { toast('Tidak ada klip berlabel untuk dimasukkan'); return; }
+  const r = await send(`/api/aksi/dataset?ds=${EDS}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ klip: rels }),
+  });
+  if (!r || !r.ok) { toast((r && r.error) || 'gagal memasukkan'); return; }
+  toast(`${r.ditambah || 0} klip masuk dataset`);
+  terpilih.clear();
+  await segarkan();
+}
+
+// Muat ulang subset dari server (di_dataset & angka benar setelah operasi).
+async function segarkan() {
+  const r = await send(`/api/aksi/keterangan?ds=${EDS}${EJOB}`);
+  if (!r || !r.ok) return;
+  clips = (r.klips || []).map(c => ({ ...c }));
+  isiFilterKelas();
+  render();
+}
+
+// ============================================================
+// OVERLAY LABEL: pemutar + tombol kelas + prev/next. Auto-play HANYA di sini.
+// ============================================================
+const overlay = el('ak-lbl');
+const lvid = el('ak-lbl-video');
+const lkelas = el('ak-lbl-kelas');
+let vlist = [];     // snapshot subset saat overlay dibuka
+let vpos = 0;
+
+const tombolKelas = new Map();
 (D.kelas || []).forEach((nama, i) => {
   const b = document.createElement('button');
-  b.type = 'button';
-  b.className = 'ak-kls';
+  b.type = 'button'; b.className = 'ak-kls';
   b.dataset.cls = nama;
   b.style.setProperty('--w', warnaKelas(nama, i));
-  // Pintasan angka untuk 10 kelas pertama: 1..9 lalu 0 (seperti review tool).
   const hot = i < 9 ? String(i + 1) : (i === 9 ? '0' : '');
   b.setAttribute('aria-label', hot ? `${nama} (pintasan ${hot})` : nama);
-  b.innerHTML = (hot ? `<kbd class="ak-hot">${hot}</kbd>` : '') +
-    `<span class="ak-kls-nama"></span>`;
+  b.innerHTML = (hot ? `<kbd class="ak-hot">${hot}</kbd>` : '')
+    + '<span class="ak-kls-nama"></span>';
   b.querySelector('.ak-kls-nama').textContent =
     nama + (nama === D.negatif ? ' (negatif)' : '');
-  b.addEventListener('click', () => setLabel(nama));
-  wadahKelas.appendChild(b);
+  b.addEventListener('click', () => setLabelKini(nama));
+  lkelas.appendChild(b);
   tombolKelas.set(nama, b);
 });
 
-// -- yang tampil & klip kini -------------------------------------------------
-function tampil() {
-  if (saring === 'belum') return clips.filter(c => !c.label);
-  if (saring === 'sudah') return clips.filter(c => c.label);
-  return clips;
+function bukaLabel(it, v) {
+  vlist = v.slice();
+  vpos = vlist.findIndex(c => c.rel === it.rel);
+  if (vpos < 0) vpos = 0;
+  overlay.hidden = false;
+  renderLabel();
 }
-function kini() {
-  const v = tampil();
-  if (!v.length) return null;
-  pos = Math.min(Math.max(pos, 0), v.length - 1);
-  return v[pos];
+function tutupLabel() {
+  lvid.pause(); lvid.removeAttribute('src'); lvid.load();
+  overlay.hidden = true;
+  render();          // segarkan grid (badge + angka) sekembalinya
 }
-
-// -- render ------------------------------------------------------------------
-function render() {
-  const v = tampil();
-  const c = kini();
-  // Angka & bilah kemajuan dihitung atas SELURUH subset, bukan yang tampil.
-  const nTotal = clips.length;
-  const nLabel = clips.filter(x => x.label).length;
-  const nDs = clips.filter(x => x.di_dataset).length;
-  el('ak-n-total').textContent = nTotal;
-  el('ak-n-label').textContent = nLabel;
-  el('ak-n-belum').textContent = nTotal - nLabel;
-  el('ak-n-ds').textContent = nDs;
-  el('ak-bar-ok').style.flexGrow = nLabel || 0;
-  el('ak-bar-stop').style.flexGrow = (nTotal - nLabel) || 0;
-
-  const kosong = el('ak-kosong');
-  if (!c) {
-    video.removeAttribute('src');
-    video.load();
-    video.hidden = true;
-    kosong.hidden = false;
-    el('ak-posisi').textContent = `0 / 0`;
-    el('ak-nama').textContent = '';
-    el('ak-kini').textContent = '';
-    tombolKelas.forEach(b => { b.removeAttribute('data-on'); b.setAttribute('aria-pressed', 'false'); });
-    return;
-  }
-  video.hidden = false;
-  kosong.hidden = true;
-  // name di-encode penuh: FastAPI men-decode %2F kembali jadi '/', jadi
-  // "klip/b1/x.mp4" sampai utuh ke rute yang menyelesaikannya aman.
+function renderLabel() {
+  const c = vlist[vpos];
+  if (!c) { tutupLabel(); return; }
   const url = `/klip?ds=${EDS}&name=${enc(c.rel)}`;
-  if (video.getAttribute('src') !== url) {
-    video.setAttribute('src', url);
-    video.load();
-    video.play().catch(() => { /* autoplay bisa ditolak; controls tetap ada */ });
+  if (lvid.getAttribute('src') !== url) {
+    lvid.setAttribute('src', url); lvid.load();
+    lvid.play().catch(() => {});
   }
-  el('ak-posisi').textContent = `${pos + 1} / ${v.length}`;
-  const nama = c.rel.split('/').pop();
-  const el_nama = el('ak-nama');
-  el_nama.textContent = nama;
-  el_nama.title = c.rel + (c.batch ? `  ·  batch ${c.batch}` : '');
-  el('ak-kini').textContent = c.label
-    ? (c.di_dataset ? `${c.label} · di dataset` : c.label)
-    : '(belum dilabeli)';
+  el('ak-lbl-pos').textContent = `${vpos + 1} / ${vlist.length}`;
+  el('ak-lbl-nama').textContent = c.rel.split('/').pop();
+  el('ak-lbl-ket').textContent = c.label
+    ? (c.di_dataset ? `${c.label} · di dataset` : c.label) : '(belum dilabeli)';
   tombolKelas.forEach((b, nm) => {
-    const on = nm === c.label;
-    if (on) b.setAttribute('data-on', ''); else b.removeAttribute('data-on');
-    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    if (nm === c.label) b.setAttribute('data-on', ''); else b.removeAttribute('data-on');
   });
 }
-
-// -- tulis label -------------------------------------------------------------
-async function setLabel(cls) {
-  const c = kini();
+async function setLabelKini(cls) {
+  const c = vlist[vpos];
   if (!c) return;
   const r = await send(
     `/api/aksi/label?ds=${EDS}&klip=${enc(c.rel)}&label=${enc(cls)}`,
     { method: 'POST' });
-  if (!r.ok) { toast(r.error || 'gagal menyimpan label'); return; }
-  c.label = r.label;
-  // Di saringan "belum", klip yang baru dilabeli keluar dari yang tampil; pos
-  // dibiarkan supaya klip berikutnya yang belum maju sendiri. Di saringan lain,
-  // maju ke klip berikut (tekan angka = labeli lalu lanjut, seperti review tool).
-  if (saring !== 'belum') pos++;
-  render();
+  if (!r || !r.ok) { toast((r && r.error) || 'gagal menyimpan label'); return; }
+  c.label = r.label;              // objek sama dengan di `clips` (ref)
+  angka();
+  // Setelah memberi label (bukan menghapus), maju ke klip berikut.
+  if (cls && vpos < vlist.length - 1) vpos++;
+  renderLabel();
 }
-async function hapus() {
-  const c = kini();
-  if (!c || !c.label) { render(); return; }
-  await setLabel('');
-}
-function lewati() { pos++; render(); }
-function ulang() { if (video.src) { video.currentTime = 0; video.play().catch(() => {}); } }
-function geser(d) { pos += d; render(); }
+function geserLabel(d) { vpos = Math.min(Math.max(vpos + d, 0), vlist.length - 1); renderLabel(); }
 
-// -- tambah berlabel ke dataset ---------------------------------------------
-el('ak-ke-dataset').addEventListener('click', async () => {
-  const minta = clips.filter(c => c.label && !c.di_dataset).map(c => c.rel);
-  if (!minta.length) { toast('Tidak ada klip berlabel baru untuk dimasukkan'); return; }
-  const r = await send(`/api/aksi/dataset?ds=${EDS}`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ klip: minta }),
-  });
-  if (!r.ok) { toast(r.error || 'gagal memasukkan'); return; }
-  toast(`${r.ditambah || 0} klip masuk dataset`);
-  await segarkan();
-});
+el('ak-lbl-tutup').addEventListener('click', tutupLabel);
+el('ak-lbl-prev').addEventListener('click', () => geserLabel(-1));
+el('ak-lbl-next').addEventListener('click', () => geserLabel(1));
+el('ak-lbl-hapus').addEventListener('click', () => setLabelKini(''));
+overlay.addEventListener('click', e => { if (e.target === overlay) tutupLabel(); });
 
-// Muat ulang subset dari server (dipakai setelah masuk-dataset supaya penanda
-// di_dataset & angka benar), mempertahankan klip yang sedang dibuka.
-async function segarkan() {
-  const relKini = (kini() || {}).rel;
-  const r = await send(`/api/aksi/keterangan?ds=${EDS}${EJOB}`);
-  if (!r.ok) return;
-  clips = (r.klips || []).map(c => ({ ...c }));
-  const v = tampil();
-  const i = v.findIndex(c => c.rel === relKini);
-  if (i >= 0) pos = i;
-  render();
-}
-
-// -- saring belum/sudah ------------------------------------------------------
-document.querySelectorAll('.ak-saring [data-saring]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const relKini = (kini() || {}).rel;
-    saring = btn.dataset.saring;
-    document.querySelectorAll('.ak-saring [data-saring]').forEach(
-      b => b.removeAttribute('data-on'));
-    btn.setAttribute('data-on', '');
-    // Pertahankan klip yang sedang dibuka kalau masih tampil; kalau tidak,
-    // mulai dari awal daftar baru.
-    const v = tampil();
-    const i = v.findIndex(c => c.rel === relKini);
-    pos = i >= 0 ? i : 0;
-    render();
-  });
-});
-
-// -- tombol navigasi ---------------------------------------------------------
-el('ak-prev').addEventListener('click', () => geser(-1));
-el('ak-next').addEventListener('click', () => geser(1));
-el('ak-replay').addEventListener('click', ulang);
-el('ak-skip').addEventListener('click', lewati);
-el('ak-hapus').addEventListener('click', hapus);
-
-// -- versi, impor & training klip: dipindah ke tab sendiri
-// (aksi_versi.js @/aksi/versi, aksi_latih.js @/aksi/latih), sejajar alur
-// image. Halaman ini (Label Aksi) fokus: melabeli klip + atur kelas.
-
-// -- papan tik ---------------------------------------------------------------
+// -- papan tik (hanya saat overlay label terbuka) ---------------------------
 document.addEventListener('keydown', e => {
+  if (overlay.hidden) return;
   const t = e.target;
   if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA'
     || t.tagName === 'SELECT' || t.isContentEditable)) return;
   if (e.ctrlKey || e.metaKey || e.altKey) return;
-  if (e.key === 'ArrowLeft') { geser(-1); e.preventDefault(); return; }
-  if (e.key === 'ArrowRight') { geser(1); e.preventDefault(); return; }
-  if (e.key === 'r' || e.key === 'R') { ulang(); e.preventDefault(); return; }
-  if (e.key === 's' || e.key === 'S') { lewati(); e.preventDefault(); return; }
-  if (e.key === 'Backspace') { hapus(); e.preventDefault(); return; }
-  // Angka: 1..9 -> kelas 0..8, 0 -> kelas 10 (indeks 9).
+  if (e.key === 'Escape') { tutupLabel(); e.preventDefault(); return; }
+  if (e.key === 'ArrowLeft') { geserLabel(-1); e.preventDefault(); return; }
+  if (e.key === 'ArrowRight') { geserLabel(1); e.preventDefault(); return; }
+  if (e.key === 'Backspace') { setLabelKini(''); e.preventDefault(); return; }
   if (/^[0-9]$/.test(e.key)) {
     const idx = e.key === '0' ? 9 : (parseInt(e.key, 10) - 1);
     const nama = (D.kelas || [])[idx];
-    if (nama) { setLabel(nama); e.preventDefault(); }
+    if (nama) { setLabelKini(nama); e.preventDefault(); }
   }
 });
 
 // -- editor kelas aksi (pemilik) ---------------------------------------------
-// Tempat pemilik MENDEFINISIKAN/mengubah daftar kelas. Tanpa ini, projek video
-// baru tak punya cara menyetel kelas, dan halaman cuma menampilkan pesan "belum
-// ada kelas" tanpa jalan keluar. Tombol & dialog hanya ada untuk pemilik.
 (function editorKelas() {
   const buka = el('ak-set-kelas');
   const dlg = el('dlg-aksi');
-  if (!buka || !dlg) return;                 // non-pemilik: tombol/dialog absen
+  if (!buka || !dlg) return;
   const taKelas = el('aksi-kelas');
   const inNeg = el('aksi-negatif');
   const simpan = el('aksi-kelas-simpan');
-  const tampil = v => {
+  const tampilDlg = v => {
     dlg.hidden = !v;
     if (v) {
       taKelas.value = (D.kelas || []).join('\n');
@@ -242,11 +319,10 @@ document.addEventListener('keydown', e => {
       setTimeout(() => taKelas.focus(), 30);
     }
   };
-  buka.addEventListener('click', () => tampil(true));
-  el('dlg-aksi-tutup').addEventListener('click', () => tampil(false));
-  el('aksi-kelas-batal').addEventListener('click', () => tampil(false));
-  dlg.addEventListener('click', e => { if (e.target === dlg) tampil(false); });
-
+  buka.addEventListener('click', () => tampilDlg(true));
+  el('dlg-aksi-tutup').addEventListener('click', () => tampilDlg(false));
+  el('aksi-kelas-batal').addEventListener('click', () => tampilDlg(false));
+  dlg.addEventListener('click', e => { if (e.target === dlg) tampilDlg(false); });
   simpan.addEventListener('click', async () => {
     const kelas = taKelas.value.split('\n').map(s => s.trim()).filter(Boolean);
     if (!kelas.length) { toast('Isi minimal satu kelas aksi'); return; }
@@ -261,11 +337,9 @@ document.addEventListener('keydown', e => {
     });
     simpan.disabled = false;
     if (!r || !r.ok) { toast((r && r.error) || 'gagal menyimpan kelas'); return; }
-    // Muat ulang: begitu kelas ada, tombol kelas + pelabelan aktif dan pesan
-    // "belum ada kelas" hilang — lebih sederhana & tak bisa salah-sinkron
-    // dibanding merender ulang semua keadaan di tempat.
     location.reload();
   });
 })();
 
+isiFilterKelas();
 render();

@@ -3704,3 +3704,17 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
 .akg-tutup { align-self: flex-end; }
 .akg-video { max-width: 92vw; max-height: 80vh; background: #000; border-radius: 8px; }
 .akg-vnama { color: #cbd3df; }
+
+/* Overlay pelabelan klip (Label Aksi grid): pemutar + tombol kelas + nav. */
+.ak-lbl-main { width: min(720px, 94vw); }
+.ak-lbl-kepala { display: flex; align-items: center; gap: 10px; width: 100%;
+  color: #cbd3df; font-size: 13px; }
+.ak-lbl-nama { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ak-lbl-kelas { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
+  margin: 10px 0 4px; }
+.ak-lbl-baris { display: flex; gap: 8px; align-items: center; }
+.ak-lbl-ket { color: #cbd3df; min-height: 1em; margin: 2px 0 0; }
+/* badge "belum" (abu) + badge dataset (hijau pojok kanan) di kartu grid */
+.akg-label-x { background: #3a3f4b; color: #c7ccd6; }
+.akg-ds { position: absolute; top: 6px; right: 6px; font-size: 10px;
+  background: #1f6f43; color: #fff; padding: 1px 6px; border-radius: 6px; }

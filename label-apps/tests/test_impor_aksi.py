@@ -419,6 +419,18 @@ def test_aksi_thumb_404_aman(klien, lingkungan):
     assert klien.get("/aksi/thumb?ds=vid-th&rel=../rahasia.mp4").status_code == 404
 
 
+def test_aksi_grid_labeling_video(klien, lingkungan):
+    """Label Aksi kini GRID + overlay, bukan pemutar berurutan."""
+    masuk(klien, "paul", PW_PAUL)
+    _buat_video_aksi(klien, "aksi-grid", kelas=("shoot", "pass"))
+    html = klien.get("/aksi?ds=aksi-grid").text
+    assert "ak-grid" in html                       # grid klip
+    assert 'id="ak-lbl"' in html                   # overlay label
+    assert "ak-saring" in html and "ak-dsf" in html  # filter belum/sudah + dataset
+    assert "ak-awal" in html and "Label Aksi" in html
+    assert "shoot" in html                          # kelas tertanam di data awal
+
+
 def test_aksi_keluarkan_dari_dataset(klien, lingkungan):
     masuk(klien, "paul", PW_PAUL)
     _buat_video_aksi(klien, "aksi-ds", kelas=("shoot", "pass"))
