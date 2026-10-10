@@ -232,7 +232,9 @@ def main() -> int:
     ap = argparse.ArgumentParser(
         description="Impor dataset klip aksi jadi (train/val folder-per-kelas) "
                     "sebagai versi siap-latih di projek video HIGOLAB.")
-    ap.add_argument("--root", required=True, help="datasets root")
+    ap.add_argument("--root", required=True,
+                    help="uploads root; projek dibuat di <root>/<oleh>/<projek> "
+                         "(persis seperti app — kalau salah taruh app tak melihatnya)")
     ap.add_argument("--projek", required=True, help="nama projek video (dibuat bila belum ada)")
     ap.add_argument("--train", required=True, help="folder train (berisi subfolder per kelas)")
     ap.add_argument("--val", required=True, help="folder val/valid (klip asli, tanpa aug)")
@@ -243,8 +245,11 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true", help="hanya tampilkan rencana, tak menulis")
     a = ap.parse_args()
 
-    root = Path(a.root)
-    ds = projek._folder(root, a.projek)
+    # Projek HIGOLAB tinggal di <uploads_root>/<pemilik>/<projek> (lihat
+    # routers/projek.py), BUKAN langsung di root. Salah taruh = app tak pernah
+    # melihatnya. Maka workspace-nya root/<oleh>.
+    ws = Path(a.root) / a.oleh
+    ds = projek._folder(ws, a.projek)
     kelas = [k.strip() for k in a.kelas.split(",") if k.strip()] or None
 
     if a.dry_run:
@@ -253,9 +258,10 @@ def main() -> int:
         return 0
 
     if not ds.exists():
-        info = projek.buat(root, a.projek, "video")
+        ws.mkdir(parents=True, exist_ok=True)
+        info = projek.buat(ws, a.projek, "video")
         ds = Path(info["path"])
-        print(f"projek video dibuat: {ds.name}")
+        print(f"projek video dibuat: {ds} (pemilik {a.oleh})")
     t0 = time.time()
     r = impor(ds, Path(a.train), Path(a.val), oleh=a.oleh, kelas=kelas,
               negatif=a.negatif, salin=not a.hardlink)
