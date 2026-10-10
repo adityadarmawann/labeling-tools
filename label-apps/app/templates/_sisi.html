@@ -51,7 +51,9 @@
         title="{{ pr.belum }} gambar belum masuk dataset. Buka sebuah tugas lalu saring 'Belum di dataset' untuk memasukkannya">{{ pr.belum }}</b>{% endif %}</a>
     {% endif %}
 
-    <a class="sisi-item" href="/?ds={{ pr.ds | urlquote }}"
+    {#- Projek video punya tab Dataset sendiri (/aksi/dataset) untuk KLIP — grid
+        klip di-dataset + thumbnail diam + keluarkan. Image tetap ke `/`. -#}
+    <a class="sisi-item" href="{% if pr.jenis == 'video' %}/aksi/dataset{% else %}/{% endif %}?ds={{ pr.ds | urlquote }}"
        {% if aktif == 'dataset' %}data-on aria-current="page"{% endif %}>
       <span class="sisi-ikon" aria-hidden="true">&#9635;</span>Dataset
       {%- if pr.n_dataset %}<b class="sisi-angka">{{ pr.n_dataset }}</b>{% endif %}</a>

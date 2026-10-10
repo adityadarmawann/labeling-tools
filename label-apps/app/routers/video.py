@@ -20,7 +20,8 @@ import threading
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import (FileResponse, HTMLResponse, RedirectResponse,
+                               Response)
 
 from ..config import (ARSIP_EXT, KLIP, KLIP_BURUK, KLIP_DITOLAK, SUMBER_VIDEO,
                       VIDEO_EXT, Settings, get_settings)
@@ -524,6 +525,57 @@ async def halaman_aksi_latih(request: Request, ds: str = "",
     })
 
 
+@router.get("/aksi/dataset", response_class=HTMLResponse)
+async def halaman_aksi_dataset(request: Request, ds: str = "",
+                               sess: Session = Depends(current_session),
+                               settings: Settings = Depends(get_settings)):
+    """Tab DATASET projek video (padanan `/` gambar, untuk KLIP): grid klip yang
+    SUDAH di dataset + thumbnail DIAM + filter kelas + Keluarkan + Lihat (putar).
+    Projek image dialihkan ke `/` biasa. Grid diisi klien dari
+    /api/aksi/keterangan (disaring di_dataset)."""
+    d = projek.temukan(settings.uploads_root, sess.user, ds)
+    if d is None:
+        return RedirectResponse("/pilih", status_code=303)
+    if projek.jenis_projek(d) != "video":
+        return RedirectResponse(f"/?ds={ds}", status_code=303)
+    if str(sess.src or "") != str(d):
+        await asyncio.to_thread(sess.load, d)
+    tdata = await asyncio.to_thread(tugas.baca_projek, d, settings.uploads_root)
+    pr = await asyncio.to_thread(projek.konteks, d, settings.uploads_root, sess.user)
+    ak = tdata.get("aksi") or {}
+    awal = {"ds": pr["ds"], "kelas": list(ak.get("kelas") or []),
+            "warna": list(ak.get("warna") or [])}
+    return templates.TemplateResponse(request, "aksi_dataset.html", {
+        "sess": sess, "pr": pr, "aktif": "dataset", "awal": awal,
+        "boleh_kelola": tugas.boleh_kelola(tdata, sess.user),
+    })
+
+
+@router.get("/aksi/thumb")
+async def aksi_thumb(ds: str = "", rel: str = "", s: int = 320,
+                     sess: Session = Depends(current_session),
+                     settings: Settings = Depends(get_settings)):
+    """Poster frame-pertama satu klip (JPG) untuk kartu grid — DIAM, bukan
+    <video> auto-play. Di-cache lewat klip.poster. 404 kalau bukan anggota /
+    klip tak ada / ffmpeg gagal (kartu memakai placeholder)."""
+    d = projek.temukan(settings.uploads_root, sess.user, ds)
+    if d is None:
+        return Response(status_code=404)
+    safe = safe_relpath(rel, video=True)
+    if not safe or not safe.startswith(f"{KLIP}/"):
+        return Response(status_code=404)
+    clip = d / safe
+    if not clip.is_file():
+        return Response(status_code=404)
+    side = max(96, min(int(s or 320), 640))
+    pos = await asyncio.to_thread(klip.poster, clip,
+                                  settings.thumb_root / "klip", side)
+    if pos is None or not pos.is_file():
+        return Response(status_code=404)
+    return FileResponse(pos, media_type="image/jpeg",
+                        headers={"Cache-Control": "private, max-age=300"})
+
+
 @router.get("/api/aksi/keterangan")
 async def aksi_keterangan(ds: str = "", job: str = "",
                           sess: Session = Depends(current_session_api),
@@ -652,6 +704,42 @@ async def aksi_ke_dataset(request: Request, ds: str = "",
         return {"ok": False, "error": "tidak ada klip berlabel milikmu yang "
                                       "bisa dimasukkan di sini"}
     r = await asyncio.to_thread(tugas.masukkan, d, boleh, tdata["pemilik"])
+    h = await asyncio.to_thread(klip_scan.hitung, d)
+    return {"ok": True, **r, **h}
+
+
+@router.post("/api/aksi/dataset/keluarkan")
+async def aksi_keluar_dataset(request: Request, ds: str = "",
+                              sess: Session = Depends(current_session_api),
+                              settings: Settings = Depends(get_settings)):
+    """Keluarkan borongan klip DARI dataset (tab Dataset klip). Cermin
+    /api/aksi/dataset tapi memakai tugas.keluarkan; tak menuntut klip berlabel
+    (mengeluarkan boleh klip apa pun yang ada), tetap disaring boleh_labeli
+    per-klip supaya pelabel tak menyentuh klip orang lain."""
+    d, tdata, err = _projek_aksi(sess, settings, ds)
+    if err:
+        return {"ok": False, "error": err}
+    if not tdata["pemilik"]:
+        return {"ok": False, "error": "projek ini tak punya alur dataset"}
+    body = await bodi_json(request)
+    minta = body.get("klip")
+    if not isinstance(minta, list) or not minta:
+        return {"ok": False, "error": "belum memilih klip yang dikeluarkan"}
+    pindai = await asyncio.to_thread(klip_scan.pindai, d)
+    batch_dari = pindai["batch_dari"]
+    ada = {it["rel"] for it in pindai["items"]}
+    boleh, lihat = [], set()
+    for k in minta[:200_000]:
+        k = str(k)
+        if k in lihat or k not in ada:
+            continue
+        if tugas.boleh_labeli(tdata, sess.user, k, batch_dari.get(k, "")):
+            lihat.add(k)
+            boleh.append(k)
+    if not boleh:
+        return {"ok": False,
+                "error": "tidak ada klip milikmu yang bisa dikeluarkan"}
+    r = await asyncio.to_thread(tugas.keluarkan, d, boleh, tdata["pemilik"])
     h = await asyncio.to_thread(klip_scan.hitung, d)
     return {"ok": True, **r, **h}
 

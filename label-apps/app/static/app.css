@@ -3663,3 +3663,44 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
   .ak-samping{flex:1 1 auto;width:100%}
   .ak-nama{max-width:100%}
 }
+
+/* ============================================================
+   Tab KLIP video (Dataset/Anotasi): judul halaman + grid klip + overlay pemutar.
+   Grid memakai poster DIAM (/aksi/thumb); klip hanya berputar di overlay "Lihat".
+   ============================================================ */
+.hal-judul { margin: 0 0 4px; font-size: 20px; }
+.hal-ket { margin: 0 0 16px; max-width: 72ch; }
+
+.akg-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+  margin-bottom: 14px; }
+.akg-info { font-weight: 600; }
+.akg-kelas { margin-left: 4px; }
+
+.akg-grid { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.akg-kartu { position: relative; border: 1px solid var(--garis, #2a2f3a);
+  border-radius: 8px; overflow: hidden; background: var(--panel, #171b22); }
+.akg-thumb { display: block; width: 100%; aspect-ratio: 1 / 1;
+  object-fit: cover; background: #0c0f14; }
+.akg-thumb-x { min-height: 110px; }
+.akg-label { position: absolute; top: 6px; left: 6px; color: #fff;
+  font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 6px;
+  max-width: calc(100% - 12px); overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; }
+.akg-kartu-bar { display: flex; align-items: center; gap: 6px;
+  justify-content: space-between; padding: 6px; }
+.akg-lihat { padding: 2px 10px; font-size: 12px; }
+.akg-cb { width: 16px; height: 16px; flex: none; }
+
+.akg-hal { margin: 16px 0; display: flex; align-items: center; gap: 8px;
+  justify-content: center; }
+.akg-hal-on { font-weight: 700; }
+.akg-kosong { margin: 20px 0; }
+
+.akg-overlay { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.82);
+  display: flex; align-items: center; justify-content: center; padding: 24px; }
+.akg-main { max-width: 92vw; max-height: 92vh; display: flex;
+  flex-direction: column; align-items: center; gap: 8px; }
+.akg-tutup { align-self: flex-end; }
+.akg-video { max-width: 92vw; max-height: 80vh; background: #000; border-radius: 8px; }
+.akg-vnama { color: #cbd3df; }

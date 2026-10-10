@@ -21,6 +21,7 @@ import pytest
 
 from app.services import impor_aksi, projek, tugas, versi
 from tests.conftest import PW_PAUL, masuk
+from tests.test_aksi_label import _buat_video_aksi, _klip
 from tests.test_video_unggah import _buat_projek
 
 
@@ -389,3 +390,45 @@ def test_aksi_latih_image_dialihkan(klien, lingkungan):
     r = klien.get("/aksi/latih?ds=img-lat", follow_redirects=False)
     assert r.status_code == 303
     assert "/latih?ds=img-lat" in r.headers.get("location", "")
+
+
+# ──────────────────── tab DATASET klip sendiri (/aksi/dataset) ─────────────
+def test_aksi_dataset_halaman_video(klien, lingkungan):
+    masuk(klien, "paul", PW_PAUL)
+    _buat_projek(klien, "vid-ds", "video")
+    html = klien.get("/aksi/dataset?ds=vid-ds").text
+    assert "Dataset klip" in html
+    assert "akd-grid" in html and "akd-awal" in html
+    assert "/aksi/dataset?ds=" in html               # sidebar Dataset -> tab video
+
+
+def test_aksi_dataset_image_dialihkan(klien, lingkungan):
+    masuk(klien, "paul", PW_PAUL)
+    _buat_projek(klien, "img-ds", "image")
+    r = klien.get("/aksi/dataset?ds=img-ds", follow_redirects=False)
+    assert r.status_code == 303
+    assert "/?ds=img-ds" in r.headers.get("location", "")
+
+
+def test_aksi_thumb_404_aman(klien, lingkungan):
+    masuk(klien, "paul", PW_PAUL)
+    _buat_projek(klien, "vid-th", "video")
+    # klip tak ada -> 404 (kartu pakai placeholder)
+    assert klien.get("/aksi/thumb?ds=vid-th&rel=klip/b1/tak-ada.mp4").status_code == 404
+    # path keluar klip/ ditolak -> 404
+    assert klien.get("/aksi/thumb?ds=vid-th&rel=../rahasia.mp4").status_code == 404
+
+
+def test_aksi_keluarkan_dari_dataset(klien, lingkungan):
+    masuk(klien, "paul", PW_PAUL)
+    _buat_video_aksi(klien, "aksi-ds", kelas=("shoot", "pass"))
+    proj = lingkungan["ruang"] / "aksi-ds"
+    rel = "klip/b1/shoot_vid_t0001.mp4"
+    _klip(proj, rel)
+    klien.post("/api/aksi/label", params={"ds": "aksi-ds", "klip": rel, "label": "shoot"})
+    assert klien.post("/api/aksi/dataset?ds=aksi-ds", json={"klip": [rel]}).json()["ok"]
+    assert tugas.sudah_dimasukkan(tugas.baca(proj, "paul"), rel)
+    # keluarkan
+    r = klien.post("/api/aksi/dataset/keluarkan?ds=aksi-ds", json={"klip": [rel]}).json()
+    assert r["ok"] and r.get("dikeluarkan", 0) >= 1, r
+    assert not tugas.sudah_dimasukkan(tugas.baca(proj, "paul"), rel)

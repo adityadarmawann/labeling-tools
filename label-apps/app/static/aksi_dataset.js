@@ -1,0 +1,189 @@
+'use strict';
+
+/*
+ * Tab DATASET untuk projek VIDEO (classifier aksi) — padanan halaman `/`
+ * gambar, untuk KLIP. Grid klip yang SUDAH di dataset: thumbnail DIAM (poster
+ * /aksi/thumb), filter kelas, pilih + Keluarkan (/api/aksi/dataset/keluarkan),
+ * dan "Lihat" memutar klip (auto-play + loop) di overlay — satu-satunya tempat
+ * klip berputar (di grid tetap diam).
+ *
+ * send() + toast() global dari app.js.
+ */
+
+const D = JSON.parse(document.getElementById('akd-awal').textContent);
+const EDS = encodeURIComponent(D.ds);
+const enc = encodeURIComponent;
+const el = id => document.getElementById(id);
+const PER = 60;
+
+function warnaKelas(nama, i) {
+  if (D.warna && D.warna[i] != null) return D.warna[i];
+  let h = 0;
+  for (let k = 0; k < nama.length; k++) h = (h * 31 + nama.charCodeAt(k)) % 360;
+  return `hsl(${h} 55% 45%)`;
+}
+const IDX_KELAS = {};
+(D.kelas || []).forEach((k, i) => { IDX_KELAS[k] = i; });
+
+let semua = [];       // seluruh klip di dataset (hasil saring keterangan)
+let tampil = [];      // setelah filter kelas
+let hal = 0;          // halaman kini (0-idx)
+const terpilih = new Set();
+
+const grid = el('akd-grid');
+const kosongEl = el('akd-kosong');
+const halEl = el('akd-hal');
+const nEl = el('akd-n');
+const selKelas = el('akd-kelas');
+const btnKeluar = el('akd-keluarkan');
+const cbSemua = el('akd-semua');
+
+// -- muat daftar klip di dataset --------------------------------------------
+async function muat() {
+  const r = await send(`/api/aksi/keterangan?ds=${EDS}`);
+  if (!r || !r.ok) { grid.innerHTML = ''; kosongEl.hidden = false;
+    kosongEl.textContent = (r && r.error) || 'gagal memuat'; return; }
+  semua = (r.klips || []).filter(k => k.di_dataset);
+  // Dropdown kelas: hanya kelas yang muncul di dataset.
+  const adaKelas = [...new Set(semua.map(k => k.label).filter(Boolean))].sort();
+  selKelas.innerHTML = '<option value="">Semua</option>'
+    + adaKelas.map(k => `<option value="${k}">${k}</option>`).join('');
+  saring();
+}
+
+function saring() {
+  const k = selKelas.value;
+  tampil = k ? semua.filter(x => x.label === k) : semua.slice();
+  nEl.textContent = tampil.length.toLocaleString('id-ID');
+  hal = 0;
+  terpilih.clear();
+  perbaruiKeluar();
+  render();
+}
+
+function render() {
+  grid.innerHTML = '';
+  kosongEl.hidden = tampil.length > 0;
+  const mulai = hal * PER;
+  const potong = tampil.slice(mulai, mulai + PER);
+  potong.forEach(it => grid.appendChild(kartu(it)));
+  renderHal();
+  if (cbSemua) cbSemua.checked = potong.length > 0
+    && potong.every(it => terpilih.has(it.rel));
+}
+
+function kartu(it) {
+  const li = document.createElement('li');
+  li.className = 'akg-kartu';
+  // thumbnail DIAM (poster frame-1). Placeholder kalau 404.
+  const img = document.createElement('img');
+  img.className = 'akg-thumb'; img.loading = 'lazy'; img.alt = it.label || '';
+  img.src = `/aksi/thumb?ds=${EDS}&rel=${enc(it.rel)}&s=240`;
+  img.addEventListener('error', () => { img.classList.add('akg-thumb-x'); });
+  li.appendChild(img);
+
+  if (it.label) {
+    const b = document.createElement('span');
+    b.className = 'akg-label';
+    b.style.background = warnaKelas(it.label, IDX_KELAS[it.label] ?? 0);
+    b.textContent = it.label;
+    li.appendChild(b);
+  }
+
+  const bar = document.createElement('div');
+  bar.className = 'akg-kartu-bar';
+  const lihat = document.createElement('button');
+  lihat.type = 'button'; lihat.className = 'chip akg-lihat';
+  lihat.textContent = 'Lihat';
+  lihat.addEventListener('click', () => putar(it));
+  bar.appendChild(lihat);
+
+  if (cbSemua || btnKeluar) {       // kontrol pilih hanya kalau boleh_kelola
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.className = 'akg-cb';
+    cb.checked = terpilih.has(it.rel);
+    cb.addEventListener('change', () => {
+      if (cb.checked) terpilih.add(it.rel); else terpilih.delete(it.rel);
+      perbaruiKeluar();
+    });
+    bar.appendChild(cb);
+  }
+  li.appendChild(bar);
+  return li;
+}
+
+function renderHal() {
+  halEl.innerHTML = '';
+  const n = Math.ceil(tampil.length / PER) || 1;
+  if (n <= 1) return;
+  const mk = (txt, ke, aktif) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'chip' + (aktif ? ' akg-hal-on' : '');
+    b.textContent = txt;
+    b.disabled = aktif;
+    b.addEventListener('click', () => { hal = ke; render();
+      window.scrollTo({ top: 0, behavior: 'smooth' }); });
+    return b;
+  };
+  if (hal > 0) halEl.appendChild(mk('‹', hal - 1, false));
+  halEl.appendChild(document.createTextNode(` ${hal + 1} / ${n} `));
+  if (hal < n - 1) halEl.appendChild(mk('›', hal + 1, false));
+}
+
+function perbaruiKeluar() {
+  if (btnKeluar) btnKeluar.disabled = terpilih.size === 0;
+}
+
+// -- pilih semua (halaman ini) ----------------------------------------------
+if (cbSemua) {
+  cbSemua.addEventListener('change', () => {
+    const potong = tampil.slice(hal * PER, hal * PER + PER);
+    potong.forEach(it => {
+      if (cbSemua.checked) terpilih.add(it.rel); else terpilih.delete(it.rel);
+    });
+    perbaruiKeluar();
+    render();
+  });
+}
+
+// -- keluarkan terpilih dari dataset ----------------------------------------
+if (btnKeluar) {
+  btnKeluar.addEventListener('click', async () => {
+    const rels = [...terpilih];
+    if (!rels.length) return;
+    btnKeluar.disabled = true;
+    const r = await send(`/api/aksi/dataset/keluarkan?ds=${EDS}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ klip: rels }),
+    });
+    if (!r || !r.ok) { toast((r && r.error) || 'gagal'); btnKeluar.disabled = false; return; }
+    toast(`${r.dikeluarkan || rels.length} klip dikeluarkan`);
+    const buang = new Set(rels);
+    semua = semua.filter(x => !buang.has(x.rel));
+    saring();
+  });
+}
+
+selKelas.addEventListener('change', saring);
+
+// -- overlay pemutar (Lihat): auto-play + loop DI SINI saja -----------------
+const overlay = el('akg-overlay');
+const vid = el('akg-video');
+const vnama = el('akg-vnama');
+function putar(it) {
+  vid.src = `/klip?ds=${EDS}&name=${enc(it.rel)}`;
+  vnama.textContent = `${it.label || '(belum dilabeli)'} · ${it.rel.split('/').pop()}`;
+  overlay.hidden = false;
+  vid.play().catch(() => {});
+}
+function tutup() {
+  vid.pause(); vid.removeAttribute('src'); vid.load();
+  overlay.hidden = true;
+}
+el('akg-tutup').addEventListener('click', tutup);
+overlay.addEventListener('click', e => { if (e.target === overlay) tutup(); });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !overlay.hidden) tutup();
+});
+
+muat();

@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block bodyclass %}berprojek{% endblock %}
+
+{#- Tab DATASET untuk projek VIDEO (classifier aksi). Padanan halaman `/`
+    gambar, tetapi untuk KLIP: grid klip yang SUDAH di dataset, thumbnail DIAM
+    (poster frame-1), filter kelas, pilih + Keluarkan, dan "Lihat" memutar klip.
+    Diisi aksi_dataset.js dari /api/aksi/keterangan (disaring di_dataset). -#}
+
+{% block body %}
+<header>
+  <div class="top">
+    <h1>{{ nama_app() }}</h1>
+    {% include "_header.html" %}
+  </div>
+</header>
+
+<main>
+{% include "_sisi.html" %}
+<div class="sisi-isi" id="akd-isi" data-ds="{{ pr.ds }}">
+
+  <h2 class="hal-judul">Dataset klip</h2>
+  <p class="halus hal-ket">Klip yang sudah masuk dataset — inilah yang dibekukan
+    jadi <b>versi</b>. Thumbnail diam; klik <b>Lihat</b> untuk memutar.
+    Tambahkan klip baru dari tab <a href="/aksi?ds={{ pr.ds | urlquote }}">Label Aksi</a>.</p>
+
+  <div class="akg-bar">
+    <span class="akg-info"><b id="akd-n">0</b> klip di dataset</span>
+    <label class="halus">Kelas
+      <select id="akd-kelas" class="akg-kelas"><option value="">Semua</option></select></label>
+    {% if boleh_kelola %}
+    <label class="halus"><input type="checkbox" id="akd-semua"> Pilih semua di halaman ini</label>
+    <button class="chip" type="button" id="akd-keluarkan" disabled
+            title="Keluarkan klip terpilih dari dataset">Keluarkan dari dataset</button>
+    {% endif %}
+  </div>
+
+  <ul class="akg-grid" id="akd-grid"></ul>
+  <p class="halus akg-kosong" id="akd-kosong" hidden>Belum ada klip di dataset.</p>
+  <div class="akg-hal" id="akd-hal"></div>
+</div>
+
+{#- Overlay pemutar: muncul hanya saat "Lihat". Auto-play + loop di sini saja. -#}
+<div class="akg-overlay" id="akg-overlay" hidden>
+  <div class="akg-main">
+    <button class="chip akg-tutup" id="akg-tutup" type="button">Tutup &times;</button>
+    <video class="akg-video" id="akg-video" controls loop playsinline></video>
+    <p class="halus akg-vnama" id="akg-vnama"></p>
+  </div>
+</div>
+</main>
+{% endblock %}
+
+{% block skrip %}
+<script id="akd-awal" type="application/json">{{ awal | tojson }}</script>
+<script src="{{ statik('aksi_dataset.js') }}"></script>
+{% endblock %}
