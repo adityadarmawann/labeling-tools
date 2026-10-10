@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import json
 import logging
+import hashlib
 import re
 import shutil
 import subprocess
@@ -135,6 +136,54 @@ def siap_video() -> tuple[bool, str]:
     except Exception as e:                        # noqa: BLE001
         return False, f"ffprobe tidak bisa dijalankan ({str(e)[:80]})"
     return True, ""
+
+
+def poster(klip_path: Path, cache_dir: Path, side: int = 320,
+           t: float = 0.0) -> Path | None:
+    """Satu frame klip sebagai JPG kecil (poster grid), di-cache di `cache_dir`.
+
+    Supaya grid klip DIAM (thumbnail, bukan <video> auto-play): tiap kartu grid
+    memakai poster ini dan baru memutar klip saat "Lihat"/melabeli. CPU-only
+    lewat ffmpeg. None kalau ffmpeg tak ada / ekstraksi gagal — pemanggil
+    menjawab 404 dan kartunya memakai placeholder. Nama cache memuat
+    mtime+ukuran+sisi, jadi klip yang berubah dapat poster baru; `cache_dir`
+    biasanya thumb_root (dihapus tiap restart), jadi tak perlu dibersihkan sendiri."""
+    try:
+        st = klip_path.stat()
+    except OSError:
+        return None
+    kunci = hashlib.sha1(
+        f"{klip_path.resolve()}|{st.st_mtime_ns}|{st.st_size}|{int(side)}|{t}"
+        .encode()).hexdigest()
+    cache_dir = Path(cache_dir)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    out = cache_dir / f"{kunci}.jpg"
+    if out.exists():
+        return out
+    try:
+        ffmpeg, _ffprobe, _enc, _opts = detect_ffmpeg()
+    except KlipTolak:
+        return None
+    tmp = out.with_suffix(".jpg.part")
+    # scale=W:-2 -> lebar W, tinggi otomatis (genap). TANPA ekspresi min()/koma:
+    # lewat subprocess (bukan shell) koma memisah filter & tanda kutip jadi
+    # harfiah, jadi 'min(320,iw)' malah membuat ffmpeg gagal mem-parse -vf.
+    # -f image2 dipaksa: nama sementara berakhiran .part bukan .jpg, jadi ffmpeg
+    # tak bisa menebak muxer dari ekstensi dan akan gagal tanpa ini.
+    cmd = [ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
+           "-ss", f"{max(0.0, float(t)):.2f}", "-i", str(klip_path),
+           "-frames:v", "1", "-vf", f"scale={int(side)}:-2",
+           "-f", "image2", str(tmp)]
+    try:
+        r = subprocess.run(cmd, capture_output=True, timeout=30)
+        if r.returncode != 0 or not tmp.exists() or tmp.stat().st_size == 0:
+            tmp.unlink(missing_ok=True)
+            return None
+        tmp.replace(out)
+        return out
+    except Exception:                             # noqa: BLE001
+        tmp.unlink(missing_ok=True)
+        return None
 
 
 # ============================================================
