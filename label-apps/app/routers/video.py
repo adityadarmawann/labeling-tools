@@ -417,18 +417,62 @@ def _versi_aksi(d) -> list[dict]:
     return out
 
 
-def _awal_aksi(d, data: dict, user: str, pindai: dict, *, job: str = "") -> dict:
-    """Bahan yang dibutuhkan halaman/skrip aksi untuk merender: daftar kelas,
-    kelas negatif, dan subset klip pelabel ini beserta labelnya (resumable)."""
+def _keterangan_aksi(d, data: dict, user: str, pindai: dict, *, job: str = "",
+                     saring: str = "semua", dsf: str = "semua",
+                     fkelas: str = "", hal: int = 1, per: int = 60) -> dict:
+    """Bahan render halaman/skrip aksi, DIPAGINASI & disaring DI SERVER.
+
+    Dulu seluruh subset klip ditanam di halaman (dan dikirim utuh tiap
+    /keterangan) lalu peramban yang menyaring+memaginasi — untuk projek klip
+    besar itu menanam ribuan baris di tiap muat ([[halaman-besar-wajib-paginasi]]).
+    Kini penyaringan (status label / status dataset / kelas) dan paginasi
+    dilakukan di sini; peramban cuma menerima SATU halaman. Angka ringkas
+    (n_total/label/dataset) & hitung-kelas dihitung atas SELURUH subset supaya
+    tetap benar di halaman berapa pun — sama polanya dengan job gambar."""
     ak = data.get("aksi") or {}
-    klips = _subset_pelabel(d, data, user, pindai, job=job)
+    subset = _subset_pelabel(d, data, user, pindai, job=job)
+    n_total = len(subset)
+    n_label = sum(1 for c in subset if c["label"])
+    n_dataset = sum(1 for c in subset if c["di_dataset"])
+
+    saring = saring if saring in ("semua", "belum", "sudah") else "semua"
+    dsf = dsf if dsf in ("semua", "di", "belum") else "semua"
+    tampil = subset
+    if saring == "belum":
+        tampil = [c for c in tampil if not c["label"]]
+    elif saring == "sudah":
+        tampil = [c for c in tampil if c["label"]]
+    if dsf == "di":
+        tampil = [c for c in tampil if c["di_dataset"]]
+    elif dsf == "belum":
+        tampil = [c for c in tampil if not c["di_dataset"]]
+    # Hitung-kelas untuk dropdown dihitung SETELAH saring+dsf tapi SEBELUM filter
+    # kelas: jadi opsi kelas mencerminkan konteks kini (mis. tab Dataset = kelas
+    # yang ada DI dataset) dan tak menyusut hanya karena satu kelas dipilih.
+    kelas_hitung: dict[str, int] = {}
+    for c in tampil:
+        if c["label"]:
+            kelas_hitung[c["label"]] = kelas_hitung.get(c["label"], 0) + 1
+    if fkelas:
+        tampil = [c for c in tampil if c["label"] == fkelas]
+
+    n_tampil = len(tampil)
+    per = max(6, min(int(per or 60), 200))
+    n_hal = max(1, -(-n_tampil // per))
+    hal = min(max(int(hal or 1), 1), n_hal)
+    mulai = (hal - 1) * per
     return {
         "kelas": list(ak.get("kelas") or []),
         "warna": list(ak.get("warna") or []),
         "negatif": ak.get("negatif") or "",
-        "klips": klips,
-        "n_label": sum(1 for k in klips if k["label"]),
-        "n_dataset": sum(1 for k in klips if k["di_dataset"]),
+        "klips": tampil[mulai:mulai + per],
+        "n_total": n_total,
+        "n_label": n_label,
+        "n_dataset": n_dataset,
+        "n_tampil": n_tampil,
+        "hal": hal, "n_hal": n_hal, "per": per,
+        "kelas_hitung": dict(sorted(kelas_hitung.items())),
+        "saring": saring, "dsf": dsf, "fkelas": fkelas,
         "boleh_kelola": tugas.boleh_kelola(data, user),
     }
 
@@ -468,7 +512,7 @@ async def halaman_aksi(request: Request, ds: str = "", job: str = "",
                                  sess.user)
     pindai = await asyncio.to_thread(klip_scan.pindai, d)
     awal = {"ds": pr["ds"], "job": job,
-            **_awal_aksi(d, tdata, sess.user, pindai, job=job),
+            **_keterangan_aksi(d, tdata, sess.user, pindai, job=job, hal=1),
             "versi": await asyncio.to_thread(_versi_aksi, d)}
     return templates.TemplateResponse(request, "aksi.html", {
         "sess": sess, "pr": pr, "aktif": "aksi", "aktif_sub": "grid",
@@ -584,16 +628,22 @@ async def aksi_thumb(ds: str = "", rel: str = "", s: int = 320,
 
 
 @router.get("/api/aksi/keterangan")
-async def aksi_keterangan(ds: str = "", job: str = "",
+async def aksi_keterangan(ds: str = "", job: str = "", saring: str = "semua",
+                          dsf: str = "semua", kelas: str = "",
+                          hal: int = 1, per: int = 60,
                           sess: Session = Depends(current_session_api),
                           settings: Settings = Depends(get_settings)):
-    """Subset klip pelabel + daftar kelas, sebagai JSON (dipakai aksi.js untuk
-    menyegarkan setelah melabeli tanpa memuat ulang halaman)."""
+    """Satu HALAMAN subset klip pelabel (disaring+dipaginasi di server) + angka
+    ringkas + hitung-kelas, sebagai JSON. Dipakai aksi.js untuk memuat grid,
+    berpindah halaman/saringan, dan menyegarkan setelah melabeli — tanpa pernah
+    menanam seluruh klip di peramban ([[halaman-besar-wajib-paginasi]])."""
     d, tdata, err = _projek_aksi(sess, settings, ds)
     if err:
         return {"ok": False, "error": err}
     pindai = await asyncio.to_thread(klip_scan.pindai, d)
-    return {"ok": True, **_awal_aksi(d, tdata, sess.user, pindai, job=job)}
+    return {"ok": True, **_keterangan_aksi(
+        d, tdata, sess.user, pindai, job=job, saring=saring, dsf=dsf,
+        fkelas=kelas, hal=hal, per=per)}
 
 
 # ---------------------------------------------------------------- papan & bagi
@@ -841,10 +891,22 @@ async def aksi_ke_dataset(request: Request, ds: str = "",
 
     body = await bodi_json(request)
     minta = body.get("klip")
-    if not isinstance(minta, list) or not minta:
+    pindai = await asyncio.to_thread(klip_scan.pindai, d)
+    # "Tambah semua berlabel": peramban dipaginasi, jadi tak punya daftar lengkap
+    # rel-nya. Server yang menyusun — SEMUA klip subset pemakai ini (opsional
+    # dibatasi ke satu job) yang berlabel & belum di dataset — lalu lewat
+    # penyaring boleh_labeli yang sama di bawah. Cermin tombol "Masukkan semua
+    # yang sudah dianotasi" di papan gambar, untuk klip.
+    if body.get("semua_berlabel"):
+        subset = _subset_pelabel(d, tdata, sess.user, pindai,
+                                 job=str(body.get("job") or ""))
+        minta = [c["rel"] for c in subset if c["label"] and not c["di_dataset"]]
+        if not minta:
+            return {"ok": False, "error": "tidak ada klip berlabel yang belum "
+                                          "masuk dataset"}
+    elif not isinstance(minta, list) or not minta:
         return {"ok": False, "error": "belum memilih klip yang dimasukkan"}
 
-    pindai = await asyncio.to_thread(klip_scan.pindai, d)
     label_dari = {it["rel"]: it["label"] for it in pindai["items"]}
     batch_dari = pindai["batch_dari"]
     boleh, lihat = [], set()

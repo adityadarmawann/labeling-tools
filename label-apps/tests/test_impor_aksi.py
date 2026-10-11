@@ -567,3 +567,87 @@ def test_calon_batch_dari_klip_video(klien, lingkungan):
     j = klien.get("/api/tugas/calon").json()
     assert j["ok"], j
     assert set(j["batch_tersedia"]) >= {"pagi", "sore"}, j["batch_tersedia"]
+
+
+# ======================================= paginasi + saring server-side grid
+
+def test_keterangan_paginasi_server(klien, lingkungan):
+    """Grid klip dipaginasi DI SERVER: `per` memotong, angka ringkas tetap total."""
+    masuk(klien, "paul", PW_PAUL)
+    _buat_video_aksi(klien, "vid-pag", kelas=("shoot",))
+    proj = lingkungan["ruang"] / "vid-pag"
+    for i in range(1, 14):                      # 13 klip
+        _klip(proj, f"klip/b1/shoot_vid_t{i:04d}.mp4")
+    r = klien.get("/api/aksi/keterangan?ds=vid-pag&per=6&hal=1").json()
+    assert r["ok"], r
+    assert len(r["klips"]) == 6                 # satu halaman saja
+    assert r["n_total"] == 13 and r["n_tampil"] == 13
+    assert r["per"] == 6 and r["n_hal"] == 3 and r["hal"] == 1
+    # halaman terakhir = sisa (13 = 6+6+1)
+    r3 = klien.get("/api/aksi/keterangan?ds=vid-pag&per=6&hal=3").json()
+    assert len(r3["klips"]) == 1 and r3["hal"] == 3
+    # hal di luar jangkauan dijepit ke halaman terakhir
+    r9 = klien.get("/api/aksi/keterangan?ds=vid-pag&per=6&hal=9").json()
+    assert r9["hal"] == 3
+    # halaman tak tumpang-tindih & meliputi semua
+    rels = set()
+    for h in (1, 2, 3):
+        rels |= {k["rel"] for k in
+                 klien.get(f"/api/aksi/keterangan?ds=vid-pag&per=6&hal={h}").json()["klips"]}
+    assert len(rels) == 13
+
+
+def test_keterangan_saring_dan_dsf_server(klien, lingkungan):
+    """saring (belum/sudah) + dsf (di/belum) + kelas disaring di server."""
+    masuk(klien, "paul", PW_PAUL)
+    _buat_video_aksi(klien, "vid-f", kelas=("shoot", "pass"))
+    proj = lingkungan["ruang"] / "vid-f"
+    for rel in ("klip/b1/shoot_vid_t0001.mp4", "klip/b1/pass_vid_t0002.mp4",
+                "klip/b1/x_vid_t0003.mp4"):
+        _klip(proj, rel)
+    klien.post("/api/aksi/label", params={"ds": "vid-f",
+               "klip": "klip/b1/shoot_vid_t0001.mp4", "label": "shoot"})
+    klien.post("/api/aksi/label", params={"ds": "vid-f",
+               "klip": "klip/b1/pass_vid_t0002.mp4", "label": "pass"})
+    klien.post("/api/aksi/dataset?ds=vid-f",
+               json={"klip": ["klip/b1/shoot_vid_t0001.mp4"]})
+
+    semua = klien.get("/api/aksi/keterangan?ds=vid-f").json()
+    assert semua["n_total"] == 3 and semua["n_label"] == 2 and semua["n_dataset"] == 1
+    # hitung-kelas (konteks semua) = kelas yang terpakai
+    assert semua["kelas_hitung"] == {"pass": 1, "shoot": 1}
+
+    belum = klien.get("/api/aksi/keterangan?ds=vid-f&saring=belum").json()
+    assert {k["rel"] for k in belum["klips"]} == {"klip/b1/x_vid_t0003.mp4"}
+    sudah = klien.get("/api/aksi/keterangan?ds=vid-f&saring=sudah").json()
+    assert len(sudah["klips"]) == 2
+    di = klien.get("/api/aksi/keterangan?ds=vid-f&dsf=di").json()
+    assert {k["rel"] for k in di["klips"]} == {"klip/b1/shoot_vid_t0001.mp4"}
+    # hitung-kelas pada tab dataset = kelas yang ADA di dataset saja
+    assert di["kelas_hitung"] == {"shoot": 1}
+    kelas = klien.get("/api/aksi/keterangan?ds=vid-f&kelas=pass").json()
+    assert {k["rel"] for k in kelas["klips"]} == {"klip/b1/pass_vid_t0002.mp4"}
+
+
+def test_dataset_semua_berlabel_server(klien, lingkungan):
+    """'Tambah semua berlabel' dihitung di server (peramban dipaginasi)."""
+    masuk(klien, "paul", PW_PAUL)
+    _buat_video_aksi(klien, "vid-sb", kelas=("shoot",))
+    proj = lingkungan["ruang"] / "vid-sb"
+    for i in range(1, 4):
+        rel = f"klip/b1/shoot_vid_t{i:04d}.mp4"
+        _klip(proj, rel)
+        if i < 3:                               # 2 berlabel, 1 belum
+            klien.post("/api/aksi/label", params={"ds": "vid-sb", "klip": rel,
+                                                  "label": "shoot"})
+    r = klien.post("/api/aksi/dataset?ds=vid-sb",
+                   json={"semua_berlabel": True}).json()
+    assert r["ok"] and r.get("ditambah", 0) == 2, r
+    data = tugas.baca(proj, "paul")
+    masuk_ds = sum(1 for i in range(1, 4)
+                   if tugas.sudah_dimasukkan(data, f"klip/b1/shoot_vid_t{i:04d}.mp4"))
+    assert masuk_ds == 2
+    # tak ada lagi yang berlabel di luar dataset -> tolak sopan
+    r2 = klien.post("/api/aksi/dataset?ds=vid-sb",
+                    json={"semua_berlabel": True}).json()
+    assert not r2["ok"] and "belum masuk dataset" in r2["error"]

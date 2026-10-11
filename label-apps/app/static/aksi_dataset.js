@@ -1,12 +1,13 @@
 'use strict';
 
 /*
- * Tab DATASET untuk projek VIDEO (classifier aksi) — padanan halaman `/`
- * gambar, untuk KLIP. Grid klip yang SUDAH di dataset: thumbnail DIAM (poster
- * /aksi/thumb), filter kelas, pilih + Keluarkan (/api/aksi/dataset/keluarkan),
- * dan "Lihat" memutar klip (auto-play + loop) di overlay — satu-satunya tempat
- * klip berputar (di grid tetap diam).
+ * Tab DATASET projek VIDEO (classifier aksi) — padanan `/` gambar, untuk KLIP.
+ * Grid klip yang SUDAH di dataset: thumbnail DIAM (poster /aksi/thumb), filter
+ * kelas, pilih + Keluarkan (/api/aksi/dataset/keluarkan), "Lihat" memutar klip
+ * (auto-play + loop) di overlay — satu-satunya tempat klip berputar.
  *
+ * Dipaginasi DI SERVER lewat /api/aksi/keterangan?dsf=di: peramban hanya
+ * memegang satu halaman, bukan seluruh dataset ([[halaman-besar-wajib-paginasi]]).
  * send() + toast() global dari app.js.
  */
 
@@ -14,7 +15,6 @@ const D = JSON.parse(document.getElementById('akd-awal').textContent);
 const EDS = encodeURIComponent(D.ds);
 const enc = encodeURIComponent;
 const el = id => document.getElementById(id);
-const PER = 60;
 
 function warnaKelas(nama, i) {
   if (D.warna && D.warna[i] != null) return D.warna[i];
@@ -25,10 +25,11 @@ function warnaKelas(nama, i) {
 const IDX_KELAS = {};
 (D.kelas || []).forEach((k, i) => { IDX_KELAS[k] = i; });
 
-let semua = [];       // seluruh klip di dataset (hasil saring keterangan)
-let tampil = [];      // setelah filter kelas
-let hal = 0;          // halaman kini (0-idx)
+let page = [];        // klip halaman kini (sudah di dataset)
+let meta = { hal: 1, n_hal: 1, per: 60, n_tampil: 0, kelas_hitung: {} };
+let fkelas = '';
 const terpilih = new Set();
+let memuat = false;
 
 const grid = el('akd-grid');
 const kosongEl = el('akd-kosong');
@@ -38,44 +39,52 @@ const selKelas = el('akd-kelas');
 const btnKeluar = el('akd-keluarkan');
 const cbSemua = el('akd-semua');
 
-// -- muat daftar klip di dataset --------------------------------------------
-async function muat() {
-  const r = await send(`/api/aksi/keterangan?ds=${EDS}`);
-  if (!r || !r.ok) { grid.innerHTML = ''; kosongEl.hidden = false;
-    kosongEl.textContent = (r && r.error) || 'gagal memuat'; return; }
-  semua = (r.klips || []).filter(k => k.di_dataset);
-  // Dropdown kelas: hanya kelas yang muncul di dataset.
-  const adaKelas = [...new Set(semua.map(k => k.label).filter(Boolean))].sort();
-  selKelas.innerHTML = '<option value="">Semua</option>'
-    + adaKelas.map(k => `<option value="${k}">${k}</option>`).join('');
-  saring();
+function urlKet(hal) {
+  let u = `/api/aksi/keterangan?ds=${EDS}&dsf=di&hal=${hal}&per=${meta.per}`;
+  if (fkelas) u += '&kelas=' + enc(fkelas);
+  return u;
 }
 
-function saring() {
-  const k = selKelas.value;
-  tampil = k ? semua.filter(x => x.label === k) : semua.slice();
-  nEl.textContent = tampil.length.toLocaleString('id-ID');
-  hal = 0;
-  terpilih.clear();
-  perbaruiKeluar();
+async function muat(hal) {
+  if (memuat) return;
+  memuat = true;
+  const r = await send(urlKet(Math.max(1, hal)));
+  memuat = false;
+  if (!r || !r.ok) {
+    grid.innerHTML = ''; kosongEl.hidden = false;
+    kosongEl.textContent = (r && r.error) || 'gagal memuat'; return;
+  }
+  page = (r.klips || []).map(c => ({ ...c }));
+  meta = { hal: r.hal, n_hal: r.n_hal, per: r.per, n_tampil: r.n_tampil,
+           kelas_hitung: r.kelas_hitung || {} };
+  isiKelas();
   render();
 }
 
+function isiKelas() {
+  const ada = Object.keys(meta.kelas_hitung).sort();
+  const lama = selKelas.value;
+  selKelas.innerHTML = '<option value="">Semua</option>'
+    + ada.map(k => `<option value="${k}">${k} (${meta.kelas_hitung[k]})</option>`).join('');
+  selKelas.value = ada.includes(lama) ? lama : (fkelas || '');
+}
+
 function render() {
+  nEl.textContent = meta.n_tampil.toLocaleString('id-ID');
   grid.innerHTML = '';
-  kosongEl.hidden = tampil.length > 0;
-  const mulai = hal * PER;
-  const potong = tampil.slice(mulai, mulai + PER);
-  potong.forEach(it => grid.appendChild(kartu(it)));
+  kosongEl.hidden = page.length > 0;
+  if (!page.length && !kosongEl.textContent) kosongEl.textContent =
+    'Belum ada klip di dataset pada saringan ini.';
+  page.forEach(it => grid.appendChild(kartu(it)));
   renderHal();
-  if (cbSemua) cbSemua.checked = potong.length > 0
-    && potong.every(it => terpilih.has(it.rel));
+  if (cbSemua) cbSemua.checked = page.length > 0
+    && page.every(it => terpilih.has(it.rel));
+  perbaruiKeluar();
 }
 
 function kartu(it) {
   const li = document.createElement('li');
   li.className = 'akg-kartu';
-  // thumbnail DIAM (poster frame-1). Placeholder kalau 404.
   const img = document.createElement('img');
   img.className = 'akg-thumb'; img.loading = 'lazy'; img.alt = it.label || '';
   img.src = `/aksi/thumb?ds=${EDS}&rel=${enc(it.rel)}&s=240`;
@@ -114,20 +123,17 @@ function kartu(it) {
 
 function renderHal() {
   halEl.innerHTML = '';
-  const n = Math.ceil(tampil.length / PER) || 1;
-  if (n <= 1) return;
-  const mk = (txt, ke, aktif) => {
+  if (meta.n_hal <= 1) return;
+  const mk = (txt, ke) => {
     const b = document.createElement('button');
-    b.type = 'button'; b.className = 'chip' + (aktif ? ' akg-hal-on' : '');
-    b.textContent = txt;
-    b.disabled = aktif;
-    b.addEventListener('click', () => { hal = ke; render();
+    b.type = 'button'; b.className = 'chip'; b.textContent = txt;
+    b.addEventListener('click', () => { muat(ke);
       window.scrollTo({ top: 0, behavior: 'smooth' }); });
     return b;
   };
-  if (hal > 0) halEl.appendChild(mk('‹', hal - 1, false));
-  halEl.appendChild(document.createTextNode(` ${hal + 1} / ${n} `));
-  if (hal < n - 1) halEl.appendChild(mk('›', hal + 1, false));
+  if (meta.hal > 1) halEl.appendChild(mk('‹', meta.hal - 1));
+  halEl.appendChild(document.createTextNode(` ${meta.hal} / ${meta.n_hal} `));
+  if (meta.hal < meta.n_hal) halEl.appendChild(mk('›', meta.hal + 1));
 }
 
 function perbaruiKeluar() {
@@ -137,8 +143,7 @@ function perbaruiKeluar() {
 // -- pilih semua (halaman ini) ----------------------------------------------
 if (cbSemua) {
   cbSemua.addEventListener('change', () => {
-    const potong = tampil.slice(hal * PER, hal * PER + PER);
-    potong.forEach(it => {
+    page.forEach(it => {
       if (cbSemua.checked) terpilih.add(it.rel); else terpilih.delete(it.rel);
     });
     perbaruiKeluar();
@@ -158,13 +163,12 @@ if (btnKeluar) {
     });
     if (!r || !r.ok) { toast((r && r.error) || 'gagal'); btnKeluar.disabled = false; return; }
     toast(`${r.dikeluarkan || rels.length} klip dikeluarkan`);
-    const buang = new Set(rels);
-    semua = semua.filter(x => !buang.has(x.rel));
-    saring();
+    terpilih.clear();
+    muat(meta.hal);
   });
 }
 
-selKelas.addEventListener('change', saring);
+selKelas.addEventListener('change', () => { fkelas = selKelas.value; muat(1); });
 
 // -- overlay pemutar (Lihat): auto-play + loop DI SINI saja -----------------
 const overlay = el('akg-overlay');
@@ -186,4 +190,4 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && !overlay.hidden) tutup();
 });
 
-muat();
+muat(1);
