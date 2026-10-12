@@ -85,7 +85,7 @@ p{margin:0}
 .wrap{width:min(92%,1440px);margin-inline:auto}
 
 /* teks-label kecil, bukan eyebrow mono kapital */
-.label{display:inline-block;font-size:.8125rem;font-weight:600;color:var(--accent-ink);letter-spacing:.002em}
+.label{display:inline-block;font-size:.9375rem;font-weight:700;color:var(--accent-ink);letter-spacing:.005em;margin-bottom:7px}
 .label.v{color:var(--video-ink)} .label.sl{color:var(--slate-ink)} .label.am{color:var(--amber-ink)}
 
 /* ======================== NAV ======================== */
@@ -165,18 +165,21 @@ p{margin:0}
 .section{padding:96px 0}
 .section.wash{background:var(--accent-wash)}
 .section-head{max-width:640px;margin:0 auto 48px;text-align:center}
-.section-head h2{font-size:clamp(1.75rem,3.4vw,2.375rem);font-weight:700;margin-top:12px;line-height:1.1}
+.section-head h2{font-size:clamp(2.125rem,3vw,2.875rem);font-weight:700;margin-top:10px;line-height:1.08}
 .section-head p{margin-top:16px;color:var(--muted);font-size:1.0625rem}
 
-.feature{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:56px;align-items:start}
+.feature{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,.92fr);gap:72px;align-items:center;max-width:1240px;margin-inline:auto}
+.feature.rev{grid-template-columns:minmax(0,.92fr) minmax(0,1fr)}
+.feature-media{display:flex;justify-content:flex-start}
+.feature.rev .feature-media{justify-content:flex-end}
 .feature-text{order:1}
 .feature-media{order:2}
 .feature.rev .feature-text{order:2}
 .feature.rev .feature-media{order:1}
-.feature-text h2{font-size:clamp(1.75rem,3.4vw,2.375rem);font-weight:700;margin-top:12px;line-height:1.1}
+.feature-text h2{font-size:clamp(2.125rem,3vw,2.875rem);font-weight:700;margin-top:10px;line-height:1.08}
 .feature-text > p{margin-top:16px;color:var(--muted);font-size:1.0625rem;max-width:44ch;line-height:1.6}
 
-.media{border:1px solid var(--line);border-radius:var(--r-card);overflow:hidden;background:var(--surface);box-shadow:var(--shadow-md)}
+.media{border:1px solid var(--line);border-radius:var(--r-card);overflow:hidden;background:var(--surface);box-shadow:var(--shadow-md);max-width:520px;width:100%}
 .media svg{display:block;width:100%;height:auto}
 
 /* daftar fitur: label tebal + teks biasa, tanpa tanda pisah */
@@ -203,8 +206,8 @@ p{margin:0}
 .fstep p{font-size:.82rem;color:var(--muted);margin-top:4px;line-height:1.4}
 
 /* ======================== CTA ======================== */
-.cta-band{position:relative;overflow:hidden;background:var(--ink);color:var(--surface);border-radius:var(--r-xl);padding:64px 48px;text-align:center;box-shadow:var(--shadow-lg)}
-:root[data-theme="dark"] .cta-band,:root:not([data-theme="light"]) .cta-band{color:var(--ink)}
+.cta-band{position:relative;overflow:hidden;background:#0E1A18;color:#EAF2EF;border:1px solid transparent;border-radius:var(--r-xl);padding:52px 44px;text-align:center;box-shadow:var(--shadow-lg)}
+:root[data-theme="dark"] .cta-band,:root:not([data-theme="light"]) .cta-band{background:#121F1C;border-color:var(--line-2)}
 .cta-band h2{color:inherit;font-size:clamp(1.75rem,3.4vw,2.375rem);font-weight:700}
 .cta-band p{color:color-mix(in srgb,currentColor 70%,transparent);margin:16px auto 0;max-width:46ch;font-size:1.0625rem}
 .cta-band .hero-cta{justify-content:center;margin-top:28px}
@@ -217,7 +220,7 @@ p{margin:0}
 .cta-band .btn-ghost:hover{background:color-mix(in srgb,currentColor 10%,transparent)}
 
 /* ======================== FOOTER ======================== */
-footer{padding:48px 0 54px;border-top:1px solid var(--line)}
+footer{padding:26px 0;border-top:1px solid var(--line)}
 .foot{display:flex;flex-wrap:wrap;gap:20px 40px;justify-content:space-between;align-items:center}
 .foot-brand{display:flex;flex-direction:column;gap:12px;align-items:flex-start}
 .foot-note{color:var(--muted);font-size:.85rem;margin:0;max-width:48ch}
@@ -306,7 +309,7 @@ svg .mono{font-family:"JetBrains Mono",ui-monospace,monospace}
     <div class="hero-copy">
       <span class="label">Anotasi dan training</span>
       <h1>Satu tempat dari label ke <span class="hl">model</span>.</h1>
-      <p class="hero-sub">HIGOLAB menyatukan anotasi, dataset, dan training di server sendiri.</p>
+      <p class="hero-sub">HIGOLAB menyatukan anotasi, dataset, dan training dalam satu alur kerja.</p>
       <div class="hero-cta">
         <a class="btn btn-acc btn-lg" href="/login">Masuk</a>
         <a class="btn btn-ghost btn-lg" href="/fitur">Lihat fitur</a>
@@ -539,7 +542,7 @@ svg .mono{font-family:"JetBrains Mono",ui-monospace,monospace}
       <div class="arc c1" aria-hidden="true"></div><div class="arc c2" aria-hidden="true"></div>
       <div class="inner">
         <h2>Mulai dari projek pertama.</h2>
-        <p>Seluruh proses projek gambar maupun video berjalan di server tim sendiri.</p>
+        <p>Seluruh proses projek gambar maupun video berjalan dalam satu platform.</p>
         <div class="hero-cta">
           <a class="btn btn-acc btn-lg" href="/login">Masuk ke HIGOLAB</a>
           <a class="btn btn-ghost btn-lg" href="/fitur">Lihat fitur</a>
@@ -564,7 +567,6 @@ svg .mono{font-family:"JetBrains Mono",ui-monospace,monospace}
         </svg>
         <span>HIGOLAB</span>
       </a>
-      <p class="foot-note">Lab anotasi dan training visi komputer, pasang sendiri di server tim.</p>
     </div>
     <p class="foot-copy">&copy; 2026 PT Higo Fitur Indonesia</p>
   </div>

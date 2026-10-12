@@ -76,7 +76,7 @@ p{margin:0}
 
 .wrap{width:min(92%,1440px);margin-inline:auto}
 
-.label{display:inline-block;font-size:.8125rem;font-weight:600;color:var(--accent-ink);letter-spacing:.002em}
+.label{display:inline-block;font-size:.9375rem;font-weight:700;color:var(--accent-ink);letter-spacing:.005em;margin-bottom:7px}
 .label.v{color:var(--video-ink)} .label.sl{color:var(--slate-ink)} .label.am{color:var(--amber-ink)}
 
 /* ======================== NAV ======================== */
@@ -127,18 +127,21 @@ p{margin:0}
 .section{padding:88px 0;scroll-margin-top:150px}
 .section.wash{background:var(--accent-wash)}
 .section-head{max-width:640px;margin:0 auto 44px;text-align:center}
-.section-head h2{font-size:clamp(1.75rem,3.4vw,2.375rem);font-weight:700;margin-top:12px;line-height:1.1}
+.section-head h2{font-size:clamp(2.125rem,3vw,2.875rem);font-weight:700;margin-top:10px;line-height:1.08}
 .section-head p{margin-top:16px;color:var(--muted);font-size:1.0625rem}
 
-.feature{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:56px;align-items:start}
+.feature{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,.92fr);gap:72px;align-items:center;max-width:1240px;margin-inline:auto}
+.feature.rev{grid-template-columns:minmax(0,.92fr) minmax(0,1fr)}
+.feature-media{display:flex;justify-content:flex-start}
+.feature.rev .feature-media{justify-content:flex-end}
 .feature-text{order:1}
 .feature-media{order:2}
 .feature.rev .feature-text{order:2}
 .feature.rev .feature-media{order:1}
-.feature-text h2{font-size:clamp(1.75rem,3.4vw,2.375rem);font-weight:700;margin-top:12px;line-height:1.1}
+.feature-text h2{font-size:clamp(2.125rem,3vw,2.875rem);font-weight:700;margin-top:10px;line-height:1.08}
 .feature-text > p{margin-top:16px;color:var(--muted);font-size:1.0625rem;max-width:44ch;line-height:1.6}
 
-.media{border:1px solid var(--line);border-radius:var(--r-card);overflow:hidden;background:var(--surface);box-shadow:var(--shadow-md)}
+.media{border:1px solid var(--line);border-radius:var(--r-card);overflow:hidden;background:var(--surface);box-shadow:var(--shadow-md);max-width:520px;width:100%}
 .media svg{display:block;width:100%;height:auto}
 .media-cap{font-family:"JetBrains Mono",monospace;font-size:.72rem;color:var(--muted);padding:11px 16px;border-top:1px solid var(--line);background:var(--surface-2);display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
 
@@ -154,8 +157,10 @@ p{margin:0}
 .blist .t{color:var(--muted)}
 .mono-i{font-family:"JetBrains Mono",monospace;font-size:.86em;color:var(--ink-soft);background:var(--surface-2);border:1px solid var(--line);padding:1px 6px;border-radius:5px}
 
-/* training: dua chart ditumpuk dalam satu kolom media */
-.chart-stack{display:flex;flex-direction:column;gap:16px}
+/* training: teks di atas (satu blok), lalu dua grafik BERDAMPINGAN di bawah */
+.train-block{max-width:1240px;margin-inline:auto}
+.train-intro{max-width:720px;margin:0 0 36px}
+.train-charts{display:grid;grid-template-columns:1fr 1fr;gap:28px;align-items:start;max-width:1068px}
 .chartcard{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-card);padding:18px 18px 12px;box-shadow:var(--shadow-sm)}
 .chart-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:8px}
 .chart-head b{font-family:"Schibsted Grotesk",sans-serif;font-size:1rem;font-weight:700;letter-spacing:-.01em}
@@ -190,7 +195,7 @@ p{margin:0}
 .cta-band .btn-ghost:hover{background:color-mix(in srgb,currentColor 10%,transparent)}
 
 /* ======================== FOOTER ======================== */
-footer{padding:48px 0 54px;border-top:1px solid var(--line)}
+footer{padding:26px 0;border-top:1px solid var(--line)}
 .foot{display:flex;flex-wrap:wrap;gap:20px;justify-content:space-between;align-items:center}
 .foot .brand{font-size:1rem}
 .foot-copy{color:var(--faint);font-size:.82rem;margin:0}
@@ -214,6 +219,7 @@ svg .mono{font-family:"JetBrains Mono",ui-monospace,monospace}
   .feature,.feature.rev{grid-template-columns:1fr;gap:32px}
   .feature-text,.feature.rev .feature-text{order:1}
   .feature-media,.feature.rev .feature-media{order:2}
+  .train-charts{grid-template-columns:1fr}
   .extras{grid-template-columns:1fr 1fr}
 }
 @media (max-width:760px){.nav-links{display:none}.nav{padding:8px 10px 8px 16px}.chap-shell{top:70px}}
@@ -492,19 +498,18 @@ svg .mono{font-family:"JetBrains Mono",ui-monospace,monospace}
 <!-- ============ 5. TRAINING DAN EVALUASI ============ -->
 <section class="section" id="training">
   <div class="wrap">
-    <div class="feature">
-      <div class="feature-text">
+    <div class="train-block">
+    <div class="train-intro">
         <span class="label">Training dan evaluasi</span>
         <h2>Latih lokal atau Kaggle.</h2>
-        <p>Jalankan training di GPU server sendiri atau di GPU gratis Kaggle, lalu uji pada data nyata.</p>
+        <p>Jalankan training di GPU lokal atau di GPU gratis Kaggle, lalu uji pada data nyata.</p>
         <ul class="blist">
           <li><span class="tick"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></span><div class="bi"><b>Model gambar</b> <span class="t"><span class="mono-i">YOLO</span> dan <span class="mono-i">RF-DETR</span>.</span></div></li>
           <li><span class="tick"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></span><div class="bi"><b>Model video</b> <span class="t"><span class="mono-i">VideoMAE</span>, <span class="mono-i">SlowFast</span>, <span class="mono-i">PoseC3D</span>.</span></div></li>
           <li><span class="tick"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></span><div class="bi"><b>Uji produksi</b> <span class="t">dinilai pada data nyata dengan confusion matrix.</span></div></li>
         </ul>
-      </div>
-      <div class="feature-media">
-        <div class="chart-stack">
+    </div>
+    <div class="train-charts">
           <div class="chartcard">
             <div class="chart-head"><b>Kurva akurasi</b><span class="mono">yolo &middot; 80 epoch</span></div>
             <svg viewBox="0 0 480 290" role="img" aria-label="Kurva akurasi training naik dari 0,18 pada epoch 0 menuju 0,92 pada epoch 80">
@@ -529,7 +534,7 @@ svg .mono{font-family:"JetBrains Mono",ui-monospace,monospace}
           </div>
           <div class="chartcard">
             <div class="chart-head"><b>Confusion matrix</b><span class="mono">uji produksi</span></div>
-            <svg viewBox="0 0 380 290" role="img" aria-label="Confusion matrix 4 kelas aksi dengan diagonal kuat: shoot 182, pass 164, dribble 150, idle 198">
+            <svg viewBox="-62 0 480 290" role="img" aria-label="Confusion matrix 4 kelas aksi dengan diagonal kuat: shoot 182, pass 164, dribble 150, idle 198">
               <g class="mono t-mut" font-size="10.5" text-anchor="middle">
                 <text x="134" y="48">shoot</text><text x="192" y="48">pass</text><text x="250" y="48">drib</text><text x="308" y="48">idle</text>
               </g>
@@ -558,8 +563,7 @@ svg .mono{font-family:"JetBrains Mono",ui-monospace,monospace}
               </g>
             </svg>
           </div>
-        </div>
-      </div>
+    </div>
     </div>
   </div>
 </section>
@@ -596,13 +600,13 @@ svg .mono{font-family:"JetBrains Mono",ui-monospace,monospace}
   <div class="wrap">
     <div class="section-head">
       <span class="label">Pelengkap</span>
-      <h2>Detail yang membuat lab nyaman dipakai.</h2>
+      <h2>Detail yang melengkapi alur kerja.</h2>
     </div>
     <div class="extras">
       <div class="xcard">
         <div class="pic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
-        <h3>Pasang sendiri</h3>
-        <p>Data tidak keluar server tim (self-hosted).</p>
+        <h3>Privasi data</h3>
+        <p>Dataset dan model tidak dibagikan ke pihak luar.</p>
       </div>
       <div class="xcard">
         <div class="pic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 12 0v1"/></svg></div>
@@ -630,7 +634,7 @@ svg .mono{font-family:"JetBrains Mono",ui-monospace,monospace}
       <div class="arc c1" aria-hidden="true"></div><div class="arc c2" aria-hidden="true"></div>
       <div class="inner">
         <h2>Mulai dari projek pertama.</h2>
-        <p>Seluruh proses, dari anotasi sampai training, berjalan di server tim sendiri.</p>
+        <p>Seluruh proses, dari anotasi sampai training, berjalan dalam satu platform.</p>
         <div class="row">
           <a class="btn btn-acc btn-lg" href="/login">Masuk ke HIGOLAB</a>
           <a class="btn btn-ghost btn-lg" href="/landing">Kembali ke beranda</a>
