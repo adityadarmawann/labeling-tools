@@ -347,7 +347,8 @@ def test_aksi_versi_halaman_video(klien, lingkungan):
     assert r.status_code == 200, r.text[:200]
     html = r.text
     assert "Versi dataset klip" in html
-    assert "ak-buat-versi" in html and "ak-impor-file" in html   # buat + impor
+    assert 'id="vs-mulai"' in html and 'id="wz"' in html         # wizard buat versi
+    assert "ak-impor-file" in html                               # impor .zip
     assert "akv-awal" in html                                    # data awal
     assert "/aksi/versi?ds=" in html                             # sidebar Versi -> tab video
 

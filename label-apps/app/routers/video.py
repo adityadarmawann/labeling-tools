@@ -545,7 +545,26 @@ async def halaman_aksi_versi(request: Request, ds: str = "",
         await asyncio.to_thread(sess.load, d)
     tdata = await asyncio.to_thread(tugas.baca_projek, d, settings.uploads_root)
     pr = await asyncio.to_thread(projek.konteks, d, settings.uploads_root, sess.user)
-    awal = {"ds": pr["ds"], "versi": await asyncio.to_thread(_versi_aksi, d)}
+
+    # Estimasi sumber untuk langkah 1 wizard: berapa klip berlabel, sebarannya
+    # per kelas, dan dari berapa video sumber (dasar pembelahan 80:20 per video).
+    # Dihitung dari pindai yang sama dengan yang dipakai saat membangun versi.
+    pindai = await asyncio.to_thread(klip_scan.pindai, d)
+    berlabel = [it for it in pindai["items"] if it["label"]]
+    per_kelas: dict[str, int] = {}
+    for it in berlabel:
+        per_kelas[it["label"]] = per_kelas.get(it["label"], 0) + 1
+    ak = tdata.get("aksi") or {}
+    awal = {
+        "ds": pr["ds"],
+        "versi": await asyncio.to_thread(_versi_aksi, d),
+        "estimasi": {"n_berlabel": len(berlabel), "per_kelas": per_kelas,
+                     "n_sumber": len({it["srcid"] for it in berlabel if it.get("srcid")})},
+        "katalog": klip_olah.katalog_json(),
+        "bawaan": klip_olah.resep_sah({}),
+        "kelas": list(ak.get("kelas") or []),
+        "negatif": ak.get("negatif") or "",
+    }
     return templates.TemplateResponse(request, "aksi_versi.html", {
         "sess": sess, "pr": pr, "aktif": "versi", "awal": awal,
         "boleh_kelola": tugas.boleh_kelola(tdata, sess.user),
@@ -1042,6 +1061,36 @@ async def aksi_versi_batal(ds: str = "",
     dibuang oleh pekerjaannya sendiri)."""
     klip_olah.minta_batal(_kunci_versi_aksi(sess.user, ds))
     return {"ok": True}
+
+
+@router.get("/api/aksi/versi/isi")
+async def aksi_versi_isi(ds: str = "", nomor: int = 0,
+                         sess: Session = Depends(current_session_api),
+                         settings: Settings = Depends(get_settings)):
+    """Rincian satu versi klip untuk panel detail di tab Versi (padanan
+    /api/versi/isi gambar). Gerbang BACA (anggota boleh), seperti unduh.
+
+    Hanya medan yang dipakai UI yang dikembalikan; `peta`/`gambar` penuh (bisa
+    ribuan baris) diringkas jadi pembagian + contoh nama saja."""
+    d, tdata, err = _projek_aksi(sess, settings, ds)
+    if err:
+        return {"ok": False, "error": err}
+    m = await asyncio.to_thread(versi.baca, d, int(nomor))
+    if not m or (m.get("hasil") or {}).get("jenis") != "aksi":
+        return {"ok": False, "error": "versi tidak ada"}
+    hasil = m.get("hasil") or {}
+    contoh = (m.get("gambar") or [])[:12]
+    return {"ok": True, "versi": {
+        "nomor": m.get("nomor"), "dibuat": m.get("dibuat"), "oleh": m.get("oleh"),
+        "catatan": m.get("catatan") or "", "rasio": m.get("rasio") or "",
+        "n": hasil.get("n") or m.get("n") or 0,
+        "jumlah": hasil.get("jumlah") or m.get("jumlah") or {},
+        "kelas": hasil.get("kelas") or m.get("kelas") or 0,
+        "per_kelas": hasil.get("per_kelas") or {},
+        "resep": m.get("resep") or {},
+        "diimpor": bool((m.get("resep") or {}).get("impor")),
+        "contoh": contoh,
+    }}
 
 
 # ============================================================

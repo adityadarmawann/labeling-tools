@@ -2669,6 +2669,38 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
    yang sama membuat persentase seluruh kelas ikut salah. */
 .vk-negatif{margin-top:5px;padding-top:8px;border-top:1px solid var(--line)}
 .vk-negatif .vk-nama{font-style:italic}
+
+/* ============================ Tab Versi VIDEO (aksi_versi)
+   Kontrol wizard & detail yang khas klip. Sebagian besar kelas (wz-*, vs-*,
+   vk-*, sk-*) dipinjam dari wizard gambar di atas; yang di sini hanya tambahan
+   yang tidak ada padanannya di sana. */
+#akv-isi .vs-kepala{justify-content:flex-start;gap:10px;flex-wrap:wrap;align-items:center}
+.akv-impor-lbl{cursor:pointer}
+.akv-impor-path{display:flex;gap:8px;margin:0 0 10px;max-width:640px}
+.akv-impor-path input{flex:1 1 auto;border:1px solid var(--line2);border-radius:8px;
+  padding:7px 10px;font:inherit;font-size:13px;background:var(--panel);color:var(--ink)}
+
+/* langkah 1: hitung klip sumber */
+.akv-sum-besar{font-size:14px;color:var(--ink)}
+.akv-sum-besar b{font-size:22px;font-variant-numeric:tabular-nums}
+.akv-sum-kelas-baris{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.akv-sum-kelas{font-size:12px;color:var(--ink-dim);background:var(--sunk);
+  border-radius:999px;padding:4px 11px}
+.akv-sum-kelas b{color:var(--ink);font-variant-numeric:tabular-nums}
+.wz-peringatan{color:var(--warn);margin-top:10px}
+
+/* langkah 4: pratinjau varian augmentasi + blok penyeimbang */
+.akv-varian{display:flex;flex-wrap:wrap;gap:5px;margin:4px 0 14px}
+.akv-varian-judul{flex:1 0 100%;margin-bottom:2px}
+.akv-varian-chip{font-size:10.5px;color:var(--ink-faint);background:var(--sunk);
+  border-radius:5px;padding:2px 7px;
+  font-family:ui-monospace,"JetBrains Mono","SF Mono",Menlo,monospace}
+.wz-penyeimbang{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+
+/* detail versi: catatan + contoh klip */
+.vs-contoh-nota{margin:10px 0 0;font-style:italic}
+.vs-contoh{margin:9px 0 0;padding-left:18px;line-height:1.7;
+  font-family:ui-monospace,"JetBrains Mono","SF Mono",Menlo,monospace;font-size:11.5px}
 .vk-total{float:right;font-weight:400;font-size:11.5px;color:var(--ink-faint);
   text-transform:none;letter-spacing:0}
 .vk-rasio{margin-top:9px;font-size:11.5px;line-height:1.5;color:var(--ink-faint)}

@@ -2,9 +2,12 @@
 {% block bodyclass %}berprojek{% endblock %}
 
 {#- Tab VERSI untuk projek VIDEO (classifier aksi). Padanan /versi gambar,
-    tetapi untuk KLIP: daftar versi beku yang bisa diunduh + Buat versi
-    (aug/balance) + Impor dataset jadi (.zip / path server). Dipisah dari
-    halaman Label Aksi supaya alur video bertab seperti image. Data awal
+    tetapi untuk KLIP: wizard "Buat versi" (pembagian + pra-proses + augmentasi
+    + penyeimbang), impor dataset jadi (.zip / path server), dan penjelajah
+    versi dua-kolom (daftar + detail). Resep video lebih sederhana dari gambar
+    (tanpa katalog operasi pra-proses, tanpa remap kelas, tanpa pelat latar),
+    jadi wizardnya lima langkah, bukan enam — tetapi pola & kelas CSS-nya sama
+    persis dengan versi.html supaya satu projek terasa satu aplikasi. Data awal
     ditanam JSON, dibaca aksi_versi.js. -#}
 
 {% block body %}
@@ -20,48 +23,189 @@
 <div class="sisi-isi" id="akv-isi" data-ds="{{ pr.ds }}">
 
   <h2 class="hal-judul">Versi dataset klip</h2>
-  <p class="halus hal-ket">Bekukan klip berlabel jadi versi dataset (augmentasi +
-    penyeimbang kelas), atau impor dataset yang sudah jadi. Versi inilah yang
-    dilatih di tab <b>Training</b>.</p>
+  <p class="halus hal-ket">Bekukan klip berlabel jadi versi dataset yang siap
+    dilatih di tab <b>Training</b>. Sekali dibuat, isinya tetap dan bisa diunduh
+    ulang kapan saja, walau klip barunya bertambah.</p>
 
-  {#- Buat / impor versi: hanya pemilik/Editor. -#}
   {% if boleh_kelola %}
-  <section class="panel akv-panel">
-    <h3>Buat atau impor versi</h3>
-    <button class="chip aksi ak-buat-versi" type="button" id="ak-buat-versi"
-            title="Bekukan klip berlabel jadi versi dataset (augmentasi + penyeimbang kelas)">
-      Buat versi aksi</button>
-    <button class="chip ak-batal-versi" type="button" id="ak-batal-versi" hidden
-            title="Hentikan pembuatan versi">Hentikan</button>
-    <p class="halus ak-versi-maju" id="ak-versi-maju" hidden></p>
-
-    {#- Impor dataset klip JADI (.zip): train/ + val|valid/ folder-per-kelas yang
-        sudah di-split + augmentasi DI LUAR HIGOLAB. Dibongkar lalu didaftarkan
-        apa adanya sebagai versi, tanpa proses ulang. -#}
-    <label class="chip aksi ak-impor-lbl" id="ak-impor-lbl"
+  <div class="vs-kepala">
+    <button class="cta" type="button" id="vs-mulai">+ Buat versi baru</button>
+    {#- Impor duduk di samping CTA sebagai jalur sekunder: dataset yang sudah
+        dipotong+dibelah+diaugmentasi DI LUAR HIGOLAB didaftarkan apa adanya
+        tanpa diproses ulang. -#}
+    <label class="chip akv-impor-lbl" id="ak-impor-lbl"
            title="Impor .zip berisi train/ + val/ (folder per kelas) sebagai versi siap-latih">
       Impor dataset (.zip)
       <input type="file" id="ak-impor-file" accept=".zip,application/zip" hidden></label>
-
-    {#- Admin: impor langsung dari PATH di server (data sering sudah di mesin ini). -#}
     {% if admin %}
-    <div class="ak-impor-path-baris" id="ak-impor-path-baris">
-      <input type="text" id="ak-impor-path" class="ak-impor-path"
-             placeholder="/path/folder-dataset  atau  /path/arsip.zip"
-             title="Path di SERVER: folder berisi train/ + val/, atau sebuah .zip">
-      <button class="chip ak-impor-path-btn" type="button" id="ak-impor-path-btn"
-              title="Muat dataset dari path di server (admin)">Muat dari server</button>
-    </div>
+    <button class="chip" type="button" id="ak-impor-path-tombol"
+            title="Muat dataset dari path di server (admin)">Impor dari server</button>
     {% endif %}
-    <p class="halus ak-impor-maju" id="ak-impor-maju" hidden></p>
+  </div>
+  {% if admin %}
+  <div class="akv-impor-path" id="ak-impor-path-baris" hidden>
+    <input type="text" id="ak-impor-path" class="ak-impor-path"
+           placeholder="/path/folder-dataset  atau  /path/arsip.zip"
+           title="Path di SERVER: folder berisi train/ + val/, atau sebuah .zip">
+    <button class="chip" type="button" id="ak-impor-path-btn">Muat dari server</button>
+  </div>
+  {% endif %}
+  <p class="halus ak-impor-maju" id="ak-impor-maju" hidden></p>
+
+  {#- Wizard lima langkah. Seluruhnya di DOM sejak awal dan disembunyikan, bukan
+      dibangun dari JS: tiap langkah bisa dibuka ulang tanpa kehilangan isian,
+      dan orang bisa mundur — sama polanya dengan versi.html gambar. -#}
+  <section class="wz" id="wz" hidden>
+    <div class="wz-atas">
+      <b>Buat versi klip</b>
+      <button class="chip" type="button" id="wz-tutup">Batal</button>
+    </div>
+    <label class="wz-nama">Nama versi
+      <input type="text" id="wz-nama" readonly title="Dinomori otomatis mengikuti versi terakhir">
+    </label>
+
+    <ol class="wz-langkah">
+      <li class="wz-item" data-langkah="1" data-buka>
+        <div class="wz-judul"><span class="wz-no">1</span>
+          <b>Klip sumber</b><span class="spacer"></span>
+          <span class="wz-ringkas" id="wz-r1"></span>
+          <button class="chip wz-ubah" type="button">Ubah</button></div>
+        <div class="wz-isi">
+          <p class="halus">Yang ikut hanya <b>klip berlabel</b>. Klip yang belum
+            dilabeli tidak masuk versi — labeli dulu di <b>Label Aksi</b>.</p>
+          <div class="wz-angka" id="wz-sumber">memuat…</div>
+          <div class="wz-aksi"><button class="wz-tbl wz-tbl-pri" type="button" data-lanjut>Lanjut</button></div>
+        </div>
+      </li>
+
+      <li class="wz-item" data-langkah="2">
+        <div class="wz-judul"><span class="wz-no">2</span>
+          <b>Pembagian train / valid</b><span class="spacer"></span>
+          <span class="wz-ringkas" id="wz-r2"></span>
+          <button class="chip wz-ubah" type="button">Ubah</button></div>
+        <div class="wz-isi">
+          <p class="halus">Pembagian dihitung dari jumlah klip, lalu dibelah
+            <b>per video sumber</b>: potongan dari satu video tidak pernah jatuh
+            di train sekaligus valid. Valid dipakai sebagai alat ukur, jadi
+            <b>tidak pernah diaugmentasi</b>.</p>
+          <div class="wz-rasio">
+            <label>Train <input type="number" id="wz-train" min="50" max="95" value="80"></label>
+            <label>Valid <input type="number" id="wz-valid" min="5" max="50" value="20"></label>
+          </div>
+          <div class="lajur an-lajur" id="wz-bilah"></div>
+          <div class="wz-angka" id="wz-split"></div>
+          <div class="wz-aksi">
+            <button class="wz-tbl wz-tbl-sek" type="button" data-mundur>Kembali</button>
+            <button class="wz-tbl wz-tbl-pri" type="button" data-lanjut>Lanjut</button></div>
+        </div>
+      </li>
+
+      <li class="wz-item" data-langkah="3">
+        <div class="wz-judul"><span class="wz-no">3</span>
+          <b>Pra-proses</b><span class="spacer"></span>
+          <span class="wz-ringkas" id="wz-r3"></span>
+          <button class="chip wz-ubah" type="button">Ubah</button></div>
+        <div class="wz-isi">
+          <p class="halus">Dikenakan ke <b>setiap</b> klip di train dan valid,
+            dan hasilnya sama tiap kali. Klip di-<b>letterbox</b> (tanpa crop) ke
+            ukuran target, dan fps-nya diseragamkan.</p>
+          <div class="wz-rasio">
+            <label>Lebar <input type="number" id="wz-lebar" min="16" max="1280" step="2" value="224"></label>
+            <label>Tinggi <input type="number" id="wz-tinggi" min="16" max="1280" step="2" value="224"></label>
+            <label>FPS <input type="number" id="wz-fps" min="1" max="120" value="25"></label>
+          </div>
+          <p class="halus" id="wz-uk-ket"></p>
+          <div class="wz-aksi">
+            <button class="wz-tbl wz-tbl-sek" type="button" data-mundur>Kembali</button>
+            <button class="wz-tbl wz-tbl-pri" type="button" data-lanjut>Lanjut</button></div>
+        </div>
+      </li>
+
+      <li class="wz-item" data-langkah="4">
+        <div class="wz-judul"><span class="wz-no">4</span>
+          <b>Augmentasi &amp; penyeimbang</b><span class="spacer"></span>
+          <span class="wz-ringkas" id="wz-r4"></span>
+          <button class="chip wz-ubah" type="button">Ubah</button></div>
+        <div class="wz-isi">
+          <p class="halus">Hanya pada data <b>train</b>, dan hanya menambah —
+            klip aslinya tidak pernah diganti. Valid tidak pernah diaugmentasi.</p>
+
+          <label class="wz-salin">Salinan augmentasi per klip
+            <input type="number" id="wz-varian" min="0" max="8" value="2"></label>
+          <p class="halus">Tiap salinan memakai satu varian berbeda, dipilih
+            otomatis urut dari yang <b>paling mirip rekaman asli</b>. Varian yang
+            tidak cocok dengan terang-gelap klip dilewati sendiri.</p>
+          <div class="akv-varian" id="wz-varian-pratinjau"></div>
+
+          <div class="wz-penyeimbang">
+            <span class="menu-judul">Penyeimbang jumlah kelas</span>
+            <p class="halus">Kelas minoritas diperbanyak (dari augmentasi) sampai
+              mendekati sasaran, tetapi dibatasi <b>cap</b> supaya tidak jadi
+              tumpukan salinan nyaris identik.</p>
+            <div class="wz-rasio">
+              <label>Cap (maks &times;)
+                <input type="number" id="wz-cap" min="1" max="10" step="0.5" value="3"></label>
+              <label>Sasaran
+                <select id="wz-sasaran">
+                  <option value="median" selected>Median kelas</option>
+                  <option value="mean">Rata-rata kelas</option>
+                  <option value="max">Kelas terbesar</option>
+                </select></label>
+            </div>
+          </div>
+          <div class="wz-aksi">
+            <button class="wz-tbl wz-tbl-sek" type="button" data-mundur>Kembali</button>
+            <button class="wz-tbl wz-tbl-pri" type="button" data-lanjut>Lanjut</button></div>
+        </div>
+      </li>
+
+      <li class="wz-item" data-langkah="5">
+        <div class="wz-judul"><span class="wz-no">5</span>
+          <b>Buat</b><span class="spacer"></span></div>
+        <div class="wz-isi">
+          <div class="wz-tinjau" id="wz-tinjau"></div>
+          <label class="wz-nama">Catatan versi
+            <input type="text" id="wz-catatan" placeholder="mis. sebelum tambah klip babak 2"></label>
+          <div class="wz-aksi">
+            <button class="wz-tbl wz-tbl-sek" type="button" data-mundur>Kembali</button>
+            <button class="wz-tbl wz-tbl-pri" type="button" id="wz-buat">Buat versi</button></div>
+        </div>
+      </li>
+    </ol>
+
+    <div class="wz-kerja" id="wz-kerja" hidden>
+      <b id="wz-kerja-judul">Membuat versi…</b>
+      <p class="halus">Klip untuk versi ini sedang diproses. Boleh ditinggal;
+        halaman ini akan menyusul sendiri saat selesai.</p>
+      <span class="prog" data-on><i id="wz-fill"></i></span>
+      <div class="prog-teks"><span id="wz-fase">Menyiapkan…</span><b id="wz-persen">0%</b></div>
+      <button class="chip" type="button" id="wz-batal">Hentikan</button>
+    </div>
   </section>
   {% endif %}
 
-  {#- Versi beku: unduhan arsip klip (folder per kelas, train/valid). Tampil
-      untuk SEMUA anggota. Diisi aksi_versi.js dari data awal + bertambah saat
-      sebuah build/impor selesai. -#}
-  <h3 class="ak-judul" id="ak-versi-judul" hidden>Versi</h3>
-  <ul class="ak-versi-list halus" id="ak-versi-list"></ul>
+  {#- Penjelajah versi: daftar di kiri, satu versi terbuka di kanan. Tampil
+      untuk SEMUA anggota (unduhan + detail dibaca lewat gerbang baca). Diisi
+      aksi_versi.js dari data awal + /api/aksi/versi/isi. -#}
+  <div class="vs-tata" id="akv-tata" hidden>
+    <div class="vs-kolom">
+      <div class="vs-kolom-judul">Versi</div>
+      <div id="akv-ring"></div>
+    </div>
+    <div class="vs-detail" id="vs-detail">
+      <div class="vs-detail-muat">pilih versi di kiri…</div>
+    </div>
+  </div>
+
+  <div class="pkosong" id="akv-kosong" hidden>
+    <b>Belum ada versi</b>
+    Versi adalah dataset klip yang dibekukan: pembagian train/valid, ukuran, dan
+    augmentasinya tetap, jadi hasil pelatihan selalu bisa ditelusuri ke data yang
+    persis dipakai.
+    {% if not boleh_kelola %}
+    <span style="display:block;margin-top:10px">Pemilik/Editor projek yang membuatnya.</span>
+    {% endif %}
+  </div>
 </div>
 </main>
 {% endblock %}
