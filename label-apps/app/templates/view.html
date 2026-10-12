@@ -12,50 +12,72 @@
                  'warn': 'Perlu diperiksa',
                  'stop': 'Belum dilabeli',
                  'bg':   'Ditandai latar, sengaja tanpa objek'} -%}
-<header>
-  <div class="top">
-    <a class="chip" href="/">&larr; Kembali</a>
-    {#- Nama berkas TIDAK lagi dicetak di kepala: panjang, meramaikan pojok, dan
-        sudah dieja utuh di kartu "Berkas" + jadi tooltip gambarnya. Lambang
-        brand teal pun ikut hilang di sini — ia ::before milik <h1> ini. Judul
-        disimpan sr-only supaya dokumen tetap punya satu <h1> yang menamainya
-        bagi pembaca layar. -#}
-    <h1 class="sr-only">{{ it.img.name }}</h1>
-    {%- if it.split %}<span class="split">{{ it.split }}</span>{% endif %}
-    <span class="path mono">{{ it.W }}&times;{{ it.H }} px</span>
-    {% include "_header.html" %}
-  </div>
-  <div class="bar">
+{#- SATU baris toolbar (dulu dua baris besar yang memakan tempat). Prinsip:
+    hierarki jelas — navigasi jadi tombol IKON ringkas, aksi UTAMA (Edit/Labeli)
+    beraksen teal, aksi sekunder (latar/AnyLabeling) tenang, keterangan (objek·
+    kelas, ukuran) jadi teks halus di kanan sebelum menu akun. Di layar sempit
+    barisnya menggeser (overflow-x), bukan membungkus jadi dua baris lagi. -#}
+{%- set ikon_kiri = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3.5 5.5 8 10 12.5"/></svg>' %}
+{%- set ikon_kanan = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5"/></svg>' %}
+<header class="lh-head">
+  <h1 class="sr-only">{{ it.img.name }}</h1>
+  <div class="lh-bar">
+    <a class="lh-btn lh-ghost lh-back" href="/" title="Kembali ke grid">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.5 8H3.5M7 4 3.5 8 7 12"/></svg>
+      <span>Kembali</span></a>
+
+    <span class="lh-sep"></span>
+
     <div class="lh-nav">
       {%- if prev_it %}
-      <a class="chip" id="prev" href="/view?path={{ prev_it | imgpath }}"
-        >&larr; Sebelumnya</a>
+      <a class="lh-btn lh-ikon" id="prev" href="/view?path={{ prev_it | imgpath }}"
+         title="Sebelumnya" aria-label="Gambar sebelumnya">{{ ikon_kiri | safe }}</a>
       {%- else %}
-      <span class="chip mati" id="prev" aria-disabled="true">&larr; Sebelumnya</span>
+      <span class="lh-btn lh-ikon mati" id="prev" aria-disabled="true"
+            aria-label="Tidak ada sebelumnya">{{ ikon_kiri | safe }}</span>
       {%- endif %}
-      <span class="lh-posisi"><b>{{ posisi[0] }}</b> / {{ posisi[1] }}</span>
+      <span class="lh-posisi"><b>{{ posisi[0] }}</b>/{{ posisi[1] }}</span>
       {%- if next_it %}
-      <a class="chip" id="next" href="/view?path={{ next_it | imgpath }}"
-        >Berikutnya &rarr;</a>
+      <a class="lh-btn lh-ikon" id="next" href="/view?path={{ next_it | imgpath }}"
+         title="Berikutnya" aria-label="Gambar berikutnya">{{ ikon_kanan | safe }}</a>
       {%- else %}
-      <span class="chip mati" id="next" aria-disabled="true">Berikutnya &rarr;</span>
+      <span class="lh-btn lh-ikon mati" id="next" aria-disabled="true"
+            aria-label="Tidak ada berikutnya">{{ ikon_kanan | safe }}</span>
       {%- endif %}
     </div>
-    <a class="chip" href="/label?path={{ p }}"
-      >{{ 'Edit label' if it.shapes else 'Labeli' }}</a>
-    {%- if local %}
-    <button class="chip" onclick="openIn('{{ p }}',this)">Perbaiki di AnyLabeling</button>
-    {%- endif %}
+
+    <span class="lh-sep"></span>
+
+    <a class="lh-btn lh-utama" href="/label?path={{ p }}">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.5 3.6 12.4 6.5"/><path d="M3 13l.9-3.1 6.6-6.6 2.2 2.2-6.6 6.6z"/></svg>
+      <span>{{ 'Edit label' if it.shapes else 'Labeli' }}</span></a>
+
     {%- if sev == 'bg' %}
-    <button class="chip" onclick="markbg('{{ p }}',false)">Batal tandai latar</button>
+    <button class="lh-btn lh-ghost" type="button" onclick="markbg('{{ p }}',false)">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7.5h6a3 3 0 1 1 0 6H7"/><path d="M4 7.5 6.3 5.2M4 7.5l2.3 2.3"/></svg>
+      <span>Batal tandai latar</span></button>
     {%- elif not it.shapes %}
-    <button class="chip" onclick="markbg('{{ p }}',true)">Tandai sebagai latar</button>
+    <button class="lh-btn lh-ghost" type="button" onclick="markbg('{{ p }}',true)">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="3.5" width="11" height="9" rx="1.5"/><path d="M2.8 10.5 5.5 8l2 1.6 2.4-2 2.8 2.4"/></svg>
+      <span>Tandai latar</span></button>
     {%- endif %}
+    {%- if local %}
+    <button class="lh-btn lh-ghost" type="button" onclick="openIn('{{ p }}',this)"
+            title="Perbaiki di AnyLabeling">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h4v4"/><path d="M13 3 7.5 8.5"/><path d="M11 9.5V12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h2.5"/></svg>
+      <span>AnyLabeling</span></button>
+    {%- endif %}
+
     <span class="spacer"></span>
+
     <span class="lh-ringkas">
       {%- if n_obj %}<b>{{ n_obj }}</b> objek &middot; <b>{{ hitung | length }}</b> kelas
       {%- else %}tanpa objek{% endif -%}
     </span>
+    {%- if it.split %}<span class="split lh-split">{{ it.split }}</span>{% endif %}
+    <span class="lh-dim mono">{{ it.W }}&times;{{ it.H }}</span>
+
+    {% include "_akun.html" %}
   </div>
   <div class="lh-meter" aria-hidden="true">
     <i style="width:{{ (posisi[0] * 100 / posisi[1]) | round(2) }}%"></i></div>

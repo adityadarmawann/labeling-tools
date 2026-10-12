@@ -77,18 +77,16 @@
 {% set panduan_cari = "cari… mis. latar, perlu dicek, tag" %}
 {# Istilahnya kata, bukan tombol — kolomnya perlu bentuk yang lain. #}
 {% set panduan_kata = true %}
+{# Halaman ini punya dialog panduan -> tampilkan "Panduan" di menu akun. #}
+{% set ada_panduan = true %}
 
 {% block body %}
 <header>
   <div class="top">
     <h1>{{ nama_app() }}</h1>
-    {#- Panduan halaman ini. Chip di bawah menyebut keadaan yang tidak
-        dijelaskan namanya sendiri — "Perlu dicek" yang paling sering
-        disalahpahami sebagai penilaian atas gambar yang sengaja ditandai
-        latar. -#}
-    <button class="chip" id="btn-panduan" type="button"
-            title="Arti tiap chip dan saringan di halaman ini. Tekan ? kapan saja">
-      <span aria-hidden="true">&#9432;</span> Panduan</button>
+    {#- "Panduan" kini di dalam menu akun (pojok kanan atas, bareng Tema/Tempat
+        sampah/Kelola akun) — lihat _akun.html. `ada_panduan` memberitahunya
+        halaman ini punya dialog panduan. Dulu chip di samping judul. -#}
     {% include "_header.html" %}
   </div>
 </header>

@@ -166,7 +166,14 @@ document.addEventListener('DOMContentLoaded', () => {
   // meninggalkan halaman), jadi tak perlu ditahan di sini.
   menu.addEventListener('click', ev => {
     const t = ev.target.closest('.akun-tema');
-    if (!t) return;
+    if (!t) {
+      // "Panduan" beraksi DI halaman (membuka dialog lewat IIFE panduan, yang
+      // onclick-nya sudah berjalan lebih dulu) tanpa menavigasi — jadi menunya
+      // ditutup di sini supaya tak nangkring di belakang dialog. <a href> lain
+      // (Kelola akun/Keluar/Tempat sampah) menutup sendiri dengan menavigasi.
+      if (ev.target.closest('#btn-panduan')) setBuka(false);
+      return;
+    }
     pasangTema(t.dataset.tema);
     menu.querySelectorAll('.akun-tema').forEach(b => {
       b.setAttribute('aria-checked', String(b === t));

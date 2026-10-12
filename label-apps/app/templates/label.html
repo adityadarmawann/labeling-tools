@@ -62,9 +62,8 @@
   <span class="tool-sep tegak"></span>
   <button class="tbl tbl-utama" id="btn-simpan" title="Simpan (Ctrl+S)">
     {{ ikon('simpan', 17) }}<span>Simpan</span></button>
-  <button class="tbl" id="btn-panduan"
-          title="Panduan &amp; pintasan papan tombol. Tekan ? kapan saja">
-    {{ ikon('papan-tombol', 18) }}</button>
+  {#- "Panduan" pindah ke menu akun (bareng Tema/Kelola akun), lihat _akun.html;
+      ada_panduan diset di bawah. Pintasan ? dan F1 tetap membuka dialognya. -#}
     <div class="menu" id="menu-view">
     <button class="tbl" id="view-tombol" title="Tampilan &amp; perilaku">{{ ikon('mata', 18) }}<span>View</span></button>
     <div class="menu-isi" id="view-isi">
@@ -108,7 +107,10 @@
   {# Akun kanvas: dulu tiga potong lepas (select tema, nama tanpa avatar, Keluar)
      dan TANPA "Kelola akun". Kini satu tombol beravatar + menu yang sama persis
      dengan kepala biasa — dibawa dari _akun.html supaya keduanya tak lepas
-     sinkron. Membawa kanvas ke paritas: avatar + Kelola akun kini ada di sini. #}
+     sinkron. Membawa kanvas ke paritas: avatar + Kelola akun kini ada di sini.
+     ada_panduan di sini supaya "Panduan" muncul di menu akun kanvas (dialognya
+     disetel di bawah, _panduan.html). #}
+  {% set ada_panduan = true %}
   {% include "_akun.html" %}
 </div>
 

@@ -9,19 +9,6 @@
 <div class="pick">
   {% if error %}<p class="bad">{{ error }}</p>{% endif %}
 
-  {# Satu baris, seluruhnya bisa diklik. Dulu panel setinggi ~100px yang
-     mengulang informasi yang sudah ada sebagai pil di kartunya sendiri, dan
-     hanya tombol di ujungnya yang bisa ditekan. #}
-  {% if sess.src %}
-  <a class="lanjut" href="/">
-    <span class="lanjut-tag">Sedang dibuka</span>
-    <b>{{ sess.src.name }}</b>
-    <span class="n">{{ sess.items | length }} gambar</span>
-    <span class="lanjut-path mono">{{ sess.src }}</span>
-    <span class="lanjut-cta">Buka grid &rarr;</span>
-  </a>
-  {% endif %}
-
   <div class="pkepala">
     <div class="pjudul">
       <h2>Projek</h2>

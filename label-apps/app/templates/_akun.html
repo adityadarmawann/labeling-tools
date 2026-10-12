@@ -42,6 +42,16 @@
     </div>
     <span class="menu-pisah" role="separator"></span>
 
+    {# "Panduan" pindah ke sini dari kepala (dulu chip di samping judul/toolbar).
+       Hanya muncul di halaman yang PUNYA panduan (grid & kanvas set ada_panduan);
+       id #btn-panduan dipakai app.js untuk membuka dialog #panduan — pintasan ?
+       dan F1 tetap jalan. Di halaman tanpa panduan, item ini tak dirender. #}
+    {% if ada_panduan %}
+    <button class="akun-item" role="menuitem" type="button" id="btn-panduan">
+      Panduan &amp; pintasan</button>
+    <span class="menu-pisah" role="separator"></span>
+    {% endif %}
+
     {# Tema: tiga pilihan saling-eksklusif = menuitemradio. Menggantikan
        <select id="tema"> yang dulu ada di KEDUA kepala. Penanda aktif dipasang
        JS tiap menu dibuka, dari nilai tersimpan (bawaan "sistem"); kliknya
