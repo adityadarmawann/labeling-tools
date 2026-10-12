@@ -29,7 +29,7 @@ OVERLAY_ALPHA = 0.45
 # v3: pose/keypoint digambar seperti Roboflow — rangka tipis berwarna per sisi +
 # titik kecil, bbox instance tak dibanjiri warna.
 # v4: nomor slot titik dicetak di pratinjau besar (/view), bukan di grid.
-RENDER_VERSI = 4
+RENDER_VERSI = 5
 
 
 def hash_kelas(nama) -> int:
@@ -201,7 +201,10 @@ def render(item: dict, side: int):
     ow, oh = max(1, round(w * sc)), max(1, round(h * sc))
     im = cv2.resize(im, (ow, oh), interpolation=cv2.INTER_AREA)
     ov = im.copy()
-    tebal = max(2, round(min(ow, oh) / 75))        # ~4px di thumbnail 320px
+    # Tebal garis tumbuh pelan dan dibatasi: 2px di ubin grid (~240px), 3px di
+    # pratinjau besar /lihat (side≈1100). Rumus lama (/75) membesar lurus sampai
+    # ~8px di side 1100 — kotaknya jadi tebal sekali saat gambar dibuka besar.
+    tebal = max(2, min(4, round(min(ow, oh) / 180)))
 
     # Projek pose: titik+bbox instance ditangani terpisah (rangka tajam, titik
     # kecil, tanpa banjir warna). Sisanya (poligon/kotak biasa) seperti dulu.
