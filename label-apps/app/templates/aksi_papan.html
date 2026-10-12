@@ -39,7 +39,7 @@
       <div class="an-orang-atas">
         <span class="bg-avatar">{{ o.pelabel[:1] | upper }}</span>
         <span class="an-orang-teks">
-          <b>{{ o.pelabel }}{% if o.pelabel == aku %} (kamu){% endif %}</b>
+          <b>{{ o.pelabel }}{% if o.pelabel == aku %} (sendiri){% endif %}</b>
           <span class="halus">{{ o.job }} tugas &middot;
             {{ o.jumlah }} klip</span>
         </span>
@@ -169,10 +169,10 @@
         <span class="halus">Bagikan klip dari kolom kiri, lalu tugasnya
           muncul di sini.</span>
         {%- elif aku in anggota_semua %}
-        <b>Belum ada yang ditugaskan padamu</b>
-        <span class="halus">Kamu sudah jadi anggota projek ini. Mengundang
-          belum berarti membagi &mdash; <b>{{ pemilik }}</b> yang menentukan
-          klip mana jatahmu.</span>
+        <b>Belum ada yang ditugaskan ke akun ini</b>
+        <span class="halus">Akun ini sudah menjadi anggota projek ini. Mengundang
+          belum berarti membagi. <b>{{ pemilik }}</b> yang menentukan
+          klip mana yang menjadi jatah.</span>
         {%- else %}
         <b>Belum ada yang dikerjakan</b>
         <span class="halus">Tugas yang sudah dibagi muncul di sini.</span>

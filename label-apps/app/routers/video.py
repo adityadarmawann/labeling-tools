@@ -65,10 +65,10 @@ def _projek_video(sess: Session, settings: Settings, ds: str):
     """
     d = projek.temukan(settings.uploads_root, sess.user, ds)
     if d is None:
-        return None, "projek tidak ada atau kamu bukan anggotanya"
+        return None, "projek tidak ada atau akun ini bukan anggotanya"
     tdata = tugas.baca_projek(d, settings.uploads_root)
     if not tugas.boleh_unggah(tdata, sess.user):
-        return None, "kamu tidak berhak mengubah media di projek ini"
+        return None, "tidak berhak mengubah media di projek ini"
     if projek.jenis_projek(d) != "video":
         return None, "pemotongan klip hanya untuk projek video"
     return d, ""
@@ -280,10 +280,10 @@ def _projek_aksi(sess: Session, settings: Settings, ds: str, *,
     """
     d = projek.temukan(settings.uploads_root, sess.user, ds)
     if d is None:
-        return None, None, "projek tidak ada atau kamu bukan anggotanya"
+        return None, None, "projek tidak ada atau akun ini bukan anggotanya"
     tdata = tugas.baca_projek(d, settings.uploads_root)
     if not tugas.boleh_lihat(tdata, sess.user):
-        return None, None, "kamu bukan anggota projek ini"
+        return None, None, "bukan anggota projek ini"
     if projek.jenis_projek(d) != "video" or not tugas.aksi_aktif(tdata):
         return None, None, "projek ini bukan classifier aksi video"
     return d, tdata, ""
@@ -918,7 +918,7 @@ async def aksi_ke_dataset(request: Request, ds: str = "",
             lihat.add(k)
             boleh.append(k)
     if not boleh:
-        return {"ok": False, "error": "tidak ada klip berlabel milikmu yang "
+        return {"ok": False, "error": "tidak ada klip berlabel milik sendiri yang "
                                       "bisa dimasukkan di sini"}
     r = await asyncio.to_thread(tugas.masukkan, d, boleh, tdata["pemilik"])
     h = await asyncio.to_thread(klip_scan.hitung, d)
@@ -955,7 +955,7 @@ async def aksi_keluar_dataset(request: Request, ds: str = "",
             boleh.append(k)
     if not boleh:
         return {"ok": False,
-                "error": "tidak ada klip milikmu yang bisa dikeluarkan"}
+                "error": "tidak ada klip milik sendiri yang bisa dikeluarkan"}
     r = await asyncio.to_thread(tugas.keluarkan, d, boleh, tdata["pemilik"])
     h = await asyncio.to_thread(klip_scan.hitung, d)
     return {"ok": True, **r, **h}

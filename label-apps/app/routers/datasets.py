@@ -170,7 +170,7 @@ async def versi_buat(split: str = "", catatan: str = "", belah: str = "",
             "hanya pemilik projek yang mengurus versi"
             if tdata["pemilik"] else
             "folder dataset bersama tidak punya pemilik, jadi versinya tidak "
-            "bisa diurus dari sini — salin dulu ke ruang kerjamu")}
+            "bisa diurus dari sini — salin dulu ke ruang kerja sendiri")}
     with sess.lock:
         items = list(sess.items)
         names = dict(sess.names)
@@ -222,7 +222,7 @@ async def _muat_bahan(sess, settings):
             "hanya pemilik projek yang mengurus versi"
             if tdata["pemilik"] else
             "folder dataset bersama tidak punya pemilik, jadi versinya tidak "
-            "bisa diurus dari sini — salin dulu ke ruang kerjamu")}
+            "bisa diurus dari sini — salin dulu ke ruang kerja sendiri")}
     with sess.lock:
         items = list(sess.items)
         names = dict(sess.names)
@@ -291,7 +291,7 @@ async def _projek_sendiri(sess: Session, settings: Settings):
             "hanya pemilik projek yang mengurus foto latar"
             if tdata["pemilik"] else
             "folder dataset bersama tidak punya pemilik — salin dulu ke ruang "
-            "kerjamu")}
+            "kerja sendiri")}
     return tdata, None
 
 
@@ -551,7 +551,7 @@ async def versi_hapus(nomor: int = 0,
             "hanya pemilik projek yang mengurus versi"
             if tdata["pemilik"] else
             "folder dataset bersama tidak punya pemilik, jadi versinya tidak "
-            "bisa diurus dari sini — salin dulu ke ruang kerjamu")}
+            "bisa diurus dari sini — salin dulu ke ruang kerja sendiri")}
     # Berkas hasilnya ikut dibuang. Tanpa ini, menghapus versi hanya
     # menghilangkan kartunya dari layar sementara gigabyte gambar hasil
     # tetap memakan disk, tanpa satu pun jalan untuk menemukannya lagi.

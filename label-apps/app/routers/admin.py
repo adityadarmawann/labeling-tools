@@ -231,7 +231,7 @@ def _hapus(settings: Settings, oleh: str, akun: str) -> dict:
     if akun not in users:
         raise Tolak(f"akun '{akun}' tidak ada")
     if akun == oleh:
-        raise Tolak("tidak bisa menghapus akunmu sendiri")
+        raise Tolak("tidak bisa menghapus akun sendiri")
     if users[akun].get("admin") and _n_admin(users) <= 1:
         raise Tolak("ini admin terakhir; angkat admin lain lebih dulu")
     users.pop(akun)

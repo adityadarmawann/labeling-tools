@@ -219,7 +219,7 @@ def test_labeler_spesifik_masuk_dataset_dalam_scope(klien, aplikasi, lingkungan)
     assert r["ok"] is True and r.get("ditambah") == 1, r   # masuk dataset
     # Gambar luar scope tetap ditolak.
     r2 = lab.post("/api/tugas/dataset", json={"gambar": [g[1]]}).json()
-    assert r2["ok"] is False and "bukan tugasmu" in r2["error"]
+    assert r2["ok"] is False and "bukan jatah sendiri" in r2["error"]
 
 
 def test_editor_boleh_hapus_dan_keluarkan(klien, aplikasi, lingkungan):

@@ -367,7 +367,7 @@ def alasan_tolak(data: dict, akun: str, kunci: str, batch: str = "") -> str:
     if siapa:
         return (f"gambar ini ditugaskan ke {siapa}; hanya dia dan pemilik "
                 f"projek yang bisa menyuntingnya")
-    return ("gambar ini belum ditugaskan kepadamu; minta pemilik projek "
+    return ("gambar ini belum ditugaskan ke akun ini; minta pemilik projek "
             "menugaskannya lebih dulu")
 
 
@@ -1566,7 +1566,7 @@ def pakai_undangan(ds: Path, token: str, akun: str) -> dict:
             return {"ok": False, "error": f"undangan ini sudah dipakai "
                                           f"{u['dipakai']}"}
         if akun == data["pemilik"]:
-            return {"ok": False, "error": "kamu pemilik projek ini"}
+            return {"ok": False, "error": "akun ini pemilik projek ini"}
         u["dipakai"] = akun
         u["diterima"] = datetime.now().strftime("%Y-%m-%d %H:%M")
         if akun not in data["anggota"]:

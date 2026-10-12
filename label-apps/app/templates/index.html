@@ -158,8 +158,8 @@
     {%- set _ = keadaan.append(("bg", "Latar", n_bg, "bg",
           "Sampel negatif: gambar yang sengaja dinyatakan tidak berisi "
           "objek apa pun. Ikut terekspor sebagai berkas label kosong.")) %}
-    {%- if ada_tugas %}{%- set _ = keadaan.append(("tugasku", "Tugasku", n_tugasku, "",
-          "Jatahmu yang sudah masuk dataset. Halaman ini hanya memuat isi "
+    {%- if ada_tugas %}{%- set _ = keadaan.append(("tugasku", "Tugas sendiri", n_tugasku, "",
+          "Jatah sendiri yang sudah masuk dataset. Halaman ini hanya memuat isi "
           "dataset, jadi jatah yang masih dikerjakan tidak terhitung di sini.")) %}
     {%- endif %}
     <span class="menu menu-kiri" id="menu-keadaan">

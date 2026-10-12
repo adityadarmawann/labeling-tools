@@ -740,7 +740,7 @@ def rencanakan(items: list[dict], rasio=(0.8, 0.1, 0.1), *,
     if n and besar / n > MAKS_GRUP:
         peringatan.append(
             f"Satu sesi memuat {100 * besar / n:.0f}% dataset, jadi rasio yang "
-            f"kamu minta tidak mungkin dipenuhi persis.")
+            f"diminta tidak mungkin dipenuhi persis.")
     if tanpa_stempel == n and n:
         peringatan.append(
             "Tidak ada nama berkas yang memuat stempel waktu, jadi "

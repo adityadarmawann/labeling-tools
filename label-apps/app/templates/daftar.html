@@ -9,7 +9,7 @@
   <div class="card-form">
     <h2>Pendaftaran ditutup</h2>
     <p class="sub">Pendaftaran mandiri sedang dimatikan. Minta admin
-      membuatkan akunmu.</p>
+      membuatkan akun.</p>
     <p class="kartu-kaki"><a href="/login">Kembali ke halaman masuk</a></p>
   </div>
 
@@ -18,12 +18,12 @@
     <h2>Akun dibuat</h2>
     <p class="sub">Akun <b class="mono">{{ selesai }}</b> sudah terdaftar.</p>
     {% if langsung %}
-    <p class="sub">Akunmu <b>sudah bisa dipakai</b>. Silakan masuk.</p>
+    <p class="sub">Akun ini <b>sudah bisa dipakai</b>. Silakan masuk.</p>
     {% else %}
     {# Ini yang menggantikan verifikasi email: tanpa pembuktian alamat,
        seorang admin yang memutuskan siapa boleh masuk. #}
     <p class="sub">Sekarang <b>menunggu persetujuan admin</b>. Kabari admin
-      supaya akunmu disetujui, lalu masuk seperti biasa.</p>
+      supaya akun ini disetujui, lalu masuk seperti biasa.</p>
     {% endif %}
     <a class="cta" href="/login" style="display:inline-block;text-align:center;
        text-decoration:none">Ke halaman masuk</a>
@@ -32,7 +32,7 @@
   {% else %}
   <form class="card-form" method="post" action="/daftar" autocomplete="off">
     <h2>Daftar akun</h2>
-    <p class="sub">Isi datamu untuk membuat akun.</p>
+    <p class="sub">Isi data berikut untuk membuat akun.</p>
     {% if error %}<p class="bad">{{ error }}</p>{% endif %}
 
     <label class="form-lbl" for="user">Nama akun</label>

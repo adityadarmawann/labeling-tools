@@ -52,7 +52,7 @@ def _folder_unggah(sess: Session, settings: Settings, ds: str):
     if d is not None:
         tdata = tugas.baca_projek(d, settings.uploads_root)
         if not tugas.boleh_unggah(tdata, sess.user):
-            return None, "kamu tidak berhak mengunggah ke projek ini"
+            return None, "tidak berhak mengunggah ke projek ini"
         return d, ""
     return sess.upload_dir(ds), ""
 

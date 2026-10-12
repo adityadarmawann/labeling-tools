@@ -2450,7 +2450,7 @@ function perbaruiLatar() {
 
 async function toggleLatar() {
   if (BACA_SAJA) {
-    toast('Gambar ini ditugaskan ke orang lain; kamu hanya bisa melihat');
+    toast('Gambar ini ditugaskan ke orang lain; hanya bisa dilihat');
     return;
   }
   const f = gambarIni();
@@ -2723,7 +2723,7 @@ async function simpan(diam = false) {
   // simpan otomatis semuanya lewat sini. Menjaganya di sini saja berarti tidak
   // ada jalur yang lupa dijaga.
   if (BACA_SAJA) {
-    if (!diam) toast('Gambar ini ditugaskan ke orang lain; kamu hanya bisa melihat');
+    if (!diam) toast('Gambar ini ditugaskan ke orang lain; hanya bisa dilihat');
     return;
   }
   const tanpaKelas = S.shapes.filter(s => !s.label).length;

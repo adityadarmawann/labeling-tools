@@ -71,7 +71,7 @@ async def login(request: Request,
             {"akun": user, "next": next,
              "boleh_daftar": settings.daftar_sendiri,
              "daftar_langsung": settings.daftar_langsung,
-             "error": ("Akunmu sudah terdaftar tapi belum disetujui admin."
+             "error": ("Akun ini sudah terdaftar tapi belum disetujui admin."
                        if menunggu else "Akun atau password salah.")},
             status_code=status.HTTP_401_UNAUTHORIZED)
 

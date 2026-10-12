@@ -1305,7 +1305,7 @@ const Progres = (() => {
         </a>
         <div class="pisi">
           <a class="pnama pnama-link" href="/?ds=${ds}">${esc(p.nama)}${
-            p.tugasku ? `<span class="plabel plabel-tugas">${n(p.gambarku)} jatahmu</span>`
+            p.tugasku ? `<span class="plabel plabel-tugas">${n(p.gambarku)} jatah sendiri</span>`
                       : `<span class="plabel">${esc(peran)}</span>`}</a>
           <div class="pmeta">milik ${esc(p.pemilik)} &middot; ${esc(peran)}
             &middot; ${n(p.jumlah)} gambar &middot; ${n(p.anotasi)} dilabeli
@@ -1354,7 +1354,7 @@ const Progres = (() => {
   }
 
   const kosongCocok = () =>
-    '<div class="pkosong"><b>Tidak ada yang cocok</b>Ubah kata pencarianmu.</div>';
+    '<div class="pkosong"><b>Tidak ada yang cocok</b>Ubah kata pencarian.</div>';
   const kosongBox = (judul, pesan) =>
     `<div class="pkosong"><b>${judul}</b>${pesan}</div>`;
 
@@ -1377,7 +1377,7 @@ const Progres = (() => {
              'Buka "+ Projek baru" di atas untuk membuat yang pertama.'));
     if (gridVideo) gridVideo.innerHTML = vidRows.length ? vidRows.map(kartuProjek).join('')
       : (semua.some(isVideo) ? kosongCocok()
-         : kosongBox('Kamu belum punya Projek Video',
+         : kosongBox('Belum ada Projek Video',
              'Pelabelan video akan muncul di sini begitu fiturnya siap.'));
 
     // ---- Sharing Project (projek yang mengundangku)
@@ -1386,11 +1386,11 @@ const Progres = (() => {
     if (gridTamuImg) gridTamuImg.innerHTML = tImg.length ? tImg.map(kartuTamu).join('')
       : (tamu.some(p => !isVideo(p)) ? kosongCocok()
          : kosongBox('Belum ada Projek Image yang dibagikan',
-             'Projek image milik orang lain yang mengundangmu muncul di sini.'));
+             'Projek image milik orang lain yang dibagikan ke akun ini muncul di sini.'));
     if (gridTamuVid) gridTamuVid.innerHTML = tVid.length ? tVid.map(kartuTamu).join('')
       : (tamu.some(isVideo) ? kosongCocok()
          : kosongBox('Belum ada Projek Video yang dibagikan',
-             'Projek video milik orang lain yang mengundangmu muncul di sini.'));
+             'Projek video milik orang lain yang dibagikan ke akun ini muncul di sini.'));
 
     hitungTab();
 
@@ -1964,7 +1964,7 @@ const Progres = (() => {
           <div class="akun-nama">${esc(a.nama)}
             ${a.menunggu ? '<span class="lencana tunggu">menunggu persetujuan</span>' : ''}
             ${a.admin ? '<span class="lencana adm">admin</span>' : ''}
-            ${a.diri_sendiri ? '<span class="lencana aku">kamu</span>' : ''}</div>
+            ${a.diri_sendiri ? '<span class="lencana aku">sendiri</span>' : ''}</div>
           <div class="akun-email${a.email ? '' : ' kosong'}">${
             a.email ? esc(a.email) : 'belum ada email'}</div>
           ${a.dibuat ? `<div class="akun-meta">dibuat ${esc(a.dibuat)}${
@@ -2313,7 +2313,7 @@ window.pilihRentang = function (wadah, sel, saatUbah) {
       return;
     }
     pr.selesai(`${j.dikeluarkan} gambar kembali ke Anotasi`
-               + (j.ditolak ? ` · ${j.ditolak} bukan tugasmu` : ''));
+               + (j.ditolak ? ` · ${j.ditolak} bukan jatah sendiri` : ''));
     setTimeout(() => location.reload(), 900);
   };
 

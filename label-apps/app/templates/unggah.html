@@ -17,8 +17,8 @@
   {% if not boleh_unggah %}
   <div class="pkosong" style="max-width:640px">
     <b>Hanya pemilik projek yang bisa menambah gambar</b>
-    Projek ini milik <b>{{ pemilik }}</b>. Kamu bisa melihat seluruh gambarnya
-    dan mengerjakan yang ditugaskan kepadamu.
+    Projek ini milik <b>{{ pemilik }}</b>. Seluruh gambarnya bisa dilihat, tetapi
+    hanya bagian yang ditugaskan yang bisa dikerjakan.
     <span style="display:block;margin-top:10px">
       <a href="/?ds={{ pr.ds | urlquote }}">Buka datasetnya</a></span>
   </div>
@@ -167,7 +167,7 @@
         </div>
         {% else %}
         <h3>Ambil dari folder di server</h3>
-        <p class="ug-server-ket">Isinya <b>disalin</b> ke ruang kerjamu. Folder
+        <p class="ug-server-ket">Isinya <b>disalin</b> ke ruang kerja sendiri. Folder
           aslinya tidak pernah disentuh, jadi aman disunting dan ditambahi
           gambar.</p>
         <div class="row">
@@ -190,7 +190,7 @@
            pernah dipakai diingat, bukan diketik ulang. #}
         {% if riwayat %}
         <div class="ug-riwayat" id="ug-server-riwayat">
-          <div class="ug-riwayat-judul">Path yang pernah kamu pakai</div>
+          <div class="ug-riwayat-judul">Path yang pernah dipakai</div>
           {%- for r in riwayat %}
           <div class="ug-riwayat-baris">
             <button class="ug-riwayat-path mono" type="button" data-path="{{ r.path }}"

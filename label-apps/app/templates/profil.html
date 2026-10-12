@@ -12,7 +12,7 @@
 <main>
 <div class="pick profil" data-akun="{{ sess.user }}" data-foto="{{ sess.foto }}">
   <h2>Akun saya</h2>
-  <p class="sub">Ubah nama tampil, email, foto, dan kata sandimu sendiri.</p>
+  <p class="sub">Ubah nama tampil, email, foto, dan kata sandi akun ini.</p>
 
   {# ----------------------------------------------------------------- Foto #}
   <div class="panel">
@@ -70,7 +70,7 @@
     <label class="form-lbl" for="profil-sandi-lama">Kata sandi sekarang</label>
     <input id="profil-sandi-lama" type="password" autocomplete="current-password">
     {% else %}
-    <p class="halus" style="margin:0 0 4px">Akunmu belum punya kata sandi
+    <p class="halus" style="margin:0 0 4px">Akun ini belum punya kata sandi
       sendiri. Buat satu di bawah.</p>
     {% endif %}
     <label class="form-lbl" for="profil-sandi-baru"

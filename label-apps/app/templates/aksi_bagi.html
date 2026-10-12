@@ -27,8 +27,8 @@
   {% if not boleh_bagi %}
   <div class="pkosong" style="max-width:640px">
     <b>Hanya pemilik atau editor yang membagi tugas</b>
-    Projek ini milik <b>{{ pemilik }}</b>. Kamu bisa melihat seluruh klipnya
-    dan mengerjakan yang menjadi bagianmu.
+    Projek ini milik <b>{{ pemilik }}</b>. Seluruh klipnya bisa dilihat, tetapi
+    hanya bagian yang ditugaskan yang bisa dikerjakan.
     <span style="display:block;margin-top:10px">
       <a href="/aksi?ds={{ pr.ds | urlquote }}">Buka grid klipnya</a></span>
   </div>
@@ -64,7 +64,7 @@
       {% else %}
       <div class="pkosong" style="max-width:560px">
         <b>Semua klip sudah ditugaskan, atau projek masih kosong</b>
-        Kamu tetap bisa mengelola anggota & perannya di panel kanan. Anggota
+        Anggota & perannya tetap bisa dikelola di panel kanan. Anggota
         tak harus ditugaskan klip satu per satu. Perannya yang menentukan
         hak aksesnya.
       </div>

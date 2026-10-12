@@ -251,7 +251,7 @@ async def get_skeleton(ds: str = "", sess: Session = Depends(current_session_api
         return {"ok": False, "error": "projek tidak ada / belum ada yang dibuka"}
     data = await asyncio.to_thread(svc.baca_projek, d, settings.uploads_root)
     if not svc.boleh_lihat(data, sess.user):
-        return {"ok": False, "error": "kamu bukan anggota projek ini"}
+        return {"ok": False, "error": "bukan anggota projek ini"}
     return {"ok": True, "skeleton": data.get("skeleton"),
             "jenis": data.get("jenis_anotasi", ""),
             "boleh_ubah": svc.boleh_kelola(data, sess.user)}
@@ -317,7 +317,7 @@ async def get_aksi(ds: str = "", sess: Session = Depends(current_session_api),
         return {"ok": False, "error": "projek tidak ada / belum ada yang dibuka"}
     data = await asyncio.to_thread(svc.baca_projek, d, settings.uploads_root)
     if not svc.boleh_lihat(data, sess.user):
-        return {"ok": False, "error": "kamu bukan anggota projek ini"}
+        return {"ok": False, "error": "bukan anggota projek ini"}
     return {"ok": True, "aksi": data.get("aksi"),
             "boleh_ubah": svc.boleh_kelola(data, sess.user)}
 
@@ -621,7 +621,7 @@ async def undang(akun: str = "", peran: str = "pelabel", akses: str = "",
         # Dulu dijawab ok:true dengan daftar anggota KOSONG — bukan sekadar
         # "tidak berubah", tapi keadaan yang salah — lalu layarnya menoast
         # "X jadi anggota" padahal tidak terjadi apa-apa.
-        return {"ok": False, "error": "kamu pemilik projek ini, tidak perlu "
+        return {"ok": False, "error": "pemilik projek ini tidak perlu "
                                       "diundang"}
     r = await asyncio.to_thread(svc.undang, sess.src, data["pemilik"], akun,
                                 peran, akses or None, batch)
@@ -643,8 +643,8 @@ async def keluarkan_anggota(akun: str = "",
     if not akun:
         return {"ok": False, "error": "belum memilih siapa yang dikeluarkan"}
     if akun == data["pemilik"]:
-        return {"ok": False, "error": "kamu pemilik projek ini; pemilik tidak "
-                                      "bisa dikeluarkan dari projeknya sendiri"}
+        return {"ok": False, "error": "pemilik projek tidak bisa dikeluarkan "
+                                      "dari projeknya sendiri"}
     if akun not in data["anggota"]:
         return {"ok": False, "error": f"'{akun[:40]}' bukan anggota projek ini"}
     r = await asyncio.to_thread(svc.keluarkan_anggota, sess.src,
@@ -878,7 +878,7 @@ def _punya_alur_dataset(data: dict) -> str:
     """
     if not data["pemilik"]:
         return ("folder dataset bersama tidak punya alur dataset. Salin dulu "
-                "ke ruang kerjamu lewat halaman Unggah")
+                "ke ruang kerja sendiri lewat halaman Unggah")
     return ""
 
 
@@ -942,7 +942,7 @@ async def tandai_latar(request: Request,
             tandai_berubah(sess.src, q)
     if not berhasil:
         return {"ok": False,
-                "error": "tidak satu pun gambar itu bisa kamu ubah"}
+                "error": "tidak satu pun gambar itu bisa diubah"}
     return {"ok": True, "n": berhasil, "ditolak": tolak, "lepas": lepas}
 
 
@@ -1099,7 +1099,7 @@ async def ke_dataset(request: Request,
                                      svc_tag.untuk(tagdata, k).get("batch", ""))]
         ditolak = len(kunci) - len(boleh)
         if not boleh:
-            return {"ok": False, "error": f"{ditolak} gambar bukan tugasmu; "
+            return {"ok": False, "error": f"{ditolak} gambar bukan jatah sendiri; "
                                           f"hanya pelabelnya atau pemilik projek "
                                           f"yang bisa memasukkannya ke dataset"}
         kunci = boleh

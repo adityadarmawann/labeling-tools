@@ -156,7 +156,7 @@
     if (!j.ok) { pr.gagal(j.error); $('jb-hapus').disabled = false; return; }
 
     pr.selesai(`${j.dibuang} gambar dipindah ke sampah`
-               + (j.ditolak ? ` · ${j.ditolak} ditolak (bukan tugasmu)` : ''));
+               + (j.ditolak ? ` · ${j.ditolak} ditolak (bukan jatah sendiri)` : ''));
     setTimeout(() => location.reload(), 800);
   }
 
@@ -203,7 +203,7 @@
     // milik pelabel lain, dan diam soal itu membuat orang mengira semuanya
     // berhasil.
     pr.selesai(`${j.n} gambar ${lepas ? 'lepas dari' : 'ditandai'} latar`
-               + (j.ditolak ? ` · ${j.ditolak} ditolak (bukan tugasmu)` : ''));
+               + (j.ditolak ? ` · ${j.ditolak} ditolak (bukan jatah sendiri)` : ''));
     setTimeout(() => location.reload(), 800);
   }
 

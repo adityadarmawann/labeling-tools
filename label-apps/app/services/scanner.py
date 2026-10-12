@@ -500,7 +500,7 @@ def periksa_kelengkapan(src: Path) -> list[str]:
     if any(True for _ in anotasi_json(src)) and punya_txt:
         pesan.append(
             "folder ini memuat anotasi labelme (.json) DAN YOLO (.txt) "
-            "sekaligus — periksa mana yang sebenarnya kamu maksud.")
+            "sekaligus — periksa mana yang sebenarnya dimaksud.")
     return pesan
 
 

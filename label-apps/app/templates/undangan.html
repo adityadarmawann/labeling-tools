@@ -10,13 +10,13 @@
     <a class="cta" href="/pilih" style="display:inline-block;text-align:center;
        text-decoration:none">Ke daftar projek</a>
     {% else %}
-    <h2>Kamu bergabung</h2>
-    <p class="sub">Sekarang kamu anggota projek
+    <h2>Berhasil bergabung</h2>
+    <p class="sub">Akun ini sekarang menjadi anggota projek
       <b class="mono">{{ pr.nama }}</b> milik <b>{{ pr.pemilik }}</b>.</p>
-    {# Yang paling sering ditanyakan orang baru: aku boleh apa di sini.
+    {# Yang paling sering ditanyakan orang baru: boleh apa saja di sini.
        Dijawab di sini sekali, bukan dibiarkan ditemukan sendiri. #}
-    <p class="sub">Kamu bisa melihat seluruh gambarnya, tetapi hanya bisa
-      menyunting label gambar yang ditugaskan kepadamu.</p>
+    <p class="sub">Seluruh gambarnya bisa dilihat, tetapi hanya label gambar
+      yang ditugaskan yang bisa disunting.</p>
     <a class="cta" href="/?ds={{ pr.ds | urlquote }}"
        style="display:inline-block;text-align:center;text-decoration:none">
       Buka projeknya</a>

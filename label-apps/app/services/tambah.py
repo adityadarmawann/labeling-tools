@@ -185,8 +185,8 @@ def boleh_ditambahi(src: Path, ruang_kerja: Path) -> str:
         Path(src).resolve().relative_to(Path(ruang_kerja).resolve())
     except (ValueError, OSError):
         return ("dataset ini dibuka langsung dari folder di server, jadi tidak "
-                "bisa ditambahi — salin dulu ke ruang kerjamu lewat "
-                "\"Salin ke ruang kerjaku\" di halaman pilih dataset")
+                "bisa ditambahi — salin dulu ke ruang kerja sendiri lewat "
+                "\"Salin ke ruang kerja\" di halaman pilih dataset")
     return ""
 
 

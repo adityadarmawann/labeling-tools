@@ -132,7 +132,7 @@ def _folder(root: Path, nama: str) -> Path:
         raise Tolak("nama projek kosong atau seluruhnya karakter terlarang")
     d = (Path(root) / bersih)
     if not _didalam(d, Path(root)):
-        raise Tolak("nama itu menunjuk ke luar ruang kerjamu")
+        raise Tolak("nama itu menunjuk ke luar ruang kerja sendiri")
     return d
 
 
@@ -370,8 +370,8 @@ def boleh_buka(d: Path, akun: str, uploads_root, datasets_root,
                 return ""
             except (ValueError, OSError):
                 continue
-        return ("folder itu di luar ruang kerjamu dan bukan dataset bersama; "
-                "salin dulu ke ruang kerjamu lewat halaman Unggah data")
+        return ("folder itu di luar ruang kerja sendiri dan bukan dataset bersama; "
+                "salin dulu ke ruang kerja sendiri lewat halaman Unggah data")
 
     if not sisa:
         return "itu folder induk unggahan, bukan sebuah projek"

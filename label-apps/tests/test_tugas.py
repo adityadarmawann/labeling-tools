@@ -361,7 +361,7 @@ def test_rute_undangan_dibuka_menjadikan_anggota(klien, aplikasi, lingkungan):
 
     lain = klien_baru(aplikasi, "anggi", PW_ANGGI)
     h = lain.get(jalur).text
-    assert "Kamu bergabung" in h and "undang-buka" in h
+    assert "Berhasil bergabung" in h and "undang-buka" in h
     assert "anggi" in tugas.baca(d, "paul")["anggota"]
 
     # Dibuka kedua kalinya, tautannya sudah mati.
@@ -601,7 +601,7 @@ def test_rincian_job_hanya_bisa_diubah_pelabelnya_atau_pemilik(klien, aplikasi,
 
     # Gambar yang bukan tugasnya tetap ditolak di rutenya.
     j = lain.post("/api/tugas/dataset", json={"gambar": gambar[2:]}).json()
-    assert j["ok"] is False and "bukan tugasmu" in j["error"], j
+    assert j["ok"] is False and "bukan jatah sendiri" in j["error"], j
 
 
 def test_job_yang_tidak_ada_kembali_ke_papan(klien, lingkungan):
@@ -1935,7 +1935,7 @@ def test_anggota_tanpa_tugas_tidak_menghilang_dari_papan(klien, aplikasi,
     # Yang diundang diberi tahu apa yang sedang ditunggunya, dan oleh siapa.
     tamu = klien_baru(aplikasi, "anggi", PW_ANGGI)
     h = tamu.get("/anotasi?ds=paul/undang-tanpa-bagi").text
-    assert "Belum ada yang ditugaskan padamu" in h
+    assert "Belum ada yang ditugaskan ke akun ini" in h
     assert "paul" in h, "yang membagikannya harus disebut namanya"
     assert "belum kebagian tugas" not in h, "urusan pemilik bocor ke anggota"
 
@@ -1945,8 +1945,8 @@ def test_anggota_tanpa_tugas_tidak_menghilang_dari_papan(klien, aplikasi,
     assert "belum kebagian tugas" not in klien.get(
         "/anotasi?ds=undang-tanpa-bagi").text
     h = tamu.get("/anotasi?ds=paul/undang-tanpa-bagi").text
-    assert "Belum ada yang ditugaskan padamu" not in h
-    assert "(kamu)" in h, "jatahnya sendiri tidak ditandai"
+    assert "Belum ada yang ditugaskan ke akun ini" not in h
+    assert "(sendiri)" in h, "jatahnya sendiri tidak ditandai"
 
 
 def _job_bertiga(klien, nama="latar-uji"):

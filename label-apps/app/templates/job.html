@@ -45,7 +45,7 @@
       <div class="jb-orang">
         <span class="bg-avatar">{{ job.pelabel[:1] | upper }}</span>
         <span class="an-orang-teks">
-          <b>{{ job.pelabel }}{% if job.pelabel == aku %} (kamu){% endif %}</b>
+          <b>{{ job.pelabel }}{% if job.pelabel == aku %} (sendiri){% endif %}</b>
           <span class="halus">dibagi {{ job.dibuat }}{% if job.oleh %}
             oleh {{ job.oleh }}{% endif %}</span>
         </span>
@@ -191,9 +191,9 @@
           Hapus dari projek</button>
       </div>
       {% else %}
-      <p class="halus jb-baca">Tugas ini milik <b>{{ job.pelabel }}</b>. Kamu bisa
-        melihatnya sebagai rujukan, tetapi yang memindahkannya ke dataset hanya
-        dia atau pemilik projek.</p>
+      <p class="halus jb-baca">Tugas ini milik <b>{{ job.pelabel }}</b>. Isinya bisa
+        dilihat sebagai rujukan, tetapi yang memindahkannya ke dataset hanya
+        pelabelnya atau pemilik projek.</p>
       {% endif %}
 
       <div class="jb-kisi" id="jb-kisi">

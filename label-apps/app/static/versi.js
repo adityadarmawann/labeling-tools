@@ -1433,12 +1433,12 @@
   // yang cocok untuk ruangannya.
   const KET_MODE = {
     netral: 'Warna lampu pada foto dibuang, lalu tiap pelat diberi sedikit '
-      + 'variasi suhu warna. Pilih ini kalau lampu ruanganmu berganti-ganti '
+      + 'variasi suhu warna. Pilih ini kalau lampu ruangan berganti-ganti '
       + 'warna. Augmentasi akan menambahkan warna lampunya sendiri, dan '
       + 'warna yang terlanjur terekam di foto akan bertumpuk dengannya.',
     asli: 'Warna foto tidak disentuh sama sekali; yang berubah hanya '
-      + 'terang-gelapnya. Pilih ini kalau lampu ruanganmu memang selalu satu '
-      + 'warna itu dan kamu ingin pelatnya persis seperti aslinya.',
+      + 'terang-gelapnya. Pilih ini kalau lampu ruangan memang selalu satu '
+      + 'warna itu dan pelatnya perlu persis seperti aslinya.',
   };
   function modeLatar() {
     const r = document.querySelector('#lt-mode input:checked');
