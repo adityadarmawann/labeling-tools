@@ -1,12 +1,13 @@
-{#- Strip sub-tab untuk area ANOTASI klip: tiga permukaan sejajar (paritas
-    dengan alur gambar yang punya papan + bagi + grid per-job). `aktif_sub`
-    diisi halaman yang menyertakan berkas ini: "grid" | "papan" | "bagi".
-    Bagi hanya muncul untuk yang berhak membagi (boleh_bagi). -#}
+{#- Strip sub-tab untuk area ANOTASI klip. Urutan mengikuti alur: PAPAN dulu
+    (ringkasan terstruktur, pendaratan entri "Anotasi" di sidebar — padanan
+    /anotasi gambar), lalu GRID KLIP (permukaan pelabelan sebenarnya), lalu
+    BAGI TUGAS. `aktif_sub` diisi halaman penyertanya: "papan" | "grid" |
+    "bagi". Bagi hanya muncul untuk yang berhak membagi (boleh_bagi). -#}
 <nav class="aksi-subnav" aria-label="Bagian anotasi klip">
-  <a href="/aksi?ds={{ pr.ds | urlquote }}"
-     {% if aktif_sub == 'grid' %}data-on aria-current="page"{% endif %}>Grid klip</a>
   <a href="/aksi/papan?ds={{ pr.ds | urlquote }}"
      {% if aktif_sub == 'papan' %}data-on aria-current="page"{% endif %}>Papan</a>
+  <a href="/aksi?ds={{ pr.ds | urlquote }}"
+     {% if aktif_sub == 'grid' %}data-on aria-current="page"{% endif %}>Grid klip</a>
   {% if boleh_bagi %}
   <a href="/aksi/bagi?ds={{ pr.ds | urlquote }}"
      {% if aktif_sub == 'bagi' %}data-on aria-current="page"{% endif %}>Bagi tugas</a>
