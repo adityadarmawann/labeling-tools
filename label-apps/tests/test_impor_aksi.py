@@ -380,7 +380,8 @@ def test_aksi_latih_halaman_video(klien, lingkungan):
     assert r.status_code == 200, r.text[:200]
     html = r.text
     assert "Training model aksi" in html
-    assert "ak-tr-backend" in html and "ak-tr-daftar" in html
+    assert "ak-tr-backend" in html and 'id="ak-tr-jalan"' in html   # form + kartu run
+    assert 'id="tr-mesin"' in html                                  # bar mesin GPU/RAM
     assert "akl-awal" in html
     assert "/aksi/latih?ds=" in html                 # sidebar Training -> tab video
 

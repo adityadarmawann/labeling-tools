@@ -2701,6 +2701,11 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
 .vs-contoh-nota{margin:10px 0 0;font-style:italic}
 .vs-contoh{margin:9px 0 0;padding-left:18px;line-height:1.7;
   font-family:ui-monospace,"JetBrains Mono","SF Mono",Menlo,monospace;font-size:11.5px}
+
+/* Tab Training VIDEO (aksi_latih): baris tombol Jalankan di bawah form. Sisanya
+   (tr-mesin, tr-form, tr-grid, tr-kartu, tr-pil, ak-eval*) dipinjam dari jalur
+   gambar + versi aksi di atas. */
+.ak-tr-jalankan{margin-top:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .vk-total{float:right;font-weight:400;font-size:11.5px;color:var(--ink-faint);
   text-transform:none;letter-spacing:0}
 .vk-rasio{margin-top:9px;font-size:11.5px;line-height:1.5;color:var(--ink-faint)}

@@ -3,8 +3,10 @@
 
 {#- Tab TRAINING untuk projek VIDEO (classifier aksi). Padanan /latih gambar,
     tetapi untuk 3 backend klip (VideoMAE / SlowFast / PoseC3D) + Uji produksi
-    (confusion matrix). Dipisah dari halaman Label Aksi supaya alur video
-    bertab seperti image. Diisi aksi_latih.js dari /api/aksi/latih/bahan. -#}
+    (confusion matrix). Susunan & kelas CSS meniru latih.html gambar: bar mesin
+    di atas, form dua-kolom di balik CTA, lalu kartu run "Sedang berjalan" dan
+    "Hasil". Setelan sengaja hanya epoch & batch — tiap backend aksi mengunci
+    sisanya ke nilai teruji. Diisi aksi_latih.js dari /api/aksi/latih/bahan. -#}
 
 {% block body %}
 <header>
@@ -18,6 +20,10 @@
 {% include "_sisi.html" %}
 <div class="sisi-isi" id="akl-isi" data-ds="{{ pr.ds }}">
 
+  {#- Bar mesin: GPU util/suhu, VRAM, RAM — menolong menakar apakah kartu sedang
+      sibuk sebelum menekan Jalankan. Tampil untuk semua anggota. -#}
+  <div class="tr-mesin" id="tr-mesin"><div class="tr-mesin-isi" id="tr-mesin-isi"></div></div>
+
   <h2 class="hal-judul">Training model aksi</h2>
   <p class="halus hal-ket">Latih classifier aksi dari sebuah <b>versi</b> klip.
     Backend yang ditawarkan hanya yang pustakanya terpasang di server ini. Tiap
@@ -26,31 +32,69 @@
     <a href="/aksi/versi?ds={{ pr.ds | urlquote }}">Versi</a>.</p>
 
   {% if boleh_latih %}
-  <section class="panel akl-panel">
-    <h3>Latih model</h3>
-    <div class="ak-latih" id="ak-latih" hidden>
-      <label class="halus">Backend
-        <select id="ak-tr-backend"></select></label>
-      <p class="halus ak-tr-ket" id="ak-tr-ket"></p>
-      <label class="halus">Versi dataset
-        <select id="ak-tr-versi"></select></label>
-      <div class="ak-tr-par">
-        <label class="halus">Epoch <input type="number" id="ak-tr-epochs"
-               min="1" max="1000" step="1"></label>
-        <label class="halus">Batch <input type="number" id="ak-tr-batch"
-               min="1" max="64" step="1"></label>
+  <div class="tr-kepala" id="ak-tr-kepala" hidden>
+    <div>
+      <div class="tr-h2">Training</div>
+      <div class="tr-sub">Satu run = satu versi klip dilatih dengan satu backend.</div>
+    </div>
+    <span class="spacer"></span>
+    <button class="cta" type="button" id="ak-tr-baru">+ Training baru</button>
+  </div>
+
+  <section class="tr-form" id="ak-latih" hidden>
+    <div class="tr-form-atas">
+      <b>Training baru</b><span class="spacer"></span>
+      <button class="chip" type="button" id="ak-tr-tutup">Batal</button>
+    </div>
+    <div class="tr-grid">
+      <div class="tr-kolom">
+        <label class="tr-label">Nama training
+          <input type="text" id="ak-tr-nama" maxlength="60"
+                 placeholder="mis. percobaan pertama, 80 epoch"></label>
+        <label class="tr-label">Backend
+          <select id="ak-tr-backend"></select>
+          <span class="tr-bantu" id="ak-tr-ket"></span></label>
+        <label class="tr-label">Versi dataset
+          <select id="ak-tr-versi"></select>
+          <span class="tr-bantu" id="ak-tr-versi-ket"></span></label>
+        <label class="tr-label">Catatan
+          <input type="text" id="ak-tr-catatan" maxlength="120"
+                 placeholder="opsional, mis. baseline sebelum tambah kelas"></label>
       </div>
-      <button class="chip aksi" type="button" id="ak-tr-mulai">Jalankan</button>
+      <div class="tr-kolom">
+        <div class="tr-par-atas"><b>Setelan</b></div>
+        <div class="tr-par">
+          <label class="tr-p"><span class="tr-p-nama">Epoch</span>
+            <input type="number" id="ak-tr-epochs" min="1" max="1000" step="1"></label>
+          <label class="tr-p"><span class="tr-p-nama">Batch</span>
+            <input type="number" id="ak-tr-batch" min="1" max="64" step="1"></label>
+        </div>
+        <p class="tr-bantu">Backend aksi mengunci setelan lain (learning rate,
+          augmentasi, jadwal) ke nilai yang sudah teruji — hanya epoch &amp;
+          batch yang dibuka di sini.</p>
+      </div>
+    </div>
+    <div class="ak-tr-jalankan">
+      <button class="cta" type="button" id="ak-tr-mulai">Jalankan</button>
       <p class="halus ak-tr-maju" id="ak-tr-maju" hidden></p>
     </div>
-    <p class="halus ak-tr-nosiap" id="ak-tr-nosiap" hidden>
-      Server ini belum punya pustaka untuk melatih aksi (butuh venv GPU:
-      transformers / pytorchvideo / av / ultralytics).</p>
   </section>
+
+  <p class="halus tr-diam ak-tr-nosiap" id="ak-tr-nosiap" hidden>
+    Server ini belum punya pustaka untuk melatih aksi (butuh venv GPU:
+    transformers / pytorchvideo / av / ultralytics).</p>
   {% endif %}
 
-  <h3 class="ak-judul">Run</h3>
-  <ul class="ak-tr-daftar halus" id="ak-tr-daftar"></ul>
+  <div class="tr-bagian" id="ak-tr-jalan-bagian" hidden>
+    <h3 class="tr-h3">Sedang berjalan</h3>
+    <div id="ak-tr-jalan"></div>
+  </div>
+  <div class="tr-bagian" id="ak-tr-hasil-bagian" hidden>
+    <h3 class="tr-h3">Hasil</h3>
+    <div id="ak-tr-hasil"></div>
+  </div>
+  <p class="halus tr-diam" id="ak-tr-kosong" hidden>
+    Belum ada training di projek ini.</p>
 </div>
 </main>
 {% endblock %}
