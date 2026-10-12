@@ -140,7 +140,14 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(NeedsLogin)
     async def _needs_login(request: Request, exc: NeedsLogin):
-        """Halaman HTML tanpa sesi dialihkan ke /login, tidak menampilkan 401."""
+        """Halaman HTML tanpa sesi dialihkan ke /login, tidak menampilkan 401.
+
+        Kecuali AKAR situs: pengunjung anonim ke "/" melihat LANDING (wajah
+        aplikasi), bukan langsung form login — tombol "Masuk" di landing yang
+        membawanya ke /login. Halaman lain tetap dialihkan seperti biasa."""
+        if request.url.path == "/":
+            from .templating import templates
+            return templates.TemplateResponse(request, "landing.html", {})
         jalur = request.url.path
         if request.url.query:
             jalur += "?" + request.url.query

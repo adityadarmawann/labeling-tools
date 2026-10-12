@@ -10,12 +10,31 @@ from conftest import PW_ANGGI, PW_PAUL, ROOT, klien_baru, masuk
 # ---------------------------------------------------------------- gerbang login
 
 def test_halaman_tanpa_sesi_dialihkan_ke_login(klien):
-    for jalan in ("/", "/pilih", "/view?path=/x.jpg"):
+    # Akar "/" kini menampilkan LANDING untuk pengunjung anonim (wajah aplikasi),
+    # diuji terpisah di bawah. Halaman projek lain tetap dialihkan ke /login dengan
+    # tujuan semula ikut dibawa (tanpa itu tautan undangan lenyap di tengah alurnya;
+    # lihat login_redirect di app/deps.py).
+    for jalan in ("/pilih", "/view?path=/x.jpg"):
         r = klien.get(jalan, follow_redirects=False)
         assert r.status_code == 303, jalan
-        # Tujuan semula ikut dibawa. Tanpa itu tautan undangan lenyap di
-        # tengah alurnya sendiri; lihat login_redirect di app/deps.py.
         assert r.headers["location"].startswith("/login")
+
+
+def test_akar_anonim_menampilkan_landing(klien):
+    """Pengunjung anonim ke "/" melihat landing (bukan dialihkan ke /login);
+    tombol Masuk di landing yang membawanya ke /login."""
+    r = klien.get("/", follow_redirects=False)
+    assert r.status_code == 200
+    assert 'href="/login"' in r.text          # tombol Masuk -> login
+    assert 'href="/fitur"' in r.text          # tautan ke halaman fitur
+
+
+def test_halaman_publik_landing_dan_fitur(klien):
+    """Landing & katalog fitur publik — tak butuh sesi, selalu 200."""
+    for jalan in ("/landing", "/fitur"):
+        r = klien.get(jalan)
+        assert r.status_code == 200, jalan
+        assert 'href="/login"' in r.text
 
 
 def test_endpoint_json_tanpa_sesi_menjawab_401(klien):
@@ -176,7 +195,8 @@ def test_logout_hanya_memutus_akun_itu(aplikasi, lingkungan):
     a.get(f"/thumb?path={roots / 'ds-alpha' / 'ds-alpha-00.jpg'}")
 
     a.get("/logout", follow_redirects=False)
-    assert a.get("/", follow_redirects=False).status_code == 303
+    # "/" kini landing publik; gerbang login diuji lewat halaman terlindung.
+    assert a.get("/pilih", follow_redirects=False).status_code == 303
     assert b.get("/").status_code == 200
     # thumbnail milik paul ikut dibuang, milik anggi tetap
     assert not (thumb / "paul").exists()
@@ -341,7 +361,8 @@ def test_header_proxy_membatalkan_status_lokal(klien_lokal, lingkungan):
 
 def test_autologin_tanpa_setelan_tetap_minta_login(klien_lokal, monkeypatch):
     """Tanpa LABELAPP_DEV_AUTOLOGIN, tidak ada jalan pintas."""
-    r = klien_lokal.get("/", follow_redirects=False)
+    # "/" kini landing publik — gerbang autologin diuji lewat halaman terlindung.
+    r = klien_lokal.get("/pilih", follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"].startswith("/login")
 
 
@@ -365,13 +386,14 @@ def test_autologin_hanya_dari_mesin_itu_sendiri(aplikasi, lingkungan, monkeypatc
         if r.status_code == 303:
             assert r.headers["location"] != "/login"
 
-        # dari jaringan: tetap ditolak
+        # dari jaringan: tetap ditolak ("/" = landing publik, jadi diuji
+        # lewat halaman terlindung yang tetap menuntut sesi)
         jauh = TestClient(aplikasi)
-        r = jauh.get("/", follow_redirects=False)
+        r = jauh.get("/pilih", follow_redirects=False)
         assert r.status_code == 303 and r.headers["location"].startswith("/login")
 
         # lewat reverse proxy pada mesin yang sama: juga ditolak
-        r = lokal.get("/", follow_redirects=False,
+        r = lokal.get("/pilih", follow_redirects=False,
                       headers={"X-Forwarded-For": "103.182.240.26"})
         assert r.status_code == 303 and r.headers["location"].startswith("/login")
     finally:
@@ -388,7 +410,8 @@ def test_autologin_akun_tidak_ada_ditolak(aplikasi, monkeypatch):
     get_settings.cache_clear()
     try:
         lokal = TestClient(aplikasi, client=("127.0.0.1", 50000))
-        r = lokal.get("/", follow_redirects=False)
+        # "/" = landing publik; akun autologin tak terdaftar diuji lewat /pilih.
+        r = lokal.get("/pilih", follow_redirects=False)
         assert r.status_code == 303 and r.headers["location"].startswith("/login")
     finally:
         get_settings.cache_clear()

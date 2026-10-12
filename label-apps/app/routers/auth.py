@@ -23,6 +23,21 @@ router = APIRouter(tags=["auth"])
 FAILED_LOGIN_DELAY = 0.6
 
 
+# Halaman PUBLIK (tanpa sesi): wajah aplikasi + dokumentasi fitur. Akar "/"
+# untuk pengunjung anonim juga memakai landing.html (lewat handler NeedsLogin di
+# main.py); rute eksplisit ini menyediakan URL tetap yang SELALU menampilkannya
+# — berguna untuk ditautkan, dan untuk pratinjau di dev (yang auto-login
+# membuat "/" selalu masuk sebagai devuser). Keduanya tak butuh sesi.
+@router.get("/landing", response_class=HTMLResponse)
+async def landing(request: Request):
+    return templates.TemplateResponse(request, "landing.html", {})
+
+
+@router.get("/fitur", response_class=HTMLResponse)
+async def fitur(request: Request):
+    return templates.TemplateResponse(request, "fitur.html", {})
+
+
 @router.get("/login", response_class=HTMLResponse)
 async def login_form(request: Request, next: str = ""):
     if optional_session(request):

@@ -1,0 +1,907 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>{{ nama_app() }}</title>
+<script>
+/* Dipasang sebelum CSS melukis, supaya tema gelap tidak berkedip terang
+   sepersekian detik. Kunci localStorage sama dengan yang dipakai aplikasi
+   ('labelapp_tema'), jadi pilihan tema ikut terbawa ke dalam app. */
+(function () {
+  try {
+    var t = localStorage.getItem('labelapp_tema');
+    if (t === 'dark' || t === 'light') document.documentElement.dataset.theme = t;
+  } catch (e) { /* mode privat */ }
+})();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap">
+<style>
+/* ============================ TOKEN TEMA ============================ */
+:root{
+  --ground:#F7F8FA;
+  --ground-2:#ECEFF3;
+  --surface:#FFFFFF;
+  --surface-2:#F2F4F7;
+  --ink:#1B2430;
+  --ink-soft:#3B4756;
+  --muted:#5F6D7E;
+  --faint:#93A0AE;
+  --line:#E3E7EC;
+  --line-2:#D4DAE1;
+  --accent:#177F73;        /* TEAL — brand utama + jalur GAMBAR */
+  --accent-ink:#126256;
+  --accent-lite:#1F9D8F;
+  --accent-soft:#D9EFEB;
+  --video:#D64A2C;         /* CORAL — jalur VIDEO / aksi */
+  --video-ink:#B23C22;
+  --video-soft:#FBE3DC;
+  --amber:#C47A10;         /* aksen pendukung hangat */
+  --amber-ink:#9A5F0C;
+  --amber-soft:#F6E8CF;
+  --slate:#2A5B8F;         /* aksen pendukung — split/dataset */
+  --slate-ink:#214a75;
+  --slate-soft:#DBE7F5;
+  --btn-ink:#1B2430;
+  --btn-on:#FFFFFF;
+  --shadow-sm:0 1px 2px rgba(27,36,48,.06),0 2px 8px rgba(27,36,48,.05);
+  --shadow-md:0 10px 30px rgba(27,36,48,.10),0 2px 8px rgba(27,36,48,.06);
+  --shadow-lg:0 30px 60px rgba(27,36,48,.15),0 8px 20px rgba(27,36,48,.08);
+  --blob:#E4EDEB;
+  --good:#1E9E6A;
+  --r-pill:999px;
+  --r-lg:26px;
+  --r-md:16px;
+  --r-sm:10px;
+}
+:root:not([data-theme="light"]){
+  @media (prefers-color-scheme:dark){
+    --ground:#12161C;
+    --ground-2:#171C23;
+    --surface:#1A1F27;
+    --surface-2:#222933;
+    --ink:#E6EBF2;
+    --ink-soft:#C8D1DC;
+    --muted:#A3AEBD;
+    --faint:#788493;
+    --line:#28303A;
+    --line-2:#39434F;
+    --accent:#4EC2B2;
+    --accent-ink:#79D6C8;
+    --accent-lite:#4EC2B2;
+    --accent-soft:#143029;
+    --video:#E2705A;
+    --video-ink:#F0957F;
+    --video-soft:#3A201A;
+    --amber:#D59A3A;
+    --amber-ink:#E4B264;
+    --amber-soft:#332812;
+    --slate:#9CC0E6;
+    --slate-ink:#BBD4F0;
+    --slate-soft:#1B2A3A;
+    --btn-ink:#E6EBF2;
+    --btn-on:#12161C;
+    --shadow-sm:0 1px 2px rgba(0,0,0,.4);
+    --shadow-md:0 12px 34px rgba(0,0,0,.45);
+    --shadow-lg:0 34px 64px rgba(0,0,0,.55);
+    --blob:#19212A;
+    --good:#34C98A;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#12161C;
+  --ground-2:#171C23;
+  --surface:#1A1F27;
+  --surface-2:#222933;
+  --ink:#E6EBF2;
+  --ink-soft:#C8D1DC;
+  --muted:#A3AEBD;
+  --faint:#788493;
+  --line:#28303A;
+  --line-2:#39434F;
+  --accent:#4EC2B2;
+  --accent-ink:#79D6C8;
+  --accent-lite:#4EC2B2;
+  --accent-soft:#143029;
+  --video:#E2705A;
+  --video-ink:#F0957F;
+  --video-soft:#3A201A;
+  --amber:#D59A3A;
+  --amber-ink:#E4B264;
+  --amber-soft:#332812;
+  --slate:#9CC0E6;
+  --slate-ink:#BBD4F0;
+  --slate-soft:#1B2A3A;
+  --btn-ink:#E6EBF2;
+  --btn-on:#12161C;
+  --shadow-sm:0 1px 2px rgba(0,0,0,.4);
+  --shadow-md:0 12px 34px rgba(0,0,0,.45);
+  --shadow-lg:0 34px 64px rgba(0,0,0,.55);
+  --blob:#19212A;
+  --good:#34C98A;
+}
+
+/* ============================ DASAR ============================ */
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;
+  background:var(--ground);
+  color:var(--ink);
+  font-family:"Plus Jakarta Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  font-size:16px;
+  line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+a{color:inherit;text-decoration:none}
+img,svg{max-width:100%}
+h1,h2,h3{margin:0;line-height:1.08;text-wrap:balance;letter-spacing:-.02em}
+p{margin:0}
+.wrap{max-width:1180px;margin:0 auto;padding:0 24px}
+.eyebrow{
+  font-family:"JetBrains Mono",ui-monospace,monospace;
+  font-size:.74rem;font-weight:600;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--accent-ink);
+}
+:focus-visible{outline:3px solid var(--accent);outline-offset:3px;border-radius:6px}
+
+/* ============================ NAV PIL ============================ */
+.nav-shell{position:sticky;top:0;z-index:60;padding:18px 24px;pointer-events:none}
+.nav{
+  pointer-events:auto;
+  max-width:1120px;margin:0 auto;
+  display:flex;align-items:center;gap:20px;
+  background:color-mix(in srgb,var(--surface) 86%,transparent);
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border:1px solid var(--line);
+  border-radius:var(--r-pill);
+  padding:10px 12px 10px 20px;
+  box-shadow:var(--shadow-md);
+}
+.brand{display:inline-flex;align-items:center;gap:11px;font-weight:800;font-size:1.12rem;letter-spacing:-.01em}
+.brand .mark{width:30px;height:30px;flex:none}
+.nav-links{display:flex;gap:6px;margin:0 auto}
+.nav-links a{
+  padding:8px 15px;border-radius:var(--r-pill);font-weight:600;font-size:.95rem;color:var(--muted);
+  transition:color .15s,background .15s;
+}
+.nav-links a:hover{color:var(--ink);background:var(--surface-2)}
+.nav-right{display:flex;align-items:center;gap:8px}
+.tgl{
+  width:40px;height:40px;flex:none;display:grid;place-items:center;
+  border:1px solid var(--line);background:var(--surface-2);color:var(--ink);
+  border-radius:var(--r-pill);cursor:pointer;transition:background .15s,transform .15s;
+}
+.tgl:hover{background:var(--ground-2)}
+.tgl:active{transform:scale(.94)}
+.tgl .ico-sun{display:none}
+.tgl .ico-moon{display:block}
+:root[data-theme="dark"] .tgl .ico-sun{display:block}
+:root[data-theme="dark"] .tgl .ico-moon{display:none}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]) .tgl .ico-sun{display:block}
+  :root:not([data-theme="light"]) .tgl .ico-moon{display:none}
+}
+.btn{
+  display:inline-flex;align-items:center;gap:8px;font-weight:700;font-size:.95rem;
+  border-radius:var(--r-pill);padding:11px 22px;cursor:pointer;border:1px solid transparent;
+  transition:transform .15s,box-shadow .2s,background .15s,color .15s;white-space:nowrap;
+}
+.btn-dark{background:var(--btn-ink);color:var(--btn-on);box-shadow:var(--shadow-sm)}
+.btn-dark:hover{transform:translateY(-2px);box-shadow:var(--shadow-md)}
+.btn-ghost{background:transparent;color:var(--ink);border-color:var(--line-2)}
+.btn-ghost:hover{background:var(--surface-2);transform:translateY(-2px)}
+.btn-accent{background:var(--accent);color:#fff;box-shadow:0 8px 22px color-mix(in srgb,var(--accent) 40%,transparent)}
+.btn-accent:hover{transform:translateY(-2px);filter:brightness(1.04)}
+.btn-lg{padding:14px 28px;font-size:1.02rem}
+
+/* ============================ HERO ============================ */
+.hero{position:relative;padding:40px 0 72px;overflow:hidden}
+.blob{position:absolute;z-index:0;pointer-events:none;color:var(--blob)}
+.blob-1{top:-140px;right:-160px;width:720px;opacity:.9}
+.blob-2{bottom:-220px;left:-200px;width:620px;opacity:.5}
+.hero-grid{
+  position:relative;z-index:1;
+  display:grid;grid-template-columns:minmax(0,1.04fr) minmax(0,1fr);
+  gap:56px;align-items:center;
+}
+.hero-copy{max-width:600px}
+.hero h1{
+  font-size:clamp(2.5rem,5.4vw,4.1rem);font-weight:800;margin:18px 0 0;
+}
+.hero h1 .hl{color:var(--accent);position:relative;white-space:nowrap}
+.hero h1 .hl::after{
+  content:"";position:absolute;left:0;right:0;bottom:.06em;height:.14em;
+  background:color-mix(in srgb,var(--accent) 32%,transparent);border-radius:4px;z-index:-1;
+}
+.hero-sub{margin-top:22px;font-size:1.14rem;color:var(--muted);max-width:52ch;line-height:1.62}
+.hero-cta{margin-top:30px;display:flex;flex-wrap:wrap;gap:12px}
+.hero-meta{margin-top:24px;display:flex;flex-wrap:wrap;gap:8px 20px;color:var(--muted);font-size:.9rem}
+.hero-meta span{display:inline-flex;align-items:center;gap:7px}
+.dot{width:7px;height:7px;border-radius:50%;flex:none}
+.dot-a{background:var(--accent)}
+.dot-v{background:var(--video)}
+
+/* Panggung mockup + kartu melayang */
+.stage{position:relative}
+.window{
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);
+  box-shadow:var(--shadow-lg);overflow:hidden;
+}
+.callout{
+  position:absolute;display:flex;align-items:center;gap:11px;
+  background:var(--surface);border:1px solid var(--line);
+  border-radius:14px;padding:11px 14px;box-shadow:var(--shadow-md);
+  font-size:.82rem;line-height:1.3;max-width:238px;
+}
+.callout b{display:block;font-size:.9rem;color:var(--ink);font-weight:700}
+.callout small{color:var(--muted)}
+.callout .ci{width:34px;height:34px;flex:none;border-radius:10px;display:grid;place-items:center}
+.ci-a{background:var(--accent-soft);color:var(--accent-ink)}
+.ci-v{background:var(--video-soft);color:var(--video-ink)}
+.ci-amber{background:var(--amber-soft);color:var(--amber-ink)}
+.ci-g{background:color-mix(in srgb,var(--good) 18%,transparent);color:var(--good)}
+.co-1{top:-26px;right:-18px}
+.co-2{bottom:46px;left:-40px}
+.co-3{bottom:-24px;right:18px}
+
+/* ============================ SECTION CHROME ============================ */
+section{position:relative}
+.sec{padding:72px 0}
+.sec-head{max-width:640px;margin-bottom:40px}
+.sec-head.center{margin-left:auto;margin-right:auto;text-align:center}
+.sec h2{font-size:clamp(1.75rem,3.4vw,2.5rem);font-weight:800;margin-top:12px}
+.sec-head p{margin-top:14px;color:var(--muted);font-size:1.08rem}
+
+/* ====== DUA JALUR ====== */
+.tracks{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+.track{
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);
+  padding:28px;box-shadow:var(--shadow-sm);position:relative;overflow:hidden;
+}
+.track::before{content:"";position:absolute;inset:0 0 auto 0;height:4px}
+.track-a::before{background:var(--accent)}
+.track-v::before{background:var(--video)}
+.track-tag{
+  font-family:"JetBrains Mono",monospace;font-size:.72rem;font-weight:600;letter-spacing:.1em;
+  text-transform:uppercase;display:inline-flex;align-items:center;gap:8px;padding:5px 11px;border-radius:var(--r-pill);
+}
+.tag-a{background:var(--accent-soft);color:var(--accent-ink)}
+.tag-v{background:var(--video-soft);color:var(--video-ink)}
+.track h3{font-size:1.4rem;margin:16px 0 8px}
+.track p{color:var(--muted);font-size:.98rem}
+.track-ill{margin-top:20px;border-radius:var(--r-md);overflow:hidden;border:1px solid var(--line);background:var(--surface-2)}
+.track ul{list-style:none;margin:18px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:8px}
+.track li{font-size:.84rem;color:var(--ink-soft);background:var(--surface-2);border:1px solid var(--line);padding:5px 11px;border-radius:var(--r-pill)}
+
+/* ====== ALUR 7 LANGKAH ====== */
+.flow{display:grid;grid-template-columns:repeat(4,1fr);gap:18px}
+.step{
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md);
+  padding:22px 20px;box-shadow:var(--shadow-sm);position:relative;
+}
+.step .no{
+  font-family:"JetBrains Mono",monospace;font-weight:600;font-size:.82rem;
+  color:var(--muted);display:flex;align-items:center;justify-content:space-between;
+}
+.step .ic{width:38px;height:38px;color:var(--accent);margin:12px 0 10px}
+.step.v .ic{color:var(--video)}
+.step h3{font-size:1.08rem;margin-bottom:6px}
+.step p{font-size:.9rem;color:var(--muted)}
+.step .split{margin-top:10px;display:flex;flex-direction:column;gap:5px;font-size:.78rem}
+.step .split span{display:flex;gap:7px;align-items:flex-start}
+.badge-g{color:var(--accent-ink);font-weight:700;font-family:"JetBrains Mono",monospace;font-size:.68rem;flex:none;margin-top:2px}
+.badge-v{color:var(--video-ink);font-weight:700;font-family:"JetBrains Mono",monospace;font-size:.68rem;flex:none;margin-top:2px}
+
+/* ====== FITUR GRID ====== */
+.feat{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+.fcard{
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--r-md);
+  padding:24px;box-shadow:var(--shadow-sm);display:flex;flex-direction:column;
+  transition:transform .18s,box-shadow .2s,border-color .18s;
+}
+.fcard:hover{transform:translateY(-4px);box-shadow:var(--shadow-md);border-color:var(--line-2)}
+.fcard .fig{
+  border-radius:var(--r-sm);overflow:hidden;background:var(--surface-2);
+  border:1px solid var(--line);margin-bottom:18px;
+}
+.fcard h3{font-size:1.14rem;margin-bottom:7px}
+.fcard p{font-size:.92rem;color:var(--muted);flex:1}
+.fcard .more{
+  margin-top:16px;font-weight:700;font-size:.88rem;color:var(--accent-ink);
+  display:inline-flex;align-items:center;gap:6px;
+}
+.fcard.v .more{color:var(--video-ink)}
+.fcard .more svg{transition:transform .15s}
+.fcard:hover .more svg{transform:translateX(3px)}
+
+/* ====== PERAN ====== */
+.peran{
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);
+  box-shadow:var(--shadow-sm);padding:36px;display:grid;grid-template-columns:.9fr 1.1fr;gap:40px;align-items:center;
+}
+.roles{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.role{display:flex;gap:13px;align-items:flex-start;padding:16px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--surface-2)}
+.role .av{width:40px;height:40px;flex:none;border-radius:11px;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent-ink);font-weight:800;font-family:"JetBrains Mono",monospace}
+.role:nth-child(2) .av{background:var(--video-soft);color:var(--video-ink)}
+.role:nth-child(3) .av{background:var(--amber-soft);color:var(--amber-ink)}
+.role:nth-child(4) .av{background:var(--slate-soft);color:var(--slate-ink)}
+.role b{font-size:.98rem}
+.role p{font-size:.82rem;color:var(--muted);margin-top:3px}
+
+/* ====== CTA BAND ====== */
+.cta-band{
+  position:relative;overflow:hidden;background:var(--ink);color:#fff;
+  border-radius:var(--r-lg);padding:56px 48px;text-align:center;box-shadow:var(--shadow-lg);
+}
+.cta-band h2{color:#fff;font-size:clamp(1.8rem,3.6vw,2.6rem)}
+.cta-band p{color:rgba(255,255,255,.72);margin:14px auto 0;max-width:46ch;font-size:1.06rem}
+.cta-band .hero-cta{justify-content:center;margin-top:28px}
+.cta-band .btn-ghost{color:#fff;border-color:rgba(255,255,255,.3)}
+.cta-band .btn-ghost:hover{background:rgba(255,255,255,.1)}
+.cta-blob{position:absolute;z-index:0;color:color-mix(in srgb,var(--accent) 34%,transparent);top:-120px;left:-80px;width:420px}
+.cta-blob-2{color:color-mix(in srgb,var(--video) 30%,transparent);bottom:-160px;right:-80px;top:auto;left:auto;width:420px}
+.cta-band .wrap-in{position:relative;z-index:1}
+
+/* ====== FOOTER ====== */
+footer{padding:48px 0 56px;border-top:1px solid var(--line);margin-top:72px}
+.foot{display:flex;flex-wrap:wrap;gap:24px;justify-content:space-between;align-items:center}
+.foot .brand{font-size:1rem}
+.foot-links{display:flex;flex-wrap:wrap;gap:22px;font-size:.9rem;color:var(--muted)}
+.foot-links a:hover{color:var(--ink)}
+.foot-note{width:100%;color:var(--muted);font-size:.82rem;margin-top:8px}
+
+/* ============================ SVG KELAS TEMA ============================ */
+.s-surf{fill:var(--surface)}
+.s-surf2{fill:var(--surface-2)}
+.s-ink{fill:var(--ink)}
+.s-muted{fill:var(--muted)}
+.s-line{stroke:var(--line);fill:none}
+.s-line-f{fill:var(--line)}
+.s-acc{fill:var(--accent)}
+.s-acc-st{stroke:var(--accent);fill:none}
+.s-acc-soft{fill:var(--accent-soft)}
+.s-vid{fill:var(--video)}
+.s-vid-st{stroke:var(--video);fill:none}
+.s-vid-soft{fill:var(--video-soft)}
+.s-amber{fill:var(--amber)}
+.s-amber-soft{fill:var(--amber-soft)}
+.s-slate{fill:var(--slate)}
+.s-slate-st{stroke:var(--slate);fill:none}
+.s-slate-soft{fill:var(--slate-soft)}
+.s-ground{fill:var(--ground)}
+.s-white{fill:#fff}
+
+/* ============================ RESPONSIF ============================ */
+@media (max-width:960px){
+  .hero-grid{grid-template-columns:1fr;gap:64px}
+  .stage{max-width:520px;margin:0 auto}
+  .flow{grid-template-columns:repeat(2,1fr)}
+  .feat{grid-template-columns:repeat(2,1fr)}
+  .peran{grid-template-columns:1fr;gap:28px}
+}
+@media (max-width:760px){
+  .nav-links{display:none}
+  .tracks{grid-template-columns:1fr}
+  .nav{padding:9px 10px 9px 16px}
+}
+@media (max-width:560px){
+  .wrap{padding:0 18px}
+  .sec{padding:56px 0}
+  .flow{grid-template-columns:1fr}
+  .feat{grid-template-columns:1fr}
+  .roles{grid-template-columns:1fr}
+  .cta-band{padding:40px 22px}
+  .co-1,.co-2,.co-3{position:static;margin:10px 0 0;max-width:none}
+  .stage .callout{box-shadow:var(--shadow-sm)}
+}
+@media (prefers-reduced-motion:reduce){
+  *{transition:none!important;animation:none!important;scroll-behavior:auto!important}
+}
+html{scroll-behavior:smooth}
+</style>
+</head>
+<body>
+
+<!-- ============================ NAV ============================ -->
+<header class="nav-shell">
+  <nav class="nav" aria-label="Navigasi utama">
+    <a class="brand" href="/landing" aria-label="{{ nama_app() }} beranda">
+      <svg class="mark" viewBox="0 0 32 32" aria-hidden="true">
+        <rect x="1" y="1" width="30" height="30" rx="9" class="s-ink"/>
+        <rect x="6.5" y="6.5" width="8.5" height="8.5" rx="2.5" class="s-acc"/>
+        <rect x="17" y="6.5" width="8.5" height="8.5" rx="2.5" class="s-vid"/>
+        <rect x="6.5" y="17" width="8.5" height="8.5" rx="2.5" class="s-vid"/>
+        <rect x="17" y="17" width="8.5" height="8.5" rx="2.5" class="s-acc"/>
+      </svg>
+      <span>{{ nama_app() }}</span>
+    </a>
+    <div class="nav-links">
+      <a href="/fitur">Fitur</a>
+      <a href="#alur">Alur kerja</a>
+      <a href="#peran">Peran tim</a>
+    </div>
+    <div class="nav-right">
+      <button class="tgl" id="tema" type="button" aria-label="Ganti tema terang/gelap">
+        <svg class="ico-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+        <svg class="ico-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.5M12 19.5V22M4.2 4.2l1.8 1.8M18 18l1.8 1.8M2 12h2.5M19.5 12H22M4.2 19.8 6 18M18 6l1.8-1.8"/></svg>
+      </button>
+      <a class="btn btn-accent" href="/login">Masuk</a>
+    </div>
+  </nav>
+</header>
+
+<main>
+<!-- ============================ HERO ============================ -->
+<section class="hero">
+  <svg class="blob blob-1" viewBox="0 0 600 600" aria-hidden="true"><path fill="currentColor" d="M441 86c57 44 96 115 95 190-1 76-42 156-109 199s-160 49-229 14-114-111-118-189 36-168 104-215S384 42 441 86z"/></svg>
+  <svg class="blob blob-2" viewBox="0 0 600 600" aria-hidden="true"><path fill="currentColor" d="M441 86c57 44 96 115 95 190-1 76-42 156-109 199s-160 49-229 14-114-111-118-189 36-168 104-215S384 42 441 86z"/></svg>
+  <div class="wrap hero-grid">
+    <div class="hero-copy">
+      <span class="eyebrow">Lab anotasi + training &middot; pasang di server sendiri</span>
+      <h1>Seluruh daur data visi komputer dalam satu <span class="hl">lab</span>.</h1>
+      <p class="hero-sub">{{ nama_app() }} menyatukan pengumpulan data, pembagian tugas tim, anotasi, kurasi dataset, pembekuan versi, sampai training model &mdash; untuk projek <strong>gambar</strong> maupun <strong>video</strong>, di peramban, tanpa data meninggalkan server Anda.</p>
+      <div class="hero-cta">
+        <a class="btn btn-accent btn-lg" href="/login">Masuk ke lab</a>
+        <a class="btn btn-ghost btn-lg" href="/fitur">Lihat semua fitur</a>
+      </div>
+      <div class="hero-meta">
+        <span><i class="dot dot-a"></i> Gambar: deteksi, segmentasi, pose</span>
+        <span><i class="dot dot-v"></i> Video: klasifikasi aksi</span>
+      </div>
+    </div>
+
+    <div class="stage">
+      <!-- Mockup jendela aplikasi HIGOLAB -->
+      <div class="window" aria-hidden="true">
+        <svg viewBox="0 0 520 380" width="100%" role="img" aria-label="Pratinjau antarmuka aplikasi">
+          <rect width="520" height="380" class="s-surf"/>
+          <!-- bar atas -->
+          <rect x="0" y="0" width="520" height="40" class="s-surf2"/>
+          <circle cx="20" cy="20" r="4" class="s-line-f"/><circle cx="34" cy="20" r="4" class="s-line-f"/><circle cx="48" cy="20" r="4" class="s-line-f"/>
+          <rect x="70" y="13" width="120" height="14" rx="7" class="s-line-f"/>
+          <rect x="452" y="11" width="52" height="18" rx="9" class="s-ink"/>
+          <!-- sidebar -->
+          <rect x="0" y="40" width="132" height="340" class="s-surf2"/>
+          <rect x="16" y="60" width="100" height="26" rx="8" class="s-acc-soft"/>
+          <rect x="26" y="70" width="12" height="6" rx="3" class="s-acc"/>
+          <rect x="46" y="70" width="52" height="6" rx="3" class="s-acc"/>
+          <g>
+            <rect x="26" y="106" width="12" height="6" rx="3" class="s-muted"/><rect x="46" y="106" width="58" height="6" rx="3" class="s-muted"/>
+            <rect x="26" y="134" width="12" height="6" rx="3" class="s-muted"/><rect x="46" y="134" width="46" height="6" rx="3" class="s-muted"/>
+            <rect x="26" y="162" width="12" height="6" rx="3" class="s-muted"/><rect x="46" y="162" width="50" height="6" rx="3" class="s-muted"/>
+            <rect x="26" y="190" width="12" height="6" rx="3" class="s-muted"/><rect x="46" y="190" width="54" height="6" rx="3" class="s-muted"/>
+          </g>
+          <!-- heading konten -->
+          <rect x="156" y="60" width="150" height="12" rx="6" class="s-ink"/>
+          <rect x="156" y="80" width="230" height="7" rx="3.5" class="s-line-f"/>
+          <!-- grid kartu thumbnail: baris gambar (oranye) + baris video (teal) -->
+          <g>
+            <!-- row 1 -->
+            <rect x="156" y="104" width="108" height="78" rx="10" class="s-surf2"/><rect x="156" y="104" width="108" height="78" rx="10" class="s-line"/>
+            <rect x="168" y="124" width="48" height="34" rx="4" class="s-acc-st" stroke-width="2.5"/>
+            <rect x="166" y="168" width="34" height="8" rx="4" class="s-acc"/>
+            <rect x="276" y="104" width="108" height="78" rx="10" class="s-surf2"/><rect x="276" y="104" width="108" height="78" rx="10" class="s-line"/>
+            <polygon points="300,120 332,130 340,158 312,170 290,150" class="s-acc-st" stroke-width="2.5"/>
+            <circle cx="300" cy="120" r="3" class="s-acc"/><circle cx="332" cy="130" r="3" class="s-acc"/><circle cx="340" cy="158" r="3" class="s-acc"/><circle cx="312" cy="170" r="3" class="s-acc"/><circle cx="290" cy="150" r="3" class="s-acc"/>
+            <rect x="396" y="104" width="108" height="78" rx="10" class="s-surf2"/><rect x="396" y="104" width="108" height="78" rx="10" class="s-line"/>
+            <line x1="450" y1="118" x2="450" y2="132" class="s-acc-st" stroke-width="2.5"/><circle cx="450" cy="138" r="7" class="s-acc-st" stroke-width="2.5"/>
+            <line x1="443" y1="150" x2="440" y2="166" class="s-acc-st" stroke-width="2.5"/><line x1="457" y1="150" x2="460" y2="166" class="s-acc-st" stroke-width="2.5"/>
+            <line x1="443" y1="146" x2="430" y2="140" class="s-acc-st" stroke-width="2.5"/><line x1="457" y1="146" x2="470" y2="140" class="s-acc-st" stroke-width="2.5"/>
+            <!-- row 2 : klip video -->
+            <rect x="156" y="196" width="108" height="78" rx="10" class="s-surf2"/><rect x="156" y="196" width="108" height="78" rx="10" class="s-line"/>
+            <polygon points="202,226 222,236 202,246" class="s-vid"/><rect x="164" y="260" width="30" height="8" rx="4" class="s-vid"/>
+            <rect x="276" y="196" width="108" height="78" rx="10" class="s-surf2"/><rect x="276" y="196" width="108" height="78" rx="10" class="s-line"/>
+            <polygon points="322,226 342,236 322,246" class="s-vid"/><rect x="284" y="260" width="40" height="8" rx="4" class="s-vid"/>
+            <rect x="396" y="196" width="108" height="78" rx="10" class="s-surf2"/><rect x="396" y="196" width="108" height="78" rx="10" class="s-line"/>
+            <polygon points="442,226 462,236 442,246" class="s-vid"/><rect x="404" y="260" width="34" height="8" rx="4" class="s-vid"/>
+          </g>
+          <!-- baris progres -->
+          <rect x="156" y="294" width="348" height="10" rx="5" class="s-line-f"/>
+          <rect x="156" y="294" width="210" height="10" rx="5" class="s-acc"/>
+          <rect x="156" y="318" width="120" height="7" rx="3.5" class="s-muted"/>
+        </svg>
+      </div>
+      <!-- Kartu melayang -->
+      <div class="callout co-1">
+        <span class="ci ci-g"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></span>
+        <div><b>128 klip terlabeli</b><small>Batch "parkir-pagi" rampung</small></div>
+      </div>
+      <div class="callout co-2">
+        <span class="ci ci-amber"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 9h18"/></svg></span>
+        <div><b>Versi v12 dibekukan</b><small>Split anti-bocor per sesi</small></div>
+      </div>
+      <div class="callout co-3">
+        <span class="ci ci-v"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.5 19a4.5 4.5 0 0 0 .5-9 6 6 0 0 0-11.6-1.5A4 4 0 0 0 6.5 19z"/></svg></span>
+        <div><b>Training di Kaggle</b><small>GPU gratis &middot; epoch 34/80</small></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ DUA JALUR ============================ -->
+<section class="sec" id="jenis">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">Dua jenis projek, satu alur</span>
+      <h2>Pilih jalur gambar atau video &mdash; sisanya tetap sama.</h2>
+      <p>Buat projek, lalu {{ nama_app() }} menyesuaikan kanvas, unit kerja, dan model training. Pembagian tugas, kurasi, versi, dan ekspor berjalan identik di kedua jalur.</p>
+    </div>
+    <div class="tracks">
+      <article class="track track-a">
+        <span class="track-tag tag-a"><i class="dot dot-a"></i> Jalur gambar</span>
+        <h3>Deteksi, segmentasi &amp; pose</h3>
+        <p>Unit kerja berupa gambar. Kanvas lengkap dengan MobileSAM, enam tipe bentuk, keypoint/skeleton, dan deteksi lewat teks.</p>
+        <div class="track-ill">
+          <svg viewBox="0 0 440 200" width="100%" role="img" aria-label="Ilustrasi anotasi gambar: kotak, poligon, dan pose">
+            <rect width="440" height="200" class="s-surf2"/>
+            <!-- bbox -->
+            <rect x="26" y="34" width="118" height="128" rx="10" class="s-surf"/><rect x="26" y="34" width="118" height="128" rx="10" class="s-line"/>
+            <rect x="50" y="64" width="70" height="72" rx="6" class="s-acc-st" stroke-width="3"/>
+            <rect x="50" y="52" width="48" height="12" rx="6" class="s-acc"/>
+            <circle cx="50" cy="64" r="3.5" class="s-acc"/><circle cx="120" cy="64" r="3.5" class="s-acc"/><circle cx="50" cy="136" r="3.5" class="s-acc"/><circle cx="120" cy="136" r="3.5" class="s-acc"/>
+            <!-- polygon -->
+            <rect x="162" y="34" width="118" height="128" rx="10" class="s-surf"/><rect x="162" y="34" width="118" height="128" rx="10" class="s-line"/>
+            <polygon points="196,70 244,60 266,100 236,142 188,120" class="s-acc-soft"/>
+            <polygon points="196,70 244,60 266,100 236,142 188,120" class="s-acc-st" stroke-width="3"/>
+            <circle cx="196" cy="70" r="4" class="s-acc"/><circle cx="244" cy="60" r="4" class="s-acc"/><circle cx="266" cy="100" r="4" class="s-acc"/><circle cx="236" cy="142" r="4" class="s-acc"/><circle cx="188" cy="120" r="4" class="s-acc"/>
+            <!-- pose -->
+            <rect x="298" y="34" width="118" height="128" rx="10" class="s-surf"/><rect x="298" y="34" width="118" height="128" rx="10" class="s-line"/>
+            <g class="s-acc-st" stroke-width="3" stroke-linecap="round">
+              <line x1="357" y1="64" x2="357" y2="100"/><line x1="357" y1="76" x2="336" y2="92"/><line x1="357" y1="76" x2="378" y2="92"/>
+              <line x1="357" y1="100" x2="340" y2="138"/><line x1="357" y1="100" x2="374" y2="138"/>
+            </g>
+            <g class="s-acc">
+              <circle cx="357" cy="58" r="6"/><circle cx="336" cy="92" r="4.5"/><circle cx="378" cy="92" r="4.5"/><circle cx="357" cy="100" r="4.5"/><circle cx="340" cy="138" r="4.5"/><circle cx="374" cy="138" r="4.5"/>
+            </g>
+          </svg>
+        </div>
+        <ul><li>MobileSAM 1 klik</li><li>6 tipe bentuk</li><li>Pose / skeleton</li><li>Deteksi via teks</li></ul>
+      </article>
+
+      <article class="track track-v">
+        <span class="track-tag tag-v"><i class="dot dot-v"></i> Jalur video</span>
+        <h3>Klasifikasi aksi per klip</h3>
+        <p>Unit kerja berupa klip pendek. Potong video sumber jadi klip, labeli lewat grid pemutar, dengan pintasan angka yang cepat.</p>
+        <div class="track-ill">
+          <svg viewBox="0 0 440 200" width="100%" role="img" aria-label="Ilustrasi grid klip video dengan badge aksi">
+            <rect width="440" height="200" class="s-surf2"/>
+            <g>
+              <!-- 2 x 3 grid klip -->
+              <g>
+                <rect x="24" y="26" width="124" height="68" rx="9" class="s-surf"/><rect x="24" y="26" width="124" height="68" rx="9" class="s-line"/>
+                <polygon points="78,48 96,60 78,72" class="s-vid"/><rect x="34" y="80" width="42" height="7" rx="3.5" class="s-vid-soft"/>
+                <rect x="158" y="26" width="124" height="68" rx="9" class="s-surf"/><rect x="158" y="26" width="124" height="68" rx="9" class="s-line"/>
+                <polygon points="212,48 230,60 212,72" class="s-vid"/><rect x="168" y="80" width="54" height="7" rx="3.5" class="s-vid-soft"/>
+                <rect x="292" y="26" width="124" height="68" rx="9" class="s-surf"/><rect x="292" y="26" width="124" height="68" rx="9" class="s-line"/>
+                <polygon points="346,48 364,60 346,72" class="s-vid"/><rect x="302" y="80" width="38" height="7" rx="3.5" class="s-vid-soft"/>
+              </g>
+              <g>
+                <rect x="24" y="106" width="124" height="68" rx="9" class="s-surf"/><rect x="24" y="106" width="124" height="68" rx="9" class="s-line"/>
+                <polygon points="78,128 96,140 78,152" class="s-vid"/><rect x="34" y="160" width="48" height="7" rx="3.5" class="s-vid-soft"/>
+                <rect x="158" y="106" width="124" height="68" rx="9" class="s-surf"/><rect x="158" y="106" width="124" height="68" rx="9" class="s-vid-st" stroke-width="2.5"/>
+                <polygon points="212,128 230,140 212,152" class="s-vid"/><rect x="168" y="160" width="40" height="7" rx="3.5" class="s-vid"/>
+                <rect x="292" y="106" width="124" height="68" rx="9" class="s-surf"/><rect x="292" y="106" width="124" height="68" rx="9" class="s-line"/>
+                <polygon points="346,128 364,140 346,152" class="s-vid"/><rect x="302" y="160" width="52" height="7" rx="3.5" class="s-vid-soft"/>
+              </g>
+            </g>
+          </svg>
+        </div>
+        <ul><li>Potong ffmpeg</li><li>Tarik URL (yt-dlp)</li><li>Thumbnail diam</li><li>Pintasan 1&ndash;9/0</li></ul>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ ALUR 7 LANGKAH ============================ -->
+<section class="sec" id="alur">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">Alur kerja &middot; 7 langkah</span>
+      <h2>Dari data mentah ke model yang diekspor.</h2>
+      <p>Satu projek membawa seluruh daur hidup. Perbedaan jalur gambar dan video ditandai di tiap langkah.</p>
+    </div>
+    <div class="flow">
+      <div class="step">
+        <div class="no"><span>01</span></div>
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/><rect x="3" y="3" width="18" height="18" rx="5"/></svg>
+        <h3>Buat projek</h3>
+        <p>Tentukan jenis projek: gambar atau video. Pilihan ini menata sisa alur.</p>
+      </div>
+      <div class="step">
+        <div class="no"><span>02</span></div>
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4M8 8l4-4 4 4"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
+        <h3>Unggah &amp; impor</h3>
+        <p>Isi projek dengan sumber data lewat berbagai cara.</p>
+        <div class="split">
+          <span><i class="badge-g">GBR</i> Tarik folder / .zip Roboflow / ambil dari folder server.</span>
+          <span><i class="badge-v">VID</i> Unggah video &amp; potong klip, tarik URL, atau impor klip jadi.</span>
+        </div>
+      </div>
+      <div class="step">
+        <div class="no"><span>03</span></div>
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><circle cx="18" cy="7" r="2.3"/><path d="M16.5 20a4.5 4.5 0 0 1 4.5-4.5"/></svg>
+        <h3>Bagi tugas &amp; peran</h3>
+        <p>Undang anggota, bagi pekerjaan acak atau urut lewat papan kanban. Unit: gambar atau klip.</p>
+      </div>
+      <div class="step v">
+        <div class="no"><span>04</span></div>
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19l7-7a2.8 2.8 0 0 0-4-4l-7 7-1 5z"/><path d="M14 6l4 4"/></svg>
+        <h3>Anotasi</h3>
+        <p>Beri label pada tiap unit kerja.</p>
+        <div class="split">
+          <span><i class="badge-g">GBR</i> Kanvas: MobileSAM, bentuk, pose, deteksi teks.</span>
+          <span><i class="badge-v">VID</i> Grid klip + overlay pemutar, pintasan angka.</span>
+        </div>
+      </div>
+      <div class="step">
+        <div class="no"><span>05</span></div>
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7h18M3 12h18M3 17h10"/><circle cx="18" cy="17" r="3"/><path d="M18 16v2"/></svg>
+        <h3>Dataset</h3>
+        <p>Kurasi: hanya yang terpilih yang ikut. Pada gambar, "tandai latar" jadi contoh negatif.</p>
+      </div>
+      <div class="step">
+        <div class="no"><span>06</span></div>
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3v12"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9c0 7-12 3-12 6"/></svg>
+        <h3>Versi</h3>
+        <p>Bekukan dengan augmentasi &amp; penyeimbangan. Split train/valid/test anti-bocor.</p>
+      </div>
+      <div class="step">
+        <div class="no"><span>07</span></div>
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M9 9h6v6H9z"/><path d="M4 10H2M4 14H2M22 10h-2M22 14h-2M10 4V2M14 4V2M10 22v-2M14 22v-2"/></svg>
+        <h3>Training &amp; ekspor</h3>
+        <p>Latih lokal (GPU) atau di Kaggle (GPU gratis), lalu ekspor ke 5 format.</p>
+      </div>
+      <div class="step" style="display:grid;place-content:center;background:transparent;border-style:dashed">
+        <a class="more" href="/fitur" style="font-weight:700;color:var(--accent-ink);display:inline-flex;align-items:center;gap:8px">
+          Rincian tiap langkah
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ FITUR UTAMA ============================ -->
+<section class="sec" id="fitur">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">Fitur utama</span>
+      <h2>Alat yang tepat untuk tiap jenis pekerjaan.</h2>
+      <p>Ringkasan di sini &mdash; rincian lengkap tersedia di halaman fitur.</p>
+    </div>
+    <div class="feat">
+      <!-- bbox -->
+      <a class="fcard" href="/fitur#anotasi-gambar">
+        <div class="fig">
+          <svg viewBox="0 0 320 150" width="100%" role="img" aria-label="Kotak pembatas deteksi objek">
+            <rect width="320" height="150" class="s-surf2"/>
+            <rect x="40" y="26" width="240" height="98" rx="10" class="s-surf"/><rect x="40" y="26" width="240" height="98" rx="10" class="s-line"/>
+            <rect x="96" y="52" width="128" height="60" rx="6" class="s-acc-st" stroke-width="3"/>
+            <rect x="96" y="40" width="70" height="13" rx="6.5" class="s-acc"/>
+            <circle cx="96" cy="52" r="4" class="s-acc"/><circle cx="224" cy="52" r="4" class="s-acc"/><circle cx="96" cy="112" r="4" class="s-acc"/><circle cx="224" cy="112" r="4" class="s-acc"/>
+          </svg>
+        </div>
+        <h3>Kotak &amp; poligon</h3>
+        <p>Bounding box untuk deteksi, poligon untuk segmentasi. MobileSAM mengubah satu klik jadi poligon otomatis.</p>
+        <span class="more">Selengkapnya <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+      </a>
+      <!-- pose -->
+      <a class="fcard" href="/fitur#anotasi-gambar">
+        <div class="fig">
+          <svg viewBox="0 0 320 150" width="100%" role="img" aria-label="Keypoint dan skeleton pose">
+            <rect width="320" height="150" class="s-surf2"/>
+            <g class="s-acc-st" stroke-width="3.5" stroke-linecap="round">
+              <line x1="160" y1="44" x2="160" y2="88"/><line x1="160" y1="58" x2="132" y2="78"/><line x1="160" y1="58" x2="188" y2="78"/>
+              <line x1="160" y1="88" x2="138" y2="124"/><line x1="160" y1="88" x2="182" y2="124"/>
+            </g>
+            <g class="s-acc"><circle cx="160" cy="36" r="8"/><circle cx="132" cy="78" r="5.5"/><circle cx="188" cy="78" r="5.5"/><circle cx="160" cy="88" r="5.5"/><circle cx="138" cy="124" r="5.5"/><circle cx="182" cy="124" r="5.5"/></g>
+          </svg>
+        </div>
+        <h3>Keypoint &amp; skeleton</h3>
+        <p>Template skeleton per projek: titik keypoint dan tulang penghubung untuk anotasi pose.</p>
+        <span class="more">Selengkapnya <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+      </a>
+      <!-- deteksi teks -->
+      <a class="fcard" href="/fitur#anotasi-gambar">
+        <div class="fig">
+          <svg viewBox="0 0 320 150" width="100%" role="img" aria-label="Deteksi objek lewat perintah teks">
+            <rect width="320" height="150" class="s-surf2"/>
+            <rect x="26" y="22" width="150" height="106" rx="10" class="s-surf"/><rect x="26" y="22" width="150" height="106" rx="10" class="s-line"/>
+            <rect x="46" y="48" width="42" height="38" rx="5" class="s-acc-st" stroke-width="2.6"/>
+            <rect x="104" y="70" width="52" height="34" rx="5" class="s-acc-st" stroke-width="2.6"/>
+            <rect x="210" y="40" width="96" height="30" rx="15" class="s-surf"/><rect x="210" y="40" width="96" height="30" rx="15" class="s-acc-st" stroke-width="2"/>
+            <rect x="224" y="52" width="68" height="7" rx="3.5" class="s-acc"/>
+            <path d="M200 55 H182" class="s-muted" stroke="var(--muted)" stroke-width="2.4" stroke-dasharray="3 4" fill="none"/>
+            <polygon points="182,55 190,51 190,59" class="s-muted"/>
+          </svg>
+        </div>
+        <h3>Deteksi lewat teks</h3>
+        <p>Sebut nama kelas &mdash; YOLO-World XL (kotak) atau SAM 3 (poligon) menandai semua yang cocok di satu gambar.</p>
+        <span class="more">Selengkapnya <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+      </a>
+      <!-- aksi video -->
+      <a class="fcard v" href="/fitur#klasifikasi-aksi">
+        <div class="fig">
+          <svg viewBox="0 0 320 150" width="100%" role="img" aria-label="Grid klip klasifikasi aksi">
+            <rect width="320" height="150" class="s-surf2"/>
+            <g>
+              <rect x="26" y="24" width="86" height="48" rx="8" class="s-surf"/><rect x="26" y="24" width="86" height="48" rx="8" class="s-line"/><polygon points="62,38 78,48 62,58" class="s-vid"/>
+              <rect x="120" y="24" width="86" height="48" rx="8" class="s-surf"/><rect x="120" y="24" width="86" height="48" rx="8" class="s-vid-st" stroke-width="2.4"/><polygon points="156,38 172,48 156,58" class="s-vid"/>
+              <rect x="214" y="24" width="86" height="48" rx="8" class="s-surf"/><rect x="214" y="24" width="86" height="48" rx="8" class="s-line"/><polygon points="250,38 266,48 250,58" class="s-vid"/>
+              <rect x="26" y="82" width="86" height="48" rx="8" class="s-surf"/><rect x="26" y="82" width="86" height="48" rx="8" class="s-line"/><polygon points="62,96 78,106 62,116" class="s-vid"/>
+              <rect x="120" y="82" width="86" height="48" rx="8" class="s-surf"/><rect x="120" y="82" width="86" height="48" rx="8" class="s-line"/><polygon points="156,96 172,106 156,116" class="s-vid"/>
+              <rect x="214" y="82" width="86" height="48" rx="8" class="s-surf"/><rect x="214" y="82" width="86" height="48" rx="8" class="s-line"/><polygon points="250,96 266,106 250,116" class="s-vid"/>
+            </g>
+          </svg>
+        </div>
+        <h3>Klasifikasi aksi</h3>
+        <p>Grid klip dengan thumbnail diam; klip berputar hanya saat dilabeli. Pintasan angka 1&ndash;9/0 mempercepat kerja.</p>
+        <span class="more">Selengkapnya <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+      </a>
+      <!-- kanban -->
+      <a class="fcard" href="/fitur#tim-peran">
+        <div class="fig">
+          <svg viewBox="0 0 320 150" width="100%" role="img" aria-label="Papan kanban tiga kolom">
+            <rect width="320" height="150" class="s-surf2"/>
+            <g>
+              <rect x="20" y="22" width="90" height="106" rx="9" class="s-surf"/><rect x="20" y="22" width="90" height="106" rx="9" class="s-line"/>
+              <rect x="30" y="32" width="46" height="7" rx="3.5" class="s-muted"/>
+              <rect x="30" y="48" width="70" height="20" rx="5" class="s-surf2"/><rect x="30" y="48" width="70" height="20" rx="5" class="s-line"/>
+              <rect x="30" y="74" width="70" height="20" rx="5" class="s-surf2"/><rect x="30" y="74" width="70" height="20" rx="5" class="s-line"/>
+              <rect x="115" y="22" width="90" height="106" rx="9" class="s-surf"/><rect x="115" y="22" width="90" height="106" rx="9" class="s-line"/>
+              <rect x="125" y="32" width="40" height="7" rx="3.5" class="s-acc"/>
+              <rect x="125" y="48" width="70" height="20" rx="5" class="s-acc-soft"/>
+              <rect x="125" y="74" width="70" height="20" rx="5" class="s-surf2"/><rect x="125" y="74" width="70" height="20" rx="5" class="s-line"/>
+              <rect x="210" y="22" width="90" height="106" rx="9" class="s-surf"/><rect x="210" y="22" width="90" height="106" rx="9" class="s-line"/>
+              <rect x="220" y="32" width="44" height="7" rx="3.5" class="s-vid"/>
+              <rect x="220" y="48" width="70" height="20" rx="5" class="s-vid-soft"/>
+            </g>
+          </svg>
+        </div>
+        <h3>Kerja tim &amp; kanban</h3>
+        <p>Papan Belum ditugaskan &middot; Dikerjakan &middot; Dataset, dengan empat peran RBAC dan kemajuan per orang.</p>
+        <span class="more">Selengkapnya <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+      </a>
+      <!-- versi/split -->
+      <a class="fcard" href="/fitur#dataset-versi">
+        <div class="fig">
+          <svg viewBox="0 0 320 150" width="100%" role="img" aria-label="Pembagian dataset train valid test">
+            <rect width="320" height="150" class="s-surf2"/>
+            <rect x="30" y="34" width="56" height="82" rx="9" class="s-slate"/>
+            <path d="M92 75 H134" class="s-line" stroke="var(--line-2)" stroke-width="2.4" fill="none"/>
+            <g>
+              <rect x="140" y="40" width="150" height="20" rx="6" class="s-acc"/>
+              <rect x="140" y="66" width="60" height="20" rx="6" class="s-slate"/>
+              <rect x="140" y="92" width="44" height="20" rx="6" class="s-amber"/>
+            </g>
+          </svg>
+        </div>
+        <h3>Versi &amp; split anti-bocor</h3>
+        <p>Dibelah per sesi pemotretan lalu diperiksa kemiripan (dHash), agar foto sama tak muncul di train &amp; valid.</p>
+        <span class="more">Selengkapnya <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+      </a>
+      <!-- training -->
+      <a class="fcard v" href="/fitur#training">
+        <div class="fig">
+          <svg viewBox="0 0 320 150" width="100%" role="img" aria-label="Training lokal GPU dan Kaggle dengan kurva akurasi">
+            <rect width="320" height="150" class="s-surf2"/>
+            <rect x="34" y="52" width="46" height="46" rx="8" class="s-vid-st" stroke-width="2.6"/>
+            <rect x="46" y="64" width="22" height="22" rx="4" class="s-vid"/>
+            <g class="s-vid-st" stroke-width="2.4"><line x1="34" y1="62" x2="26" y2="62"/><line x1="34" y1="88" x2="26" y2="88"/><line x1="80" y1="62" x2="88" y2="62"/><line x1="80" y1="88" x2="88" y2="88"/></g>
+            <path d="M120 100a22 22 0 0 1 10-42 26 26 0 0 1 50 4 18 18 0 0 1-4 38z" class="s-surf"/>
+            <path d="M120 100a22 22 0 0 1 10-42 26 26 0 0 1 50 4 18 18 0 0 1-4 38z" class="s-vid-st" stroke-width="2.4"/>
+            <polyline points="214,106 236,92 254,96 272,66 292,52" class="s-vid-st" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="292" cy="52" r="4.5" class="s-vid"/>
+            <line x1="210" y1="112" x2="296" y2="112" class="s-line" stroke="var(--line-2)" stroke-width="2"/>
+          </svg>
+        </div>
+        <h3>Training lokal &amp; Kaggle</h3>
+        <p>YOLO / RF-DETR untuk gambar, VideoMAE / SlowFast / PoseC3D untuk video. Uji produksi pada data nyata.</p>
+        <span class="more">Selengkapnya <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+      </a>
+      <!-- ekspor -->
+      <a class="fcard" href="/fitur#ekspor">
+        <div class="fig">
+          <svg viewBox="0 0 320 150" width="100%" role="img" aria-label="Lima format ekspor dataset">
+            <rect width="320" height="150" class="s-surf2"/>
+            <g>
+              <rect x="34" y="34" width="72" height="30" rx="8" class="s-surf"/><rect x="34" y="34" width="72" height="30" rx="8" class="s-line"/><rect x="46" y="46" width="34" height="7" rx="3.5" class="s-acc"/>
+              <rect x="124" y="34" width="72" height="30" rx="8" class="s-surf"/><rect x="124" y="34" width="72" height="30" rx="8" class="s-line"/><rect x="136" y="46" width="44" height="7" rx="3.5" class="s-acc"/>
+              <rect x="214" y="34" width="72" height="30" rx="8" class="s-surf"/><rect x="214" y="34" width="72" height="30" rx="8" class="s-line"/><rect x="226" y="46" width="40" height="7" rx="3.5" class="s-acc"/>
+              <rect x="80" y="86" width="72" height="30" rx="8" class="s-surf"/><rect x="80" y="86" width="72" height="30" rx="8" class="s-line"/><rect x="92" y="98" width="48" height="7" rx="3.5" class="s-vid"/>
+              <rect x="170" y="86" width="72" height="30" rx="8" class="s-surf"/><rect x="170" y="86" width="72" height="30" rx="8" class="s-line"/><rect x="182" y="98" width="40" height="7" rx="3.5" class="s-vid"/>
+            </g>
+          </svg>
+        </div>
+        <h3>Ekspor 5 format</h3>
+        <p>YOLO, YOLO-seg, COCO, Pascal VOC, CreateML &mdash; tata letak benar, split asli dan id kelas tetap konsisten.</p>
+        <span class="more">Selengkapnya <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ PERAN ============================ -->
+<section class="sec" id="peran">
+  <div class="wrap">
+    <div class="peran">
+      <div>
+        <span class="eyebrow">Kerja tim &amp; peran</span>
+        <h2 style="font-size:clamp(1.6rem,3vw,2.2rem);margin-top:12px">Kendali akses yang jelas untuk seluruh tim.</h2>
+        <p style="color:var(--muted);margin-top:14px">Empat peran memisahkan siapa boleh mengelola, mengunggah, membagi tugas, dan melabeli &mdash; sampai setingkat batch tertentu. Undang lewat akun atau tautan surel.</p>
+        <a class="btn btn-ghost" style="margin-top:22px" href="/fitur#tim-peran">Pelajari peran &amp; kanban</a>
+      </div>
+      <div class="roles">
+        <div class="role"><span class="av">P</span><div><b>Pemilik</b><p>Kelola projek &amp; anggota sepenuhnya.</p></div></div>
+        <div class="role"><span class="av">E</span><div><b>Editor</b><p>Unggah, labeli semua, bagi tugas.</p></div></div>
+        <div class="role"><span class="av">L</span><div><b>Labeler menyeluruh</b><p>Boleh melabeli seluruh unit.</p></div></div>
+        <div class="role"><span class="av">S</span><div><b>Labeler spesifik</b><p>Hanya batch tertentu yang ditugaskan.</p></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ CTA BAND ============================ -->
+<section class="sec">
+  <div class="wrap">
+    <div class="cta-band">
+      <svg class="blob cta-blob" viewBox="0 0 600 600" aria-hidden="true"><path fill="currentColor" d="M441 86c57 44 96 115 95 190-1 76-42 156-109 199s-160 49-229 14-114-111-118-189 36-168 104-215S384 42 441 86z"/></svg>
+      <svg class="blob cta-blob cta-blob-2" viewBox="0 0 600 600" aria-hidden="true"><path fill="currentColor" d="M441 86c57 44 96 115 95 190-1 76-42 156-109 199s-160 49-229 14-114-111-118-189 36-168 104-215S384 42 441 86z"/></svg>
+      <div class="wrap-in">
+        <h2>Siap melabeli, mem-versi, dan melatih di satu tempat?</h2>
+        <p>Masuk dengan akun tim Anda dan lanjutkan projek gambar atau video langsung dari peramban.</p>
+        <div class="hero-cta">
+          <a class="btn btn-accent btn-lg" href="/login">Masuk ke lab</a>
+          <a class="btn btn-ghost btn-lg" href="/fitur">Jelajahi fitur</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+<!-- ============================ FOOTER ============================ -->
+<footer>
+  <div class="wrap foot">
+    <a class="brand" href="/landing">
+      <svg class="mark" viewBox="0 0 32 32" aria-hidden="true">
+        <rect x="1" y="1" width="30" height="30" rx="9" class="s-ink"/>
+        <rect x="6.5" y="6.5" width="8.5" height="8.5" rx="2.5" class="s-acc"/>
+        <rect x="17" y="6.5" width="8.5" height="8.5" rx="2.5" class="s-vid"/>
+        <rect x="6.5" y="17" width="8.5" height="8.5" rx="2.5" class="s-vid"/>
+        <rect x="17" y="17" width="8.5" height="8.5" rx="2.5" class="s-acc"/>
+      </svg>
+      <span>{{ nama_app() }}</span>
+    </a>
+    <div class="foot-links">
+      <a href="/fitur">Fitur</a>
+      <a href="#alur">Alur kerja</a>
+      <a href="#peran">Peran tim</a>
+      <a href="/login">Masuk</a>
+    </div>
+    <p class="foot-note">Lab anotasi &amp; training visi komputer, pasang sendiri (self-hosted). Antarmuka Bahasa Indonesia, tema terang &amp; gelap, mode dev &amp; prod berdampingan.</p>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var btn = document.getElementById('tema');
+  if (!btn) return;
+  function current(){
+    var t = document.documentElement.dataset.theme;
+    if (t === 'dark' || t === 'light') return t;
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  btn.addEventListener('click', function () {
+    var next = current() === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem('labelapp_tema', next); } catch (e) {}
+  });
+})();
+</script>
+</body>
+</html>
