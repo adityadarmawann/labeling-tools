@@ -968,7 +968,7 @@ const Progres = (() => {
            + 'anti-bocor</b> di bawah terlebih dahulu agar pembagian datanya '
            + 'lebih aman dan hasil evaluasinya lebih akurat.'))
         + (!j.split_bawaan ? '' : lipat('peringatan',
-           'Memakai pembagian bawaan dataset',
+           'Memakai pembagian default dataset',
            'Dipakai apa adanya, termasuk kebocorannya kalau ada. Ekspor '
            + 'Roboflow sering membelah per gambar. Menjalankan splitting '
            + 'anti-bocor akan menyatukannya ulang lalu membelah dari nol.'));

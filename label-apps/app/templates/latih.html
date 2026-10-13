@@ -29,7 +29,7 @@
     <div>
       <h2 class="tr-h2">Training</h2>
       <p class="halus tr-sub">Melatih model dari sebuah <b>versi</b> yang sudah
-        dibekukan. Setelan bawaannya sudah disiapkan dan bisa diubah.</p>
+        dibekukan. Setelan default-nya sudah disiapkan dan bisa diubah.</p>
     </div>
     <button class="cta" type="button" id="tr-mulai">+ Training baru</button>
   </div>
@@ -58,7 +58,7 @@
             menukar seluruh isian parameter di bawah. -#}
         <label class="tr-label" id="tr-arsitektur-bungkus" hidden>Arsitektur
           <select id="tr-arsitektur">
-            <option value="yolo">YOLO, cepat, serbaguna (bawaan)</option>
+            <option value="yolo">YOLO, cepat, serbaguna (default)</option>
             <option value="rfdetr">RF-DETR, transformer, unggul objek kecil</option>
           </select>
           <span class="tr-bantu" id="tr-arsitektur-ket"></span>
@@ -211,10 +211,10 @@
       <div class="tr-kolom">
         <div class="tr-par-atas">
           <b>Setelan</b>
-          <span class="tr-tandabawaan">bawaan</span>
+          <span class="tr-tandabawaan">default</span>
           <span class="spacer"></span>
           <button class="chip km-buka" type="button">📖 Kamus</button>
-          <button class="chip" type="button" id="tr-reset">Kembalikan ke bawaan</button>
+          <button class="chip" type="button" id="tr-reset">Ubah ke default</button>
         </div>
         <div class="tr-par" id="tr-par"></div>
 

@@ -138,7 +138,7 @@
        <p class="km-arti">${esc(e.arti)}</p>
        <div class="km-cip">
          <span class="km-c"><i>Rentang</i>${esc(rentang)}</span>
-         <span class="km-c"><i>Bawaan</i>${esc(bawaan)}</span></div>
+         <span class="km-c"><i>Default</i>${esc(bawaan)}</span></div>
        ${e.tip ? `<p class="km-tip">💡 ${esc(e.tip)}</p>` : ''}`;
     document.body.appendChild(pop);
     // posisikan di dekat jangkar
@@ -165,7 +165,7 @@
         <div class="km-kartu-arti">${esc(e.arti)}</div>
         <div class="km-cip">
           <span class="km-c"><i>Rentang</i>${esc(e.rentang)}</span>
-          <span class="km-c"><i>Bawaan</i>${esc(e.bawaan)}</span></div>
+          <span class="km-c"><i>Default</i>${esc(e.bawaan)}</span></div>
         ${e.tip ? `<div class="km-tip">💡 ${esc(e.tip)}</div>` : ''}
       </div>`;
     };

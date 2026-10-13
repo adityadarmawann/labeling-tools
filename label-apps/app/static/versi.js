@@ -706,7 +706,7 @@
       if (mati.length) {
         const q = document.createElement('div');
         q.className = 'op-balik';
-        q.innerHTML = `${mati.length} langkah bawaan dimatikan · `;
+        q.innerHTML = `${mati.length} langkah default dimatikan · `;
         const a = document.createElement('button');
         a.type = 'button';
         a.textContent = 'Nyalakan lagi';
@@ -785,7 +785,7 @@
     // Kotak cari hanya kalau daftarnya memang panjang. Pada 8 operasi
     // preprocessing ia cuma satu kotak lagi untuk dilewati.
     el('op-cari').hidden = Object.keys(katalog[tahap]).length <= 12;
-    el('op-bawaan').textContent = 'Kembalikan ke bawaan';
+    el('op-bawaan').textContent = 'Ubah ke default';
   }
 
   function bukaPopup(tahap) {
@@ -813,7 +813,7 @@
       `<input class="pr-bar" type="range" min="${s.min}" max="${s.maks}" ` +
       `step="${s.langkah || 1}" value="${v}">` +
       `<div class="pr-kaki"><span>${teksPar(s, s.min)}</span>` +
-      `<button type="button" class="pr-bawaan">bawaan ${teksPar(s, s.bawaan)}</button>` +
+      `<button type="button" class="pr-bawaan">default ${teksPar(s, s.bawaan)}</button>` +
       `<span>${teksPar(s, s.maks)}</span></div>`;
     const bar = baris.querySelector('.pr-bar');
     const cap = baris.querySelector('.pr-nilai');
@@ -855,7 +855,7 @@
       `<span class="pr-nilai">${String(v).toUpperCase()}</span></div>` +
       `<input class="pr-warna-in" type="color" value="${v}">` +
       '<div class="pr-kaki"><span></span>' +
-      `<button type="button" class="pr-bawaan">bawaan ${String(s.bawaan || '').toUpperCase()}</button>` +
+      `<button type="button" class="pr-bawaan">default ${String(s.bawaan || '').toUpperCase()}</button>` +
       '<span></span></div>';
     const inp = baris.querySelector('.pr-warna-in');
     const cap = baris.querySelector('.pr-nilai');
@@ -1026,7 +1026,7 @@
     // Layar kelas tidak berisi satu angka pun; menyebutnya "angka bawaan"
     // di sana menamai tombol menurut cara kerjanya, bukan akibatnya.
     el('op-bawaan').textContent = (spec.peta && spec.peta.jenis === 'peta_kelas')
-      ? 'Kembalikan semua kelas' : 'Kembalikan angka bawaan';
+      ? 'Ubah semua kelas ke default' : 'Ubah ke default';
     const wadah = el('op-isi');
     wadah.innerHTML = '';
     for (const [kunci, s] of Object.entries(spec)) {
@@ -1133,7 +1133,7 @@
     // Augmentasi -> tetap dipisah Bawaan/Opsional menurut bawaan_aktif.
     const grup = tahap === 'pra'
       ? [[null, 'Formula Preprocessing']]
-      : [[true, 'Bawaan (menyala sejak awal)'], [false, 'Opsional (mati sejak awal)']];
+      : [[true, 'Default (menyala sejak awal)'], [false, 'Opsional (mati sejak awal)']];
     for (const [kunci, judul] of grup) {
       const ids = semua.filter((i) =>
         (kunci === null || !!katalog[tahap][i].bawaan_aktif === kunci)
@@ -1413,9 +1413,9 @@
     document.querySelector('.lt-pilih').classList.toggle('lt-penuh', sisa <= 0);
     info.textContent = r.foto.length
       ? `${r.n_pelat} pelat dari ${r.foto.length} foto, dipakai bersama `
-        + `${r.n_bawaan} pelat bawaan`
+        + `${r.n_bawaan} pelat default`
         + (sisa > 0 ? ` · bisa tambah ${sisa} lagi` : ' · sudah penuh')
-      : `Belum ada. Augmentasi memakai ${r.n_bawaan} pelat bawaan aplikasi.`;
+      : `Belum ada. Augmentasi memakai ${r.n_bawaan} pelat default aplikasi.`;
     wadah.querySelectorAll('.lt-buang').forEach((b) => {
       b.onclick = async () => {
         if (!confirm(`Hapus foto latar ${b.dataset.nama}? Pelat yang dibuat `
