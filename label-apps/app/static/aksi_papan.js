@@ -57,6 +57,26 @@
     };
   }
 
+  // ---- Hapus unggahan (batch) yang belum ditugaskan, ke keranjang sampah klip
+  for (const b of document.querySelectorAll('.an-hapus-batch[data-hapus-batch]')) {
+    b.onclick = async () => {
+      const batch = b.dataset.hapusBatch || '';
+      const nama = b.dataset.nama || 'unggahan ini';
+      const n = b.dataset.n || '';
+      if (!confirm(`Hapus unggahan "${nama}"${n ? ` (${n} klip)` : ''}?\n\n`
+        + 'Klip yang belum ditugaskan dipindah ke keranjang sampah klip. '
+        + 'Bisa dipulihkan dari server; klip yang sudah dibagi atau sudah '
+        + 'masuk dataset tidak ikut terhapus.')) return;
+      const r = await send(`/api/aksi/hapus-batch?ds=${EDS}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ batch }),
+      });
+      if (!r || !r.ok) { toast((r && r.error) || 'gagal'); return; }
+      toast(`${r.dibuang || 0} klip dipindah ke sampah`);
+      location.reload();
+    };
+  }
+
   // ---- tindakan per job
   for (const b of document.querySelectorAll('.menu-aksi[data-aksi]')) {
     b.onclick = async () => {

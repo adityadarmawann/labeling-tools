@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import shutil
+import time
 import threading
 from pathlib import Path
 
@@ -728,6 +729,29 @@ def _belum_ditugaskan_klip(data: dict, pindai: dict, batch: str = "") -> list[st
     return out
 
 
+def _buang_klip_ke_sampah(d, rels: list[str]) -> int:
+    """Pindahkan berkas klip ke keranjang `klip/.sampah/<cap>/` — bisa
+    dipulihkan, tak pernah dihapus (sejalan "Hapus batch" gambar yang pindah ke
+    _sampah-gambar). Folder berawalan titik, jadi klip_scan melewatinya dan klip
+    lenyap dari grid/papan seketika. Mengembalikan jumlah berkas yang dipindah."""
+    cap = time.strftime("%Y%m%d-%H%M%S")
+    n = 0
+    for rel in rels:
+        src = d / rel
+        if not src.is_file():
+            continue
+        # rel = klip/<batch>/<file> -> klip/.sampah/<cap>/<batch>/<file>
+        sisa = rel[len("klip/"):] if rel.startswith("klip/") else rel
+        dst = d / "klip" / ".sampah" / cap / sisa
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            shutil.move(str(src), str(dst))
+            n += 1
+        except OSError:
+            continue
+    return n
+
+
 @router.get("/aksi/papan", response_class=HTMLResponse)
 async def halaman_aksi_papan(request: Request, ds: str = "",
                              urut: str = "terbaru",
@@ -1006,6 +1030,38 @@ async def aksi_dataset_siap(request: Request, ds: str = "",
     r = await asyncio.to_thread(tugas.masukkan, d, minta, tdata["pemilik"])
     h = await asyncio.to_thread(klip_scan.hitung, d)
     return {"ok": True, **r, **h}
+
+
+@router.post("/api/aksi/hapus-batch")
+async def aksi_hapus_batch(request: Request, ds: str = "",
+                           sess: Session = Depends(current_session_api),
+                           settings: Settings = Depends(get_settings)):
+    """Buang SEMUA klip satu unggahan yang masih "Belum ditugaskan" ke keranjang
+    sampah klip (bisa dipulihkan). Padanan /api/tugas/hapus-batch gambar.
+
+    Lingkupnya = kartu batch di papan: klip yang sudah dibagi ke orang atau
+    sudah masuk dataset TIDAK ikut (ada di kolom lain). Daftarnya dihitung di
+    server. Menghapus media itu pengelolaan, jadi hanya pemilik/Editor
+    (boleh_unggah)."""
+    d, tdata, err = _projek_aksi(sess, settings, ds)
+    if err:
+        return {"ok": False, "error": err}
+    if not tugas.boleh_unggah(tdata, sess.user):
+        return {"ok": False, "error": "hanya pemilik atau Editor yang bisa "
+                                      "menghapus batch"}
+    body = await bodi_json(request)
+    batch = str(body.get("batch") or "")
+    pindai = await asyncio.to_thread(klip_scan.pindai, d)
+    rels = _belum_ditugaskan_klip(tdata, pindai, batch)
+    if not rels:
+        return {"ok": False, "error": "tidak ada klip di unggahan itu yang bisa "
+                                      "dihapus (yang sudah dibagi/masuk dataset "
+                                      "tak ikut)"}
+    n = await asyncio.to_thread(_buang_klip_ke_sampah, d, rels)
+    # Rapikan tag sidecar supaya tak menunjuk klip yang sudah pindah.
+    pindai2 = await asyncio.to_thread(klip_scan.pindai, d)
+    await asyncio.to_thread(klip_tag.rapikan, d, pindai2["semua"])
+    return {"ok": True, "dibuang": n, "batch": batch}
 
 
 @router.post("/api/aksi/dataset/keluarkan")

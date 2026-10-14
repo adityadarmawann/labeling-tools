@@ -100,6 +100,20 @@
           <b class="an-batch-nama" title="{{ b.batch or 'tanpa nama unggahan' }}">
             {{ b.batch or 'Tanpa nama unggahan' }}</b>
           <span class="an-batch-n">{{ b.n }}</span>
+          {% if boleh_bagi %}
+          {#- Menu kelola unggahan (titik tiga), sepola kartu job. Hapus batch
+              destruktif, jadi disembunyikan di menu, bukan tombol telanjang. -#}
+          <span class="menu an-menu">
+            <button class="an-titik" type="button"
+                    title="Kelola unggahan ini" aria-label="Kelola unggahan">&#8942;</button>
+            <span class="menu-isi">
+              <button class="menu-aksi menu-bahaya an-hapus-batch" type="button"
+                      data-hapus-batch="{{ b.batch }}" data-n="{{ b.n }}"
+                      data-nama="{{ b.batch or 'Tanpa nama unggahan' }}"
+                      >Hapus unggahan</button>
+            </span>
+          </span>
+          {% endif %}
         </div>
         {% if boleh_bagi and b.siap %}
         <button class="an-siap" type="button" data-siap="{{ b.batch }}">
