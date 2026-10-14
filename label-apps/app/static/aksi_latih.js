@@ -98,6 +98,7 @@ function kartuJalan(t) {
       </dl>
     </div>
     <footer class="tr-k-aksi">
+      <button class="chip chip-utama" type="button" data-rinci="${t.nomor}">Rincian</button>
       ${t.punya_bobot ? `<span class="tr-unduh">Unduh sementara ${unduhBobot(t)}</span>` : ''}
       <span class="spacer"></span>
       ${BOLEH ? `<button class="chip chip-bahaya" type="button" data-batal="${t.nomor}">Hentikan</button>` : ''}
@@ -126,8 +127,9 @@ function kartuHasil(t) {
     ${kepala(t)}
     ${isi}
     <footer class="tr-k-aksi">
+      <button class="chip chip-utama" type="button" data-rinci="${t.nomor}">Rincian</button>
       ${unduhBobot(t)}
-      ${t.punya_bobot ? `<button class="chip chip-utama" type="button" data-eval="${t.nomor}">Uji produksi</button>` : ''}
+      ${t.punya_bobot ? `<button class="chip" type="button" data-eval="${t.nomor}">Uji produksi</button>` : ''}
       <span class="spacer"></span>
     </footer>
     ${t.punya_bobot ? `<div class="ak-eval" id="ak-eval-${t.nomor}" hidden></div>` : ''}`;
@@ -220,8 +222,62 @@ function renderRun(daftar) {
   return jalan.length > 0;
 }
 
-// Delegasi klik: Hentikan (data-batal) + Uji produksi (data-eval).
+// ===========================================================================
+// Panel rincian: kurva akurasi per-epoch + setelan + log (padanan tr-tirai)
+// ===========================================================================
+const tiraiR = el('ak-tr-tirai');
+function tutupRincian() { if (tiraiR) tiraiR.hidden = true; }
+if (el('ak-tr-panel-tutup')) el('ak-tr-panel-tutup').addEventListener('click', tutupRincian);
+if (tiraiR) tiraiR.addEventListener('click', (e) => { if (e.target === tiraiR) tutupRincian(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') tutupRincian(); });
+
+function kurvaSvg(kurva) {
+  const pts = (kurva || []).filter(p => p.nilai != null);
+  if (pts.length < 2) return '<p class="halus">Kurva muncul setelah beberapa epoch selesai.</p>';
+  const W = 620, H = 220, pad = 36;
+  const xs = pts.map(p => p.epoch), maxE = Math.max(...xs), minE = Math.min(...xs);
+  const x = (e) => pad + (maxE === minE ? 0 : (e - minE) / (maxE - minE)) * (W - pad - 12);
+  const y = (v) => H - pad - Math.max(0, Math.min(1, v)) * (H - pad - 12);
+  const line = pts.map((p, i) => `${i ? 'L' : 'M'}${x(p.epoch).toFixed(1)},${y(p.nilai).toFixed(1)}`).join(' ');
+  let grid = '';
+  [0, .25, .5, .75, 1].forEach(v => {
+    grid += `<line x1="${pad}" y1="${y(v).toFixed(1)}" x2="${W - 12}" y2="${y(v).toFixed(1)}" class="tr-kurva-grid"/>`
+      + `<text x="${pad - 6}" y="${(y(v) + 3).toFixed(1)}" text-anchor="end" class="tr-kurva-lbl">${(v * 100).toFixed(0)}%</text>`;
+  });
+  return `<svg class="tr-kurva" viewBox="0 0 ${W} ${H}" role="img" aria-label="Kurva akurasi per epoch">`
+    + grid + `<path d="${line}" fill="none" class="tr-kurva-garis"/>`
+    + `<text x="${(pad + (W - 12)) / 2}" y="${H - 8}" text-anchor="middle" class="tr-kurva-lbl">epoch</text></svg>`;
+}
+
+async function bukaRincian(nomor) {
+  if (!tiraiR) return;
+  el('ak-tr-panel-judul').textContent = 'Rincian training A' + nomor;
+  el('ak-tr-panel-isi').innerHTML = '<p class="halus">memuat…</p>';
+  tiraiR.hidden = false;
+  const r = await send(`/api/aksi/latih/rincian?ds=${EDS}&nomor=${nomor}`);
+  if (!r || !r.ok) { el('ak-tr-panel-isi').innerHTML = `<p class="halus">${esc((r && r.error) || 'gagal')}</p>`; return; }
+  const t = r.rincian, acc = skorUtama(t), par = t.par || {};
+  const kv = Object.entries(par).map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('');
+  const accBest = (t.terbaik && t.utama != null && t.terbaik[t.utama] != null) ? t.terbaik[t.utama] : acc;
+  el('ak-tr-panel-isi').innerHTML =
+    '<div class="tr-p-blok"><div class="tr-kv-grid">'
+    + `<div><dt>Keadaan</dt><dd>${esc(LABEL_KEADAAN[t.keadaan] || t.keadaan)}</dd></div>`
+    + `<div><dt>Backend</dt><dd>${esc(t.backend_nama || t.backend || '')}</dd></div>`
+    + `<div><dt>Versi</dt><dd>v${esc(t.versi)}</dd></div>`
+    + `<div><dt>Epoch</dt><dd>${angka(t.epoch)} / ${angka(t.epochs)}</dd></div>`
+    + `<div><dt>Durasi</dt><dd>${durasi(t.detik)}</dd></div>`
+    + (accBest != null ? `<div><dt>Akurasi terbaik</dt><dd>${angka(accBest * 100, 1)}%</dd></div>` : '')
+    + '</div></div>'
+    + `<div class="tr-p-blok"><h4>Kurva akurasi (validasi)</h4>${kurvaSvg(t.kurva)}</div>`
+    + (kv ? `<div class="tr-p-blok"><h4>Setelan</h4><dl class="tr-kv-grid">${kv}</dl></div>` : '')
+    + (t.catatan ? `<div class="tr-p-blok"><h4>Catatan</h4><p class="halus">${esc(t.catatan)}</p></div>` : '')
+    + `<div class="tr-p-blok"><h4>Log (ekor)</h4><pre class="tr-log">${esc(t.log || '(belum ada log)')}</pre></div>`;
+}
+
+// Delegasi klik: Rincian (data-rinci) + Hentikan (data-batal) + Uji produksi (data-eval).
 el('akl-isi').addEventListener('click', (e) => {
+  const rinci = e.target.closest('[data-rinci]');
+  if (rinci) { bukaRincian(rinci.dataset.rinci); return; }
   const batal = e.target.closest('[data-batal]');
   if (batal) {
     send(`/api/aksi/latih/batal?ds=${EDS}&nomor=${batal.dataset.batal}`, { method: 'POST' })

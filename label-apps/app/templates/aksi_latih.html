@@ -95,6 +95,19 @@
   </div>
   <p class="halus tr-diam" id="ak-tr-kosong" hidden>
     Belum ada training di projek ini.</p>
+
+  {#- Panel rincian run: kurva akurasi per-epoch + setelan + log. Padanan
+      tr-tirai halaman Training gambar. -#}
+  <div class="tr-tirai" id="ak-tr-tirai" hidden>
+    <div class="tr-panel" role="dialog" aria-label="Rincian training">
+      <div class="tr-panel-atas">
+        <b id="ak-tr-panel-judul">Rincian</b>
+        <span class="spacer"></span>
+        <button class="chip" type="button" id="ak-tr-panel-tutup">Tutup</button>
+      </div>
+      <div class="tr-panel-isi" id="ak-tr-panel-isi"></div>
+    </div>
+  </div>
 </div>
 </main>
 {% endblock %}

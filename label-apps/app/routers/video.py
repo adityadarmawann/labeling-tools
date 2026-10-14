@@ -1533,6 +1533,25 @@ async def aksi_latih_kemajuan(ds: str = "",
             "statistik": await asyncio.to_thread(latih_aksi.statistik)}
 
 
+@router.get("/api/aksi/latih/rincian")
+async def aksi_latih_rincian(ds: str = "", nomor: int = 0,
+                             sess: Session = Depends(current_session_api),
+                             settings: Settings = Depends(get_settings)):
+    """Rincian satu run training aksi untuk panel detail: status + kurva akurasi
+    per-epoch (results.csv) + ekor log. Gerbang baca (anggota), padanan panel
+    Rincian training gambar."""
+    d, tdata, err = _projek_aksi(sess, settings, ds)
+    if err:
+        return {"ok": False, "error": err}
+    st = await asyncio.to_thread(latih_aksi.status, d, int(nomor))
+    if not st:
+        return {"ok": False, "error": "training tidak ada"}
+    rundir = latih_aksi.dir_latih(d, int(nomor))
+    csv = await asyncio.to_thread(latih_aksi.baca_hasil_csv, rundir)
+    log = await asyncio.to_thread(latih_aksi.ekor_log, d, int(nomor), 150)
+    return {"ok": True, "rincian": {**st, "kurva": csv.get("kurva") or [], "log": log}}
+
+
 @router.post("/api/aksi/latih/mulai")
 async def aksi_latih_mulai(request: Request, ds: str = "",
                            sess: Session = Depends(current_session_api),
