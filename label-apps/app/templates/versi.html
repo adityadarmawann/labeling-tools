@@ -176,6 +176,38 @@
                   pengenalan produk, warna kemasan yang membedakan satu SKU
                   dari yang lain. Operasi penggeser rona dimatikan.</em></span>
             </label>
+            <label class="wz-mode-p">
+              <input type="radio" name="wz-warna" value="color-gated">
+              <span><b>Warna menentukan, tolak warna lain</b>
+                <em>Seperti "warna bagian dari kelas", tapi sistem juga membuat
+                  salinan produk dengan warna yang sengaja diganti ke warna lain
+                  (mis. biru → coklat/merah/hijau) sebagai contoh yang HARUS
+                  ditolak. Gunakan kalau cuma punya satu produk dan ingin barang
+                  sebentuk tapi warnanya beda ikut ditolak, tanpa harus
+                  mengumpulkan foto produk pesaing.</em></span>
+            </label>
+            <div class="wz-gerbang" id="wz-gerbang" hidden>
+              <span class="menu-judul">Seberapa ketat gerbang warnanya?</span>
+              <label class="wz-mode-p">
+                <input type="radio" name="wz-ketat" value="longgar">
+                <span><b>Longgar</b>
+                  <em>Hanya warna yang jauh beda yang ditolak. Aman kalau barang
+                    aslinya warnanya bisa agak bervariasi.</em></span>
+              </label>
+              <label class="wz-mode-p">
+                <input type="radio" name="wz-ketat" value="sedang" checked>
+                <span><b>Sedang</b>
+                  <em>Seimbang. Pilihan yang disarankan untuk kebanyakan
+                    kasus.</em></span>
+              </label>
+              <label class="wz-mode-p">
+                <input type="radio" name="wz-ketat" value="ketat">
+                <span><b>Ketat</b>
+                  <em>Selisih warna kecil pun ditolak, dan contoh warna-salahnya
+                    dibuat lebih banyak. Lebih tegas, tapi hati-hati kalau warna
+                    produk aslinya memang bisa berubah karena lampu.</em></span>
+              </label>
+            </div>
             <p class="wz-mode-ket" id="wz-mode-ket"></p>
           </div>
 
@@ -183,6 +215,13 @@
             <input type="number" id="wz-salin" min="0" max="10" value="1"></label>
           <div class="op-daftar" id="wz-aug"></div>
           <button class="op-atur" type="button" data-tambah="aug">Atur formula</button>
+
+          {#- Pratinjau gerbang warna: hanya tampil saat mode "color-gated".
+              Memperlihatkan warna yang DITERIMA tiap kelas (diukur dari anotasi)
+              dan contoh warna yang akan DITOLAK, supaya orang memeriksa dulu
+              bahwa warna salahnya benar beda dari produk asli — gerbang yang
+              menabrak warna sah justru menurunkan akurasi. -#}
+          <div class="wz-gerbang-pra" id="wz-gerbang-pra" hidden></div>
 
           <div class="wz-fase">
             <span class="menu-judul">Fase lanjutan</span>

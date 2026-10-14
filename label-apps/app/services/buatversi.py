@@ -35,7 +35,8 @@ import cv2
 import numpy as np
 
 from ..log import catat
-from . import export, olah, olah_gpu, scanner, tag, tugas, scanner
+from . import (export, olah, olah_gpu, scanner, tag, tugas, mode_warna,
+               warna_gerbang)
 
 log = catat("labelapp.buatversi")
 
@@ -51,6 +52,7 @@ FASE = [
     ("skala", "Menyeimbangkan ukuran objek"),
     ("kelas", "Menyeimbangkan jumlah kelas"),
     ("neg",   "Memulihkan porsi sampel negatif"),
+    ("warnaneg", "Contoh warna-salah (gerbang warna)"),
     ("lateval", "Latar ruang detektor untuk valid/test"),
     ("tutup", "Menulis manifes"),
 ]
@@ -376,6 +378,11 @@ class Pekerjaan:
         # tanpa pemadatan data.yaml tetap mengumumkan nc yang lama lengkap
         # dengan nama kelas yang sudah mati.
         self._padat, self.nama_akhir = self._rencana_kelas()
+        # Gerbang warna (mode `color-gated`): histogram rona per kelas dari
+        # piksel objek, dikumpulkan di fase_pra dan dipakai fase_warna_negatif
+        # untuk memilih warna "salah". Kosong kalau modenya bukan gerbang.
+        self._par_gerbang = mode_warna.par_gerbang(self.resep)
+        self._hist_hue: dict[int, np.ndarray] = {}
 
     def _rencana_kelas(self):
         """
@@ -537,6 +544,10 @@ class Pekerjaan:
             stem = Path(nama_berkas).stem
             self._simpan(split, stem, img, num, "asli", nama_berkas)
             self.asli[split].append(stem)
+            # Gerbang warna: ukur rona objek train per kelas dari gambar yang
+            # SUDAH di-preprocess (ruang piksel yang sama dengan yang dilatih).
+            if self._par_gerbang["aktif"] and split == "train" and num:
+                self._kumpulkan_rona(img, num)
         if self.dipulangkan:
             try:
                 tugas.keluarkan(self.ds, self.dipulangkan, self.pemilik)
@@ -1169,6 +1180,99 @@ class Pekerjaan:
         self.maju("neg", butuh, butuh, jadi=jadi, porsi_asal=round(porsi0, 4))
         return jadi
 
+    # --------------------------------------------------------- Fase gerbang
+    def _kumpulkan_rona(self, img, num) -> None:
+        """Tambahkan histogram rona objek per kelas (untuk gerbang warna)."""
+        per_kelas: dict[int, list] = {}
+        for c, poli in num:
+            per_kelas.setdefault(c, []).append(poli)
+        for c, polys in per_kelas.items():
+            h = warna_gerbang.hist_rona_objek(img, polys)
+            self._hist_hue[c] = (self._hist_hue[c] + h
+                                 if c in self._hist_hue else h)
+
+    def fase_warna_negatif(self):
+        """
+        Gerbang warna: buat contoh "bentuk benar, warna salah" sebagai negatif.
+
+        Mode `color-gated`. Rona tiap kelas sudah diukur di fase_pra dari piksel
+        objeknya. Di sini: tentukan rona yang DILARANG (rona diterima + margin),
+        pilih beberapa rona di luarnya, lalu untuk tiap gambar positif train
+        buat salinan yang RONA OBJEKNYA digeser ke rona terlarang itu dan simpan
+        dengan label KOSONG. Model jadi belajar menolak bentuk yang warnanya
+        salah tanpa perlu foto produk pesaing.
+
+        JUMLAHNYA DIBATASI PROPORSI, bukan per-gambar: sebanyak `porsi` x positif
+        train saat ini. Ini yang menjaga akurasi -- negatif yang membanjiri
+        membuat model takut mendeteksi (recall turun), jadi positif selalu
+        dibuat tetap mayoritas. Sumbernya positif ASLI (bukan hasil augmentasi),
+        dipakai berulang dengan warna berbeda sampai kuotanya penuh.
+
+        Dilewati diam-diam kalau: modenya bukan gerbang, tak ada rona terukur
+        (objek semuanya pucat), atau seluruh roda warna sudah diterima (produk
+        warna-warni -- tak ada "warna salah" yang bisa dibuat).
+        """
+        par = self._par_gerbang
+        if not par["aktif"]:
+            self.maju("warnaneg", 0, 0)
+            return 0
+        hist_ada = {c: h for c, h in self._hist_hue.items()
+                    if np.asarray(h).sum() > 0}
+        if not hist_ada:
+            self.maju("warnaneg", 0, 0, alasan="tak ada rona terukur")
+            return 0
+        terlarang = warna_gerbang.rona_terlarang(hist_ada, par["margin_deg"])
+        target = warna_gerbang.hue_negatif(terlarang, par["n_warna"])
+        if not target:
+            self.maju("warnaneg", 0, 0, alasan="semua warna diterima")
+            return 0
+        dom = {c: warna_gerbang.rona_dominan(h) for c, h in hist_ada.items()}
+
+        pos = [s for s in self.asli["train"]
+               if olah.baca_label(self.dirv / "train" / "labels" / f"{s}.txt")]
+        if not pos:
+            self.maju("warnaneg", 0, 0)
+            return 0
+        # Kuota = porsi x positif train SAAT INI (termasuk hasil augmentasi),
+        # jadi rasionya terkendali berapa pun volume augmentasi. Dibatasi keras
+        # supaya tak pernah melebihi jumlah positif yang bisa dijadikan sumber
+        # kali ragam warna (tiap positif-sumber dipakai paling banyak sekali
+        # per warna).
+        kini = list((self.dirv / "train" / "labels").glob("*.txt"))
+        pos_kini = sum(1 for p in kini if p.stat().st_size > 0)
+        butuh = min(int(round(float(par["porsi"]) * pos_kini)),
+                    len(pos) * len(target), 50000)
+        if butuh <= 0:
+            self.maju("warnaneg", 0, 0, ketat=par["ketat"])
+            return 0
+        jadi = 0
+        i = 0
+        while jadi < butuh:
+            self.cek()
+            if jadi % 20 == 0:
+                self.maju("warnaneg", jadi, butuh, ketat=par["ketat"])
+            stem = pos[i % len(pos)]
+            putaran = i // len(pos)                 # warna berbeda tiap putaran
+            i += 1
+            img, label = self._muat_hasil("train", stem)
+            if img is None or not label:
+                if i >= len(pos) * (len(target) + 1):
+                    break                           # semua sumber tak terbaca
+                continue
+            per_kelas: dict[int, list] = {}
+            for c, poli in label:
+                per_kelas.setdefault(c, []).append(poli)
+            hasil = img
+            for c, polys in per_kelas.items():
+                t = target[(putaran + c) % len(target)]
+                hasil = warna_gerbang.recolor_objek(hasil, polys, t, dom.get(c))
+            self._simpan("train", f"{stem}_warnaneg{putaran}", hasil, [],
+                         "warna_neg", stem)
+            jadi += 1
+        self.maju("warnaneg", butuh, butuh, jadi=jadi, ketat=par["ketat"],
+                  warna=len(target))
+        return jadi
+
     # ------------------------------------------------------------- penutup
     def tutup(self, catatan: str = "") -> dict:
         """data.yaml, MANIFES.json, dan ringkasan angka."""
@@ -1357,6 +1461,10 @@ class Pekerjaan:
             self.fase_skala()
             self.fase_kelas()
             self.fase_negatif()
+            # Setelah porsi negatif dipulihkan: tambahkan contoh "warna salah".
+            # Harus SESUDAH fase_negatif supaya fase itu menghitung porsi dari
+            # negatif yang asli, bukan dari negatif buatan gerbang warna.
+            self.fase_warna_negatif()
             # Paling akhir: batasnya dihitung dari jumlah gambar berlatar
             # pelat di train, jadi seluruh fase yang menghasilkannya harus
             # sudah selesai lebih dulu.

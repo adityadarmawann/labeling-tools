@@ -33,6 +33,21 @@ DUA MODE
             model yang jawabannya berubah karena rona digeser TIDAK dinilai
             buruk — itu memang yang diminta.
 
+  gerbang — warnanya PENENTU: bentuk mirip tapi warna beda harus DITOLAK.
+            (`color-gated`.) Perluasan mode `warna` untuk kasus yang sering
+            terjadi di RVM: model cuma menerima satu produk (mis. Frisian Flag
+            biru), tapi tak punya foto pesaing untuk diajari menolak. Caranya:
+            ukur warna tiap kelas dari piksel objeknya, lalu buat salinan objek
+            yang RONA-nya digeser ke warna di LUAR warna yang diterima (biru ->
+            coklat/merah/hijau), dan simpan salinan itu sebagai contoh NEGATIF
+            (label kosong). Model jadi belajar "bentuk benar + warna salah =
+            tolak" tanpa perlu mengumpulkan produk pesaing.
+
+            Rona objek asli TETAP dikunci seperti mode `warna` (gerbangnya
+            datang dari negatif yang dibuat, bukan dari menggeser positif).
+            Batasnya jujur: ini untuk beda warna KASAR (biru vs coklat), bukan
+            beda corak halus (biru muda vs biru tua) — lihat mode-warna memory.
+
 KENAPA SATU BERKAS SENDIRI
 Mode ini harus dibaca tiga bagian yang berbeda dan tidak boleh berselisih:
 augmentasi (services/olah.py), training (services/latih.py), dan evaluasi
@@ -49,8 +64,35 @@ from __future__ import annotations
 
 BENTUK = "bentuk"
 WARNA = "warna"
-MODE = (BENTUK, WARNA)
+GERBANG = "color-gated"
+MODE = (BENTUK, WARNA, GERBANG)
 BAWAAN = BENTUK
+
+# Mode yang mengunci rona objek positif (rona = identitas / penentu). `gerbang`
+# ikut di sini: positifnya dikunci seperti `warna`, gerbangnya datang dari
+# negatif berwarna-salah yang dibuat terpisah.
+MODE_KUNCI_RONA = (WARNA, GERBANG)
+
+# Tingkat ketat gerbang warna -> seberapa dekat warna "salah" boleh dibuat ke
+# warna yang diterima, dan sebanyak apa.
+#   margin_deg : zona haram (derajat rona) di sekitar warna diterima. Makin
+#                KECIL margin, negatif makin dekat ke produk = gerbang makin
+#                ketat (menolak selisih warna kecil). Margin ini JUGA yang
+#                menjaga akurasi: warna produk asli yang bergeser karena lampu
+#                (mis. chute ungu) tetap di dalam zona haram, jadi tak pernah
+#                dibuat jadi negatif -- model tak pernah dihukum untuk warna sah.
+#   n_warna    : berapa ragam warna salah yang dipakai.
+#   porsi      : jumlah negatif warna-salah = porsi x jumlah POSITIF train saat
+#                itu. DIBATASI proporsi, bukan per-gambar, supaya rasio
+#                positif:negatif tetap terkendali berapa pun besar datasetnya --
+#                negatif yang membanjiri bikin model takut mendeteksi (recall
+#                turun). Bahkan "ketat" menjaga positif tetap mayoritas.
+KETAT_GERBANG = {
+    "longgar": {"margin_deg": 65, "n_warna": 3, "porsi": 0.15},
+    "sedang":  {"margin_deg": 45, "n_warna": 4, "porsi": 0.25},
+    "ketat":   {"margin_deg": 28, "n_warna": 5, "porsi": 0.40},
+}
+KETAT_BAWAAN = "sedang"
 
 # Operasi augmentasi yang MENGGESER RONA. Di mode `warna` semuanya dimatikan:
 # rona adalah identitas kelasnya, dan menggesernya sama dengan mengganti
@@ -87,6 +129,20 @@ KETERANGAN = {
                  "tetap dinilai buruk: jawaban yang berubah karena "
                  "TERANG berubah.",
     },
+    GERBANG: {
+        "nama": "Warna menentukan, tolak warna lain",
+        "ringkas": "Rona dipertahankan, PLUS dibuatkan contoh warna-salah "
+                   "sebagai negatif",
+        "contoh": "cuma punya Frisian Flag biru. Produk sebentuk tapi coklat "
+                  "(mis. Sosro) otomatis diajari ditolak, tanpa foto pesaing",
+        "aug": "Rona objek asli TIDAK digeser (seperti mode warna). Tambahan: "
+               "salinan objek yang warnanya digeser ke luar warna diterima, "
+               "dipakai jadi contoh negatif.",
+        "latih": "hsv_h 0,0 · hsv_s 0,20 · bgr 0,0 — rona dikunci, sama "
+                 "seperti mode warna",
+        "nilai": "Sama seperti mode warna, plus model diharapkan MENOLAK "
+                 "bentuk yang sama berwarna lain.",
+    },
 }
 
 
@@ -119,7 +175,7 @@ def terap_ke_aug(resep: dict, mode: str | None = None) -> dict:
     """
     m = sah(mode if mode is not None else dari_resep(resep))
     keluar = dict(resep or {})
-    if m != WARNA:
+    if m not in MODE_KUNCI_RONA:
         return keluar
     aug = dict(keluar.get("aug") or {})
     for oid in OP_GESER_RONA:
@@ -138,7 +194,21 @@ def par_latih(mode: str) -> dict:
 
     hsv_v tetap dibuka lebar di KEDUA mode. Terang berubah di ruang detektor
     mana pun, dan itu harus selalu jadi petunjuk yang tidak bisa diandalkan.
+
+    Mode `gerbang` memakai angka yang sama dengan `warna`: rona positif dikunci,
+    gerbangnya datang dari contoh negatif yang dibuat, bukan dari training.
     """
-    if sah(mode) == WARNA:
+    if sah(mode) in MODE_KUNCI_RONA:
         return {"hsv_h": 0.0, "hsv_s": 0.20, "hsv_v": 0.50, "bgr": 0.0}
     return {"hsv_h": 0.030, "hsv_s": 0.70, "hsv_v": 0.50, "bgr": 0.10}
+
+
+def par_gerbang(resep: dict) -> dict:
+    """Setelan gerbang warna dari resep: {aktif, ketat, margin_deg, n_warna,
+    salinan}. `aktif` hanya True kalau modenya `gerbang`."""
+    w = (resep or {}).get("warna") or {}
+    aktif = sah(w.get("mode")) == GERBANG
+    ketat = str(w.get("ketat") or KETAT_BAWAAN).strip().lower()
+    if ketat not in KETAT_GERBANG:
+        ketat = KETAT_BAWAAN
+    return {"aktif": aktif, "ketat": ketat, **KETAT_GERBANG[ketat]}

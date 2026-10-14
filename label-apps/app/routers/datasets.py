@@ -16,6 +16,7 @@ from ..services import (anylabeling, buatversi, export, riwayat, scanner, split,
                         tugas, versi)
 from ..services import latar as svc_latar
 from ..services import tag as svc_tag
+from ..services import mode_warna, warna_gerbang
 
 _log = catat("labelapp.split")
 from ..session import Session
@@ -390,6 +391,72 @@ async def versi_estimasi(request: Request, split: str = "", belah: str = "",
             # Ruang disk diperiksa DI SINI, bukan saat berkas ke-40.000 gagal
             # ditulis dan setengah versi tertinggal.
             "cukup": kosong > e["byte"] * 1.3 + 2_000_000_000}
+
+
+def _ukur_warna_band(items, margin_deg, n_warna, maks=60):
+    """Ukur warna diterima per kelas + warna salah, dari CONTOH gambar berlabel.
+
+    Dibatasi `maks` gambar: ini pratinjau, bukan pengukuran versi -- yang sah
+    diukur ulang dari SELURUH gambar saat versi dibangun (fase_pra). Cukup untuk
+    orang memeriksa bahwa warna salahnya benar beda dari produk asli.
+    """
+    hist: dict[str, object] = {}
+    dipakai = 0
+    for it in items:
+        if dipakai >= maks:
+            break
+        img, label = buatversi._baca_item(it)
+        if img is None or not label:
+            continue
+        per: dict[str, list] = {}
+        for nama, poly in label:
+            per.setdefault(nama, []).append(poly)
+        ada = False
+        for nama, polys in per.items():
+            h = warna_gerbang.hist_rona_objek(img, polys)
+            if h.sum() <= 0:
+                continue
+            hist[nama] = hist.get(nama, 0) + h
+            ada = True
+        if ada:
+            dipakai += 1
+    hist = {k: v for k, v in hist.items() if v.sum() > 0}
+    kelas = [{"nama": nama,
+              "rona": [warna_gerbang.hue_ke_hex(d)
+                       for d in warna_gerbang.swatch_diterima(h, 3)]}
+             for nama, h in hist.items()]
+    salah = []
+    if hist:
+        terl = warna_gerbang.rona_terlarang(hist, margin_deg)
+        salah = [warna_gerbang.hue_ke_hex(t, target=True)
+                 for t in warna_gerbang.hue_negatif(terl, n_warna)]
+    return {"kelas": kelas, "salah": salah, "contoh": dipakai,
+            "cukup": bool(hist) and bool(salah)}
+
+
+@router.post("/api/versi/warna-band")
+async def versi_warna_band(request: Request,
+                           sess: Session = Depends(current_session_api),
+                           settings: Settings = Depends(get_settings)):
+    """Pratinjau gerbang warna: warna yang DITERIMA tiap kelas (diukur dari
+    anotasi) dan contoh warna yang akan DITOLAK.
+
+    Gunanya menjaga akurasi: orang bisa memeriksa DULU bahwa warna-salahnya
+    benar-benar beda dari produk asli. Gerbang yang warna salahnya menabrak
+    warna produk sah justru menurunkan akurasi, dan di sinilah itu ketahuan
+    sebelum versi dibangun."""
+    bahan, galat = await _muat_bahan(sess, settings)
+    if galat:
+        return galat
+    items, _, _ = bahan
+    resep = (await bodi_json(request)).get("resep") or {}
+    items, _ = await asyncio.to_thread(_saring_sumber, items, sess.src, resep)
+    resep_g = {**resep, "warna": {**(resep.get("warna") or {}),
+                                  "mode": "color-gated"}}
+    par = mode_warna.par_gerbang(resep_g)
+    hasil = await asyncio.to_thread(_ukur_warna_band, items,
+                                    par["margin_deg"], par["n_warna"])
+    return {"ok": True, "ketat": par["ketat"], **hasil}
 
 
 @router.post("/api/versi/mulai")

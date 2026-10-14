@@ -278,8 +278,16 @@
   function terapkanModeWarna(gambarUlang = true) {
     const dipilih = wz.querySelector('input[name="wz-warna"]:checked');
     const m = dipilih ? dipilih.value : 'bentuk';
+    const kunciRona = (m === 'warna' || m === 'color-gated');
     const berubah = (resep.warna || {}).mode !== m;
     resep.warna = { mode: m };
+    // Gerbang warna: sertakan tingkat ketat, dan tampilkan pilihannya.
+    const gbox = document.getElementById('wz-gerbang');
+    if (gbox) gbox.hidden = (m !== 'color-gated');
+    if (m === 'color-gated') {
+      const rk = wz.querySelector('input[name="wz-ketat"]:checked');
+      resep.warna.ketat = rk ? rk.value : 'sedang';
+    }
 
     /* Saklarnya BENAR-BENAR disetel, bukan sekadar ditandai.
        Versi pertama cuma menambahkan penanda visual pada barisnya, dan itu
@@ -297,7 +305,7 @@
     if (berubah) {
       OP_RONA.forEach((oid) => {
         if (!katalog || !katalog.aug || !katalog.aug[oid]) return;
-        if (m === 'warna') {
+        if (kunciRona) {
           resep.aug[oid] = { ...(resep.aug[oid] || {}), aktif: false };
         } else {
           delete resep.aug[oid];          // kembali ke bawaan katalog
@@ -308,12 +316,20 @@
 
     const ket = document.getElementById('wz-mode-ket');
     if (ket) {
-      ket.textContent = m === 'warna'
-        ? OP_RONA.length + ' langkah pengubah warna dimatikan di daftar bawah. '
-          + 'Saat melatih nanti, warna asli juga dipertahankan.'
-        : OP_RONA.length + ' langkah pengubah warna dinyalakan di daftar bawah. '
-          + 'Warna diacak lebar di sini dan juga saat melatih nanti.';
+      if (m === 'color-gated') {
+        ket.textContent = OP_RONA.length + ' langkah pengubah warna dimatikan '
+          + 'untuk produk asli. Sistem juga akan membuat salinan berwarna salah '
+          + 'sebagai contoh yang ditolak. Warnanya diukur otomatis dari kotak '
+          + 'anotasi tiap kelas, tidak perlu disetel manual.';
+      } else if (m === 'warna') {
+        ket.textContent = OP_RONA.length + ' langkah pengubah warna dimatikan di '
+          + 'daftar bawah. Saat melatih nanti, warna asli juga dipertahankan.';
+      } else {
+        ket.textContent = OP_RONA.length + ' langkah pengubah warna dinyalakan di '
+          + 'daftar bawah. Warna diacak lebar di sini dan juga saat melatih nanti.';
+      }
     }
+    jadwalPratinjauGerbang();
   }
   wz.querySelectorAll('input[name="wz-warna"]').forEach((r) => {
     // Menyetel mode warna langsung = menyimpang dari preset; lupakan preset
@@ -323,6 +339,71 @@
       if (!el('op-dlg').hidden) gambarPopup();   // segarkan baris preset di popup
     });
   });
+  // Tingkat ketat gerbang warna: cuma memperbarui resep, tak menyentuh daftar
+  // operasi (modenya sudah 'color-gated').
+  wz.querySelectorAll('input[name="wz-ketat"]').forEach((r) => {
+    r.addEventListener('change', () => {
+      if ((resep.warna || {}).mode === 'color-gated') {
+        resep.warna.ketat = r.value;
+        jadwalPratinjauGerbang();
+      }
+    });
+  });
+
+  /* Pratinjau gerbang warna: ukur warna diterima tiap kelas + contoh warna yang
+     akan ditolak, supaya orang MEMERIKSA DULU bahwa warna salahnya beda dari
+     produk asli — gerbang yang menabrak warna sah malah menurunkan akurasi.
+     Dipanggil berjeda supaya tak menembak server tiap ketukan. */
+  let _praTimer = null;
+  function jadwalPratinjauGerbang() {
+    clearTimeout(_praTimer);
+    _praTimer = setTimeout(muatPratinjauGerbang, 350);
+  }
+  function chipWarna(c) {
+    return `<span title="${c}" style="display:inline-block;width:22px;height:22px;`
+      + `border-radius:5px;margin:2px;border:1px solid rgba(0,0,0,.25);`
+      + `vertical-align:middle;background:${c}"></span>`;
+  }
+  async function muatPratinjauGerbang() {
+    const box = el('wz-gerbang-pra');
+    if (!box) return;
+    if ((resep.warna || {}).mode !== 'color-gated') {
+      box.hidden = true; box.innerHTML = ''; return;
+    }
+    box.hidden = false;
+    box.innerHTML = '<p class="halus">Mengukur warna dari anotasi…</p>';
+    let r = null;
+    try {
+      // Payload RINGAN (cuma mode warna) supaya tak memanggil kumpulkanResep →
+      // terapkanModeWarna → jadwal lagi (rekursi).
+      const resp = await fetch('/api/versi/warna-band', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resep: { warna: resep.warna } }) });
+      r = await resp.json();
+    } catch (e) { r = null; }
+    if ((resep.warna || {}).mode !== 'color-gated') { box.hidden = true; return; }
+    if (!r || !r.ok) { box.innerHTML = '<p class="halus">Gagal mengukur warna.</p>'; return; }
+    const judul = (t) => `<div style="font-weight:600;margin-top:8px;font-size:13px">${t}</div>`;
+    const baris = (isi) => `<div style="margin:3px 0;display:flex;align-items:center;`
+      + `gap:6px;flex-wrap:wrap">${isi}</div>`;
+    let html = '';
+    if (!r.cukup) {
+      html += '<p class="halus" style="color:#b45309">Warna produk belum terukur jelas '
+        + '(objek pucat/putih) atau hampir semua warna sudah diterima. Contoh '
+        + 'warna-salah bisa sedikit atau tidak ada. Mode ini cocok untuk produk '
+        + 'yang warnanya tegas dan berbeda dari pesaing.</p>';
+    }
+    html += judul('Warna yang DITERIMA (diukur otomatis dari anotasi):');
+    for (const k of (r.kelas || [])) {
+      html += baris(`<span style="min-width:130px;font-size:12px">${k.nama}</span>`
+        + ((k.rona || []).map(chipWarna).join('') || '<span class="halus">pucat, tak terukur</span>'));
+    }
+    html += judul('Contoh warna yang akan DITOLAK (jadi contoh negatif):');
+    html += baris((r.salah || []).map(chipWarna).join('') || '<span class="halus">tidak ada</span>');
+    html += `<p class="halus" style="margin-top:6px">Diukur dari ${r.contoh || 0} gambar `
+      + 'contoh. Saat versi dibangun, warnanya diukur ulang dari SELURUH gambar.</p>';
+    box.innerHTML = html;
+  }
 
   /* Registry "jenis dataset/proyek". Tiap entri menyetel default yang masuk akal
      untuk use-case itu dalam SATU klik, dibahasakan awam. Menambah jenis baru =
@@ -1097,7 +1178,9 @@
       hp.className = 'op-grup';
       hp.textContent = 'Peran warna di projek ini';
       wadah.appendChild(hp);
-      const modeKini = (resep.warna || {}).mode === 'warna' ? 'warna' : 'bentuk';
+      const modeVal = (resep.warna || {}).mode;
+      const modeKini = (modeVal === 'warna' || modeVal === 'color-gated')
+        ? modeVal : 'bentuk';
       const MODE = [
         { v: 'bentuk', nama: 'Bentuk yang menentukan kelas',
           sub: 'Warna sengaja dirusak supaya model belajar bentuk, botol/kaleng/'
@@ -1105,6 +1188,11 @@
         { v: 'warna', nama: 'Warna bagian dari kelas',
           sub: 'Rona dipertahankan; hanya terang yang divariasikan, pengenalan '
              + 'produk/SKU atau warna jersey tim. Penggeser rona dimatikan.' },
+        { v: 'color-gated', nama: 'Warna menentukan, tolak warna lain',
+          sub: 'Seperti "warna bagian dari kelas", tapi sistem juga membuat '
+             + 'salinan produk berwarna salah (biru→coklat/merah/hijau) sebagai '
+             + 'contoh yang ditolak. Untuk menolak barang sebentuk tapi warnanya '
+             + 'beda tanpa perlu foto produk pesaing.' },
       ];
       for (const mo of MODE) {
         const pil = document.createElement('div');
@@ -1126,6 +1214,41 @@
         };
         pil.appendChild(lab);
         wadah.appendChild(pil);
+      }
+      // Gerbang warna aktif -> tampilkan pilihan tingkat ketat (pilih-salah-satu).
+      if (modeKini === 'color-gated') {
+        const hk = document.createElement('div');
+        hk.className = 'op-grup';
+        hk.textContent = 'Seberapa ketat gerbang warnanya?';
+        wadah.appendChild(hk);
+        const ketatKini = (resep.warna || {}).ketat || 'sedang';
+        const KETAT = [
+          { v: 'longgar', nama: 'Longgar',
+            sub: 'Hanya warna yang jauh beda yang ditolak.' },
+          { v: 'sedang', nama: 'Sedang (disarankan)',
+            sub: 'Seimbang untuk kebanyakan kasus.' },
+          { v: 'ketat', nama: 'Ketat',
+            sub: 'Selisih warna kecil pun ditolak; contoh warna-salah dibuat '
+               + 'lebih banyak.' },
+        ];
+        for (const kt of KETAT) {
+          const pil = document.createElement('div');
+          pil.className = 'op-pil';
+          const lab = document.createElement('label');
+          lab.className = 'sk';
+          lab.innerHTML =
+            `<input class="sk-in" type="checkbox" role="switch"${kt.v === ketatKini ? ' checked' : ''}>`
+            + '<span class="sk-track"><span class="sk-knob"></span></span>'
+            + `<span class="sk-teks"><b>${kt.nama}</b><em>${kt.sub}</em></span>`;
+          lab.querySelector('.sk-in').onchange = () => {
+            const r = wz.querySelector(`input[name="wz-ketat"][value="${kt.v}"]`);
+            if (r) r.checked = true;
+            resep.warna.ketat = kt.v;
+            gambarPopup();
+          };
+          pil.appendChild(lab);
+          wadah.appendChild(pil);
+        }
       }
     }
 
