@@ -26,8 +26,13 @@ const IDX_KELAS = {};
 (D.kelas || []).forEach((k, i) => { IDX_KELAS[k] = i; });
 
 let page = [];        // klip halaman kini (sudah di dataset)
-let meta = { hal: 1, n_hal: 1, per: 60, n_tampil: 0, kelas_hitung: {} };
+let meta = { hal: 1, n_hal: 1, per: 60, mulai: 0, n_tampil: 0,
+             kelas_hitung: {}, batch_hitung: {} };
 let fkelas = '';
+let fbatch = '';
+let cari = '';
+let urut = 'nama';
+let perPage = 60;
 const terpilih = new Set();
 let memuat = false;
 
@@ -40,8 +45,11 @@ const btnKeluar = el('akd-keluarkan');
 const cbSemua = el('akd-semua');
 
 function urlKet(hal) {
-  let u = `/api/aksi/keterangan?ds=${EDS}&dsf=di&hal=${hal}&per=${meta.per}`;
+  let u = `/api/aksi/keterangan?ds=${EDS}&dsf=di&hal=${hal}&per=${perPage}`
+    + `&urut=${urut}`;
   if (fkelas) u += '&kelas=' + enc(fkelas);
+  if (fbatch) u += '&batch=' + enc(fbatch);
+  if (cari) u += '&q=' + enc(cari);
   return u;
 }
 
@@ -55,9 +63,13 @@ async function muat(hal) {
     kosongEl.textContent = (r && r.error) || 'gagal memuat'; return;
   }
   page = (r.klips || []).map(c => ({ ...c }));
-  meta = { hal: r.hal, n_hal: r.n_hal, per: r.per, n_tampil: r.n_tampil,
-           kelas_hitung: r.kelas_hitung || {} };
+  meta = { hal: r.hal, n_hal: r.n_hal, per: r.per, mulai: r.mulai || 0,
+           n_tampil: r.n_tampil, kelas_hitung: r.kelas_hitung || {},
+           batch_hitung: r.batch_hitung || {} };
+  perPage = r.per;
   isiKelas();
+  isiFilterBatch();
+  aktifkanBersih();
   render();
 }
 
@@ -67,6 +79,25 @@ function isiKelas() {
   selKelas.innerHTML = '<option value="">Semua</option>'
     + ada.map(k => `<option value="${k}">${k} (${meta.kelas_hitung[k]})</option>`).join('');
   selKelas.value = ada.includes(lama) ? lama : (fkelas || '');
+}
+
+function isiFilterBatch() {
+  const wrap = el('akd-fbatch-wrap'), sel = el('akd-f-batch');
+  if (!wrap || !sel) return;
+  const ada = Object.keys(meta.batch_hitung || {}).sort();
+  wrap.hidden = ada.length < 2 && !fbatch;
+  const lama = sel.value;
+  sel.innerHTML = '<option value="">Semua unggahan</option>'
+    + ada.map(b => `<option value="${b}">${b} (${meta.batch_hitung[b]})</option>`).join('');
+  sel.value = ada.includes(lama) ? lama : (fbatch || '');
+}
+
+function aktifkanBersih() {
+  const chip = el('akd-bersih');
+  if (!chip) return;
+  const n = (fkelas ? 1 : 0) + (fbatch ? 1 : 0) + (cari ? 1 : 0);
+  chip.hidden = n === 0;
+  chip.innerHTML = `&times; Bersihkan saringan${n ? ' ' + n : ''}`;
 }
 
 function render() {
@@ -121,19 +152,74 @@ function kartu(it) {
   return li;
 }
 
+function nomorHalaman(cur, total) {
+  const out = []; let last = 0;
+  for (let p = 1; p <= total; p++) {
+    if (p === 1 || p === total || (p >= cur - 2 && p <= cur + 2)) {
+      if (last && p - last > 1) out.push('…');
+      out.push(p); last = p;
+    }
+  }
+  return out;
+}
+
 function renderHal() {
+  halEl.className = 'hal';
   halEl.innerHTML = '';
-  if (meta.n_hal <= 1) return;
-  const mk = (txt, ke) => {
-    const b = document.createElement('button');
-    b.type = 'button'; b.className = 'chip'; b.textContent = txt;
-    b.addEventListener('click', () => { muat(ke);
-      window.scrollTo({ top: 0, behavior: 'smooth' }); });
-    return b;
+  if (meta.n_tampil === 0) { halEl.hidden = true; return; }
+  halEl.hidden = false;
+  const goto = (h) => { muat(h); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+
+  const pp = document.createElement('div');
+  pp.className = 'hal-pp'; pp.appendChild(document.createTextNode('Per halaman '));
+  const selPer = document.createElement('select');
+  [24, 60, 120, 200].forEach(n => {
+    const o = document.createElement('option'); o.value = n; o.textContent = n;
+    if (n === meta.per) o.selected = true; selPer.appendChild(o);
+  });
+  selPer.addEventListener('change', () => { perPage = +selPer.value; muat(1); });
+  pp.appendChild(selPer); halEl.appendChild(pp);
+
+  const info = document.createElement('span');
+  info.className = 'hal-info';
+  const a = meta.mulai + 1, b = meta.mulai + page.length;
+  info.innerHTML = `${a.toLocaleString('id-ID')}&ndash;${b.toLocaleString('id-ID')} dari `
+    + `${meta.n_tampil.toLocaleString('id-ID')} <em>klip</em>`;
+  halEl.appendChild(info);
+
+  const nav = document.createElement('div'); nav.className = 'hal-nav';
+  const arrow = (txt, ke, mati) => {
+    const x = document.createElement('button');
+    x.type = 'button'; x.className = 'hal-n'; x.textContent = txt;
+    if (mati) x.setAttribute('data-mati', ''); else x.addEventListener('click', ke);
+    return x;
   };
-  if (meta.hal > 1) halEl.appendChild(mk('‹', meta.hal - 1));
-  halEl.appendChild(document.createTextNode(` ${meta.hal} / ${meta.n_hal} `));
-  if (meta.hal < meta.n_hal) halEl.appendChild(mk('›', meta.hal + 1));
+  nav.appendChild(arrow('‹', () => goto(meta.hal - 1), meta.hal <= 1));
+  nomorHalaman(meta.hal, meta.n_hal).forEach(p => {
+    if (p === '…') {
+      const g = document.createElement('span'); g.className = 'hal-gap'; g.textContent = '…';
+      nav.appendChild(g);
+    } else {
+      const bn = document.createElement('button');
+      bn.type = 'button'; bn.className = 'hal-n'; bn.textContent = p;
+      if (p === meta.hal) bn.setAttribute('data-on', '');
+      else bn.addEventListener('click', () => goto(p));
+      nav.appendChild(bn);
+    }
+  });
+  nav.appendChild(arrow('›', () => goto(meta.hal + 1), meta.hal >= meta.n_hal));
+  halEl.appendChild(nav);
+
+  if (meta.n_hal > 10) {
+    const j = document.createElement('div'); j.className = 'hal-loncat';
+    j.appendChild(document.createTextNode('Ke halaman '));
+    const inp = document.createElement('input');
+    inp.type = 'number'; inp.min = 1; inp.max = meta.n_hal; inp.value = meta.hal;
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') goto(Math.min(meta.n_hal, Math.max(1, +inp.value || 1)));
+    });
+    j.appendChild(inp); halEl.appendChild(j);
+  }
 }
 
 function perbaruiKeluar() {
@@ -169,6 +255,26 @@ if (btnKeluar) {
 }
 
 selKelas.addEventListener('change', () => { fkelas = selKelas.value; muat(1); });
+
+const selFBatch = el('akd-f-batch');
+if (selFBatch) selFBatch.addEventListener('change', () => { fbatch = selFBatch.value; muat(1); });
+const selUrut = el('akd-urut');
+if (selUrut) selUrut.addEventListener('change', () => { urut = selUrut.value; muat(1); });
+const cariForm = el('akd-cari-form');
+if (cariForm) cariForm.addEventListener('submit', (e) => {
+  e.preventDefault();
+  cari = (el('akd-cari').value || '').trim();
+  muat(1);
+});
+const btnBersih = el('akd-bersih');
+if (btnBersih) btnBersih.addEventListener('click', () => {
+  fkelas = ''; fbatch = ''; cari = ''; urut = 'nama';
+  selKelas.value = '';
+  if (selFBatch) selFBatch.value = '';
+  if (selUrut) selUrut.value = 'nama';
+  const ci = el('akd-cari'); if (ci) ci.value = '';
+  muat(1);
+});
 
 // -- overlay pemutar (Lihat): auto-play + loop DI SINI saja -----------------
 const overlay = el('akg-overlay');

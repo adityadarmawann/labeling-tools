@@ -16,7 +16,11 @@
     {% endif %}
     <span class="sisi-teks">
       <b class="sisi-nama" title="{{ pr.nama }}">{{ pr.nama }}</b>
+      {%- if pr.jenis == 'video' %}
+      <span class="sisi-sub">{{ "{:,}".format(pr.klip).replace(",", ".") }} klip</span>
+      {%- else %}
       <span class="sisi-sub">{{ "{:,}".format(pr.jumlah).replace(",", ".") }} gambar</span>
+      {%- endif %}
     </span>
   </div>
 

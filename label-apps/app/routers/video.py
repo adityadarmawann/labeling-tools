@@ -417,9 +417,15 @@ def _versi_aksi(d) -> list[dict]:
     return out
 
 
+def _nama_klip(rel: str) -> str:
+    """Nama berkas klip (segmen terakhir rel), untuk pencarian & urut nama."""
+    return rel.rsplit("/", 1)[-1]
+
+
 def _keterangan_aksi(d, data: dict, user: str, pindai: dict, *, job: str = "",
                      saring: str = "semua", dsf: str = "semua",
-                     fkelas: str = "", hal: int = 1, per: int = 60) -> dict:
+                     fkelas: str = "", fbatch: str = "", q: str = "",
+                     urut: str = "nama", hal: int = 1, per: int = 60) -> dict:
     """Bahan render halaman/skrip aksi, DIPAGINASI & disaring DI SERVER.
 
     Dulu seluruh subset klip ditanam di halaman (dan dikirim utuh tiap
@@ -446,15 +452,35 @@ def _keterangan_aksi(d, data: dict, user: str, pindai: dict, *, job: str = "",
         tampil = [c for c in tampil if c["di_dataset"]]
     elif dsf == "belum":
         tampil = [c for c in tampil if not c["di_dataset"]]
-    # Hitung-kelas untuk dropdown dihitung SETELAH saring+dsf tapi SEBELUM filter
-    # kelas: jadi opsi kelas mencerminkan konteks kini (mis. tab Dataset = kelas
-    # yang ada DI dataset) dan tak menyusut hanya karena satu kelas dipilih.
+    # Cari nama berkas: substring, tak peka huruf besar/kecil. Dikenakan sebelum
+    # hitung-kelas/batch supaya angka dropdown mengikuti hasil pencarian.
+    q = (q or "").strip().lower()
+    if q:
+        tampil = [c for c in tampil if q in _nama_klip(c["rel"]).lower()]
+    # Hitung-kelas & hitung-batch untuk dropdown dihitung SETELAH saring+dsf+cari
+    # tapi SEBELUM filter kelas/batch: opsinya mencerminkan konteks kini dan tak
+    # menyusut hanya karena satu nilai dipilih.
     kelas_hitung: dict[str, int] = {}
+    batch_hitung: dict[str, int] = {}
     for c in tampil:
         if c["label"]:
             kelas_hitung[c["label"]] = kelas_hitung.get(c["label"], 0) + 1
+        b = c.get("batch") or ""
+        if b:
+            batch_hitung[b] = batch_hitung.get(b, 0) + 1
     if fkelas:
         tampil = [c for c in tampil if c["label"] == fkelas]
+    if fbatch:
+        tampil = [c for c in tampil if (c.get("batch") or "") == fbatch]
+
+    # Urut: nama A→Z (bawaan, subset sudah terurut rel), nama Z→A, atau per batch
+    # lalu nama. Klip tak punya mtime murah, jadi urut berbasis nama/batch saja.
+    urut = urut if urut in ("nama", "nama-balik", "batch") else "nama"
+    if urut == "nama-balik":
+        tampil = sorted(tampil, key=lambda c: _nama_klip(c["rel"]).lower(), reverse=True)
+    elif urut == "batch":
+        tampil = sorted(tampil, key=lambda c: ((c.get("batch") or "").lower(),
+                                               _nama_klip(c["rel"]).lower()))
 
     n_tampil = len(tampil)
     per = max(6, min(int(per or 60), 200))
@@ -470,9 +496,12 @@ def _keterangan_aksi(d, data: dict, user: str, pindai: dict, *, job: str = "",
         "n_label": n_label,
         "n_dataset": n_dataset,
         "n_tampil": n_tampil,
+        "mulai": mulai,
         "hal": hal, "n_hal": n_hal, "per": per,
         "kelas_hitung": dict(sorted(kelas_hitung.items())),
-        "saring": saring, "dsf": dsf, "fkelas": fkelas,
+        "batch_hitung": dict(sorted(batch_hitung.items())),
+        "saring": saring, "dsf": dsf, "fkelas": fkelas, "fbatch": fbatch,
+        "q": q, "urut": urut,
         "boleh_kelola": tugas.boleh_kelola(data, user),
     }
 
@@ -648,7 +677,8 @@ async def aksi_thumb(ds: str = "", rel: str = "", s: int = 320,
 
 @router.get("/api/aksi/keterangan")
 async def aksi_keterangan(ds: str = "", job: str = "", saring: str = "semua",
-                          dsf: str = "semua", kelas: str = "",
+                          dsf: str = "semua", kelas: str = "", batch: str = "",
+                          q: str = "", urut: str = "nama",
                           hal: int = 1, per: int = 60,
                           sess: Session = Depends(current_session_api),
                           settings: Settings = Depends(get_settings)):
@@ -662,7 +692,7 @@ async def aksi_keterangan(ds: str = "", job: str = "", saring: str = "semua",
     pindai = await asyncio.to_thread(klip_scan.pindai, d)
     return {"ok": True, **_keterangan_aksi(
         d, tdata, sess.user, pindai, job=job, saring=saring, dsf=dsf,
-        fkelas=kelas, hal=hal, per=per)}
+        fkelas=kelas, fbatch=batch, q=q, urut=urut, hal=hal, per=per)}
 
 
 # ---------------------------------------------------------------- papan & bagi

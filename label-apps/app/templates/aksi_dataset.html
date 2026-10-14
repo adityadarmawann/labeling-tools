@@ -25,8 +25,23 @@
 
   <div class="akg-bar">
     <span class="akg-info"><b id="akd-n">0</b> klip di dataset</span>
+    <form class="ak-cari" id="akd-cari-form" role="search">
+      <input type="search" id="akd-cari" placeholder="Cari nama berkas&hellip;"
+             autocomplete="off" aria-label="Cari nama berkas klip">
+      <button class="chip" type="submit">Cari</button>
+    </form>
     <label class="halus">Kelas
       <select id="akd-kelas" class="akg-kelas"><option value="">Semua</option></select></label>
+    <label class="halus" id="akd-fbatch-wrap" hidden>Unggahan
+      <select id="akd-f-batch" class="akg-kelas"><option value="">Semua</option></select></label>
+    <label class="halus">Urut
+      <select id="akd-urut" class="akg-kelas">
+        <option value="nama">Nama (A&ndash;Z)</option>
+        <option value="nama-balik">Nama (Z&ndash;A)</option>
+        <option value="batch">Per unggahan</option>
+      </select></label>
+    <button class="chip ak-bersih" type="button" id="akd-bersih" hidden
+            title="Batalkan semua saringan">&times; Bersihkan saringan</button>
     {% if boleh_kelola %}
     <label class="halus"><input type="checkbox" id="akd-semua"> Pilih semua di halaman ini</label>
     <button class="chip" type="button" id="akd-keluarkan" disabled

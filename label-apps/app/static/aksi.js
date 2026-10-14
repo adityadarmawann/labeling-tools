@@ -37,13 +37,18 @@ const IDX_KELAS = {};
 let page = (D.klips || []).map(c => ({ ...c }));   // klip halaman kini
 let meta = {                                        // ringkasan dari server
   hal: D.hal || 1, n_hal: D.n_hal || 1, per: D.per || 60,
+  mulai: D.mulai || 0,
   n_tampil: D.n_tampil || 0, n_total: D.n_total || 0,
   n_label: D.n_label || 0, n_dataset: D.n_dataset || 0,
-  kelas_hitung: D.kelas_hitung || {},
+  kelas_hitung: D.kelas_hitung || {}, batch_hitung: D.batch_hitung || {},
 };
 let saring = 'semua';   // semua | belum | sudah
 let dsf = 'semua';      // semua | di | belum
 let fkelas = '';        // filter kelas (satu kelas)
+let fbatch = '';        // filter unggahan/batch
+let cari = '';          // cari nama berkas
+let urut = 'nama';      // nama | nama-balik | batch
+let perPage = D.per || 60;
 const terpilih = new Set();   // rel terpilih (lintas halaman)
 let memuat = false;
 
@@ -56,10 +61,12 @@ const btnBulkDs = el('ak-bulk-ds');
 const nPilihEl = el('ak-npilih');
 
 function urlKet(hal) {
-  let u = `/api/aksi/keterangan?ds=${EDS}&hal=${hal}&per=${meta.per}`
-    + `&saring=${saring}&dsf=${dsf}`;
+  let u = `/api/aksi/keterangan?ds=${EDS}&hal=${hal}&per=${perPage}`
+    + `&saring=${saring}&dsf=${dsf}&urut=${urut}`;
   if (JOB) u += '&job=' + enc(JOB);
   if (fkelas) u += '&kelas=' + enc(fkelas);
+  if (fbatch) u += '&batch=' + enc(fbatch);
+  if (cari) u += '&q=' + enc(cari);
   return u;
 }
 
@@ -73,10 +80,12 @@ async function muat(hal) {
   if (!r || !r.ok) { toast((r && r.error) || 'gagal memuat'); return false; }
   page = (r.klips || []).map(c => ({ ...c }));
   meta = {
-    hal: r.hal, n_hal: r.n_hal, per: r.per, n_tampil: r.n_tampil,
-    n_total: r.n_total, n_label: r.n_label, n_dataset: r.n_dataset,
-    kelas_hitung: r.kelas_hitung || {},
+    hal: r.hal, n_hal: r.n_hal, per: r.per, mulai: r.mulai || 0,
+    n_tampil: r.n_tampil, n_total: r.n_total, n_label: r.n_label,
+    n_dataset: r.n_dataset, kelas_hitung: r.kelas_hitung || {},
+    batch_hitung: r.batch_hitung || {},
   };
+  perPage = r.per;
   render();
   return true;
 }
@@ -99,6 +108,8 @@ function isiFilterKelas() {
 function render() {
   angka();
   isiFilterKelas();
+  isiFilterBatch();
+  aktifkanBersih();
   grid.innerHTML = '';
   kosongEl.hidden = page.length > 0;
   page.forEach(it => grid.appendChild(kartu(it)));
@@ -106,6 +117,28 @@ function render() {
   if (cbSemua) cbSemua.checked = page.length > 0
     && page.every(it => terpilih.has(it.rel));
   perbaruiBulk();
+}
+
+// Dropdown unggahan/batch: hanya tampil kalau klip tersebar di >1 unggahan.
+function isiFilterBatch() {
+  const wrap = el('ak-fbatch-wrap'), sel = el('ak-f-batch');
+  if (!wrap || !sel) return;
+  const ada = Object.keys(meta.batch_hitung || {}).sort();
+  wrap.hidden = ada.length < 2 && !fbatch;
+  const lama = sel.value;
+  sel.innerHTML = '<option value="">Semua unggahan</option>'
+    + ada.map(b => `<option value="${b}">${b} (${meta.batch_hitung[b]})</option>`).join('');
+  sel.value = ada.includes(lama) ? lama : (fbatch || '');
+}
+
+// Chip "Bersihkan saringan" muncul + menghitung saringan aktif.
+function aktifkanBersih() {
+  const chip = el('ak-bersih');
+  if (!chip) return;
+  const n = (saring !== 'semua') + (dsf !== 'semua') + (fkelas ? 1 : 0)
+    + (fbatch ? 1 : 0) + (cari ? 1 : 0);
+  chip.hidden = n === 0;
+  chip.innerHTML = `&times; Bersihkan saringan${n ? ' ' + n : ''}`;
 }
 
 function kartu(it) {
@@ -153,20 +186,81 @@ function kartu(it) {
   return li;
 }
 
+// Nomor halaman berjendela: 1, sekitar halaman kini (±2), dan terakhir, dengan
+// "…" di selanya — sama polanya dengan pager grid gambar.
+function nomorHalaman(cur, total) {
+  const out = []; let last = 0;
+  for (let p = 1; p <= total; p++) {
+    if (p === 1 || p === total || (p >= cur - 2 && p <= cur + 2)) {
+      if (last && p - last > 1) out.push('…');
+      out.push(p); last = p;
+    }
+  }
+  return out;
+}
+
 function renderHal() {
+  halEl.className = 'hal';
   halEl.innerHTML = '';
-  if (meta.n_hal <= 1) return;
-  const mk = (txt, ke) => {
-    const b = document.createElement('button');
-    b.type = 'button'; b.className = 'chip'; b.textContent = txt;
-    b.addEventListener('click', () => {
-      muat(ke); window.scrollTo({ top: 0, behavior: 'smooth' });
-    });
-    return b;
+  if (meta.n_tampil === 0) { halEl.hidden = true; return; }
+  halEl.hidden = false;
+  const goto = (h) => { muat(h); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+
+  // Per halaman
+  const pp = document.createElement('div');
+  pp.className = 'hal-pp'; pp.appendChild(document.createTextNode('Per halaman '));
+  const selPer = document.createElement('select');
+  [24, 60, 120, 200].forEach(n => {
+    const o = document.createElement('option'); o.value = n; o.textContent = n;
+    if (n === meta.per) o.selected = true; selPer.appendChild(o);
+  });
+  selPer.addEventListener('change', () => { perPage = +selPer.value; muat(1); });
+  pp.appendChild(selPer); halEl.appendChild(pp);
+
+  // Rentang "a–b dari N"
+  const info = document.createElement('span');
+  info.className = 'hal-info';
+  const a = meta.mulai + 1, b = meta.mulai + page.length;
+  info.innerHTML = `${a.toLocaleString('id-ID')}&ndash;${b.toLocaleString('id-ID')} dari `
+    + `${meta.n_tampil.toLocaleString('id-ID')} <em>klip</em>`;
+  halEl.appendChild(info);
+
+  // Navigasi bernomor
+  const nav = document.createElement('div'); nav.className = 'hal-nav';
+  const arrow = (txt, ke, mati) => {
+    const x = document.createElement('button');
+    x.type = 'button'; x.className = 'hal-n'; x.textContent = txt;
+    if (mati) x.setAttribute('data-mati', '');
+    else x.addEventListener('click', ke);
+    return x;
   };
-  if (meta.hal > 1) halEl.appendChild(mk('‹', meta.hal - 1));
-  halEl.appendChild(document.createTextNode(` ${meta.hal} / ${meta.n_hal} `));
-  if (meta.hal < meta.n_hal) halEl.appendChild(mk('›', meta.hal + 1));
+  nav.appendChild(arrow('‹', () => goto(meta.hal - 1), meta.hal <= 1));
+  nomorHalaman(meta.hal, meta.n_hal).forEach(p => {
+    if (p === '…') {
+      const g = document.createElement('span'); g.className = 'hal-gap'; g.textContent = '…';
+      nav.appendChild(g);
+    } else {
+      const bn = document.createElement('button');
+      bn.type = 'button'; bn.className = 'hal-n'; bn.textContent = p;
+      if (p === meta.hal) bn.setAttribute('data-on', '');
+      else bn.addEventListener('click', () => goto(p));
+      nav.appendChild(bn);
+    }
+  });
+  nav.appendChild(arrow('›', () => goto(meta.hal + 1), meta.hal >= meta.n_hal));
+  halEl.appendChild(nav);
+
+  // Lompat ke halaman (saat banyak halaman)
+  if (meta.n_hal > 10) {
+    const j = document.createElement('div'); j.className = 'hal-loncat';
+    j.appendChild(document.createTextNode('Ke halaman '));
+    const inp = document.createElement('input');
+    inp.type = 'number'; inp.min = 1; inp.max = meta.n_hal; inp.value = meta.hal;
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') goto(Math.min(meta.n_hal, Math.max(1, +inp.value || 1)));
+    });
+    j.appendChild(inp); halEl.appendChild(j);
+  }
 }
 
 function perbaruiBulk() {
@@ -188,6 +282,30 @@ document.querySelectorAll('.ak-dsf [data-dsf]').forEach(btn => {
   });
 });
 selFKelas.addEventListener('change', () => { fkelas = selFKelas.value; muat(1); });
+
+const selFBatch = el('ak-f-batch');
+if (selFBatch) selFBatch.addEventListener('change', () => { fbatch = selFBatch.value; muat(1); });
+const selUrut = el('ak-urut');
+if (selUrut) selUrut.addEventListener('change', () => { urut = selUrut.value; muat(1); });
+const cariForm = el('ak-cari-form');
+if (cariForm) cariForm.addEventListener('submit', (e) => {
+  e.preventDefault();
+  cari = (el('ak-cari').value || '').trim();
+  muat(1);
+});
+const btnBersih = el('ak-bersih');
+if (btnBersih) btnBersih.addEventListener('click', () => {
+  saring = 'semua'; dsf = 'semua'; fkelas = ''; fbatch = ''; cari = ''; urut = 'nama';
+  document.querySelectorAll('.ak-saring [data-saring]').forEach(
+    b => b.toggleAttribute('data-on', b.dataset.saring === 'semua'));
+  document.querySelectorAll('.ak-dsf [data-dsf]').forEach(
+    b => b.toggleAttribute('data-on', b.dataset.dsf === 'semua'));
+  selFKelas.value = '';
+  if (selFBatch) selFBatch.value = '';
+  if (selUrut) selUrut.value = 'nama';
+  const ci = el('ak-cari'); if (ci) ci.value = '';
+  muat(1);
+});
 
 // -- pilih semua (halaman ini) + toolbar borongan ---------------------------
 if (cbSemua) {

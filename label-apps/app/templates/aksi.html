@@ -45,8 +45,23 @@
       <button class="seg-opt" type="button" data-dsf="di">Di dataset</button>
       <button class="seg-opt" type="button" data-dsf="belum">Belum di dataset</button>
     </div>
+    <form class="ak-cari" id="ak-cari-form" role="search">
+      <input type="search" id="ak-cari" placeholder="Cari nama berkas&hellip;"
+             autocomplete="off" aria-label="Cari nama berkas klip">
+      <button class="chip" type="submit">Cari</button>
+    </form>
     <label class="halus">Kelas
       <select id="ak-f-kelas" class="akg-kelas"><option value="">Semua</option></select></label>
+    <label class="halus" id="ak-fbatch-wrap" hidden>Unggahan
+      <select id="ak-f-batch" class="akg-kelas"><option value="">Semua</option></select></label>
+    <label class="halus">Urut
+      <select id="ak-urut" class="akg-kelas">
+        <option value="nama">Nama (A&ndash;Z)</option>
+        <option value="nama-balik">Nama (Z&ndash;A)</option>
+        <option value="batch">Per unggahan</option>
+      </select></label>
+    <button class="chip ak-bersih" type="button" id="ak-bersih" hidden
+            title="Batalkan semua saringan">&times; Bersihkan saringan</button>
     {% if boleh_kelola %}
     <button class="chip" type="button" id="ak-set-kelas"
             title="Setel/ubah daftar kelas aksi projek ini">&#9881; Kelas</button>

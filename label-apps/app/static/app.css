@@ -3751,6 +3751,13 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
   margin-bottom: 14px; }
 .akg-info { font-weight: 600; }
 .akg-kelas { margin-left: 4px; }
+/* Cari nama berkas klip di toolbar grid/dataset klip (padanan "Cari nama
+   berkas" grid gambar). */
+.ak-cari { display: flex; align-items: center; gap: 6px; }
+.ak-cari input { border: 1px solid var(--line2); background: var(--raised);
+  color: var(--ink); border-radius: 999px; padding: 6px 12px;
+  font-family: inherit; font-size: 13px; min-width: 170px; }
+.ak-cari input:focus { outline: 0; border-color: var(--ok); }
 
 .akg-grid { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
