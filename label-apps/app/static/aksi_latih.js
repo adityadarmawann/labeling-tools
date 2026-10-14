@@ -289,6 +289,13 @@ el('akl-isi').addEventListener('click', (e) => {
 });
 
 let pollTr = null;
+// Antrean percobaan (frontend): konfigurasi ditumpuk, lalu dijalankan satu per
+// satu. submitKonfig diisi di blok form; pantauTr memicu run berikutnya saat
+// run kini selesai. Antrean hidup selama tab terbuka.
+let antrean = [];
+let menjalankanAntrean = false;
+let submitKonfig = null;
+let renderAntrean = null;
 async function pantauTr() {
   const r = await send(`/api/aksi/latih/kemajuan?ds=${EDS}`);
   if (!r || !r.ok) return;
@@ -300,7 +307,14 @@ async function pantauTr() {
     if (!pollTr) pollTr = setInterval(pantauTr, 3000);
   } else {
     if (pollTr) { clearInterval(pollTr); pollTr = null; }
-    if (btn && selVersi) btn.disabled = !selVersi.value;
+    // Run kini selesai: jalankan percobaan berikutnya di antrean.
+    if (menjalankanAntrean && antrean.length && submitKonfig) {
+      submitKonfig(antrean.shift());
+      if (renderAntrean) renderAntrean();
+    } else {
+      menjalankanAntrean = false;
+      if (btn && selVersi) btn.disabled = !selVersi.value;
+    }
   }
 }
 
@@ -377,30 +391,72 @@ if (BOLEH) {
     if (kepalaEl) kepalaEl.hidden = false;
   });
 
-  btnMulai.addEventListener('click', async () => {
-    if (!selBackend.value || !selVersi.value) { toast('Pilih backend & versi'); return; }
-    btnMulai.disabled = true;
+  function bacaKonfig() {
+    if (!selBackend.value || !selVersi.value) { toast('Pilih backend & versi'); return null; }
+    return {
+      versi: parseInt(selVersi.value, 10), backend: selBackend.value,
+      backend_nama: (BACKEND[selBackend.value] || {}).nama || selBackend.value,
+      nama: (el('ak-tr-nama').value || '').trim() || undefined,
+      catatan: (el('ak-tr-catatan').value || '').trim() || undefined,
+      par: { epochs: parseInt(inEpochs.value, 10) || undefined,
+        batch: parseInt(inBatch.value, 10) || undefined },
+    };
+  }
+
+  // Dipanggil juga oleh pantauTr untuk percobaan berikutnya di antrean.
+  submitKonfig = async (c) => {
     majuEl.hidden = false; majuEl.textContent = 'Memulai…';
     const r = await send(`/api/aksi/latih/mulai?ds=${EDS}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        versi: parseInt(selVersi.value, 10), backend: selBackend.value,
-        nama: (el('ak-tr-nama').value || '').trim() || undefined,
-        catatan: (el('ak-tr-catatan').value || '').trim() || undefined,
-        par: { epochs: parseInt(inEpochs.value, 10) || undefined,
-          batch: parseInt(inBatch.value, 10) || undefined },
-      }),
+      body: JSON.stringify({ versi: c.versi, backend: c.backend,
+        nama: c.nama, catatan: c.catatan, par: c.par }),
     });
     if (!r || !r.ok) {
       toast((r && r.error) || 'gagal memulai'); majuEl.textContent = (r && r.error) || '';
-      btnMulai.disabled = false; return;
+      menjalankanAntrean = false; btnMulai.disabled = false; return false;
     }
     toast(`Training A${r.nomor} dimulai`);
     majuEl.hidden = true;
-    form.hidden = true; if (kepalaEl) kepalaEl.hidden = false;
-    el('ak-tr-nama').value = ''; el('ak-tr-catatan').value = '';
     if (!pollTr) pollTr = setInterval(pantauTr, 3000);
     pantauTr();
+    return true;
+  };
+
+  const antreWrap = el('ak-tr-antrean-wrap');
+  const antreDaftar = el('ak-tr-antrean-daftar');
+  renderAntrean = () => {
+    if (antreWrap) antreWrap.hidden = antrean.length === 0;
+    if (!antreDaftar) return;
+    antreDaftar.innerHTML = '';
+    antrean.forEach((c, i) => {
+      const row = document.createElement('div');
+      row.className = 'tr-antre';
+      const sp = document.createElement('span');
+      sp.textContent = `${c.nama || ('Percobaan ' + (i + 1))} · ${c.backend_nama} · v${c.versi}`
+        + ` · ${c.par.epochs || '?'} epoch`;
+      row.appendChild(sp);
+      const x = document.createElement('button');
+      x.type = 'button'; x.className = 'chip'; x.textContent = 'Buang';
+      x.addEventListener('click', () => { antrean.splice(i, 1); renderAntrean(); });
+      row.appendChild(x);
+      antreDaftar.appendChild(row);
+    });
+  };
+
+  el('ak-tr-antre').addEventListener('click', () => {
+    const c = bacaKonfig(); if (!c) return;
+    antrean.push(c); renderAntrean();
+    toast('Ditambahkan ke antrean');
+    el('ak-tr-nama').value = ''; el('ak-tr-catatan').value = '';
+  });
+
+  btnMulai.addEventListener('click', () => {
+    if (!antrean.length) { const c = bacaKonfig(); if (!c) return; antrean.push(c); }
+    btnMulai.disabled = true;
+    menjalankanAntrean = true;
+    form.hidden = true; if (kepalaEl) kepalaEl.hidden = false;
+    submitKonfig(antrean.shift());
+    renderAntrean();
   });
 
   muatBahan().then(pantauTr);
