@@ -24,9 +24,9 @@
   </div>
   {% else %}
 
-  {# Penunjuk tahap. Di tahap 2 dengan ribuan thumbnail, ini satu-satunya yang
-     memberitahu masih ada tahap sesudahnya. data-on = tahap sekarang,
-     data-selesai = tahap yang sudah dilewati; keduanya dipindahkan JavaScript. #}
+  {# Penunjuk tahap wizard GAMBAR. Projek video memakai panel "Tambah klip" di
+     bawah (video sumber -> potong -> saring), jadi steppernya disembunyikan. #}
+  {% if jenis != 'video' %}
   <nav class="ug-langkah" id="ug-langkah" aria-label="Tahap unggahan">
     <span class="ug-langkah-item" id="ug-langkah-1" data-on>
       <span class="ug-langkah-no">1</span>Pilih berkas</span>
@@ -37,6 +37,100 @@
     <span class="ug-langkah-item" id="ug-langkah-3">
       <span class="ug-langkah-no">3</span>Unggah</span>
   </nav>
+  {% endif %}
+
+  {% if jenis == 'video' %}
+  {#- Panel INGEST KLIP (projek video): video sumber (unggah/URL/scrape) ->
+      potong jadi klip -> saring objek (opsional). Memakai endpoint
+      /api/video/{siap,sumber,url,scrape,kemajuan,potong,filter} yang sudah ada.
+      Logikanya di ingest_klip.js, terpisah dari wizard unggah gambar. -#}
+  <section class="ik-panel" id="ik-panel" data-ds="{{ pr.ds }}">
+    <h2 class="hal-judul">Tambah klip</h2>
+    <p class="halus hal-ket">Masukkan video sumber, potong jadi klip, lalu
+      klipnya muncul di <a href="/aksi?ds={{ pr.ds | urlquote }}">Label Aksi</a>.
+      Sudah punya dataset klip jadi? Impor di tab
+      <a href="/aksi/versi?ds={{ pr.ds | urlquote }}">Versi</a> (.zip).</p>
+
+    <div class="ik-kartu">
+      <div class="ik-kartu-judul"><span class="ik-no">1</span>Video sumber</div>
+      <div class="seg ik-sumber-tab" role="group" aria-label="Sumber video">
+        <button class="seg-opt" type="button" data-tab="unggah" data-on>Unggah berkas</button>
+        <button class="seg-opt" type="button" data-tab="url">Dari URL</button>
+        <button class="seg-opt" type="button" data-tab="scrape" id="ik-tab-scrape" hidden>Cari (scrape)</button>
+      </div>
+      <div class="ik-tabisi" data-isi="unggah">
+        <label class="chip aksi ik-unggah-lbl">+ Pilih video
+          <input type="file" id="ik-unggah-file"
+                 accept=".mp4,.mov,.webm,.mkv,.avi,.m4v" hidden></label>
+        <span class="halus ik-maju" id="ik-unggah-maju"></span>
+      </div>
+      <div class="ik-tabisi" data-isi="url" hidden>
+        <div class="ik-baris">
+          <input type="url" id="ik-url" placeholder="Tempel URL YouTube&hellip;" autocomplete="off">
+          <button class="chip aksi" type="button" id="ik-url-btn">Unduh</button>
+        </div>
+        <span class="halus ik-maju" id="ik-url-maju"></span>
+      </div>
+      <div class="ik-tabisi" data-isi="scrape" hidden>
+        <div class="ik-baris">
+          <input type="text" id="ik-scrape-q" placeholder="Kata kunci&hellip;" autocomplete="off">
+          <input type="number" id="ik-scrape-maks" value="10" min="1" max="50"
+                 title="Maksimum video" class="ik-kecil">
+          <button class="chip aksi" type="button" id="ik-scrape-btn">Cari &amp; unduh</button>
+        </div>
+        <span class="prog ik-prog" id="ik-scrape-prog" hidden><i id="ik-scrape-fill"></i></span>
+        <span class="halus ik-maju" id="ik-scrape-maju"></span>
+      </div>
+      <div class="ik-sumber-daftar" id="ik-sumber-daftar"></div>
+    </div>
+
+    <div class="ik-kartu" id="ik-potong-kartu" hidden>
+      <div class="ik-kartu-judul"><span class="ik-no">2</span>Potong jadi klip
+        <span class="halus ik-potong-nama" id="ik-potong-nama"></span></div>
+      <div class="ik-grid">
+        <label class="ik-f">Nama unggahan
+          <input type="text" id="ik-batch" placeholder="otomatis dari nama video"></label>
+        <label class="ik-f">Durasi klip (detik)
+          <input type="number" id="ik-detik" value="1" min="0.1" max="600" step="0.1"></label>
+        <label class="ik-f">FPS <input type="number" id="ik-fps" value="25" min="0" max="120"></label>
+        <label class="ik-f">Lebar <input type="number" id="ik-w" value="224" min="16" step="2"></label>
+        <label class="ik-f">Tinggi <input type="number" id="ik-h" value="224" min="16" step="2"></label>
+        <label class="ik-f ik-cek"><input type="checkbox" id="ik-letterbox" checked>
+          Letterbox (tanpa crop)</label>
+      </div>
+      <div class="ik-aksi">
+        <button class="cta" type="button" id="ik-potong-btn">Potong jadi klip</button>
+        <span class="halus ik-maju" id="ik-potong-maju"></span>
+      </div>
+    </div>
+
+    <div class="ik-kartu" id="ik-filter-kartu" hidden>
+      <div class="ik-kartu-judul"><span class="ik-no">3</span>Saring klip per objek
+        <span class="halus">(opsional)</span></div>
+      <p class="halus">Buang klip yang tidak memuat objek sasaran. Pratinjau dulu
+        (tak memindahkan apa pun), lalu terapkan (klip ditolak dipindah ke
+        keranjang, bisa dipulihkan).</p>
+      <div class="ik-grid">
+        <label class="ik-f">Unggahan
+          <select id="ik-filter-batch" class="akg-kelas"></select></label>
+        <label class="ik-f">Metode
+          <select id="ik-filter-metode" class="akg-kelas">
+            <option value="warna">Warna (bola oranye, CPU)</option>
+            <option value="yolo">YOLO (model objek, GPU)</option>
+          </select></label>
+        <label class="ik-f" id="ik-filter-conf-wrap" hidden>Confidence YOLO
+          <input type="number" id="ik-filter-conf" value="0.25" min="0" max="1" step="0.05"></label>
+        <label class="ik-f">Min. frame berobjek
+          <input type="number" id="ik-filter-minframe" value="2" min="1" max="100"></label>
+      </div>
+      <div class="ik-aksi">
+        <button class="chip" type="button" id="ik-filter-pratinjau">Pratinjau</button>
+        <button class="chip chip-bahaya" type="button" id="ik-filter-terapkan" disabled>Terapkan (buang)</button>
+        <span class="halus ik-maju" id="ik-filter-maju"></span>
+      </div>
+    </div>
+  </section>
+  {% endif %}
 
 <div class="ug-halaman" id="ug-halaman"
      data-projek="{{ pr.ds }}" data-path="{{ projek.path }}"
@@ -335,4 +429,5 @@
 </main>
 {% endblock %}
 
-{% block skrip %}<script src="{{ statik('unggah.js') }}"></script>{% endblock %}
+{% block skrip %}<script src="{{ statik('unggah.js') }}"></script>
+{% if jenis == 'video' %}<script src="{{ statik('ingest_klip.js') }}"></script>{% endif %}{% endblock %}

@@ -2711,6 +2711,46 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
 .tr-kurva-lbl{fill:var(--ink-faint);font-size:10px;
   font-family:ui-monospace,"JetBrains Mono","SF Mono",Menlo,monospace}
 .tr-kurva-garis{stroke:var(--aksi);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+
+/* ============================ Ingest klip (panel "Tambah klip" di Unggah video) */
+.ik-panel{margin-bottom:26px}
+.ik-kartu{border:1px solid var(--line);border-radius:11px;background:var(--panel);
+  padding:14px 16px;margin-bottom:12px}
+.ik-kartu-judul{font-weight:600;font-size:14px;margin-bottom:10px;
+  display:flex;align-items:center;gap:8px}
+.ik-no{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;
+  background:var(--ink);color:var(--on-ink);font-size:11px;font-weight:700;flex:0 0 auto}
+.ik-tabisi{margin:10px 0}
+.ik-baris{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.ik-baris input[type=url],.ik-baris input[type=text]{flex:1 1 240px;
+  border:1px solid var(--line2);border-radius:8px;padding:7px 11px;font:inherit;
+  font-size:13px;background:var(--raised);color:var(--ink)}
+.ik-kecil{width:70px;flex:0 0 auto;border:1px solid var(--line2);border-radius:8px;
+  padding:7px 9px;font:inherit;font-size:13px;background:var(--raised);color:var(--ink)}
+.ik-prog{display:block;margin:8px 0}
+.ik-maju{display:inline-block;margin-left:8px}
+.ik-sumber-daftar{margin-top:12px}
+.ik-sumber-judul{margin-bottom:6px}
+.ik-sumber-baris{display:flex;align-items:center;justify-content:space-between;
+  gap:10px;padding:8px 11px;border:1px solid var(--line);border-radius:8px;margin-bottom:6px}
+.ik-sumber-baris.ik-on{border-color:var(--aksi);background:var(--ok-lembut)}
+.ik-sumber-nama{font-size:13px;color:var(--ink-dim);overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.ik-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.ik-f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--ink-faint)}
+.ik-f input,.ik-f select{border:1px solid var(--line2);border-radius:8px;padding:6px 9px;
+  font:inherit;font-size:13px;background:var(--raised);color:var(--ink)}
+.ik-f.ik-cek{flex-direction:row;align-items:center;gap:7px}
+.ik-aksi{display:flex;align-items:center;gap:12px;margin-top:14px;flex-wrap:wrap}
+/* Projek video memakai panel "Tambah klip"; bagian wizard GAMBAR (nama/tag,
+   drop zone, daftar format, tahap periksa/unggah) disembunyikan — hanya impor
+   dataset klip jadi dari server yang tetap. Disembunyikan via CSS (bukan Jinja)
+   agar elemen tetap di DOM dan unggah.js tak null-ref. */
+#ug-halaman[data-jenis="video"] .ug-isian,
+#ug-halaman[data-jenis="video"] .ug-drop,
+#ug-halaman[data-jenis="video"] .ug-format,
+#ug-halaman[data-jenis="video"] #ug-tahap2,
+#ug-halaman[data-jenis="video"] #ug-tahap3{display:none!important}
 .vk-total{float:right;font-weight:400;font-size:11.5px;color:var(--ink-faint);
   text-transform:none;letter-spacing:0}
 .vk-rasio{margin-top:9px;font-size:11.5px;line-height:1.5;color:var(--ink-faint)}

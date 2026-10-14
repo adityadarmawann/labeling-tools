@@ -256,6 +256,51 @@ async def ingest_kemajuan(ds: str = "",
     return {"ok": True, **projek.kemajuan(_kunci_scrape(sess.user, ds))}
 
 
+@router.get("/api/video/siap")
+async def video_siap(ds: str = "",
+                     sess: Session = Depends(current_session_api),
+                     settings: Settings = Depends(get_settings)):
+    """Kesiapan alat ingest/potong/filter di server ini, supaya UI bisa
+    mematikan kontrol dengan alasan jelas alih-alih gagal saat ditekan.
+    Gerbang: anggota yang boleh mengubah media (boleh_unggah)."""
+    d, err = _projek_video(sess, settings, ds)
+    if err:
+        return {"ok": False, "error": err}
+    sv, sv_a = klip.siap_video()
+    si, si_a = video_ingest.siap_ingest()
+    fw, fw_a = klip_filter.siap_filter("warna")
+    fy, fy_a = klip_filter.siap_filter("yolo")
+    return {"ok": True, "siap": {
+        "potong": {"ok": sv, "alasan": sv_a},
+        "ingest": {"ok": si, "alasan": si_a},
+        "scraper": video_ingest.scraper_aktif(settings),
+        "filter_warna": {"ok": fw, "alasan": fw_a},
+        "filter_yolo": {"ok": fy, "alasan": fy_a},
+    }}
+
+
+@router.get("/api/video/sumber")
+async def video_sumber(ds: str = "",
+                       sess: Session = Depends(current_session_api),
+                       settings: Settings = Depends(get_settings)):
+    """Daftar video sumber di `_sumber/` yang bisa dipotong jadi klip."""
+    d, err = _projek_video(sess, settings, ds)
+    if err:
+        return {"ok": False, "error": err}
+    from ..config import SUMBER_VIDEO, VIDEO_EXT
+    sdir = d / SUMBER_VIDEO
+    out = []
+    if sdir.is_dir():
+        for p in sorted(sdir.iterdir()):
+            if p.is_file() and p.suffix.lower() in VIDEO_EXT:
+                try:
+                    mb = round(p.stat().st_size / 1048576, 1)
+                except OSError:
+                    mb = 0
+                out.append({"nama": p.name, "mb": mb})
+    return {"ok": True, "sumber": out}
+
+
 # ============================================================
 # LANGKAH 6 — PELABELAN KLIP (classifier aksi)
 # ============================================================
