@@ -85,6 +85,13 @@
           {{ belum_ditugaskan }} klip</span>
       </div>
       {% if belum_ditugaskan %}
+      {#- Klip yang sudah DILABELI tetapi belum ditugaskan boleh langsung masuk
+          dataset tanpa lewat job — padanan "Masukkan semua yang sudah
+          dianotasi" di papan gambar. -#}
+      {% if boleh_bagi and belum_siap %}
+      <button class="an-siap an-siap-semua" type="button" data-siap="">
+        Masukkan semua {{ belum_siap }} yang sudah dilabeli</button>
+      {% endif %}
       {#- Satu baris per UNGGAHAN (batch), bukan satu angka gabungan: keputusan
           membaginya hampir selalu per unggahan. -#}
       {%- for b in belum_batch %}
@@ -94,6 +101,10 @@
             {{ b.batch or 'Tanpa nama unggahan' }}</b>
           <span class="an-batch-n">{{ b.n }}</span>
         </div>
+        {% if boleh_bagi and b.siap %}
+        <button class="an-siap" type="button" data-siap="{{ b.batch }}">
+          Masukkan {{ b.siap }} yang sudah dilabeli</button>
+        {% endif %}
         {% if boleh_bagi %}
         <a class="an-mulai" href="/aksi/bagi?ds={{ pr.ds | urlquote }}{% if b.batch %}&batch={{ b.batch | urlquote }}{% endif %}">
           Bagi tugas &rarr;</a>

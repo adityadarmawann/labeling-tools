@@ -974,6 +974,40 @@ async def aksi_ke_dataset(request: Request, ds: str = "",
     return {"ok": True, **r, **h}
 
 
+@router.post("/api/aksi/dataset-siap")
+async def aksi_dataset_siap(request: Request, ds: str = "",
+                            sess: Session = Depends(current_session_api),
+                            settings: Settings = Depends(get_settings)):
+    """Masukkan borongan klip yang BELUM ditugaskan tetapi SUDAH dilabeli ke
+    dataset, dari papan Anotasi (tombol "Masukkan N yang sudah dilabeli").
+
+    Padanan /api/tugas/dataset-siap gambar, untuk klip: klip semacam ini sudah
+    selesai dikerjakan tetapi tak pernah lewat job, jadi tak ada halaman job
+    yang memasukkannya borongan. `batch` (opsional) mempersempit ke satu
+    unggahan. Hanya pemilik/Editor (boleh_bagi). Syaratnya sama persis dengan
+    `siap` yang dihitung tugas.papan (belum ditugaskan + berlabel + belum di
+    dataset), supaya tombol "Masukkan N" tak pernah menawarkan angka kosong."""
+    d, tdata, err = _projek_aksi(sess, settings, ds)
+    if err:
+        return {"ok": False, "error": err}
+    if not tugas.boleh_bagi(tdata, sess.user):
+        return {"ok": False, "error": "tidak berhak mengelola dataset projek ini"}
+    if not tdata["pemilik"]:
+        return {"ok": False, "error": "projek ini tak punya alur dataset"}
+    body = await bodi_json(request)
+    batch = str(body.get("batch") or "")
+    pindai = await asyncio.to_thread(klip_scan.pindai, d)
+    # _belum_ditugaskan_klip sudah membuang yang di dataset; sisakan yang berlabel.
+    minta = [k for k in _belum_ditugaskan_klip(tdata, pindai, batch)
+             if k in pindai["berlabel"]]
+    if not minta:
+        return {"ok": False, "error": "tidak ada klip berlabel yang belum "
+                                      "ditugaskan untuk dimasukkan"}
+    r = await asyncio.to_thread(tugas.masukkan, d, minta, tdata["pemilik"])
+    h = await asyncio.to_thread(klip_scan.hitung, d)
+    return {"ok": True, **r, **h}
+
+
 @router.post("/api/aksi/dataset/keluarkan")
 async def aksi_keluar_dataset(request: Request, ds: str = "",
                               sess: Session = Depends(current_session_api),

@@ -41,6 +41,22 @@
     return true;
   }
 
+  // ---- Masukkan klip berlabel yang belum ditugaskan ke dataset (per batch /
+  //      semua) — padanan an-siap papan gambar, untuk klip.
+  const EDS = encodeURIComponent(isi.dataset.ds || '');
+  for (const b of document.querySelectorAll('.an-siap[data-siap]')) {
+    b.onclick = async () => {
+      b.disabled = true;
+      const r = await send(`/api/aksi/dataset-siap?ds=${EDS}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ batch: b.dataset.siap || '' }),
+      });
+      if (!r || !r.ok) { toast((r && r.error) || 'gagal'); b.disabled = false; return; }
+      toast(`${r.ditambah || 0} klip masuk dataset`);
+      location.reload();
+    };
+  }
+
   // ---- tindakan per job
   for (const b of document.querySelectorAll('.menu-aksi[data-aksi]')) {
     b.onclick = async () => {
