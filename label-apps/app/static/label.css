@@ -214,7 +214,15 @@ body.lab {
 .kelas[data-on] { background: var(--ok-lembut); border-color: var(--ok-pudar);
                   color: var(--ink); font-weight: 600; }
 .kelas i { width: 10px; height: 10px; border-radius: 3px; flex: 0 0 auto; }
-.kelas span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kelas span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+              flex: 1 1 auto; min-width: 0; }
+/* Tombol hapus kelas (hanya untuk kelas tambahan yang belum dipakai). Tenang,
+   muncul saat hover baris. */
+.kelas-hapus { flex: 0 0 auto; margin-left: 2px; border: 0; background: none;
+  cursor: pointer; font: inherit; font-size: 16px; line-height: 1; padding: 0 4px;
+  border-radius: 4px; color: inherit; opacity: 0; }
+.kelas:hover .kelas-hapus { opacity: .5; }
+.kelas-hapus:hover { opacity: 1; color: #e5484d; background: var(--hover); }
 .kelas-baru { margin-top: 8px; flex: 0 0 auto; }
 /* Tombol muat set kelas starter (Basket) — mungil & tenang, hanya pemilik. */
 .kelas-starter { margin-top: 6px; flex: 0 0 auto; font-size: 11.5px;

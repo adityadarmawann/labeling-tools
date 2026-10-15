@@ -22,6 +22,10 @@ const BACA_SAJA = document.body.hasAttribute('data-baca-saja');
 
 const D = JSON.parse(document.getElementById('data-awal').textContent);
 
+// Kelas STARTER projek yang tersimpan (kelas_awal). Didefinisikan di sini supaya
+// sudah ada sebelum render pertama. Kelas tingkat PROJEK, bukan per-batch.
+let kelasAwal = (D.kelas_awal || []).slice();
+
 const S = {
   shapes: D.shapes.map(s => ({ ...s, points: s.points.map(p => [p[0], p[1]]) })),
   kelas: D.kelas.slice(),
@@ -2393,6 +2397,16 @@ function renderKelas() {
     sp.textContent = k;
     d.append(i, sp);
     if (resmi.has(k)) d.title = 'kelas resmi dataset (data.yaml)';
+    // Tombol hapus HANYA untuk kelas yang aman dibuang: kelas tambahan
+    // (kelas_awal) milik pemilik yang BELUM dipakai satu objek pun dan bukan
+    // kelas resmi. Kelas yang dipakai/resmi tak diutak-atik dari sini.
+    if (kelasBisaHapus(k)) {
+      const x = document.createElement('button');
+      x.type = 'button'; x.className = 'kelas-hapus'; x.textContent = '×';
+      x.title = 'Hapus kelas ini dari daftar projek';
+      x.onclick = (ev) => { ev.stopPropagation(); hapusKelas(k); };
+      d.appendChild(x);
+    }
     // Klik ulang melepas pilihan, seperti Esc / klik area kosong pada
     // EscapableQListWidget (escapable_qlist_widget.py:5-10). Tanpa keadaan
     // "belum memilih kelas", tidak ada rem terhadap pelabelan yang salah.
@@ -3021,10 +3035,9 @@ function pakaiKelas(v) {
   simpanKelasAwal(v);
 }
 
-// Kelas STARTER projek yang sudah tersimpan (kelas_awal). Kelas tingkat PROJEK,
-// bukan per-batch: begitu disimpan, muncul di SEMUA gambar/batch projek ini.
-// Kelas yang diketik pemilik ditambahkan ke sini supaya tak hilang saat refresh.
-let kelasAwal = (D.kelas_awal || []).slice();
+// Kelas yang diketik pemilik ditambahkan ke kelas_awal (tingkat PROJEK) supaya
+// tak hilang saat refresh dan muncul di SEMUA batch. `kelasAwal` dideklarasikan
+// di dekat awal berkas (sebelum render pertama).
 function simpanKelasAwal(v) {
   if (!D.boleh_kelola) return;        // hanya pemilik/editor yang menetapkan kelas projek
   if (kelasAwal.includes(v)) return;  // sudah tersimpan
@@ -3041,6 +3054,44 @@ function simpanKelasAwal(v) {
   }).catch(() => {
     kelasAwal = kelasAwal.filter(k => k !== v);
     toast('gagal menyimpan kelas (jaringan)');
+  });
+}
+
+// Kelas AMAN dibuang dari daftar: tambahan (kelas_awal) milik pemilik yang
+// BELUM dipakai objek mana pun dan bukan kelas resmi classes.txt/data.yaml.
+// Kelas yang dipakai/resmi TIDAK bisa dihapus dari sini (biar data asli aman);
+// untuk itu pakai Modify Classes saat membuat versi.
+function kelasBisaHapus(k) {
+  return D.boleh_kelola && kelasAwal.includes(k)
+    && !(D.kelas_resmi || []).includes(k)
+    && !((D.kelas_hitung || {})[k]);
+}
+
+function hapusKelas(k) {
+  if (!confirm(`Hapus kelas "${k}" dari daftar projek?\n\nBelum dipakai di objek `
+    + 'mana pun, jadi aman dibuang. Bisa ditambahkan lagi kapan saja.')) return;
+  const semula = kelasAwal.slice();
+  kelasAwal = kelasAwal.filter(x => x !== k);
+  S.kelas = S.kelas.filter(x => x !== k);
+  if (S.label === k) S.label = '';
+  render();
+  fetch('/api/tugas/kelas-starter', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ kelas: kelasAwal }),
+  }).then(x => x.json()).then(r => {
+    if (!r || !r.ok) {                      // gagal -> kembalikan
+      kelasAwal = semula;
+      if (!S.kelas.includes(k)) { S.kelas.push(k); S.kelas.sort(); }
+      render();
+      toast((r && r.error) || 'gagal menghapus kelas');
+    } else {
+      toast(`Kelas "${k}" dihapus`);
+    }
+  }).catch(() => {
+    kelasAwal = semula;
+    if (!S.kelas.includes(k)) { S.kelas.push(k); S.kelas.sort(); }
+    render();
+    toast('gagal menghapus kelas (jaringan)');
   });
 }
 

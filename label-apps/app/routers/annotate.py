@@ -57,6 +57,18 @@ def daftar_kelas(sess: Session) -> list[str]:
     return sorted(dipakai | awal | set(sess.settings.extra_labels))
 
 
+def _hitung_kelas(sess) -> dict:
+    """Berapa objek memakai tiap kelas -- supaya kanvas tahu kelas mana yang
+    AMAN dibuang dari daftar (0 objek) dan mana yang masih dipakai."""
+    h: dict[str, int] = {}
+    for it in sess.items:
+        for s in it["shapes"]:
+            n = str(s["label"]).strip() if s["label"] is not None else ""
+            if n:
+                h[n] = h.get(n, 0) + 1
+    return h
+
+
 def kelas_resmi(sess: Session) -> list[str]:
     """
     Daftar kelas yang DIDEKLARASIKAN dataset — dari data.yaml atau classes.txt.
@@ -280,6 +292,9 @@ async def halaman(request: Request, path: str = "",
         # kelas yang diketik tapi belum dipakai melabeli hilang saat refresh.
         "kelas_awal": (sorted(tugas.baca(Path(sess.src)).get("kelas_awal") or [])
                        if sess.src else []),
+        # Jumlah objek per kelas -> kanvas menampilkan tombol hapus hanya untuk
+        # kelas yang belum dipakai (aman dibuang dari daftar tanpa ubah data).
+        "kelas_hitung": _hitung_kelas(sess),
         "bentuk": bentuk_untuk_kanvas(it, mentah),
         # Flag bawaan selalu tampil dengan nilai false lalu ditimpa isi berkas —
         # persis label_widget.py:2187-2192. Tanpa daftar bawaan, nama flag harus
