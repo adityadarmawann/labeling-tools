@@ -211,8 +211,11 @@
           + '&pelabel=' + encodeURIComponent(r.akun), 'Tugas dipindahkan ke ' + r.akun);
         return;
       }
-      tgPesan('<div class="tg-kartu"><div>Link undangan dibuat untuk '
-        + `<b>${tgEsc(j.email)}</b>:</div></div>`
+      const kepala = r.terkirim
+        ? `Undangan sudah DIKIRIM ke <b>${tgEsc(j.email)}</b>. Link cadangan:`
+        : `Link undangan dibuat untuk <b>${tgEsc(j.email)}</b>. Email belum `
+          + 'terkirim otomatis, jadi bagikan link ini:';
+      tgPesan(`<div class="tg-kartu"><div>${kepala}</div></div>`
         + `<div class="tg-aksi"><input class="op-cari" id="tg-link" readonly value="${tgEsc(r.tautan)}">`
         + '<button class="wz-tbl wz-tbl-sek" type="button" id="tg-salin">Salin</button></div>');
       const inp = document.getElementById('tg-link');

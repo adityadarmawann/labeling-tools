@@ -21,6 +21,7 @@ from ..deps import current_session, current_session_api, bodi_json
 from ..services import tag as svc_tag
 from ..services import projek as svc_projek
 from ..services import tugas as svc
+from ..services import surel
 from ..session import Session
 from ..templating import templates
 
@@ -717,7 +718,8 @@ async def atur_anggota(akun: str = "", peran: str = "", akses: str = "",
 @router.post("/api/tugas/undang-email")
 async def undang_email(email: str = "", peran: str = "pelabel", akses: str = "",
                        batch: str = "", request: Request = None,
-                       sess: Session = Depends(current_session_api)):
+                       sess: Session = Depends(current_session_api),
+                       settings: Settings = Depends(get_settings)):
     """
     Undangan untuk orang yang belum punya akun di sini.
 
@@ -757,8 +759,19 @@ async def undang_email(email: str = "", peran: str = "pelabel", akses: str = "",
     except ValueError as e:
         return {"ok": False, "error": str(e)}
     asal = str(request.base_url).rstrip("/") if request else ""
+    tautan = f"{asal}/undangan/{r['token']}"
+    # Kirim otomatis kalau SMTP dikonfigurasi; kalau tidak (atau gagal), link
+    # tetap dikembalikan supaya bisa dibagikan manual -- undangan tak hilang.
+    terkirim = False
+    if surel.aktif(settings):
+        # Nama projek SEBENARNYA yang ditampilkan HIGOLAB = nama folder projek
+        # (projek.ringkas/daftar semuanya memakai d.name). Diambil adaptif dari
+        # projek yang sedang dibuka, bukan nilai tetap.
+        projek = sess.src.name if sess.src else "HIGOLAB"
+        terkirim = await asyncio.to_thread(surel.kirim_undangan, settings,
+                                           r["email"], tautan, projek)
     return {"ok": True, "sudah_terdaftar": False, "email": r["email"],
-            "tautan": f"{asal}/undangan/{r['token']}"}
+            "tautan": tautan, "terkirim": terkirim}
 
 
 @router.post("/api/tugas/batalkan-undangan")

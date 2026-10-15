@@ -1,0 +1,145 @@
+"""
+Kirim email lewat SMTP pihak ketiga (Brevo / SendGrid / Mailgun / dll).
+
+Dipakai mengirim link undangan projek otomatis. Sengaja TIDAK terikat ke satu
+layanan: yang dibutuhkan cuma setelan SMTP standar (host/port/user/pass/from),
+jadi layanan mana pun bisa dipakai tanpa ubah kode. Lihat Settings.smtp_* di
+config.py; smtp_host kosong = fitur MATI, dan undangan jatuh ke "salin link".
+
+Kenapa lewat layanan, bukan akun Google langsung: Google mematikan login SMTP
+pakai password biasa, dan App Password menuntut 2-Step Verification yang di
+higo.id tidak diizinkan. Layanan transaksional memberi kredensial SMTP sendiri
+tanpa menyentuh akun Google.
+"""
+from __future__ import annotations
+
+import smtplib
+import re
+import ssl
+from email.message import EmailMessage
+
+from ..log import catat
+
+log = catat("labelapp.surel")
+
+
+def aktif(settings) -> bool:
+    """True kalau SMTP sudah dikonfigurasi (host + alamat pengirim)."""
+    return bool(getattr(settings, "smtp_host", "")
+                and getattr(settings, "smtp_from", ""))
+
+
+def _esc(s: str) -> str:
+    return (str(s).replace("&", "&amp;").replace("<", "&lt;")
+            .replace(">", "&gt;").replace('"', "&quot;"))
+
+
+def kirim(settings, ke: str, subjek: str, teks: str, html: str | None = None) -> None:
+    """Kirim satu email. MELEMPAR kalau gagal; pemanggil yang memutuskan efeknya.
+
+    Port 465 -> SMTP_SSL; selain itu STARTTLS (587 umum di Brevo/SendGrid).
+    """
+    msg = EmailMessage()
+    msg["From"] = settings.smtp_from
+    msg["To"] = ke
+    msg["Subject"] = subjek
+    msg.set_content(teks)
+    if html:
+        msg.add_alternative(html, subtype="html")
+    port = int(settings.smtp_port or 587)
+    ctx = ssl.create_default_context()
+    if port == 465:
+        with smtplib.SMTP_SSL(settings.smtp_host, port, timeout=20, context=ctx) as s:
+            if settings.smtp_user:
+                s.login(settings.smtp_user, settings.smtp_pass)
+            s.send_message(msg)
+    else:
+        with smtplib.SMTP(settings.smtp_host, port, timeout=20) as s:
+            s.ehlo()
+            s.starttls(context=ctx)
+            s.ehlo()
+            if settings.smtp_user:
+                s.login(settings.smtp_user, settings.smtp_pass)
+            s.send_message(msg)
+
+
+# Identitas pengirim di badan email (template resmi dari tim, bukan nama akun
+# pengundang: undangan datang atas nama perusahaan).
+ORG = "PT Higo Fitur Indonesia"
+TIM = "IoT Team"
+
+
+def _nama_dari_email(email: str) -> str:
+    """Tebak nama sapaan dari alamat email (bagian sebelum @), karena saat
+    mengundang lewat email nama asli belum diketahui. "aditya.darma@higo.id"
+    -> "Aditya Darma". Kosong kalau tak masuk akal."""
+    lokal = str(email or "").split("@")[0]
+    nama = re.sub(r"[._\-]+", " ", lokal).strip()
+    return nama.title() if nama else ""
+
+
+def _teks_undangan(nama: str, projek: str, tautan: str) -> str:
+    sapa = f"Halo {nama}," if nama else "Halo,"
+    return (
+        f"{sapa}\n\n"
+        "Selamat datang di HIGOLAB!\n\n"
+        f"Anda telah diundang oleh {ORG} untuk bergabung dengan tim IoT pada "
+        f"proyek \"{projek}\" melalui HIGOLAB, platform kolaborasi labeling "
+        "kami.\n\n"
+        "Untuk memulai, silakan klik tautan di bawah ini untuk mengakses "
+        "undangan dan bergabung ke proyek:\n\n"
+        f"Tautan Undangan: {tautan}\n\n"
+        "Catatan Penting:\n"
+        "HIGOLAB hanya dapat diakses melalui jaringan Wi-Fi kantor HIGO. "
+        "Apabila Anda ingin mengakses platform dari luar jaringan kantor HIGO, "
+        "pastikan untuk mengaktifkan VPN perusahaan terlebih dahulu.\n\n"
+        "Jika Anda memiliki pertanyaan atau membutuhkan bantuan lebih lanjut, "
+        "silakan balas email ini. Kami akan dengan senang hati membantu Anda.\n\n"
+        "Kami menantikan kolaborasi yang baik dan menyenangkan bersama Anda di "
+        "HIGOLAB!\n\n"
+        f"Salam hangat,\n\n{TIM}\n{ORG}\n")
+
+
+def _html_undangan(nama: str, projek: str, tautan: str) -> str:
+    t = _esc(tautan)
+    sapa = f"Halo {_esc(nama)}," if nama else "Halo,"
+    return (
+        '<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;'
+        'color:#1f2937;line-height:1.6;max-width:560px">'
+        f"<p>{sapa}</p>"
+        "<p><b>Selamat datang di HIGOLAB!</b></p>"
+        f"<p>Anda telah diundang oleh <b>{_esc(ORG)}</b> untuk bergabung dengan "
+        f"tim IoT pada proyek <b>{_esc(projek)}</b> melalui HIGOLAB, platform "
+        "kolaborasi labeling kami.</p>"
+        "<p>Untuk memulai, silakan klik tautan di bawah ini untuk mengakses "
+        "undangan dan bergabung ke proyek:</p>"
+        f'<p><a href="{t}" style="display:inline-block;padding:10px 18px;'
+        'background:#1f8a70;color:#ffffff;text-decoration:none;border-radius:6px">'
+        "Buka undangan &amp; bergabung</a></p>"
+        f'<p style="color:#667085;font-size:12px">Atau salin tautan ini: {t}</p>'
+        "<p><b>Catatan Penting:</b><br>HIGOLAB hanya dapat diakses melalui "
+        "jaringan Wi-Fi kantor HIGO. Apabila Anda ingin mengakses platform dari "
+        "luar jaringan kantor HIGO, pastikan untuk mengaktifkan VPN perusahaan "
+        "terlebih dahulu.</p>"
+        "<p>Jika Anda memiliki pertanyaan atau membutuhkan bantuan lebih lanjut, "
+        "silakan balas email ini. Kami akan dengan senang hati membantu Anda.</p>"
+        "<p>Kami menantikan kolaborasi yang baik dan menyenangkan bersama Anda "
+        "di HIGOLAB!</p>"
+        f"<p>Salam hangat,<br><br><b>{_esc(TIM)}</b><br>{_esc(ORG)}</p>"
+        "</div>")
+
+
+def kirim_undangan(settings, ke: str, tautan: str, projek: str) -> bool:
+    """Kirim email undangan projek (template resmi tim, Bahasa Indonesia). True
+    kalau terkirim; False (dan tercatat) kalau gagal -- link tetap dikembalikan
+    ke pemanggil jadi undangan tak hilang.
+    """
+    nama = _nama_dari_email(ke)
+    subjek = f'Undangan proyek "{projek}" di HIGOLAB'
+    try:
+        kirim(settings, ke, subjek, _teks_undangan(nama, projek, tautan),
+              _html_undangan(nama, projek, tautan))
+        return True
+    except Exception as e:                            # noqa: BLE001
+        log.warning("gagal kirim email undangan ke %s: %s", ke, e)
+        return False

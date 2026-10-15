@@ -169,6 +169,17 @@ class Settings:
     # sengaja. Tempel-URL satuan dan unggah berkas tidak tersentuh saklar ini;
     # keduanya selalu boleh (lihat services/video_ingest.scraper_aktif).
     scraper: bool = False
+    # ---- Kirim email undangan lewat SMTP pihak ketiga (Brevo/SendGrid/dll) ----
+    # Dipakai mengirim link undangan otomatis. Kredensialnya (terutama smtp_pass)
+    # TIDAK ditaruh di env/*.env yang terlacak git -- setel lewat variabel
+    # lingkungan runtime di skrip start/systemd. smtp_host kosong = fitur MATI,
+    # undangan jatuh ke "salin link" seperti biasa. smtp_from = alamat pengirim
+    # yang sudah diverifikasi di layanannya (mis. aiot@higo.id).
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_pass: str = ""
+    smtp_from: str = ""
     # ---- Kaggle sebagai backend training CADANGAN (offload ke GPU gratis) ----
     # Satu server fisik ini hambatannya: training hanya bisa satu pada satu waktu
     # di GPU lokal. Backend Kaggle menambah lajur GPU di LUAR mesin ini — dataset
@@ -259,6 +270,11 @@ def get_settings() -> Settings:
         daftar_sendiri=_bool("DAFTAR_SENDIRI", True),
         daftar_langsung=_bool("DAFTAR_LANGSUNG", False),
         scraper=_bool("SCRAPER", False),
+        smtp_host=_get("SMTP_HOST"),
+        smtp_port=_int("SMTP_PORT", 587),
+        smtp_user=_get("SMTP_USER"),
+        smtp_pass=_get("SMTP_PASS"),
+        smtp_from=_get("SMTP_FROM"),
         kaggle_akun_file=_path("KAGGLE_AKUN_FILE"),
         kaggle_user=_get("KAGGLE_USER"),
         kaggle_token_file=_path("KAGGLE_TOKEN_FILE"),
