@@ -2246,6 +2246,42 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
   .an-papan{grid-template-columns:1fr}
 }
 
+/* ------------------------------------------- Anotasi: papan mengisi layar
+   Dengan banyak batch, kolom "Dikerjakan" dulu menjulur jauh ke bawah dan
+   SELURUH halaman ikut menggulir, sehingga bagian atas (ringkasan anggota,
+   Format anotasi, Urutkan) tertutup begitu digulir. Sekarang papannya dikunci
+   setinggi layar dan tiap KOLOM menggulir sendiri di dalamnya; bagian atas
+   tetap terlihat. Sepola dengan body.grid-tetap pada halaman grid. */
+@media (min-width:1001px){
+  body.an-tetap .sisi-isi{overflow:hidden;display:flex;flex-direction:column;
+    padding-bottom:0}
+  /* Bagian atas dan ringkasan kaki diam; hanya papan di tengah yang menggulir. */
+  body.an-tetap .an-orang,
+  body.an-tetap .an-tanpa-tugas,
+  body.an-tetap .an-kendali,
+  body.an-tetap .an-kaki{flex:0 0 auto}
+  body.an-tetap .an-kaki{margin-top:12px}
+  /* Papan mengambil sisa tinggi; kolomnya diregangkan setinggi papan (bukan
+     align-items:start bawaan) supaya masing-masing punya ruang menggulir. */
+  body.an-tetap .an-papan{flex:1 1 auto;min-height:0;align-items:stretch;
+    padding-bottom:18px}
+  body.an-tetap .an-kolom{min-height:0;padding-top:0;overflow-y:auto;
+    overscroll-behavior:contain}
+  /* Kepala kolom tetap terlihat saat kartunya digulir. padding-top kolom
+     dilepas supaya header melekat di tepi atas tanpa menyisakan strip tempat
+     kartu mengintip. */
+  body.an-tetap .an-kolom-kepala{position:sticky;top:0;z-index:1;
+    padding-top:12px;background:var(--ground)}
+}
+/* Layar sempit (kolom menumpuk): batasi tinggi tiap kolom supaya satu kolom
+   panjang tak lagi menjulurkan seluruh halaman; kepala kolom tetap terlihat. */
+@media (max-width:1000px){
+  body.an-tetap .an-kolom{max-height:68vh;padding-top:0;overflow-y:auto;
+    overscroll-behavior:contain}
+  body.an-tetap .an-kolom-kepala{position:sticky;top:0;z-index:1;
+    padding-top:12px;background:var(--ground)}
+}
+
 /* ==================================================== rincian job */
 .jb-balik{display:inline-block;margin-bottom:12px}
 .jb-tata{display:flex;gap:18px;align-items:flex-start}
