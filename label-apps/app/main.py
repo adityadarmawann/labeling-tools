@@ -149,6 +149,32 @@ def create_app() -> FastAPI:
             r.headers["Cache-Control"] = "no-cache, must-revalidate"
         return r
 
+    @app.middleware("http")
+    async def _header_keamanan(request: Request, panggil):
+        """
+        Header keamanan dasar untuk SETIAP jawaban — penting begitu aplikasi ini
+        dijangkau dari internet (lihat deploy/ reverse-proxy HTTPS).
+
+        - nosniff: peramban tidak menebak-nebak tipe isi, jadi berkas yang
+          diunggah dan disajikan apa adanya tak bisa 'berubah' jadi HTML/JS.
+        - X-Frame-Options SAMEORIGIN: halaman tak bisa ditanam di iframe situs
+          lain (anti clickjacking), tapi iframe sesama aplikasi tetap boleh.
+        - Referrer-Policy: alamat internal tak bocor ke situs luar lewat Referer.
+        - HSTS: HANYA saat permintaan sudah lewat HTTPS, supaya di HTTP polos
+          (dev/lokal) tak ada efek. SENGAJA tanpa includeSubDomains/preload:
+          server ini dipakai bergiliran oleh beberapa aplikasi lain yang mungkin
+          masih HTTP, jadi HSTS di sini hanya mengikat host aplikasi ini sendiri,
+          tidak memaksa domain/aplikasi lain ikut HTTPS.
+        """
+        from .deps import lewat_https
+        r = await panggil(request)
+        r.headers.setdefault("X-Content-Type-Options", "nosniff")
+        r.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+        r.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        if lewat_https(request):
+            r.headers.setdefault("Strict-Transport-Security", "max-age=15552000")
+        return r
+
     @app.exception_handler(NeedsLogin)
     async def _needs_login(request: Request, exc: NeedsLogin):
         """Halaman HTML tanpa sesi dialihkan ke /login, tidak menampilkan 401.

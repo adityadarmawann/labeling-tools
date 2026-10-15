@@ -155,6 +155,27 @@ def optional_session(request: Request) -> Session | None:
     return store.get(request.cookies.get(COOKIE_NAME))
 
 
+def lewat_https(request: Request) -> bool:
+    """
+    True kalau permintaan ini sampai lewat HTTPS.
+
+    Di belakang reverse proxy (nginx), uvicorn melihat http di 127.0.0.1; yang
+    tahu skema aslinya cuma header X-Forwarded-Proto yang dipasang proxy. Header
+    itu hanya bisa dipercaya karena backend di-bind ke 127.0.0.1 (lihat
+    env/prod.env): klien luar tak bisa menjangkau uvicorn langsung untuk
+    memalsukannya; nginx selalu menimpanya. Dipakai untuk menyetel cookie
+    `Secure`: menyetelnya di HTTP polos (dev/lokal) justru membuat peramban
+    MEMBUANG cookie-nya, jadi login patah -- karena itu bergantung keadaan.
+    """
+    proto = request.headers.get("x-forwarded-proto", "").split(",")[0].strip()
+    return proto == "https" or request.url.scheme == "https"
+
+
+def kuki_aman(request: Request) -> bool:
+    """Alias niat: cookie sesi dapat bendera Secure hanya saat lewat HTTPS."""
+    return lewat_https(request)
+
+
 def login_redirect(tujuan: str = "") -> RedirectResponse:
     """
     Alihkan ke halaman masuk, membawa tujuan semula.
