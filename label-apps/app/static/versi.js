@@ -349,6 +349,10 @@
       }
     });
   });
+  // Format anotasi versi (kotak/poligon): perbarui resep + cek kompatibilitas.
+  wz.querySelectorAll('input[name="wz-format"]').forEach((r) => {
+    r.addEventListener('change', () => { resep.format = r.value; gambarBentuk(); });
+  });
 
   /* Pratinjau gerbang warna: ukur warna diterima tiap kelas + contoh warna yang
      akan ditolak, supaya orang MEMERIKSA DULU bahwa warna salahnya beda dari
@@ -1007,7 +1011,8 @@
         `<label class="kl-pakai-bungkus" title="Centang: dipakai. Lepas: jadi latar.">` +
         `<input class="kl-pakai" type="checkbox"${dibuang ? '' : ' checked'}></label>` +
         `<div class="kl-kiri"><b>${k.nama}</b>` +
-        `<span class="kl-n">${k.objek.toLocaleString('id')} objek</span></div>` +
+        `<span class="kl-n">${k.objek.toLocaleString('id')} objek${
+          bentukRingkas(k) ? ' · ' + bentukRingkas(k) : ''}</span></div>` +
         '<select class="kl-sel">' +
         `<option value=""${kini === '' ? ' selected' : ''}>Biarkan</option>` +
         `<option value="nama"${kini === 'nama' ? ' selected' : ''}>Ganti nama</option>` +
@@ -1093,6 +1098,91 @@
                          : `${daftar.length} kelas, semua dipakai`)
         : '';
     }
+    gambarBentuk();
+  }
+
+  /* Bentuk anotasi per kelas + pilihan format versi (langkah 2).
+     - tampilkan tiap kelas DIPAKAI: berapa poligon, berapa kotak, dominannya;
+     - pilih format: Deteksi (kotak) atau Segmentasi (poligon);
+     - cek kompatibilitas: versi poligon menolak kelas yang didominasi kotak
+       (logo) -- "tolak campuran" -- dan tombol lanjut/buat dikunci sampai
+       diperbaiki. Projek pose (tanpa kotak/poligon) menyembunyikan blok ini. */
+  let formatAwalDipilih = false;
+  let formatBlokir = false;
+  const bentukDominan = (k) => (k.kotak || 0) > (k.poligon || 0) ? 'kotak' : 'poligon';
+  // Ringkasan bentuk anotasi sebuah kelas ("poligon ×120 · kotak ×2"), dipakai
+  // DI BARIS kelas (layarKelas) supaya tak ganda dengan daftar terpisah.
+  function bentukRingkas(k) {
+    const p = [];
+    if (k.poligon) p.push(`poligon ×${k.poligon}`);
+    if (k.kotak) p.push(`kotak ×${k.kotak}`);
+    if (k.lain) p.push(`lain ×${k.lain}`);
+    return p.join(' · ');
+  }
+  function gambarBentuk() {
+    const box = el('wz-bentuk');
+    if (!box) return;
+    const daftar = (sumber && sumber.daftar_kelas) || [];
+    const total = (sumber && sumber.bentuk_total) || { kotak: 0, poligon: 0, lain: 0 };
+    if ((total.kotak || 0) + (total.poligon || 0) === 0) { box.hidden = true; return; }
+    box.hidden = false;
+    const peta = ((resep.pra.ubah_kelas || {}).peta) || {};
+    const dipakai = daftar.filter((k) => peta[k.i] !== null);   // null = jadi latar
+
+    // Default format SEKALI, lalu hormati pilihan user. Poligon hanya jadi
+    // default kalau SEMUA kelas dipakai memang poligon -- supaya projek campuran
+    // (ada kelas kotak) tidak membuka langkah ini dalam keadaan terblokir.
+    if (!formatAwalDipilih && dipakai.length) {
+      const def = dipakai.every((k) => bentukDominan(k) === 'poligon')
+        ? 'poligon' : 'kotak';
+      const rd = wz.querySelector(`input[name="wz-format"][value="${def}"]`);
+      if (rd) rd.checked = true;
+      resep.format = def;
+      formatAwalDipilih = true;
+    }
+    const fmt = (wz.querySelector('input[name="wz-format"]:checked') || {}).value || 'kotak';
+    resep.format = fmt;
+
+    // Rincian per kelas tampil DI BARIS kelas (layarKelas, di bawah nama kelas);
+    // di sini cukup totalnya saja supaya tidak ganda.
+    el('wz-bentuk-hitung').innerHTML =
+      `<span class="halus">Total anotasi: ${total.kotak} kotak · `
+      + `${total.poligon} poligon${total.lain ? ` · ${total.lain} lain` : ''}</span>`;
+
+    // Kompatibilitas format.
+    const awas = el('wz-format-awas');
+    formatBlokir = false;
+    awas.hidden = false;
+    if (fmt === 'kotak') {
+      awas.style.color = '#15803d';
+      awas.textContent = 'Semua kelas jadi kotak: polygon diringkas ke kotak '
+        + 'pembungkusnya. Semua gambar ikut, tidak ada yang dikembalikan ke '
+        + '"Belum ditugaskan".';
+    } else {
+      const blok = dipakai.filter((k) => bentukDominan(k) === 'kotak');
+      const perbaiki = dipakai.filter((k) => bentukDominan(k) === 'poligon')
+        .reduce((s, k) => s + (k.kotak || 0), 0);
+      if (blok.length) {
+        formatBlokir = true;
+        awas.style.color = '#b91c1c';
+        awas.innerHTML = `Tidak bisa jadi segmentasi. Kelas `
+          + `<b>${blok.map((k) => k.nama).join(', ')}</b> didominasi kotak, dan `
+          + `kotak tidak bisa jadi mask. Versi segmentasi menyingkirkan semua `
+          + `gambar ber-kotak, jadi hampir semua gambar akan hilang. Pilih `
+          + `<b>Deteksi (kotak)</b> supaya semua ikut (polygon diringkas jadi `
+          + `kotak), atau gambar ulang kotaknya jadi polygon dulu.`;
+      } else {
+        awas.style.color = perbaiki ? '#b45309' : '#15803d';
+        awas.textContent = 'Objek ditulis sebagai mask.'
+          + (perbaiki ? ` ${perbaiki} anotasi kotak di kelas polygon akan `
+            + 'dikembalikan ke "Belum ditugaskan" untuk diperbaiki jadi polygon.' : '');
+      }
+    }
+    // Kunci lanjut (langkah 2) + tombol buat selama belum sah.
+    const lanjut2 = wz.querySelector('.wz-item[data-langkah="2"] [data-lanjut]');
+    if (lanjut2) lanjut2.disabled = formatBlokir;
+    const buat = el('wz-buat');
+    if (buat) buat.disabled = formatBlokir;
   }
 
   function gambarAtur() {

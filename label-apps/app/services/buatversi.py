@@ -1504,6 +1504,41 @@ def _ubah_kelas_peta(resep: dict):
     return peta, ganti
 
 
+def kelas_tak_bisa_poligon(items: list[dict], names: dict, resep: dict) -> list[str]:
+    """Nama kelas yang DIPAKAI (tidak dijadikan latar) tetapi DIDOMINASI kotak,
+    jadi tak bisa jadi mask di versi segmentasi.
+
+    Dipakai guard versi segmentasi: menggabung kelas kotak (mis. logo) dan kelas
+    poligon jadi satu versi poligon TIDAK sah -- kotak tidak bisa jadi mask jujur.
+    Build-nya ditolak dengan menyebut kelas mana, bukan diam-diam memulangkan
+    semua gambarnya ke "Belum ditugaskan".
+    """
+    idx = export.peta_kelas(items, names)             # nama -> indeks
+    ubk = _ubah_kelas_peta(resep)
+    cnt: dict[str, list] = {}                          # nama -> [kotak, poligon]
+    for it in items:
+        for sh in it.get("shapes") or []:
+            lbl = sh.get("label")
+            if lbl is None:
+                continue
+            t = (sh.get("type") or sh.get("shape_type") or "polygon")
+            c = cnt.setdefault(str(lbl), [0, 0])
+            if t == "rectangle":
+                c[0] += 1
+            elif t == "polygon":
+                c[1] += 1
+    blok = []
+    for nama, (k, p) in cnt.items():
+        i = idx.get(nama)
+        if i is None:
+            continue
+        if ubk is not None and ubk[0].get(i, i) is None:
+            continue                                   # dijadikan latar -> abaikan
+        if k > p:                                      # didominasi kotak
+            blok.append(nama)
+    return blok
+
+
 def perkirakan(items: list[dict], names: dict, resep: dict, peta: dict) -> dict:
     """
     Perkirakan jumlah gambar, objek, dan ukuran SEBELUM apa pun ditulis.
@@ -1545,12 +1580,21 @@ def perkirakan(items: list[dict], names: dict, resep: dict, peta: dict) -> dict:
     train_obj = train_neg = neg_semua = 0
     per_kelas: dict[str, int] = defaultdict(int)       # HASIL (sesudah Modify)
     per_kelas_asli: dict[str, int] = defaultdict(int)  # ASLI (untuk pemilih kelas)
+    # Bentuk anotasi per kelas (kotak / poligon / lain) -> ditampilkan di panel
+    # Kelas supaya orang tahu komposisinya sebelum memilih format versi.
+    bentuk_kelas: dict[str, dict] = defaultdict(
+        lambda: {"kotak": 0, "poligon": 0, "lain": 0})
     for it in items:
         akhir = []
         for sh in it.get("shapes") or []:
             if sh.get("label") is None:
                 continue
-            per_kelas_asli[str(sh["label"])] += 1
+            lbl = str(sh["label"])
+            per_kelas_asli[lbl] += 1
+            _t = (sh.get("type") or sh.get("shape_type") or "polygon")
+            bentuk_kelas[lbl]["kotak" if _t == "rectangle"
+                              else "poligon" if _t == "polygon"
+                              else "lain"] += 1
             fn = _nama_akhir(sh["label"])
             if fn is not None:
                 akhir.append(fn)
@@ -1617,8 +1661,17 @@ def perkirakan(items: list[dict], names: dict, resep: dict, peta: dict) -> dict:
             # Daftar kelas ASLI (indeks + nama + jumlah objek asli): dipakai
             # panel "Kelas" untuk pemilihnya, jadi harus TETAP lengkap walau ada
             # yang dibuang/digabung — indeks itu pula yang dibaca _pra_ubah_kelas.
-            "daftar_kelas": [{"i": i, "nama": n, "objek": per_kelas_asli.get(n, 0)}
+            "daftar_kelas": [{"i": i, "nama": n, "objek": per_kelas_asli.get(n, 0),
+                              "kotak": bentuk_kelas[n]["kotak"],
+                              "poligon": bentuk_kelas[n]["poligon"],
+                              "lain": bentuk_kelas[n]["lain"]}
                              for n, i in sorted(idx.items(), key=lambda kv: kv[1])],
+            # Total bentuk anotasi di seluruh dataset (untuk ringkasan + default
+            # pilihan format di panel Kelas).
+            "bentuk_total": {
+                "kotak": sum(v["kotak"] for v in bentuk_kelas.values()),
+                "poligon": sum(v["poligon"] for v in bentuk_kelas.values()),
+                "lain": sum(v["lain"] for v in bentuk_kelas.values())},
             # Dua angka, karena keduanya menjawab pertanyaan berbeda: yang
             # pertama "berapa sampel negatif yang kupunya", yang kedua "berapa
             # yang dipakai fase pemulihan porsi" (fase itu hanya menyentuh

@@ -95,15 +95,52 @@ def test_format_kotak_menyimpan_semua_sebagai_kotak(klien, lingkungan):
     assert kelas == {"0", "1"}, f"kedua kelas harus ada, dapat {kelas}"
 
 
-def test_default_poligon_memulangkan_gambar_berkotak(klien, lingkungan):
-    """Tanpa override (ikut projek), projek campuran ditebak poligon, jadi
-    gambar ber-kotak (logo) dikembalikan ke 'Belum ditugaskan' -- inilah yang
-    dihindari oleh pilihan format per-versi."""
+def test_poligon_menolak_kelas_dominan_kotak(klien, lingkungan):
+    """Guard 'tolak campuran': versi segmentasi yang memuat kelas dominan-kotak
+    (logo) DITOLAK sebelum dibangun, dengan menyebut kelasnya -- bukan diam-diam
+    memulangkan semua gambarnya ke 'Belum ditugaskan'."""
     masuk(klien, "paul", PW_PAUL)
     d = _ds_campur(klien)
     klien.post(f"/setsrc?path={d}")
-    assert _mulai(klien, _resep(format="")).get("ok")
-    k = _tunggu(klien)
-    assert k.get("selesai"), k
-    # Semua gambar punya kotak logo -> semuanya dipulangkan.
-    assert k.get("dipulangkan"), "default poligon harus memulangkan gambar berkotak"
+    r = _mulai(klien, _resep(format="poligon"))
+    assert r.get("ok") is False, r
+    assert "logo" in (r.get("error") or ""), r
+    # Ditolak = tidak ada versi yang dibangun, dataset tak tersentuh.
+    assert not (d / ".versi" / "v1").exists()
+
+
+def test_estimasi_memberi_bentuk_per_kelas(klien, lingkungan):
+    """Panel Kelas butuh jumlah kotak & poligon per kelas + totalnya."""
+    masuk(klien, "paul", PW_PAUL)
+    d = _ds_campur(klien, n=5)
+    klien.post(f"/setsrc?path={d}")
+    e = klien.post("/api/versi/estimasi?split=100,0,0", json={"resep": {}}).json()
+    assert e.get("ok"), e
+    bykelas = {k["nama"]: k for k in e["daftar_kelas"]}
+    assert bykelas["produk"]["poligon"] == 5 and bykelas["produk"]["kotak"] == 0
+    assert bykelas["logo"]["kotak"] == 5 and bykelas["logo"]["poligon"] == 0
+    assert e["bentuk_total"] == {"kotak": 5, "poligon": 5, "lain": 0}
+
+
+def test_poligon_sah_kalau_semua_kelas_poligon(klien, lingkungan):
+    """Projek yang semua kelasnya poligon tetap bisa dibangun jadi segmentasi."""
+    masuk(klien, "paul", PW_PAUL)
+    ruang = Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = ruang / "segonly"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "classes.txt").write_text("produk\n")
+    for i in range(5):
+        im = (np.random.default_rng(i).random((240, 320, 3)) * 80 + 60).astype(np.uint8)
+        cv2.imwrite(str(d / f"g{i}.jpg"), im)
+        (d / f"g{i}.json").write_text(json.dumps({
+            "version": "0.4.36", "flags": {},
+            "shapes": [{"label": "produk", "shape_type": "polygon",
+                        "points": [[60, 40], [180, 44], [176, 170], [58, 166]]}],
+            "imagePath": f"g{i}.jpg", "imageData": None,
+            "imageHeight": 240, "imageWidth": 320}))
+    klien.post(f"/setsrc?path={d}")
+    assert _mulai(klien, _resep(format="poligon")).get("ok")
+    assert _tunggu(klien).get("selesai")
+    v = d / ".versi" / "v1"
+    lines = _label_lines(v)
+    assert lines and all(len(t) > 5 for t in lines), "harus poligon (>5 kolom)"

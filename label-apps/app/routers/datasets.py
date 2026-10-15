@@ -494,6 +494,17 @@ async def versi_mulai(request: Request, split: str = "", catatan: str = "",
     _fmt = str(resep.get("format") or "").strip().lower()
     jenis_ds = (_fmt if _fmt in tugas.JENIS_ANOTASI
                 else tugas.jenis_berlaku(_td, items))
+    # Guard "tolak campuran": versi segmentasi tak boleh memuat kelas yang
+    # didominasi kotak (mis. logo) -- kotak tidak bisa jadi mask. Ditolak di sini
+    # dengan menyebut kelasnya, bukan diam-diam memulangkan semua gambarnya.
+    if jenis_ds == "poligon":
+        blok = await asyncio.to_thread(buatversi.kelas_tak_bisa_poligon,
+                                       items, names, resep)
+        if blok:
+            return {"ok": False, "error": (
+                "Kelas " + ", ".join(blok) + " didominasi kotak dan tidak bisa "
+                "jadi mask segmentasi. Pilih format Deteksi (kotak) supaya semua "
+                "objek jadi kotak, atau gambar ulang kotaknya jadi polygon.")}
 
     ds, akun = sess.src, sess.user
     sess.versi_batal = False

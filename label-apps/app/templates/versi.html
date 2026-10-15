@@ -74,6 +74,30 @@
             Bisa juga digabung ke kelas lain atau diganti namanya. Dataset
             sumber tidak diubah. Ini hanya berlaku untuk versi ini.</p>
           <div class="wz-kelas" id="wz-kelas">memuat…</div>
+
+          {#- Bentuk anotasi + pilihan format PER-VERSI. Diisi gambarBentuk() di
+              versi.js dari estimasi (daftar_kelas.kotak/poligon + bentuk_total).
+              Format disimpan di resep.format; routers/datasets.py versi_mulai
+              mengutamakannya atas setelan projek. Disembunyikan untuk projek
+              pose (tak ada kotak/poligon). -#}
+          <div class="wz-bentuk" id="wz-bentuk" hidden>
+            <span class="menu-judul">Format versi</span>
+            <div class="wz-bentuk-hitung" id="wz-bentuk-hitung"></div>
+            <div class="wz-format">
+              <label class="wz-pilihan">
+                <input type="radio" name="wz-format" value="kotak">
+                <span><b>Deteksi (kotak / bbox)</b>. Semua objek jadi kotak:
+                  polygon diringkas ke kotak pembungkusnya, kotak tetap kotak.
+                  Semua gambar ikut, tidak ada yang dikembalikan ke "Belum
+                  ditugaskan".</span></label>
+              <label class="wz-pilihan">
+                <input type="radio" name="wz-format" value="poligon">
+                <span><b>Segmentasi (poligon)</b>. Objek ditulis sebagai mask.
+                  Anotasi kotak tidak bisa jadi mask.</span></label>
+            </div>
+            <p class="wz-format-awas" id="wz-format-awas" hidden></p>
+          </div>
+
           <div class="wz-aksi">
             <button class="wz-tbl wz-tbl-sek" type="button" data-mundur>Kembali</button>
             <button class="wz-tbl wz-tbl-pri" type="button" data-lanjut>Lanjut</button></div>
@@ -93,26 +117,6 @@
           <div class="lajur an-lajur" id="wz-bilah"></div>
           <div class="wz-angka" id="wz-split"></div>
 
-          {#- Format anotasi PER-VERSI, bukan setelan projek: satu projek boleh
-              punya polygon (objek) dan kotak (mis. logo) sekaligus, dan versi
-              ini boleh memilih bentuk labelnya sendiri tanpa mengubah projek.
-              Lihat jenis_ds di routers/datasets.py (versi_mulai) yang kini
-              mengutamakan resep.format. -#}
-          <div class="wz-format">
-            <span class="menu-judul">Format anotasi versi ini</span>
-            <p class="menu-catatan">Projek boleh punya polygon dan kotak
-              sekaligus. Pilihan ini cuma untuk versi ini, setelan projek tidak
-              diubah.</p>
-            <label class="wz-pilihan">
-              <input type="radio" name="wz-format" value="" checked>
-              <span><b>Ikut projek</b>, pakai format bawaan projek ini.</span></label>
-            <label class="wz-pilihan">
-              <input type="radio" name="wz-format" value="kotak">
-              <span><b>Deteksi (kotak)</b>. Semua objek jadi kotak: polygon
-                diringkas ke kotak pembungkusnya, kotak tetap kotak. Cocok untuk
-                satu model deteksi berisi beberapa kelas (mis. produk + logo).
-                Tidak ada gambar yang dikembalikan ke "Belum ditugaskan".</span></label>
-          </div>
 
           {#- Dua cara membelah, dan bedanya nyata: yang cepat memakai hash
               nama berkas, yang teliti membaca isi tiap gambar untuk memastikan
