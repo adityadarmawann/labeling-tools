@@ -3326,6 +3326,20 @@ function terapkanPanel(id, tampil) {
   if (!tampil && n && n.hasAttribute('data-aktif')) pilihPanel(null);
 }
 
+/*
+ * Dengan "Simpan otomatis" menyala, tiap objek berkelas langsung ditulis ke
+ * disk, jadi tombol "Simpan" manual di pojok kanan atas mubazir dan rancu
+ * berdampingan dengan "Jadikan objek" (yang menyahkan pratinjau SAM jadi objek,
+ * bukan menyimpan berkas). Sembunyikan saat autosave hidup; tampilkan lagi kalau
+ * autosave dimatikan, karena di situ simpan manual memang perlu. Ctrl+S tetap.
+ * Pakai style.display, bukan atribut `hidden`, karena .tbl menetapkan display
+ * sendiri yang akan menang atas aturan [hidden] bawaan peramban.
+ */
+function perbaruiTombolSimpan() {
+  const b = el('btn-simpan');
+  if (b) b.style.display = S.v.autosave ? 'none' : '';
+}
+
 function muatView() {
   let d = {};
   try { d = JSON.parse(localStorage.getItem(VKUNCI)) || {}; } catch (e) { /* abai */ }
@@ -3340,8 +3354,11 @@ function muatView() {
     const cb = el(id);
     if (!cb) continue;
     cb.checked = !!S.v[kunci];
-    cb.onchange = () => { S.v[kunci] = cb.checked; simpanView(); gambar(); };
+    cb.onchange = () => {
+      S.v[kunci] = cb.checked; simpanView(); gambar(); perbaruiTombolSimpan();
+    };
   }
+  perbaruiTombolSimpan();
   document.querySelectorAll('#view-isi input[data-panel]').forEach(cb => {
     const p = cb.dataset.panel;
     if (d.panel && p in d.panel) cb.checked = d.panel[p];
