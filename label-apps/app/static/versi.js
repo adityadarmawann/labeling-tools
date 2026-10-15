@@ -256,7 +256,7 @@
 
   // ------------------------------------------------------------- keadaan
   const resep = { pra: {}, aug: {}, fase: {}, volume: { per_gambar: 1 },
-                  warna: { mode: 'bentuk' } };
+                  warna: { mode: 'bentuk' }, format: '' };
   let katalog = null;
   let sumber = null;                     // hasil /api/versi/estimasi terakhir
 
@@ -1352,6 +1352,10 @@
     // memicu change, resep akan terkirim dengan mode yang sudah tidak sesuai
     // dengan yang terlihat di layar.
     terapkanModeWarna();
+    // Format anotasi per-versi (kosong = ikut projek). Dibaca ulang di sini,
+    // seperti mode warna, supaya pemulihan radio oleh browser tak terlewat.
+    const rf = wz.querySelector('input[name="wz-format"]:checked');
+    resep.format = rf ? rf.value : '';
     resep.volume.per_gambar = Number(el('wz-salin').value) || 0;
     resep.fase = {
       crop_zoom: { aktif: el('wz-f-crop').checked },

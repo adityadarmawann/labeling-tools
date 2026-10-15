@@ -484,12 +484,16 @@ async def versi_mulai(request: Request, split: str = "", catatan: str = "",
     ringkas = await asyncio.to_thread(export.ringkasan, items, True,
                                       export.baca_rasio(rasio), names, rencana)
     nomor = await asyncio.to_thread(versi.nomor_berikut, sess.src)
-    # Format keluaran: setelan projek kalau ada, kalau tidak ditebak dari bentuk
-    # TERBANYAK. Dihitung di sini supaya pekerjaan latar tidak perlu membaca
-    # berkas tugas lagi dari thread lain.
+    # Format keluaran: PILIHAN PER-VERSI (resep.format) kalau ada, kalau tidak
+    # setelan projek, kalau tidak ditebak dari bentuk TERBANYAK. Per-versi lebih
+    # diutamakan supaya satu projek bercampur polygon+kotak bisa dibangun jadi
+    # versi deteksi (semua jadi kotak) TANPA mengubah setelan projek. Dihitung
+    # di sini supaya pekerjaan latar tidak perlu membaca berkas tugas lagi.
     _td = await asyncio.to_thread(tugas.baca_projek, sess.src,
                                   settings.uploads_root)
-    jenis_ds = tugas.jenis_berlaku(_td, items)
+    _fmt = str(resep.get("format") or "").strip().lower()
+    jenis_ds = (_fmt if _fmt in tugas.JENIS_ANOTASI
+                else tugas.jenis_berlaku(_td, items))
 
     ds, akun = sess.src, sess.user
     sess.versi_batal = False
