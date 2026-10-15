@@ -37,8 +37,10 @@ def test_nama_berkas_disterilkan_dan_tetap_di_folder_akun(klien, lingkungan):
     assert not (unggahan.parent / "luar").exists()
 
     # seluruh berkas hasil unggahan berada di bawah folder milik akun itu
+    # (_sesi.json adalah simpanan sesi internal aplikasi di akar unggahan,
+    # bukan hasil unggahan, jadi dilewati)
     for p in unggahan.rglob("*"):
-        if p.is_file():
+        if p.is_file() and p.name != "_sesi.json":
             assert unggahan / "anggi" in p.parents
 
 
@@ -473,7 +475,8 @@ def test_zip_slip_ditolak(klien, lingkungan):
     unggahan = lingkungan["roots"] / "_unggahan"
     milik = unggahan / "anggi"
     for p in unggahan.rglob("*"):
-        if p.is_file():
+        # _sesi.json: simpanan sesi internal di akar unggahan, bukan unggahan.
+        if p.is_file() and p.name != "_sesi.json":
             assert milik in p.parents, f"bocor keluar: {p}"
     assert not list(unggahan.parent.glob("jahat*.jpg"))
     assert (milik / "slip" / "aman.jpg").exists()
@@ -963,7 +966,8 @@ def test_unggah_tidak_bisa_keluar_folder_akun(klien, lingkungan):
 
     milik = unggahan / "anggi"
     for p in unggahan.rglob("*"):
-        if p.is_file():
+        # _sesi.json: simpanan sesi internal di akar unggahan, bukan unggahan.
+        if p.is_file() and p.name != "_sesi.json":
             assert milik in p.parents, f"bocor keluar: {p}"
     assert not (unggahan.parent / "etc").exists()
 

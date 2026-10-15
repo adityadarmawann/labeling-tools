@@ -7,6 +7,7 @@ semua URL ada di routers/.
 """
 from __future__ import annotations
 
+import os
 import shutil
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -63,6 +64,16 @@ async def lifespan(app: FastAPI):
     if diangkat:
         print(f"  ADMIN     : '{diangkat}' diangkat jadi admin karena belum ada\n"
               f"              satu pun. Ubah lewat halaman /akun.", flush=True)
+
+    # Pulihkan sesi yang bertahan dari restart proses (deploy) -> tak perlu login
+    # ulang. Dibuang kalau mesin reboot (boot berubah) atau LABELAPP_SESI_RESET.
+    from .session import store
+    reset = (os.environ.get("LABELAPP_SESI_RESET") or "").strip().lower() \
+        in ("1", "true", "ya", "yes")
+    store.siapkan(st, reset=reset)
+    print("  SESI      : " + ("direset — semua login ulang" if reset else
+          f"{len(store.users())} akun dipulihkan (bertahan deploy; "
+          "reboot mesin = logout)"), flush=True)
 
     # Projek yang lahir sebelum alur "Tambahkan ke dataset" ada tidak pernah
     # melewati tombol itu sekali pun, dan tanpa ini ia memakai aturan warisan

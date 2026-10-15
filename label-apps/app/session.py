@@ -11,10 +11,12 @@ dicabut.
 """
 from __future__ import annotations
 
+import json
 import os
 import secrets
 import shutil
 import threading
+import time
 from pathlib import Path
 
 from .config import Settings
@@ -442,27 +444,120 @@ class Session:
                 / bersihkan_nama(ds))
 
 
+# Sesi BERTAHAN melewati restart PROSES (deploy), tetapi dibuang saat mesin
+# REBOOT (hard restart). Keduanya dibedakan dari waktu-boot mesin: kalau sesi
+# ditulis pada boot yang BERBEDA dari boot sekarang, mesin sudah reboot sejak
+# itu -> buang semua (orang login ulang + mendarat di landing). Deploy (ganti
+# proses tanpa reboot) -> boot sama -> sesi dipulihkan -> tak perlu login lagi.
+#
+# Dulu sesi murni di memori (hilang tiap restart). Itu disengaja demi keamanan:
+# tak ada sesi menggantung yang tak bisa dicabut. Properti itu DIPERTAHANKAN,
+# cuma pemicunya dipindah dari "restart apa pun" ke "reboot mesin" (+ TTL +
+# LABELAPP_SESI_RESET untuk mencabut manual tanpa reboot).
+_SESI_TTL_HARI = 30
+
+
+def _btime() -> int:
+    """Waktu-boot mesin (epoch) dari /proc/stat. 0 kalau tak terbaca -> sesi
+    tak dipulihkan (aman: jatuh ke perilaku lama, login ulang)."""
+    try:
+        for baris in Path("/proc/stat").read_text().splitlines():
+            if baris.startswith("btime "):
+                return int(baris.split()[1])
+    except Exception:                                   # noqa: BLE001
+        pass
+    return 0
+
+
 class SessionStore:
-    """Peta sid (dari cookie) -> Session, aman dipakai dari banyak thread."""
+    """Peta sid (dari cookie) -> Session, aman dipakai dari banyak thread.
+
+    Dipersistenkan ke berkas (lihat siapkan()) supaya bertahan melewati restart
+    proses, kecuali mesin reboot.
+    """
 
     def __init__(self):
         self._data: dict[str, Session] = {}
         self._lock = threading.Lock()
+        self._berkas: Path | None = None
 
-    def create(self, user: str, settings: Settings) -> tuple[str, Session]:
-        sid = secrets.token_urlsafe(32)
-        sess = Session(user, settings)
-        # users.json dibaca SEKALI di sini untuk ketiga medan yang dititipkan
-        # ke sesi (peran, nama tampil, foto). Membacanya tiga kali berarti
-        # membuka berkas yang sama tiga kali hanya untuk membuat satu sesi.
+    def _bangun(self, user: str, settings: Settings, ts: float | None = None) -> Session:
+        # users.json dibaca SEKALI untuk ketiga medan yang dititipkan ke sesi
+        # (peran, nama tampil, foto). Akun yang sudah tak ada -> tolak: jangan
+        # pulihkan sesi untuk akun yang dihapus.
         from .security import is_admin, load_users
         users = load_users(settings.users_file)
-        rec = users.get(user) or {}
+        if user not in users:
+            raise ValueError(f"akun {user!r} tidak ada")
+        rec = users[user]
+        sess = Session(user, settings)
         sess.admin = is_admin(users, user)
         sess.nama = (rec.get("nama") or "").strip() or user
         sess.foto = rec.get("foto") or ""
+        sess._ts = ts or time.time()
+        return sess
+
+    def siapkan(self, settings: Settings, reset: bool = False) -> None:
+        """Dipanggil SEKALI saat startup. Memulihkan sesi yang bertahan dari
+        restart proses; mengosongkannya kalau mesin reboot (boot berubah) atau
+        `reset` (LABELAPP_SESI_RESET) diminta -> login ulang + landing."""
+        self._berkas = Path(settings.uploads_root) / "_sesi.json"
+        if reset:
+            self._hapus_berkas()
+            return
+        try:
+            data = json.loads(self._berkas.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return
+        if not isinstance(data, dict) or data.get("boot") != _btime():
+            self._hapus_berkas()                        # reboot / berkas aneh
+            return
+        batas = time.time() - _SESI_TTL_HARI * 86400
+        pulih: dict[str, Session] = {}
+        for sid, rec in (data.get("sesi") or {}).items():
+            if not isinstance(rec, dict) or (rec.get("ts") or 0) < batas:
+                continue
+            try:
+                pulih[sid] = self._bangun(rec.get("user") or "", settings,
+                                          rec.get("ts"))
+            except Exception:                           # noqa: BLE001
+                continue                                # akun hilang/rusak
+        with self._lock:
+            self._data.update(pulih)
+        if len(pulih) != len(data.get("sesi") or {}):
+            self._tulis()                               # buang yang kedaluwarsa
+
+    def _hapus_berkas(self) -> None:
+        if self._berkas:
+            try:
+                self._berkas.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+    def _tulis(self) -> None:
+        """Tulis peta sid->akun ke disk, atomik, chmod 600. Hanya sid + akun +
+        waktu -- bukan src/items (mahal; dibangun ulang saat dipakai)."""
+        if not self._berkas:
+            return
+        with self._lock:
+            sesi = {sid: {"user": s.user, "ts": getattr(s, "_ts", 0) or time.time()}
+                    for sid, s in self._data.items()}
+        try:
+            self._berkas.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self._berkas.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps({"boot": _btime(), "sesi": sesi}),
+                           encoding="utf-8")
+            os.chmod(tmp, 0o600)
+            tmp.replace(self._berkas)
+        except OSError:
+            pass                                        # gagal persist != gagal login
+
+    def create(self, user: str, settings: Settings) -> tuple[str, Session]:
+        sid = secrets.token_urlsafe(32)
+        sess = self._bangun(user, settings)
         with self._lock:
             self._data[sid] = sess
+        self._tulis()                                   # di luar lock
         return sid, sess
 
     def get(self, sid: str | None) -> Session | None:
@@ -478,6 +573,7 @@ class SessionStore:
             sess = self._data.pop(sid, None)
         if sess:
             shutil.rmtree(sess.thumbdir, ignore_errors=True)
+            self._tulis()
 
     def users(self) -> list[str]:
         with self._lock:
