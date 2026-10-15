@@ -19,7 +19,7 @@ from pathlib import Path
 import bisect
 
 from fastapi import APIRouter, Depends, Query, Request, Response
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from ..config import Settings, get_settings
 from ..deps import current_session, current_session_api, is_local, bodi_json
@@ -233,6 +233,12 @@ async def halaman(request: Request, path: str = "",
     # ditulis di antaranya tertimpa oleh dasar yang sudah usang. Murah kalau
     # tidak ada yang berubah: yang menaikkan penandanya cuma penulisan
     # sungguhan.
+    # Belum ada projek yang dibuka (mis. sesudah login / restart prod yang
+    # mengosongkan sesi): arahkan ke pemilih projek -- sama seperti route lain
+    # (/latih, /tugas, /unggah) -- bukan 404 buntu yang membuat orang mengira
+    # tautannya rusak.
+    if sess.src is None:
+        return RedirectResponse("/pilih", status_code=303)
     await asyncio.to_thread(sess.segarkan)
     if not sess.items:
         return templates.TemplateResponse(request, "notfound.html", {"sess": sess},
