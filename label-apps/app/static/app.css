@@ -32,6 +32,10 @@
   /* Kanvas anotasi sengaja tetap gelap di KEDUA tema: latar terang membuat
      poligon berwarna sulit dinilai, dan AnyLabeling pun memakai latar gelap. */
   --kanvas:#2a2f36;
+  /* Kontrol native (dropdown <select>, scrollbar, pemintal angka) ikut tema,
+     bukan putih bawaan browser di atas aplikasi gelap -> daftar opsi select
+     terbaca. */
+  color-scheme:light;
 }
 @media (prefers-color-scheme:dark){
   :root:not([data-theme="light"]){
@@ -48,6 +52,7 @@
     --bayang:0,0,0;
     --header:18,22,28;
     --pilih:#243040; --bahaya-lembut:#33201c; --tirai:0,0,0; --kanvas:#20242a;
+    color-scheme:dark;
   }
 }
 :root[data-theme="dark"]{
@@ -64,6 +69,7 @@
   --bayang:0,0,0;
   --header:18,22,28;
   --pilih:#243040; --bahaya-lembut:#33201c; --tirai:0,0,0; --kanvas:#20242a;
+  color-scheme:dark;
 }
 body{background:var(--ground);color:var(--ink);
   font:14px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif}
