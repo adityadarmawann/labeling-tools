@@ -334,9 +334,12 @@
     if (!j.ok) { pr.gagal(j.error); return; }
 
     if (j.tautan) {
-      pr.selesai('Undangan dibuat');
+      pr.selesai(j.terkirim ? ('Undangan dikirim ke ' + v) : 'Undangan dibuat');
       jalur.insertAdjacentHTML('beforeend',
-        '<div class="bg-tautan"><span class="mono" id="bg-tautan-teks"></span>'
+        '<div class="bg-tautan"><span class="halus">'
+        + (j.terkirim ? 'Email undangan terkirim. Link cadangan: '
+                      : 'Bagikan link undangan ini: ')
+        + '</span><span class="mono" id="bg-tautan-teks"></span>'
         + '<button class="chip" type="button" id="bg-salin">Salin</button></div>');
       $('bg-tautan-teks').textContent = j.tautan;
       $('bg-salin').onclick = async () => {
