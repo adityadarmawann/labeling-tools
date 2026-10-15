@@ -2079,19 +2079,34 @@ window.addEventListener('keydown', ev => {
   }
   if (ev.key.startsWith('Arrow')) {
     ev.preventDefault();
-    // canvas.py memasang panah di dalam `elif self.editing():` — jadi panah
-    // menggeser bentuk HANYA di mode Sunting. Di mode lain panah dipakai
-    // pindah gambar, sama seperti di grid dan tampilan besar aplikasi ini.
-    // Tanpa pembatasan mode, Finish Object yang menyisakan bentuk terpilih
-    // membuat panah menggeser bentuk padahal orang bermaksud pindah gambar.
+    // Kiri/Kanan SELALU pindah gambar (sebelumnya/berikutnya), seperti di grid
+    // dan tampilan besar. Dulu di mode Sunting dengan objek terpilih panah malah
+    // menggeser objeknya -- padahal orang menekan panah untuk pindah gambar,
+    // terutama sesudah "Jadikan objek" yang menyisakan objek dalam keadaan
+    // terpilih. Penyesuaian halus posisi objek kini lewat Atas/Bawah atau seret.
+    if (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight') {
+      // Ada bentuk yang sudah digambar/disegmentasi tapi BELUM ditekan "Jadikan
+      // objek", jadi belum berkelas (hidup di S.pratinjau, bukan S.shapes).
+      // Jangan diam-diam dibuang saat pindah gambar: tanyakan dulu. "OK"
+      // membawa ke pemilihan kelas; "Batal" membuang bentuknya TANPA menandai
+      // gambar jadi latar (karena tak pernah masuk S.shapes).
+      if (S.pratinjau) {
+        if (confirm('Objek yang sudah Anda labeli belum dijadikan objek.\n\n'
+                    + 'OK: jadikan objek (pilih kelas).\n'
+                    + 'Batal: hapus objek ini (gambar tidak dijadikan latar).')) {
+          finishObject();
+        } else {
+          bersihkanPrompt();
+        }
+        return;
+      }
+      pindah(ev.key === 'ArrowLeft' ? D.prev : D.next);
+      return;
+    }
+    // Atas/Bawah: geser objek terpilih di mode Sunting (penyesuaian halus).
+    // canvas.py memasang panah di dalam `elif self.editing():`.
     if (S.mode === 'edit' && S.sel >= 0) {
-      const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0],
-                  ArrowUp: [0, -1], ArrowDown: [0, 1] }[ev.key];
-      if (d) geserDenganPanah(d[0] * MOVE_SPEED, d[1] * MOVE_SPEED);
-    } else if (ev.key === 'ArrowLeft') {
-      pindah(D.prev);
-    } else if (ev.key === 'ArrowRight') {
-      pindah(D.next);
+      geserDenganPanah(0, (ev.key === 'ArrowUp' ? -1 : 1) * MOVE_SPEED);
     }
     return;
   }
