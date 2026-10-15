@@ -1938,9 +1938,12 @@ function tanyaKelas({ label = '', group_id = null, flags = {}, judul = 'Kelas un
         .map(x => x.textContent);
       if (!daftar.length) return;
       const i = daftar.indexOf(teks.value.trim());
-      const n = ev.key === 'ArrowDown'
-        ? (i < 0 ? 0 : Math.min(i + 1, daftar.length - 1))
-        : (i < 0 ? daftar.length - 1 : Math.max(i - 1, 0));
+      // Berputar, tidak mentok: dari item teratas tekan panah atas lompat ke
+      // item terbawah, dan sebaliknya. Kalau belum ada yang terpilih, panah
+      // bawah mulai dari atas, panah atas mulai dari bawah.
+      const n = i < 0
+        ? (ev.key === 'ArrowDown' ? 0 : daftar.length - 1)
+        : (i + (ev.key === 'ArrowDown' ? 1 : -1) + daftar.length) % daftar.length;
       teks.value = daftar[n];
       gambarDaftar();
       // Gulir item terpilih ke dalam pandang supaya kelas yang jauh di bawah
