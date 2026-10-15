@@ -1943,6 +1943,10 @@ function tanyaKelas({ label = '', group_id = null, flags = {}, judul = 'Kelas un
         : (i < 0 ? daftar.length - 1 : Math.max(i - 1, 0));
       teks.value = daftar[n];
       gambarDaftar();
+      // Gulir item terpilih ke dalam pandang supaya kelas yang jauh di bawah
+      // ikut terlihat saat dinavigasi panah -- tanpa scroll manual.
+      const sorot = el('dlg-daftar').querySelector('.it[data-on]');
+      if (sorot) sorot.scrollIntoView({ block: 'nearest' });
     }
   };
   el('dlg-flagbaru').onkeydown = ev => {
