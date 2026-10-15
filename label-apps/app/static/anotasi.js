@@ -94,6 +94,10 @@
         return bukaTugaskan(id, kartu.dataset.pelabel || '');
       }
 
+      if (b.dataset.aksi === 'prelabel') {
+        return bukaPrelabel(id);
+      }
+
       if (b.dataset.aksi === 'catatan') {
         const el = kartu.querySelector('.an-catatan');
         const v = prompt('Catatan untuk pelabelnya:', el ? el.textContent.trim() : '');
@@ -238,6 +242,110 @@
     });
     document.addEventListener('keydown', (ev) => {
       if (ev.key === 'Escape' && !tgDlg.hidden) tgTutup();
+    });
+  }
+
+  // ---- dialog "Pre-label dengan AI": model terlatih memprediksi gambar yang
+  // BELUM teranotasi pada satu tugas, hasilnya tinggal diverifikasi. --------
+  const plDlg = document.getElementById('pl-dlg');
+  let plTid = '';
+  let plTimer = null;
+  const plEsc = (s) => String(s).replace(/[&<>"]/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const plEl = (id) => document.getElementById(id);
+
+  function plHenti() { if (plTimer) { clearInterval(plTimer); plTimer = null; } }
+  function plTutup() { plHenti(); if (plDlg) plDlg.hidden = true; }
+
+  async function bukaPrelabel(id) {
+    if (!plDlg) return;
+    plTid = id;
+    plHenti();
+    plDlg.hidden = false;
+    plEl('pl-maju').innerHTML = '';
+    plEl('pl-batal').hidden = true;
+    const mulai = plEl('pl-mulai');
+    mulai.disabled = true; mulai.textContent = 'Memuat model…';
+    const sel = plEl('pl-model'); sel.innerHTML = '';
+    const j = await send('/api/prelabel/model');
+    if (!j || !j.ok || !j.model || !j.model.length) {
+      sel.innerHTML = '<option value="">(belum ada model terlatih)</option>';
+      plEl('pl-maju').innerHTML = '<p class="halus" style="padding:12px 16px">'
+        + 'Belum ada model terlatih di projek ini. Latih dulu lewat tab '
+        + 'Training (dari gambar yang sudah dilabeli), lalu kembali ke sini.</p>';
+      mulai.textContent = 'Mulai';
+      return;
+    }
+    sel.innerHTML = j.model.map((m) => '<option value="' + m.nomor + '">'
+      + 'Latihan L' + m.nomor + (m.versi != null ? ' (versi v' + m.versi + ')' : '')
+      + ' — ' + ((m.kelas || []).length) + ' kelas</option>').join('');
+    mulai.textContent = 'Mulai'; mulai.disabled = false;
+  }
+
+  function plPantau() {
+    plHenti();
+    const box = plEl('pl-maju');
+    plTimer = setInterval(async () => {
+      const j = await send('/api/prelabel/kemajuan');
+      const m = (j && j.maju) || {};
+      if (m.galat) {
+        box.innerHTML = '<p class="bad" style="padding:12px 16px">'
+          + plEsc(m.galat) + '</p>'; plSelesai(); return;
+      }
+      if (m.dibatalkan) {
+        box.innerHTML = '<p class="halus" style="padding:12px 16px">Dibatalkan.</p>';
+        plSelesai(); return;
+      }
+      if (m.selesai) {
+        box.innerHTML = '<div style="padding:12px 16px"><p><b>Selesai.</b> '
+          + (m.diproses || 0) + ' gambar diisi, ' + (m.objek || 0) + ' objek, '
+          + (m.dilewati || 0) + ' dilewati.</p>'
+          + '<button class="wz-tbl wz-tbl-pri" type="button" onclick="location.reload()">'
+          + 'Muat ulang untuk melihat</button></div>';
+        plSelesai(); return;
+      }
+      const pct = m.persen || 0;
+      box.innerHTML = '<div style="padding:12px 16px"><p class="halus">'
+        + plEsc(m.fase_nama || 'Memproses') + ' — ' + pct + '%'
+        + (m.total ? (' (' + (m.diproses || 0) + '/' + m.total + ')') : '')
+        + '</p><div class="pl-bar"><i style="width:' + pct + '%"></i></div></div>';
+    }, 1000);
+  }
+
+  function plSelesai() {
+    plHenti();
+    plEl('pl-batal').hidden = true;
+    const mulai = plEl('pl-mulai');
+    if (mulai) mulai.disabled = false;
+  }
+
+  if (plDlg) {
+    plEl('pl-mulai').addEventListener('click', async () => {
+      const nomor = plEl('pl-model').value;
+      if (!nomor) { toast('Pilih model dulu'); return; }
+      const batas = parseInt(plEl('pl-batas').value || '1000', 10);
+      const conf = parseFloat(plEl('pl-conf').value || '0.25');
+      plEl('pl-mulai').disabled = true;
+      const j = await send('/api/prelabel/mulai', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tid: plTid, nomor: parseInt(nomor, 10), batas, conf }),
+      });
+      if (!j || !j.ok) {
+        toast((j && j.error) || 'gagal memulai');
+        plEl('pl-mulai').disabled = false; return;
+      }
+      plEl('pl-batal').hidden = false;
+      plPantau();
+    });
+    plEl('pl-batal').addEventListener('click', async () => {
+      await send('/api/prelabel/batal', { method: 'POST' });
+      toast('Membatalkan…');
+    });
+    for (const x of plDlg.querySelectorAll('[data-pl-tutup]')) {
+      x.addEventListener('click', plTutup);
+    }
+    document.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Escape' && !plDlg.hidden) plTutup();
     });
   }
 })();

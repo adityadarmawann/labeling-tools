@@ -2282,6 +2282,15 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
     padding-top:12px;background:var(--ground)}
 }
 
+/* ------------------------------------------- dialog Pre-label dengan AI */
+.pl-baris{display:flex;gap:16px;flex-wrap:wrap;margin-top:10px}
+.pl-baris span{display:flex;flex-direction:column;gap:4px}
+.pl-baris input.chip{width:130px}
+#pl-model.chip{width:100%;margin-top:4px}
+.pl-bar{height:8px;border-radius:999px;background:var(--sunk);overflow:hidden;
+  margin-top:8px}
+.pl-bar i{display:block;height:100%;background:var(--aksi);transition:width .3s}
+
 /* ==================================================== rincian job */
 .jb-balik{display:inline-block;margin-bottom:12px}
 .jb-tata{display:flex;gap:18px;align-items:flex-start}

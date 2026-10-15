@@ -194,6 +194,8 @@
             <span class="menu-isi">
               <a class="menu-aksi" href="/tugas/{{ k.id }}?ds={{ pr.ds | urlquote }}">
                 Lihat isinya</a>
+              <button class="menu-aksi" type="button" data-aksi="prelabel"
+                      data-id="{{ k.id }}">Pre-label dengan AI&hellip;</button>
               <button class="menu-aksi" type="button" data-aksi="pelabel"
                       data-id="{{ k.id }}">Tugaskan ulang&hellip;</button>
               <button class="menu-aksi" type="button" data-aksi="catatan"
@@ -299,6 +301,8 @@
             <span class="menu-isi">
               <a class="menu-aksi" href="/tugas/{{ k.id }}?ds={{ pr.ds | urlquote }}">
                 Lihat isinya</a>
+              <button class="menu-aksi" type="button" data-aksi="prelabel"
+                      data-id="{{ k.id }}">Pre-label dengan AI&hellip;</button>
               <button class="menu-aksi" type="button" data-aksi="pelabel"
                       data-id="{{ k.id }}">Tugaskan ulang&hellip;</button>
               <button class="menu-aksi" type="button" data-aksi="catatan"
@@ -359,6 +363,37 @@
     <div class="op-dlg-bawah">
       <span class="spacer"></span>
       <button class="wz-tbl wz-tbl-sek" type="button" data-tg-tutup>Tutup</button>
+    </div>
+  </div>
+</div>
+
+{#- Dialog "Pre-label dengan AI": model terlatih memprediksi gambar yang belum
+    teranotasi pada satu tugas, hasilnya tinggal diverifikasi. Diisi anotasi.js. -#}
+<div class="dlg" id="pl-dlg" hidden>
+  <div class="dlg-tirai" data-pl-tutup></div>
+  <div class="dlg-kotak" role="dialog" aria-modal="true" aria-labelledby="pl-judul">
+    <div class="op-dlg-atas">
+      <h3 id="pl-judul">Pre-label dengan AI</h3>
+      <p class="halus">Model terlatih memprediksi objek pada gambar yang BELUM
+        teranotasi di tugas ini. Hasilnya tinggal kamu verifikasi; gambar yang
+        sudah dilabeli atau ditandai latar tidak disentuh.</p>
+      <label class="halus" for="pl-model">Model terlatih</label>
+      <select class="chip" id="pl-model"></select>
+      <div class="pl-baris">
+        <span><label class="halus" for="pl-batas">Jumlah maks</label>
+          <input class="chip" id="pl-batas" type="number" value="1000"
+                 min="1" max="100000"></span>
+        <span><label class="halus" for="pl-conf">Ambang keyakinan</label>
+          <input class="chip" id="pl-conf" type="number" value="0.25"
+                 min="0.01" max="0.99" step="0.05"></span>
+      </div>
+    </div>
+    <div class="op-gulung" id="pl-maju"></div>
+    <div class="op-dlg-bawah">
+      <button class="wz-tbl wz-tbl-sek" type="button" id="pl-batal" hidden>Batalkan</button>
+      <span class="spacer"></span>
+      <button class="wz-tbl wz-tbl-sek" type="button" data-pl-tutup>Tutup</button>
+      <button class="wz-tbl wz-tbl-pri" type="button" id="pl-mulai">Mulai</button>
     </div>
   </div>
 </div>

@@ -20,8 +20,8 @@ from fastapi.staticfiles import StaticFiles
 from .config import get_settings
 from .deps import NeedsLogin, current_session, login_redirect
 from .session import Session
-from .routers import (admin, annotate, auth, datasets, latih, profil, projek,
-                      review, tag, tugas, uploads, video)
+from .routers import (admin, annotate, auth, datasets, latih, prelabel, profil,
+                      projek, review, tag, tugas, uploads, video)
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -206,6 +206,7 @@ def create_app() -> FastAPI:
     app.include_router(admin.router)
     app.include_router(profil.router)
     app.include_router(latih.router)
+    app.include_router(prelabel.router)
     app.include_router(annotate.router)
     app.include_router(review.router)      # paling akhir: memegang "/"
     return app
