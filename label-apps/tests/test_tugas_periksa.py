@@ -61,6 +61,19 @@ def test_periksa_akun_butuh_sesi(klien, lingkungan):
     assert klien.get("/api/tugas/periksa-akun?q=paul").status_code == 401
 
 
+def test_kelas_starter_simpan_eksplisit_project_wide(klien, lingkungan):
+    """Kelas yang diketik pemilik disimpan ke kelas_awal (tingkat PROJEK) lewat
+    {kelas:[...]} -- jadi tak hilang saat refresh dan sama di semua batch."""
+    masuk(klien, "paul", PW_PAUL)
+    d = _projek(klien)
+    klien.post(f"/setsrc?path={d}")
+    r = klien.post("/api/tugas/kelas-starter",
+                   json={"kelas": ["kucing", "anjing", "kucing"]}).json()
+    assert r.get("ok"), r
+    data = json.loads((d / ".tugas.json").read_text())
+    assert sorted(data["kelas_awal"]) == ["anjing", "kucing"]   # dedupe, tersimpan
+
+
 def test_undang_email_pakai_nama_projek_asli(klien, lingkungan, monkeypatch):
     """Nama proyek di email = nama projek HIGOLAB yang sedang dibuka (folder),
     adaptif -- bukan nilai tetap. Kirim email dipalsukan; yang diperiksa argumen

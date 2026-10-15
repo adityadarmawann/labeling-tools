@@ -3018,6 +3018,30 @@ function pakaiKelas(v) {
   el('kelasbaru').value = '';
   kelasMenunggu = null;
   render();
+  simpanKelasAwal(v);
+}
+
+// Kelas STARTER projek yang sudah tersimpan (kelas_awal). Kelas tingkat PROJEK,
+// bukan per-batch: begitu disimpan, muncul di SEMUA gambar/batch projek ini.
+// Kelas yang diketik pemilik ditambahkan ke sini supaya tak hilang saat refresh.
+let kelasAwal = (D.kelas_awal || []).slice();
+function simpanKelasAwal(v) {
+  if (!D.boleh_kelola) return;        // hanya pemilik/editor yang menetapkan kelas projek
+  if (kelasAwal.includes(v)) return;  // sudah tersimpan
+  kelasAwal.push(v);
+  kelasAwal.sort();
+  fetch('/api/tugas/kelas-starter', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ kelas: kelasAwal }),
+  }).then(x => x.json()).then(r => {
+    if (!r || !r.ok) {
+      kelasAwal = kelasAwal.filter(k => k !== v);   // batal catat kalau gagal
+      toast((r && r.error) || 'gagal menyimpan kelas ke projek');
+    }
+  }).catch(() => {
+    kelasAwal = kelasAwal.filter(k => k !== v);
+    toast('gagal menyimpan kelas (jaringan)');
+  });
 }
 
 el('kelasbaru').addEventListener('input', () => { kelasMenunggu = null; });

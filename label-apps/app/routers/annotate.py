@@ -275,6 +275,11 @@ async def halaman(request: Request, path: str = "",
         "next_path": str(next_it["img"].resolve()) if next_it else "",
         "kelas": daftar_kelas(sess),
         "kelas_resmi": kelas_resmi(sess),
+        # Kelas STARTER projek yang tersimpan (kelas_awal). Dikirim supaya kanvas
+        # bisa MENAMBAHKANNYA saat pemilik mengetik kelas baru -- tanpa ini,
+        # kelas yang diketik tapi belum dipakai melabeli hilang saat refresh.
+        "kelas_awal": (sorted(tugas.baca(Path(sess.src)).get("kelas_awal") or [])
+                       if sess.src else []),
         "bentuk": bentuk_untuk_kanvas(it, mentah),
         # Flag bawaan selalu tampil dengan nilai false lalu ditimpa isi berkas —
         # persis label_widget.py:2187-2192. Tanpa daftar bawaan, nama flag harus
