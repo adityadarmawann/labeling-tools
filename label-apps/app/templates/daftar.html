@@ -7,9 +7,16 @@
      terasa seperti dua aplikasi. #}
   {% if not boleh %}
   <div class="card-form">
+    {% if hanya_undangan %}
+    <h2>Pendaftaran lewat undangan</h2>
+    <p class="sub">Akun baru dibuat lewat tautan undangan dari pemilik projek.
+      Minta tautan undangan, lalu buka tautannya untuk langsung mendaftar
+      sekaligus bergabung ke projek.</p>
+    {% else %}
     <h2>Pendaftaran ditutup</h2>
     <p class="sub">Pendaftaran mandiri sedang dimatikan. Minta admin
       membuatkan akun.</p>
+    {% endif %}
     <p class="kartu-kaki"><a href="/login">Kembali ke halaman masuk</a></p>
   </div>
 

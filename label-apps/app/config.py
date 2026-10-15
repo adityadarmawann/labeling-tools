@@ -161,6 +161,15 @@ class Settings:
     # dibatasi ke jaringan tepercaya — periksa `sudo ufw status verbose`,
     # dan pastikan bawaan incoming-nya deny.
     daftar_langsung: bool = False
+    # Kalau True, pendaftaran mandiri DITUTUP kecuali lewat tautan undangan
+    # bertoken yang sah. Dipakai saat aplikasi dibuka ke internet: siapa pun
+    # boleh diundang, tapi tak seorang pun bisa membuat akun (bahkan yang cuma
+    # "menunggu") tanpa undangan, jadi daftar tunggu tak terisi spam bot.
+    # PENTING: daftar_sendiri HARUS tetap True agar alur undangan jalan --
+    # yang diundang pun mendaftar lewat /daftar. Saklar ini yang menyaring,
+    # bukan mematikan /daftar. Tautan "Daftar" publik di halaman masuk ikut
+    # disembunyikan; undangan tetap lewat tautan token di email.
+    daftar_hanya_undangan: bool = False
     # Scraper kata-kunci YouTube (projek video: kata kunci -> unduh massal lewat
     # yt-dlp). MATI secara bawaan — persis seperti daftar_langsung, dan karena
     # alasan yang sama: aplikasi ini ditutup dari internet (ufw membatasi port
@@ -269,6 +278,7 @@ def get_settings() -> Settings:
         google_domain=_get("GOOGLE_DOMAIN"),
         daftar_sendiri=_bool("DAFTAR_SENDIRI", True),
         daftar_langsung=_bool("DAFTAR_LANGSUNG", False),
+        daftar_hanya_undangan=_bool("DAFTAR_HANYA_UNDANGAN", False),
         scraper=_bool("SCRAPER", False),
         smtp_host=_get("SMTP_HOST"),
         smtp_port=_int("SMTP_PORT", 587),

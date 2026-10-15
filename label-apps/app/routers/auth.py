@@ -72,6 +72,13 @@ def _catat_gagal(ip: str) -> None:
                 _gagal_login.pop(k, None)
 
 
+def _boleh_daftar(s: Settings) -> bool:
+    """Tautan "Daftar" publik hanya muncul kalau daftar mandiri hidup DAN bukan
+    mode hanya-undangan. Di mode undangan, akun baru hanya lahir lewat tautan
+    token di email -- halaman masuk tak menawarkan daftar terbuka."""
+    return s.daftar_sendiri and not s.daftar_hanya_undangan
+
+
 # Halaman PUBLIK (tanpa sesi): wajah aplikasi + dokumentasi fitur. Akar "/"
 # untuk pengunjung anonim juga memakai landing.html (lewat handler NeedsLogin di
 # main.py); rute eksplisit ini menyediakan URL tetap yang SELALU menampilkannya
@@ -95,10 +102,11 @@ async def login_form(request: Request, next: str = ""):
         # halaman masuk sama sekali.
         tujuan = next if next.startswith("/") and not next.startswith("//") else "/"
         return RedirectResponse(tujuan, status_code=status.HTTP_303_SEE_OTHER)
+    s = get_settings()
     return templates.TemplateResponse(request, "login.html", {
         "akun": "", "next": next,
-        "boleh_daftar": get_settings().daftar_sendiri,
-        "daftar_langsung": get_settings().daftar_langsung})
+        "boleh_daftar": _boleh_daftar(s),
+        "daftar_langsung": s.daftar_langsung})
 
 
 @router.post("/login")
@@ -121,7 +129,7 @@ async def login(request: Request,
         return templates.TemplateResponse(
             request, "login.html",
             {"akun": user, "next": next,
-             "boleh_daftar": settings.daftar_sendiri,
+             "boleh_daftar": _boleh_daftar(settings),
              "daftar_langsung": settings.daftar_langsung,
              "error": (f"Terlalu banyak percobaan gagal. Coba lagi sekitar "
                        f"{detik} detik lagi.")},
@@ -141,7 +149,7 @@ async def login(request: Request,
         return templates.TemplateResponse(
             request, "login.html",
             {"akun": user, "next": next,
-             "boleh_daftar": settings.daftar_sendiri,
+             "boleh_daftar": _boleh_daftar(settings),
              "daftar_langsung": settings.daftar_langsung,
              "error": ("Akun ini sudah terdaftar tapi belum disetujui admin."
                        if menunggu else "Akun atau password salah.")},
@@ -181,6 +189,13 @@ async def daftar_form(request: Request, next: str = "",
                       settings: Settings = Depends(get_settings)):
     if optional_session(request):
         return RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
+    # Mode hanya-undangan: tanpa tautan undangan bertoken yang sah, tak ada form
+    # sama sekali -- cuma keterangan bahwa akun dibuat lewat undangan. Yang
+    # datang dari tautan undangan (next=/undangan/<token sah>) tetap dapat form.
+    if settings.daftar_hanya_undangan and not await _diundang(settings, next):
+        return templates.TemplateResponse(
+            request, "daftar.html", {"boleh": False, "hanya_undangan": True},
+            status_code=status.HTTP_403_FORBIDDEN)
     return templates.TemplateResponse(request, "daftar.html", {
         "boleh": settings.daftar_sendiri, "akun": "", "email": "", "next": next})
 
@@ -190,6 +205,18 @@ def _token_undangan(next: str) -> str:
     if next.startswith("/undangan/"):
         return next[len("/undangan/"):].split("?", 1)[0].split("/", 1)[0]
     return ""
+
+
+async def _diundang(settings: Settings, next: str) -> bool:
+    """True kalau `next` membawa tautan undangan bertoken yang SAH (tokennya
+    benar-benar ada di uploads_root). Inilah yang membedakan pendaftar diundang
+    dari pendaftar liar di mode hanya-undangan, sekaligus yang membuat akun
+    diundang langsung aktif tanpa menunggu persetujuan."""
+    token = _token_undangan(next)
+    if not token:
+        return False
+    return (await asyncio.to_thread(
+        svc_projek.cari_undangan, settings.uploads_root, token)) is not None
 
 
 @router.post("/daftar")
@@ -222,6 +249,16 @@ async def daftar_kirim(request: Request, user: str = Form(""),
         return templates.TemplateResponse(
             request, "daftar.html", {"boleh": False},
             status_code=status.HTTP_403_FORBIDDEN)
+
+    # Diundang atau tidak diperiksa LEBIH DULU: di mode hanya-undangan, pendaftar
+    # tanpa token sah ditolak sebelum apa pun disentuh -- tak ada akun "menunggu"
+    # yang lahir dari internet, dan pesan galat form pun tak bocor.
+    diundang = await _diundang(settings, next)
+    if settings.daftar_hanya_undangan and not diundang:
+        return templates.TemplateResponse(
+            request, "daftar.html", {"boleh": False, "hanya_undangan": True},
+            status_code=status.HTTP_403_FORBIDDEN)
+
     if not (user or "").strip():
         return salah("Nama akun masih kosong.")
     if len(pw) < 8:
@@ -230,10 +267,6 @@ async def daftar_kirim(request: Request, user: str = Form(""),
         return salah("Ulangan kata sandinya tidak sama.")
     if email and "@" not in email:
         return salah("Alamat email itu tidak terlihat benar.")
-
-    token = _token_undangan(next)
-    diundang = bool(token) and (await asyncio.to_thread(
-        svc_projek.cari_undangan, settings.uploads_root, token)) is not None
 
     try:
         akun = await asyncio.to_thread(

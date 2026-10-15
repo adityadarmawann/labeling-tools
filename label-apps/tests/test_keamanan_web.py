@@ -73,3 +73,33 @@ def test_tanpa_proxy_tak_kena_rate_limit(klien, monkeypatch):
         r = klien.post("/login", data={"user": "anggi", "pw": "salahsalah"},
                        follow_redirects=False)
         assert r.status_code == 401
+
+
+def test_mode_undangan_tutup_daftar_publik(klien, monkeypatch):
+    # Mode hanya-undangan: tak ada pendaftaran mandiri tanpa tautan undangan
+    # bertoken yang sah, dan tautan "Daftar" publik di halaman masuk hilang.
+    from app.config import get_settings
+    monkeypatch.setenv("LABELAPP_DAFTAR_HANYA_UNDANGAN", "1")
+    get_settings.cache_clear()
+
+    r = klien.get("/daftar", follow_redirects=False)
+    assert r.status_code == 403
+    assert "undangan" in r.text.lower()
+    assert 'name="pw"' not in r.text          # form pendaftaran tak tampil
+
+    # POST tanpa token ditolak walau datanya lengkap -- tak ada akun 'menunggu'
+    # yang lahir dari internet.
+    r = klien.post("/daftar", data={"user": "bot1", "pw": "password1",
+                   "pw2": "password1"}, follow_redirects=False)
+    assert r.status_code == 403
+
+    # Halaman masuk tak lagi menawarkan tautan daftar terbuka.
+    r = klien.get("/login")
+    assert "/daftar" not in r.text
+
+
+def test_default_daftar_publik_tetap_terbuka(klien):
+    # Tanpa mode undangan (bawaan), /daftar tetap menampilkan formnya.
+    r = klien.get("/daftar")
+    assert r.status_code == 200
+    assert 'name="pw"' in r.text
