@@ -3857,3 +3857,16 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
 .aksi-subnav a:hover { color: var(--ink); background: var(--sunk); }
 .aksi-subnav a[data-on] { color: var(--ink); background: var(--panel);
   border-color: var(--line); box-shadow: 0 1px 3px rgba(var(--bayang), .12); }
+
+/* Dialog "Tugaskan ulang": periksa username/email (anotasi.js) */
+.tg-cari-baris { display:flex; gap:8px; align-items:center; }
+.tg-cari-baris .op-cari { flex:1; }
+.tg-kartu { display:flex; align-items:center; gap:10px; padding:14px 20px 6px; }
+.tg-nama { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis;
+  white-space:nowrap; }
+.tg-badge { font-size:11px; padding:1px 8px; border-radius:999px;
+  background:var(--sunk); border:1px solid var(--line); white-space:nowrap; }
+.tg-badge-luar { opacity:.6; }
+.tg-aksi { display:flex; gap:8px; align-items:center; padding:4px 20px 8px; }
+.tg-aksi .op-cari { flex:1; }
+#tg-link { font-size:12px; }

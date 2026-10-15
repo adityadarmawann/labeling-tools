@@ -338,6 +338,30 @@
   <p class="an-kaki halus">{{ n_berlabel }} dari {{ n_semua }} gambar sudah
     dikerjakan &middot; {{ n_dataset }} sudah masuk dataset</p>
 </div>
+
+{#- Dialog "Tugaskan ulang": daftar akun yang bisa dicari, bukan prompt() isian
+    manual. Diisi bukaTugaskan() di anotasi.js dari /api/tugas/calon. -#}
+<div class="dlg" id="tg-dlg" hidden>
+  <div class="dlg-tirai" data-tg-tutup></div>
+  <div class="dlg-kotak" role="dialog" aria-modal="true" aria-labelledby="tg-judul">
+    <div class="op-dlg-atas">
+      <h3 id="tg-judul">Tugaskan ulang ke&hellip;</h3>
+      <p class="halus">Masukkan username HIGOLAB atau email, lalu Periksa. Gambar
+        dan label yang sudah ada tidak berubah; yang berpindah hanya siapa yang
+        boleh menyuntingnya.</p>
+      <div class="tg-cari-baris">
+        <input class="op-cari" id="tg-q" type="search"
+               placeholder="username HIGOLAB atau email&hellip;" autocomplete="off">
+        <button class="wz-tbl wz-tbl-pri" type="button" id="tg-periksa">Periksa</button>
+      </div>
+    </div>
+    <div class="op-gulung" id="tg-hasil"></div>
+    <div class="op-dlg-bawah">
+      <span class="spacer"></span>
+      <button class="wz-tbl wz-tbl-sek" type="button" data-tg-tutup>Tutup</button>
+    </div>
+  </div>
+</div>
 </main>
 {% endblock %}
 

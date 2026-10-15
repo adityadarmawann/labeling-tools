@@ -599,6 +599,45 @@ async def calon(sess: Session = Depends(current_session_api),
             "undangan": svc.undangan_terbuka(data)}
 
 
+@router.get("/api/tugas/periksa-akun")
+async def periksa_akun(q: str = "", sess: Session = Depends(current_session_api),
+                       settings: Settings = Depends(get_settings)):
+    """Periksa SATU username/email, untuk dialog "Tugaskan ulang".
+
+    Mengembalikan info akun itu saja kalau ada -- bukan seluruh daftar akun
+    (apalagi email tim), supaya tak membocorkan siapa pun. Kalau tak ada dan yang
+    diketik sebuah email, `email` ikut dikembalikan supaya bisa dibuatkan
+    undangan.
+    """
+    data, galat = _siap(sess)
+    if galat:
+        return {"ok": False, "error": galat}
+    if not svc.boleh_bagi(data, sess.user):
+        return {"ok": False, "error": "hanya pemilik atau editor yang bisa menugaskan"}
+    s = (q or "").strip()
+    if not s:
+        return {"ok": False, "error": "isi username HIGOLAB atau email dulu"}
+    from ..security import load_users
+    users = load_users(settings.users_file)
+    low = s.lower()
+    ketemu = None
+    for akun, rec in users.items():
+        surel = str(rec.get("email") or "").strip().lower()
+        if akun.lower() == low or (surel and surel == low):
+            ketemu = (akun, rec)
+            break
+    if not ketemu:
+        return {"ok": True, "ada": False, "email": s if "@" in s else ""}
+    akun, rec = ketemu
+    anggota = akun in data["anggota"] or akun == data["pemilik"]
+    info = data["anggota"].get(akun) or {}
+    peran = ("pemilik" if akun == data["pemilik"]
+             else svc.sah_peran(info.get("peran")) if akun in data["anggota"]
+             else "")
+    return {"ok": True, "ada": True, "akun": akun,
+            "nama": rec.get("nama") or akun, "anggota": anggota, "peran": peran}
+
+
 @router.post("/api/tugas/undang")
 async def undang(akun: str = "", peran: str = "pelabel", akses: str = "",
                  batch: str = "", sess: Session = Depends(current_session_api),
