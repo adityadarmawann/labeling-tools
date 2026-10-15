@@ -23,8 +23,10 @@
        tepi kiri halaman tanpa gaya apa pun karena yang memusatkan tampilan
        adalah .card-form itu sendiri (max-width + margin auto), bukan <main>. #}
     {% if boleh_daftar %}
+    {# `next` dibawa ke /daftar supaya alur undangan utuh. Untuk tautan undangan,
+       pendaftar langsung aktif -- jadi catatan "minta admin" disembunyikan. #}
     <p class="kartu-kaki">Belum punya akun?
-      <a href="/daftar">Daftar di sini</a>{% if not daftar_langsung %},
+      <a href="/daftar{% if next %}?next={{ next | urlquote }}{% endif %}">Daftar di sini</a>{% if not daftar_langsung and not (next and '/undangan/' in next) %},
       lalu minta admin menyetujuinya{% endif %}.</p>
     {% endif %}
   </form>

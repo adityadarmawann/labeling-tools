@@ -9,6 +9,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from ..config import Settings, get_settings
 from ..deps import optional_session
 from ..log import catat
+from ..services import projek as svc_projek
 from ..security import (COOKIE_NAME, authenticate, daftar_sendiri,
                         load_users, menunggu_setujuan, user_slug)
 from ..session import store
@@ -101,18 +102,25 @@ async def logout(request: Request):
 
 
 @router.get("/daftar", response_class=HTMLResponse)
-async def daftar_form(request: Request,
+async def daftar_form(request: Request, next: str = "",
                       settings: Settings = Depends(get_settings)):
     if optional_session(request):
         return RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
     return templates.TemplateResponse(request, "daftar.html", {
-        "boleh": settings.daftar_sendiri, "akun": "", "email": ""})
+        "boleh": settings.daftar_sendiri, "akun": "", "email": "", "next": next})
+
+
+def _token_undangan(next: str) -> str:
+    """Token undangan dari `next` kalau ia menunjuk /undangan/<token>, else ''."""
+    if next.startswith("/undangan/"):
+        return next[len("/undangan/"):].split("?", 1)[0].split("/", 1)[0]
+    return ""
 
 
 @router.post("/daftar")
 async def daftar_kirim(request: Request, user: str = Form(""),
                        email: str = Form(""), pw: str = Form(""),
-                       pw2: str = Form(""),
+                       pw2: str = Form(""), next: str = Form(""),
                        settings: Settings = Depends(get_settings)):
     """
     Pendaftaran mandiri. Hasilnya akun yang MENUNGGU persetujuan admin.
@@ -121,11 +129,18 @@ async def daftar_kirim(request: Request, user: str = Form(""),
     milik pendaftarnya. Persetujuan admin yang menggantikan pembuktian itu,
     dan itu juga yang membuat rute ini aman kalau portnya ternyata terbuka
     ke luar jaringan kantor.
+
+    KECUALI kalau mendaftar lewat tautan UNDANGAN bertoken yang sah (`next` =
+    /undangan/<token>): token itu rahasia dan diberikan pemilik projek, jadi
+    pendaftarnya SUDAH diizinkan. Akunnya langsung aktif (tak perlu persetujuan
+    admin terpisah), lalu langsung dibawa menerima undangannya -- satu alur,
+    satu klik: tautan email -> daftar -> langsung gabung.
     """
     def salah(pesan):
         return templates.TemplateResponse(
             request, "daftar.html",
-            {"boleh": True, "akun": user, "email": email, "error": pesan},
+            {"boleh": True, "akun": user, "email": email, "next": next,
+             "error": pesan},
             status_code=status.HTTP_400_BAD_REQUEST)
 
     if not settings.daftar_sendiri:
@@ -141,14 +156,28 @@ async def daftar_kirim(request: Request, user: str = Form(""),
     if email and "@" not in email:
         return salah("Alamat email itu tidak terlihat benar.")
 
+    token = _token_undangan(next)
+    diundang = bool(token) and (await asyncio.to_thread(
+        svc_projek.cari_undangan, settings.uploads_root, token)) is not None
+
     try:
         akun = await asyncio.to_thread(
             daftar_sendiri, settings.users_file, user, pw, email,
-            settings.daftar_langsung)
+            settings.daftar_langsung or diundang)
     except ValueError as e:
         return salah(str(e).capitalize() + ".")
     except OSError as e:
         return salah(f"Gagal menyimpan: {str(e)[:80]}")
+
+    if diundang:
+        # Diundang: langsung masuk + diteruskan ke halaman terima undangan, yang
+        # menambahkannya jadi anggota projek. Tak ada layar "menunggu" di tengah.
+        log.info("pendaftaran via undangan: %r (email=%r) aktif + diteruskan",
+                 akun, (email or "").strip())
+        sid, _sess = store.create(akun, settings)
+        resp = RedirectResponse(next, status_code=status.HTTP_303_SEE_OTHER)
+        resp.set_cookie(COOKIE_NAME, sid, httponly=True, samesite="lax", path="/")
+        return resp
 
     log.info("pendaftaran mandiri: %r (email=%r) %s", akun,
              (email or "").strip(),

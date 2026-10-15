@@ -33,6 +33,9 @@
   <form class="card-form" method="post" action="/daftar" autocomplete="off">
     <h2>Daftar akun</h2>
     <p class="sub">Isi data berikut untuk membuat akun.</p>
+    {# Tujuan semula (mis. tautan undangan) ikut dibawa, supaya sesudah daftar
+       orangnya langsung ke sana -- bukan tersesat ke beranda. #}
+    {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
     {% if error %}<p class="bad">{{ error }}</p>{% endif %}
 
     <label class="form-lbl" for="user">Nama akun</label>
