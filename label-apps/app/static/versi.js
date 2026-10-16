@@ -275,6 +275,11 @@
      dataset yang sudah jadi. */
   const OP_RONA = ['hue_sat', 'blackbody', 'iluminan', 'color_jitter',
                    'grayscale', 'saturasi'];
+  // Flip (cermin) ikut dimatikan di mode yang bergantung warna/desain: produk
+  // dikenali dari kemasannya, dan flip mencerminkan teks/logo jadi orientasi
+  // yang tak pernah ada. Backend menegakkannya juga (mode_warna.OP_FLIP); di
+  // sini supaya daftar aug ikut mencerminkannya. Rotasi TIDAK ikut.
+  const OP_FLIP = ['flip_h', 'flip_v'];
   function terapkanModeWarna(gambarUlang = true) {
     const dipilih = wz.querySelector('input[name="wz-warna"]:checked');
     const m = dipilih ? dipilih.value : 'bentuk';
@@ -303,7 +308,7 @@
        mode warna dengan hue_sat menyala menghasilkan dataset yang labelnya
        diam-diam salah. */
     if (berubah) {
-      OP_RONA.forEach((oid) => {
+      OP_RONA.concat(OP_FLIP).forEach((oid) => {
         if (!katalog || !katalog.aug || !katalog.aug[oid]) return;
         if (kunciRona) {
           resep.aug[oid] = { ...(resep.aug[oid] || {}), aktif: false };
@@ -318,12 +323,15 @@
     if (ket) {
       if (m === 'color-gated') {
         ket.textContent = OP_RONA.length + ' langkah pengubah warna dimatikan '
-          + 'untuk produk asli. Sistem juga akan membuat salinan berwarna salah '
+          + 'untuk produk asli, dan flip (cermin) ikut dimatikan (rotasi tetap). '
+          + 'Sistem juga akan membuat salinan berwarna salah '
           + 'sebagai contoh yang ditolak. Warnanya diukur otomatis dari kotak '
           + 'anotasi tiap kelas, tidak perlu disetel manual.';
       } else if (m === 'warna') {
         ket.textContent = OP_RONA.length + ' langkah pengubah warna dimatikan di '
-          + 'daftar bawah. Saat melatih nanti, warna asli juga dipertahankan.';
+          + 'daftar bawah, dan flip (cermin) juga dimatikan supaya teks kemasan '
+          + 'tak tercermin. Rotasi tetap boleh. Saat melatih nanti, warna asli '
+          + 'dan flip-off juga dipertahankan.';
       } else {
         ket.textContent = OP_RONA.length + ' langkah pengubah warna dinyalakan di '
           + 'daftar bawah. Warna diacak lebar di sini dan juga saat melatih nanti.';
@@ -423,7 +431,12 @@
       jelas: 'Warna diacak kuat supaya model belajar BENTUK, bukan warna. '
            + 'Cocok untuk benda yang bentuknya sama walau warnanya beda. '
            + 'Ukuran 640×640, memakai latar ruang detektor RVM.',
-      warna: 'bentuk', off: [], resize: { mode: 'fit', lebar: 640, tinggi: 640 },
+      warna: 'bentuk', off: ['flip_h', 'flip_v'],
+      // Objek RVM jatuh dengan orientasi apa pun dan sudut kamera berpindah,
+      // jadi rotasi penuh (sampai 180 derajat) supaya sudut tak terlalu
+      // berpengaruh. Flip dimatikan sesuai permintaan.
+      aug: { rotasi: { aktif: true, derajat: 180 } },
+      resize: { mode: 'fit', lebar: 640, tinggi: 640 },
       // RVM: pakai pelat latar bawaan + fase crop/zoom & balans ukuran (perilaku lama).
       latarRvm: true, fase: { crop_zoom: true, balans_skala: true } },
     { id: 'basket', nama: 'Basket / olahraga', sub: 'pemain · bola · lapangan',
@@ -431,7 +444,7 @@
            + 'menutupi pemain, tak dibalik atas-bawah, dan TANPA latar ruang RVM. '
            + 'Frame video 16:9 (1280×720); blur/pecah dibiarkan karena crop 1 '
            + 'frame kadang jelek.',
-      warna: 'warna', off: ['flip_v', 'bayangan'],
+      warna: 'warna', off: ['flip_h', 'flip_v', 'bayangan'],
       resize: { mode: 'regang', lebar: 1280, tinggi: 720 },
       // NON-RVM: jangan pakai pelat RVM bawaan; matikan fase yang menempel objek
       // ke pelat (crop/zoom, balans ukuran) karena itu teknik khas ruang RVM.
@@ -460,6 +473,12 @@
       if (!(katalog && katalog.aug && katalog.aug[oid])) return;
       if (p.off.includes(oid)) resep.aug[oid] = { ...(resep.aug[oid] || {}), aktif: false };
       else delete resep.aug[oid];
+    });
+    // 2b) Parameter op yang disetel preset (mis. sudut rotasi penuh untuk RVM
+    // supaya tahan pergeseran sudut kamera). Digabung di atas bawaan katalog.
+    Object.entries(p.aug || {}).forEach(([oid, par]) => {
+      if (!(katalog && katalog.aug && katalog.aug[oid])) return;
+      resep.aug[oid] = { ...(resep.aug[oid] || {}), ...par };
     });
     // 3) ukuran resize (preprocessing, langkah 4).
     if (p.resize) {
