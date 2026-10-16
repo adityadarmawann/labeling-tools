@@ -71,6 +71,13 @@
   --pilih:#243040; --bahaya-lembut:#33201c; --tirai:0,0,0; --kanvas:#20242a;
   color-scheme:dark;
 }
+/* color-scheme:dark saja TIDAK cukup di sebagian Chrome/Linux: daftar opsi
+   popup <select> native tetap mengikuti tema sistem (putih di atas aplikasi
+   gelap, tak terbaca). Mewarnai <option> secara eksplisit adalah satu-satunya
+   properti popup native yang dihormati Chrome. Pakai token tema supaya benar di
+   terang (panel putih, teks gelap) maupun gelap (panel gelap, teks terang). */
+option{background-color:var(--panel);color:var(--ink)}
+
 body{background:var(--ground);color:var(--ink);
   font:14px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif}
 .mono{font-family:ui-monospace,"JetBrains Mono","SF Mono",Menlo,monospace}
