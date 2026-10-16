@@ -106,6 +106,16 @@ OP_GESER_RONA = ("hue_sat", "blackbody", "iluminan", "color_jitter",
 # `warna` tetap punya augmentasi yang berguna.
 OP_TERANG = ("terang_kontras", "gamma", "eksposur", "vignette")
 
+# Flip (cermin H/V). Dimatikan di mode yang bergantung warna/desain (warna,
+# gerbang): produk dikenali dari kemasannya, dan flip membuat teks serta logo
+# TERCERMIN -- orientasi yang tak pernah ada di rak sungguhan, jadi model
+# dilatih pada gambar yang tak realistis. Di mode `bentuk` flip tetap boleh:
+# sebuah botol yang dicermin tetap botol yang sah. Rotasi TIDAK ikut dimatikan
+# di sini -- objek memang bisa tergeletak miring/terbalik, dan rotasi tak
+# mencerminkan apa pun. (Lihat olah.py AUG_V14: rotasi punya sudut sendiri
+# yang bisa dilebarkan sampai 180 derajat untuk cakupan putaran penuh.)
+OP_FLIP = ("flip_h", "flip_v")
+
 KETERANGAN = {
     BENTUK: {
         "nama": "Bentuk menentukan kelas",
@@ -122,9 +132,11 @@ KETERANGAN = {
         "ringkas": "Rona dipertahankan, hanya terang yang divariasikan",
         "contoh": "kahf_extradry_deodorant vs kahf_skinergizing_facewash — "
                   "warna kemasan yang membedakannya",
-        "aug": "Rona TIDAK digeser. Yang divariasikan cuma terang, gamma, "
-               "eksposur, dan vignette.",
-        "latih": "hsv_h 0,0 · hsv_s 0,20 · bgr 0,0 — rona dikunci",
+        "aug": "Rona TIDAK digeser, dan flip (cermin) DIMATIKAN supaya teks "
+               "kemasan tak tercermin. Rotasi tetap boleh (objek bisa miring). "
+               "Yang divariasikan: terang, gamma, eksposur, vignette, rotasi.",
+        "latih": "hsv_h 0,0 · hsv_s 0,20 · bgr 0,0 · fliplr 0 · flipud 0 — "
+                 "rona dikunci, flip mati",
         "nilai": "Jawaban yang berubah karena RONA digeser itu wajar. Yang "
                  "tetap dinilai buruk: jawaban yang berubah karena "
                  "TERANG berubah.",
@@ -135,11 +147,11 @@ KETERANGAN = {
                    "sebagai negatif",
         "contoh": "cuma punya Frisian Flag biru. Produk sebentuk tapi coklat "
                   "(mis. Sosro) otomatis diajari ditolak, tanpa foto pesaing",
-        "aug": "Rona objek asli TIDAK digeser (seperti mode warna). Tambahan: "
-               "salinan objek yang warnanya digeser ke luar warna diterima, "
-               "dipakai jadi contoh negatif.",
-        "latih": "hsv_h 0,0 · hsv_s 0,20 · bgr 0,0 — rona dikunci, sama "
-                 "seperti mode warna",
+        "aug": "Rona objek asli TIDAK digeser dan flip DIMATIKAN (seperti mode "
+               "warna); rotasi tetap boleh. Tambahan: salinan objek yang "
+               "warnanya digeser ke luar warna diterima, dipakai jadi negatif.",
+        "latih": "hsv_h 0,0 · hsv_s 0,20 · bgr 0,0 · fliplr 0 · flipud 0 — "
+                 "rona dikunci & flip mati, sama seperti mode warna",
         "nilai": "Sama seperti mode warna, plus model diharapkan MENOLAK "
                  "bentuk yang sama berwarna lain.",
     },
@@ -172,13 +184,18 @@ def terap_ke_aug(resep: dict, mode: str | None = None) -> dict:
     yang labelnya diam-diam salah — objek berwarna biru diberi label produk
     yang kemasannya hijau — dan tidak ada yang akan menyadarinya sampai
     modelnya gagal.
+
+    Flip (OP_FLIP) ikut dimatikan di mode kunci-rona dengan alasan sejenis:
+    produk dikenali dari desain kemasannya, dan flip mencerminkan teks/logo
+    menjadi orientasi yang tak pernah ada di dunia nyata. Rotasi TIDAK ikut
+    dimatikan -- ia tak mencerminkan apa pun, dan objek memang bisa miring.
     """
     m = sah(mode if mode is not None else dari_resep(resep))
     keluar = dict(resep or {})
     if m not in MODE_KUNCI_RONA:
         return keluar
     aug = dict(keluar.get("aug") or {})
-    for oid in OP_GESER_RONA:
+    for oid in OP_GESER_RONA + OP_FLIP:
         aug[oid] = {**(aug.get(oid) or {}), "aktif": False}
     keluar["aug"] = aug
     return keluar
@@ -197,9 +214,16 @@ def par_latih(mode: str) -> dict:
 
     Mode `gerbang` memakai angka yang sama dengan `warna`: rona positif dikunci,
     gerbangnya datang dari contoh negatif yang dibuat, bukan dari training.
+
+    FLIP juga dimatikan di sini untuk mode kunci-rona (fliplr/flipud = 0). Tanpa
+    ini, mematikan flip hanya di build versi tak cukup: ultralytics tetap
+    mencerminkan gambar SAAT TRAINING (bawaan fliplr 0,5 / flipud 0,3), jadi
+    teks kemasan tetap tercermin walau build-nya sudah bersih. Di mode `bentuk`
+    keduanya dibiarkan bawaan (flip memang dipakai -- botol tercermin tetap sah).
     """
     if sah(mode) in MODE_KUNCI_RONA:
-        return {"hsv_h": 0.0, "hsv_s": 0.20, "hsv_v": 0.50, "bgr": 0.0}
+        return {"hsv_h": 0.0, "hsv_s": 0.20, "hsv_v": 0.50, "bgr": 0.0,
+                "fliplr": 0.0, "flipud": 0.0}
     return {"hsv_h": 0.030, "hsv_s": 0.70, "hsv_v": 0.50, "bgr": 0.10}
 
 

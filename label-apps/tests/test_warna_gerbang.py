@@ -115,6 +115,32 @@ def test_gerbang_mengunci_rona_seperti_warna():
     assert mode_warna.par_latih("color-gated") == mode_warna.par_latih("warna")
 
 
+def test_flip_build_mati_di_mode_kunci_rona_tak_di_bentuk():
+    # Build versi: flip DIPAKSA mati di warna & gerbang (teks/logo kemasan tak
+    # boleh tercermin), tetapi ROTASI dibiarkan (objek boleh miring/terbalik).
+    for mode in ("warna", "color-gated"):
+        r = mode_warna.terap_ke_aug(
+            {"aug": {"flip_h": {"aktif": True}, "flip_v": {"aktif": True},
+                     "rotasi": {"aktif": True}}}, mode)
+        assert r["aug"]["flip_h"]["aktif"] is False
+        assert r["aug"]["flip_v"]["aktif"] is False
+        assert r["aug"]["rotasi"]["aktif"] is True          # rotasi TETAP boleh
+    # Mode bentuk: flip tidak dipaksa mati (botol tercermin tetap sah).
+    rb = mode_warna.terap_ke_aug({"aug": {"flip_h": {"aktif": True}}}, "bentuk")
+    assert rb["aug"]["flip_h"]["aktif"] is True
+
+
+def test_flip_training_mati_hanya_di_mode_kunci_rona():
+    # Training: ultralytics mencerminkan gambar sendiri (fliplr/flipud default),
+    # jadi mode kunci-rona harus memaksanya 0 juga, bukan cuma di build.
+    for mode in ("warna", "color-gated"):
+        p = mode_warna.par_latih(mode)
+        assert p["fliplr"] == 0.0 and p["flipud"] == 0.0
+    # bentuk: tak memaksa flip 0 -> training memakai bawaannya (flip dipakai).
+    pb = mode_warna.par_latih("bentuk")
+    assert "fliplr" not in pb and "flipud" not in pb
+
+
 # ------------------------------------------------------------- integrasi (build)
 def _ds_biru(klien, n_pos=8, n_neg=4) -> Path:
     ruang = Path(klien.get("/api/projek/daftar").json()["ruang"])
