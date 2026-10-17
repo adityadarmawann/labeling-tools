@@ -929,13 +929,33 @@ input:focus{outline:0;border-color:var(--ok)}
    mendarat di bawah header yang lengket. */
 .grid{scroll-margin-top:72px}
 
-/* Di HP grid jatuh ke satu kolom (minmax 210px > separuh layar), jadi ubin
-   persegi penuh-lebar jadi setinggi layar dan cuma satu kartu muat per layar.
-   Tombol aksi butuh ~210px (lihat catatan di templat), jadi dua kolom bukan
-   pilihan; yang dipendekkan tingginya. object-fit:contain tetap: seluruh foto
-   terlihat, cuma dikotakkan lebih pendek supaya beberapa kartu muat sekaligus. */
+/* Di HP, kontrol "Per baris" TIDAK berlaku. Lebar minimum --kartu-min yang
+   dipatok JS (pada bawaan 7/baris jatuh ke ~72px di layar sempit) membuat
+   grid auto-fill mengisi 4-5 ubin mungil -- di telepon yang kita mau justru
+   LEBIH SEDIKIT & LEBIH BESAR. Jadi grid mengabaikan --kartu-min dan dipatok
+   minimum 150px: di HP biasa (~360-400px) muat 2 ubin, di layar lebih lebar
+   menuju 560px muat 3. "Per baris" sendiri disembunyikan karena grid kini
+   menyesuaikan diri. Ubin dikembalikan PERSEGI: height:190px lama dibuat saat
+   grid di HP masih satu kolom penuh-lebar, dan pada 2 kolom ia malah bikin
+   ubin terlalu jangkung dengan pita kosong di atas-bawah foto. object-fit:
+   contain tetap: seluruh foto terlihat. */
 @media (max-width:560px){
-  .card img{aspect-ratio:auto;height:190px}
+  #grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+  .card img{aspect-ratio:1;height:auto}
+  /* "Per baris" -- cuma span ini, bukan pil Urut yang berbagi kelas. */
+  .saring-urut:has(#kartu-kolom){display:none}
+  /* Baris saringan dirapatkan: jarak & padding lebih kecil, chip membungkus
+     (flex-wrap sudah dari .bar). Semua kontrol tetap terjangkau. */
+  .bar-saring{gap:6px;padding:8px 0 10px}
+  .bar-saring .chip{padding:5px 9px}
+  .saring-urut{height:29px;padding:0 7px 0 9px}
+  /* Baris info projek (Unggah data/Anotasi/Dataset/Versi/Training) -- sudah
+     jadi baris mendatar membungkus pada 900px; di HP dirapatkan lagi. Prefiks
+     body.berprojek menaikkan spesifisitas supaya menang atas aturan dasar &
+     blok 900px yang ditulis SETELAH blok ini; arah/wrap tetap dari 900px. */
+  body.berprojek .sisi{padding:10px 12px}
+  body.berprojek .sisi-menu{gap:3px}
+  body.berprojek .sisi-item{padding:6px 8px;gap:7px}
 }
 
 /* Daftar saringan di kotak "tidak ada yang cocok" — di sanalah orang paling
