@@ -420,10 +420,24 @@ class Pekerjaan:
             if t is not None:
                 bertahan.add(t)
         bertahan = sorted(bertahan)
-        nama = [ganti.get(t, self.names.get(t, str(t))) for t in bertahan]
-        if bertahan == list(range(self.n_kelas)):
+        # Indeks yang bertahan dipadatkan DENGAN menggabungkan yang berakhir
+        # bernama sama. Mengganti nama beberapa kelas menjadi satu nama = minta
+        # penggabungan: memetakan empat varian "tetra-ff-*" ke "tetra-ff"
+        # berarti SATU kelas tetra-ff, bukan empat kelas bernama sama yang
+        # memecah data latihnya dan membuat data.yaml mengumumkan nama rangkap.
+        # (perkirakan() sudah menjumlah per nama; ini menyamakan jalur build.)
+        nama_ke_baru: dict[str, int] = {}
+        nama: list[str] = []
+        padat: dict[int, int] = {}
+        for t in bertahan:
+            n = ganti.get(t, self.names.get(t, str(t)))
+            if n not in nama_ke_baru:
+                nama_ke_baru[n] = len(nama)
+                nama.append(n)
+            padat[t] = nama_ke_baru[n]
+        if padat == {i: i for i in range(self.n_kelas)}:
             return None, nama
-        return {t: n for n, t in enumerate(bertahan)}, nama
+        return padat, nama
 
     def _pipa(self, img):
         """

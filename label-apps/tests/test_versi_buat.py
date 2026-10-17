@@ -551,6 +551,57 @@ def test_gabung_buang_dan_ganti_nama_kelas_benar_benar_terjadi(klien, lingkungan
     assert indeks == {kel["botol"]}, (indeks, kel)
 
 
+def test_ganti_nama_ke_nama_sama_menggabungkan_kelas(klien, lingkungan):
+    """
+    Dua kelas yang DIGANTI NAMA menjadi nama yang sama harus jadi SATU kelas,
+    bukan dua kelas bernama sama. Ini bug frisian-flag: empat varian tetra
+    diberi nama "tetra-ff" lewat rename, dan data.yaml malah mengumumkan
+    nama rangkap dengan indeks terpisah -> data latih tetra terpecah empat.
+    """
+    masuk(klien, "paul", PW_PAUL)
+    d = _ruang(klien) / "vgabungnama"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "classes.txt").write_text("botol\nkaleng\ngelas\n")
+    rng = np.random.default_rng(9)
+    for i, kelas in enumerate(["botol"] * 8 + ["kaleng"] * 6 + ["gelas"] * 6):
+        im = (rng.random((240, 320, 3)) * 90 + 40).astype(np.uint8)
+        cv2.imwrite(str(d / f"g{i:02d}.jpg"), im)
+        (d / f"g{i:02d}.json").write_text(json.dumps({
+            "version": "0.4.36", "flags": {}, "imagePath": f"g{i:02d}.jpg",
+            "imageData": None, "imageHeight": 240, "imageWidth": 320,
+            "shapes": [{"label": kelas, "shape_type": "polygon",
+                        "points": [[60, 40], [150, 40], [150, 130], [60, 130]]}]}))
+    klien.post("/setsrc", params={"path": str(d)})
+
+    kel = {k["nama"]: k["i"] for k in klien.post(
+        "/api/versi/estimasi?split=80,10,10", json={"resep": {}}).json()["daftar_kelas"]}
+    # botol DAN kaleng sama-sama dinamai "wadah" (tanpa peta). gelas tetap.
+    resep = {"pra": {"ubah_kelas": {"aktif": True, "nama": {
+        str(kel["botol"]): "wadah", str(kel["kaleng"]): "wadah"}}},
+        "aug": False, "volume": {"per_gambar": 0},
+        "fase": {"crop_zoom": {"aktif": False}, "balans_skala": {"aktif": False},
+                 "balans_kelas": {"aktif": False}, "porsi_negatif": {"aktif": False}}}
+    assert _mulai(klien, resep).get("ok")
+    k = _tunggu(klien, batas=180)
+    assert k.get("selesai") and not k.get("galat"), k
+
+    z = klien.get("/ekspor", params={"nomor": 1, "format": "yolo"})
+    with zipfile.ZipFile(io.BytesIO(z.content)) as zf:
+        yml = next(n for n in zf.namelist() if n.endswith("data.yaml"))
+        teks = zf.read(yml).decode()
+        indeks = set()
+        for n in zf.namelist():
+            if n.endswith(".txt") and "/labels/" in n:
+                for baris in zf.read(n).decode().split("\n"):
+                    if baris.strip():
+                        indeks.add(int(float(baris.split()[0])))
+    # Hanya satu "wadah", bukan dua. nc = 2 (wadah + gelas).
+    assert teks.count("'wadah'") == 1, teks
+    assert "nc: 2" in teks, teks
+    # botol+kaleng -> satu indeks; gelas -> indeks lain. Total dua indeks.
+    assert len(indeks) == 2, (indeks, kel)
+
+
 def test_buang_satu_kelas_tak_menghapus_objek_lain_di_frame_sama(klien, lingkungan):
     """Dalam SATU frame ada dua objek (plastic-cup + tetra). Melepas centang
     plastic-cup HANYA membuang poligon plastic-cup; tetra di frame yang sama
