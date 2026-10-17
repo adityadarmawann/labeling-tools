@@ -1142,6 +1142,15 @@ class Pekerjaan:
             self.maju("neg", 0, 0)
             return 0
 
+        # Saklar volume.aug_negatif=False berarti sampel negatif TIDAK boleh
+        # diaugmentasi sama sekali. fase_aug sudah melewatinya; di sini kita
+        # juga tidak boleh MEMULIHKAN porsinya dengan menggandakan negatif,
+        # karena justru penggandaan itu yang membuat negatif membanjiri positif
+        # (mis. setelah merge dataset lain yang kelasnya dibuang jadi latar).
+        if not bool((self.resep.get("volume") or {}).get("aug_negatif", True)):
+            self.maju("neg", 0, 0)
+            return 0
+
         neg_asli = [s for s in self.asli["train"]
                     if not olah.baca_label(self.dirv / "train" / "labels" / f"{s}.txt")]
         if not neg_asli:

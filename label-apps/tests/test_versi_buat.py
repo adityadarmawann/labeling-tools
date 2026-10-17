@@ -298,10 +298,16 @@ def test_saklar_aug_negatif_mati_latar_tak_digandakan(klien, lingkungan):
     klien.post(f"/setsrc?path={d}")
     _mulai(klien, {"volume": {"per_gambar": 2, "aug_negatif": False}})
     _tunggu(klien)
-    aug = list((d / ".versi" / "v1" / "train" / "labels").glob("*_aug*.txt"))
+    ldir = d / ".versi" / "v1" / "train" / "labels"
+    aug = list(ldir.glob("*_aug*.txt"))
     assert aug, "positif harus tetap diaugmentasi"
     assert all(p.stat().st_size > 0 for p in aug), \
         "sampel negatif (label kosong) tak boleh ikut diaugmentasi saat saklar mati"
+    # Fase 7 (pulihkan porsi) juga tak boleh menggandakan negatif saat saklar
+    # mati — ini yang dulu lolos: fase_aug dilewati tapi fase_negatif tetap
+    # membuat salinan "_neg", sehingga latar justru membanjiri positif.
+    assert not list(ldir.glob("*_neg*.txt")), \
+        "Fase 7 tak boleh mengaugmentasi negatif saat saklar mati"
 
 
 def test_filter_null_membuang_sampel_negatif_kalau_diminta(klien, lingkungan):
