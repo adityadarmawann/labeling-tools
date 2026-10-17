@@ -956,6 +956,14 @@ input:focus{outline:0;border-color:var(--ok)}
   body.berprojek .sisi{padding:10px 12px}
   body.berprojek .sisi-menu{gap:3px}
   body.berprojek .sisi-item{padding:6px 8px;gap:7px}
+  /* Kepala dirapatkan di HP: padding pinggir/atas lebih kecil & jarak antar
+     kontrol di .top dirapatkan, supaya baris judul + akun makan sedikit tinggi.
+     safe-area tetap dihormati (notch iPhone). padding-bawah projek ikut turun. */
+  header{padding:calc(10px + env(safe-area-inset-top,0px))
+    calc(14px + env(safe-area-inset-right,0px)) 0
+    calc(14px + env(safe-area-inset-left,0px))}
+  body.berprojek header{padding-bottom:10px}
+  .top{gap:8px 10px}
 }
 
 /* Daftar saringan di kotak "tidak ada yang cocok" — di sanalah orang paling
@@ -3954,3 +3962,19 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
 .tg-aksi { display:flex; gap:8px; align-items:center; padding:4px 20px 8px; }
 .tg-aksi .op-cari { flex:1; }
 #tg-link { font-size:12px; }
+
+/* ======================================================= RESPONSIF HP: papan & grid
+   Ditaruh di AKHIR berkas DENGAN SENGAJA: aturan .jb-kisi (<=1100) dan
+   body.an-tetap .an-kolom (<=1000) juga cocok di <=560, jadi blok ini harus
+   datang SESUDAH mereka agar urutan sumber memenangkannya. Selaras dengan grid
+   Dataset #grid pada @media (max-width:560px). */
+@media (max-width:560px){
+  /* C) Papan anotasi (kolom menumpuk di <=1000): di HP tiap kolom dibuat sedikit
+     lebih tinggi dan kartunya dirapatkan, supaya kolom tak terasa sempit. */
+  body.an-tetap .an-kolom{max-height:72vh}
+  .an-kolom{padding:10px}
+  .an-kartu{padding:9px 10px 10px}
+  /* D) Grid klip (Dataset/Anotasi) & grid dataset gambar: ubin lebih besar,
+     lebih sedikit per baris — perlakuan yang sama dengan #grid. */
+  .akg-grid,.jb-kisi{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+}

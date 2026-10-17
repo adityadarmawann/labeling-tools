@@ -646,3 +646,25 @@ kbd{font-family:ui-monospace,"SF Mono",Menlo,monospace; font-size:10.5px;
   .lab-wrap[data-laci] .lab-laci-tutup { opacity: 1; pointer-events: auto; }
   .lab-berkas { max-width: 42vw; }
 }
+
+/* ------------------------------------------------------- RESPONSIF: HP (telepon)
+ * Selaras dengan grid Dataset (app.css @media max-width:560px). Tujuannya
+ * MEMAKAI, bukan merancang ulang: tak ada guliran mendatar halaman, kanvas
+ * tetap lega, semua kontrol tetap terjangkau. Bar atas MEMBUNGKUS (bukan
+ * menggulir mendatar) — pembungkus bergulir akan menjepit menu View/akun yang
+ * mengambang di bawahnya. Laci panel sudah ditangani blok 620px di atas; di
+ * sini rel & palet dikecilkan supaya kanvas dapat lebar lebih berguna. */
+@media (max-width: 560px) {
+  /* Bar atas tak lagi memotong tombol di layar sempit: ia membungkus ke baris
+     kedua & tingginya ikut tumbuh (min-height menjaga baris tunggal tetap 50px). */
+  .lab-top { flex-wrap: wrap; height: auto; min-height: 50px;
+             padding: 6px 10px; gap: 6px 8px; }
+  .lab-rel { width: 52px; }
+  .rel { width: 46px; padding: 7px 0 5px; font-size: 10px; }
+  .lab-palet { right: 10px; }
+  .lab-palet .tool { width: 54px; }
+  /* Margin kanvas disetel ulang: kanan menyediakan ruang palet (~76px), sisi
+     lain dirapatkan supaya gambar dapat area sebesar mungkin. */
+  .lab-canvas { margin: 8px 78px 56px 8px; }
+  .lab-berkas { max-width: 44vw; }
+}
