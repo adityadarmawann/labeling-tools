@@ -555,6 +555,14 @@ class Pekerjaan:
             if self._padat is not None:
                 num = [(self._padat[c], poli) for c, poli in num
                        if c in self._padat]
+            # Gambar yang kehilangan SEMUA objeknya (kelasnya dibuang -- mis.
+            # gambar non-ff yang dijadikan latar, atau kelas di luar jangkauan)
+            # kini jadi sampel negatif. Negatif tidak boleh di valid/test: di
+            # sana ia tak punya objek untuk diukur, jadi mAP 0. bagi_split sudah
+            # memaksa negatif ke train, tapi ia memakai label MENTAH; pengosongan
+            # baru ketahuan DI SINI, sesudah kelas dibuang. Arahkan ke train.
+            if not num and split != "train":
+                split = "train"
             stem = Path(nama_berkas).stem
             self._simpan(split, stem, img, num, "asli", nama_berkas)
             self.asli[split].append(stem)

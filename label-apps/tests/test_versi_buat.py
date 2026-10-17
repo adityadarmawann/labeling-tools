@@ -722,6 +722,34 @@ def test_buang_kelas_jadi_latar_untuk_versi_ini_sumber_utuh(klien, lingkungan):
     assert (d / "classes.txt").read_text().split() == ["botol", "kaleng"]
 
 
+def test_gambar_yang_dikosongkan_kelas_tak_masuk_valid_test(klien, lingkungan):
+    """Gambar yang jadi negatif KARENA kelasnya dibuang tidak boleh mendarat di
+    valid/test. bagi_split memaksa negatif ke train, tetapi ia memakai label
+    MENTAH; pengosongan baru terjadi sesudah kelas dibuang. Tanpa penjaga di
+    fase_pra, gambar-gambar ini (positif saat dibelah) nyangkut di valid/test
+    tanpa objek -> mAP 0. Di sini kaleng dibuang; semua label valid/test wajib
+    berisi objek."""
+    masuk(klien, "paul", PW_PAUL)
+    d = _ds(klien, n_botol=20, n_kaleng=20, n_negatif=10)
+    klien.post(f"/setsrc?path={d}")
+
+    kel = {k["nama"]: k["i"] for k in klien.post(
+        "/api/versi/estimasi?split=80,10,10", json={"resep": {}}).json()["daftar_kelas"]}
+    resep = {"pra": {"ubah_kelas": {"aktif": True,
+                                    "peta": {str(kel["kaleng"]): None}}},
+             "aug": False, "volume": {"per_gambar": 0},
+             "fase": {"crop_zoom": {"aktif": False}, "balans_skala": {"aktif": False},
+                      "balans_kelas": {"aktif": False}, "porsi_negatif": {"aktif": False}}}
+    assert _mulai(klien, resep).get("ok")
+    assert _tunggu(klien, batas=180).get("selesai")
+
+    v = d / ".versi" / "v1"
+    for split in ("valid", "test"):
+        ldir = v / split / "labels"
+        for lp in ldir.glob("*.txt") if ldir.exists() else []:
+            assert lp.read_text().strip(), f"{split}/{lp.name} kosong (negatif)"
+
+
 def test_perkiraan_ikut_modify_classes_akurat(klien, lingkungan):
     """Pratinjau (langkah Buat) harus mencerminkan Modify Classes, bukan angka
     sumber mentah: kelas yang dibuang lenyap dari hitungan kelas, gambarnya
