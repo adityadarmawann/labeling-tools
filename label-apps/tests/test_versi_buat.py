@@ -493,6 +493,21 @@ def test_daftar_kelas_ikut_di_perkiraan(klien, lingkungan):
     assert {k["i"] for k in r["daftar_kelas"]} == {0, 1}
 
 
+def test_perkiraan_hormati_saklar_aug_negatif(klien, lingkungan):
+    """Preview (estimasi) harus ikut mengecil saat saklar aug_negatif mati --
+    kalau tidak, angkanya tetap menggelembung meski negatif tak lagi digandakan
+    di build, dan orang mengira saklarnya tak bekerja."""
+    masuk(klien, "paul", PW_PAUL)
+    d = _ds(klien, n_botol=20, n_kaleng=10, n_negatif=20)
+    klien.post("/setsrc", params={"path": str(d)})
+    on = klien.post("/api/versi/estimasi?split=80,10,10", json={
+        "resep": {"volume": {"per_gambar": 2, "aug_negatif": True}}}).json()
+    off = klien.post("/api/versi/estimasi?split=80,10,10", json={
+        "resep": {"volume": {"per_gambar": 2, "aug_negatif": False}}}).json()
+    assert on["ok"] and off["ok"], (on, off)
+    assert off["n"] < on["n"], (off["n"], on["n"])
+
+
 def test_gabung_buang_dan_ganti_nama_kelas_benar_benar_terjadi(klien, lingkungan):
     """
     Ketiganya sekaligus pada dataset tiga kelas: satu digabung ke lain, satu

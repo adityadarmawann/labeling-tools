@@ -1657,8 +1657,13 @@ def perkirakan(items: list[dict], names: dict, resep: dict, peta: dict) -> dict:
     # pernah ditulis. crop_zoom dan balans_skala TIDAK ikut: keduanya memakai
     # potong/zoom/skala sendiri, bukan pipeline albumentations.
     punya_aug = olah.ada_aug(resep)
+    # Saklar volume.aug_negatif=False: sampel negatif tidak digandakan (sama
+    # dengan fase_aug + fase_negatif di build). Perkiraan harus ikut, kalau
+    # tidak angkanya tetap menggelembung meski saklar sudah dimatikan.
+    aug_neg = bool(volume.get("aug_negatif", True))
     if volume.get("per_gambar", 1) and punya_aug:
-        tambah += (train_obj + train_neg) * int(volume.get("per_gambar", 1))
+        basis = train_obj + (train_neg if aug_neg else 0)
+        tambah += basis * int(volume.get("per_gambar", 1))
     if (fase.get("crop_zoom") or {}).get("aktif", True):
         tambah += int(train_obj * float((fase.get("crop_zoom") or {}).get("porsi", 0.20)))
     if (fase.get("balans_skala") or {}).get("aktif", True):
@@ -1672,7 +1677,8 @@ def perkirakan(items: list[dict], names: dict, resep: dict, peta: dict) -> dict:
         # SESUDAH fase-fase itu, bukan dari gambar asli.
         lipat = (n + tambah) / max(n, 1)
         tambah += int(sum(max(sasaran - v, 0) for v in per_kelas.values()) * lipat)
-    if (fase.get("porsi_negatif") or {}).get("aktif", True) and train_neg and punya_aug:
+    if (fase.get("porsi_negatif") or {}).get("aktif", True) and train_neg and punya_aug \
+            and aug_neg:
         porsi0 = train_neg / max(train_obj + train_neg, 1)
         pos_akhir = (train_obj / max(train_obj + train_neg, 1)) * (n + tambah)
         tambah += max(0, int(porsi0 * pos_akhir / max(1 - porsi0, 1e-9)) - train_neg)
