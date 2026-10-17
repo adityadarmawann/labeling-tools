@@ -278,6 +278,98 @@ def _baca_item(it: dict, kode: int = 1):
     return img, label
 
 
+def rencana_kelas(names: dict, n_kelas: int, resep: dict):
+    """
+    (peta indeks -> indeks yang sudah dipadatkan, daftar nama akhir).
+
+    Petanya None kalau tidak ada yang perlu dipadatkan, supaya jalur biasa
+    — yang tidak memakai Modify Classes sama sekali — tidak membayar apa pun.
+    Kuncinya indeks SESUDAH penggabungan, karena itulah yang ditulis
+    _pra_ubah_kelas ke label.
+
+    n_kelas sendiri sengaja TIDAK ikut mengecil: periksa_label berjalan lebih
+    dulu dan memakainya untuk membuang kelas di luar jangkauan, jadi
+    mengecilkannya di sini akan membuang label yang justru mau digabung.
+
+    Fungsi murni supaya jalur build (Pekerjaan._rencana_kelas) dan jalur split
+    (saring_untuk_split) memakai aturan yang SAMA PERSIS, tanpa salinan logika.
+    """
+    if not names:
+        return None, []
+    uk = ((resep.get("pra") or {}).get("ubah_kelas") or {})
+    ganti, peta = {}, {}
+    if uk.get("aktif"):
+        for k, v in (uk.get("nama") or {}).items():
+            teks = str(v).strip()
+            if teks:
+                try:
+                    ganti[int(k)] = teks
+                except (TypeError, ValueError):
+                    pass
+        for k, v in (uk.get("peta") or {}).items():
+            try:
+                peta[int(k)] = None if v is None else int(v)
+            except (TypeError, ValueError):
+                pass
+    bertahan = set()
+    for i in range(n_kelas):
+        t = peta.get(i, i)
+        if t is not None:
+            bertahan.add(t)
+    bertahan = sorted(bertahan)
+    # Indeks yang bertahan dipadatkan DENGAN menggabungkan yang berakhir
+    # bernama sama. Mengganti nama beberapa kelas menjadi satu nama = minta
+    # penggabungan: memetakan empat varian "tetra-ff-*" ke "tetra-ff" berarti
+    # SATU kelas tetra-ff, bukan empat kelas bernama sama yang memecah data
+    # latihnya dan membuat data.yaml mengumumkan nama rangkap.
+    # (perkirakan() sudah menjumlah per nama; ini menyamakan jalur build.)
+    nama_ke_baru: dict[str, int] = {}
+    nama: list[str] = []
+    padat: dict[int, int] = {}
+    for t in bertahan:
+        n = ganti.get(t, names.get(t, str(t)))
+        if n not in nama_ke_baru:
+            nama_ke_baru[n] = len(nama)
+            nama.append(n)
+        padat[t] = nama_ke_baru[n]
+    if padat == {i: i for i in range(n_kelas)}:
+        return None, nama
+    return padat, nama
+
+
+def saring_untuk_split(items: list[dict], names: dict, resep: dict) -> list[dict]:
+    """
+    items dengan shapes HANYA kelas yang akan BERTAHAN sesudah Modify Classes.
+
+    Dipakai SEBELUM export.bagi_split di jalur build. Tanpa ini, gambar yang
+    semua objeknya akan dibuang (mis. gambar non-ff yang dijadikan latar) masih
+    terlihat "positif" saat dibelah, merebut jatah valid/test, lalu dikosongkan
+    saat kelas dibuang -> valid/test tanpa objek -> mAP 0. Juga kenapa "split
+    anti-bocor" meleset: ia menghitung isi dataset MENTAH, tidak tahu Tahap 2.
+
+    Dengan menyaring di sini, gambar yang bakal kosong menjadi NEGATIF di mata
+    bagi_split (yang memaksa negatif ke train lebih dulu), sementara positif
+    yang sebenarnya terbagi 80/10/10. idx dan padat dihitung dengan jalan yang
+    SAMA PERSIS dengan Pekerjaan (export.peta_kelas + rencana_kelas), jadi
+    "bertahan" di sini identik dengan yang ditulis build.
+    """
+    idx = export.peta_kelas(items, names)             # nama -> indeks
+    padat, _ = rencana_kelas({i: n for n, i in idx.items()}, len(idx), resep)
+    if padat is None:
+        return items                                  # tak ada Modify Classes
+    def hidup(label) -> bool:
+        ci = idx.get(label)
+        if ci is None and isinstance(label, int):
+            ci = label
+        return ci is not None and ci in padat
+    keluar = []
+    for it in items:
+        sh = it.get("shapes") or []
+        tetap = [s for s in sh if hidup(s.get("label"))]
+        keluar.append(it if len(tetap) == len(sh) else {**it, "shapes": tetap})
+    return keluar
+
+
 # ============================================================ pekerjaan utama
 class Pekerjaan:
     """
@@ -385,59 +477,7 @@ class Pekerjaan:
         self._hist_hue: dict[int, np.ndarray] = {}
 
     def _rencana_kelas(self):
-        """
-        (peta indeks -> indeks yang sudah dipadatkan, daftar nama akhir).
-
-        Petanya None kalau tidak ada yang perlu dipadatkan, supaya jalur biasa
-        — yang tidak memakai Modify Classes sama sekali — tidak membayar apa
-        pun. Kuncinya indeks SESUDAH penggabungan, karena itulah yang ditulis
-        _pra_ubah_kelas ke label.
-
-        n_kelas sendiri sengaja TIDAK ikut mengecil: periksa_label berjalan
-        lebih dulu dan memakainya untuk membuang kelas di luar jangkauan, jadi
-        mengecilkannya di sini akan membuang label yang justru mau digabung.
-        """
-        if not self.names:
-            return None, []
-        uk = ((self.resep.get("pra") or {}).get("ubah_kelas") or {})
-        ganti, peta = {}, {}
-        if uk.get("aktif"):
-            for k, v in (uk.get("nama") or {}).items():
-                teks = str(v).strip()
-                if teks:
-                    try:
-                        ganti[int(k)] = teks
-                    except (TypeError, ValueError):
-                        pass
-            for k, v in (uk.get("peta") or {}).items():
-                try:
-                    peta[int(k)] = None if v is None else int(v)
-                except (TypeError, ValueError):
-                    pass
-        bertahan = set()
-        for i in range(self.n_kelas):
-            t = peta.get(i, i)
-            if t is not None:
-                bertahan.add(t)
-        bertahan = sorted(bertahan)
-        # Indeks yang bertahan dipadatkan DENGAN menggabungkan yang berakhir
-        # bernama sama. Mengganti nama beberapa kelas menjadi satu nama = minta
-        # penggabungan: memetakan empat varian "tetra-ff-*" ke "tetra-ff"
-        # berarti SATU kelas tetra-ff, bukan empat kelas bernama sama yang
-        # memecah data latihnya dan membuat data.yaml mengumumkan nama rangkap.
-        # (perkirakan() sudah menjumlah per nama; ini menyamakan jalur build.)
-        nama_ke_baru: dict[str, int] = {}
-        nama: list[str] = []
-        padat: dict[int, int] = {}
-        for t in bertahan:
-            n = ganti.get(t, self.names.get(t, str(t)))
-            if n not in nama_ke_baru:
-                nama_ke_baru[n] = len(nama)
-                nama.append(n)
-            padat[t] = nama_ke_baru[n]
-        if padat == {i: i for i in range(self.n_kelas)}:
-            return None, nama
-        return padat, nama
+        return rencana_kelas(self.names, self.n_kelas, self.resep)
 
     def _pipa(self, img):
         """
@@ -519,19 +559,28 @@ class Pekerjaan:
             if i % 25 == 0:
                 self.maju("pra", i, total, dibuang=dibuang)
             nama_berkas = it["img"].name
-            # Bentuk yang tidak bisa jadi mask di dataset poligon: gambarnya
-            # TIDAK ikut ke versi, dan dikeluarkan dari dataset supaya kembali
-            # ke kolom "Belum ditugaskan". Dulu bentuk seperti ini diam-diam
-            # ditulis sebagai poligon empat titik; sekarang ia jadi pekerjaan
-            # yang kelihatan, dan yang memutuskan bentuk sebenarnya adalah
-            # orang yang melihat fotonya.
+            # Bentuk yang tidak bisa jadi mask di dataset poligon (kotak, titik,
+            # garis) TIDAK dipakai: menuliskannya sebagai poligon berarti
+            # mengarang mask yang tidak pernah ada. TAPI kalau gambar yang sama
+            # juga punya poligon -- satu foto sengaja dilabeli untuk DUA model,
+            # mask DAN kotak -- gambarnya TETAP ikut dengan poligonnya saja;
+            # kotaknya cuma diabaikan, bukan seluruh gambarnya dibuang. Dulu
+            # satu kotak saja membuang seluruh gambar beserta masknya.
             #
-            # Anotasi aslinya TIDAK disentuh: yang berubah cuma keanggotaan
-            # dataset, dan itu bisa dibatalkan dengan satu klik.
+            # Hanya gambar yang SEMUA bentuknya tak-sesuai (tak ada satu pun
+            # mask) yang dikeluarkan ke kolom "Belum ditugaskan": ia tak bisa
+            # menyumbang mask, dan menjadikannya negatif akan salah karena
+            # objeknya memang ada, cuma dilabeli kotak. Anotasi SUMBER tak
+            # tersentuh; yang berubah cuma keanggotaan versi ini.
             if scanner.bentuk_tak_sesuai(it.get("shapes") or [], self.jenis):
-                self.dipulangkan.append(tag.kunci_gambar(self.ds, it["img"]))
-                dibuang += 1
-                continue
+                sah = [s for s in (it.get("shapes") or [])
+                       if (s.get("type") or s.get("shape_type") or "polygon")
+                       in scanner.BENTUK_MASK_SAH]
+                if not sah:
+                    self.dipulangkan.append(tag.kunci_gambar(self.ds, it["img"]))
+                    dibuang += 1
+                    continue
+                it = {**it, "shapes": sah}
             split = self.peta.get(nama_berkas) or self.peta.get(it["img"].stem) or "train"
             # Kode orientasi dibaca dari header, sama murahnya dengan dimensi.
             # Ia dibutuhkan dua kali: menempatkan label di ruang mentah, dan

@@ -478,10 +478,17 @@ async def versi_mulai(request: Request, split: str = "", catatan: str = "",
                 "error": "filter batch/tag membuang semua gambar. Longgarkan filternya"}
     rasio = split or "8:1:1"
     rencana = _rencana(sess, belah)
-    bagian = await asyncio.to_thread(export.bagi_split, items,
+    # Belah berdasarkan kelas yang BERTAHAN di Tahap 2, bukan objek mentah:
+    # gambar yang semua objeknya dibuang (mis. non-ff jadi latar) terlihat
+    # negatif saat dibelah -> dipaksa ke train, dan jatah valid/test jatuh ke
+    # gambar yang benar-benar berisi objek terlatih. Pekerjaan tetap memakai
+    # `items` utuh; yang berubah cuma PETA splitnya.
+    items_split = await asyncio.to_thread(buatversi.saring_untuk_split,
+                                          items, names, resep)
+    bagian = await asyncio.to_thread(export.bagi_split, items_split,
                                      export.baca_rasio(rasio), rencana)
     peta = {it["img"].name: s for s, d in bagian.items() for it in d}
-    ringkas = await asyncio.to_thread(export.ringkasan, items, True,
+    ringkas = await asyncio.to_thread(export.ringkasan, items_split, True,
                                       export.baca_rasio(rasio), names, rencana)
     nomor = await asyncio.to_thread(versi.nomor_berikut, sess.src)
     # Format keluaran: PILIHAN PER-VERSI (resep.format) kalau ada, kalau tidak

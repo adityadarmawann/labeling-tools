@@ -27,6 +27,38 @@ def _ruang(klien) -> Path:
     return Path(klien.get("/api/projek/daftar").json()["ruang"])
 
 
+def test_saring_untuk_split_mengosongkan_gambar_kelas_dibuang():
+    """Inti perbaikan split: SEBELUM bagi_split, gambar yang semua objeknya
+    kelas-dibuang jadi shapes kosong (terlihat negatif -> bagi_split memaksanya
+    ke train), sedang gambar berkelas-bertahan tetap utuh (terbagi 80/10/10).
+    Ini yang membuat valid/test berisi objek dan bukan latar. Deterministik,
+    tak menyentuh geometri shape sama sekali."""
+    from app.services import buatversi, export
+
+    def it(nama, *label):
+        return {"img": Path(nama),
+                "shapes": [{"label": l, "type": "polygon", "pts": [[0, 0]]}
+                           for l in label]}
+    items = [it("a.jpg", "botol"), it("b.jpg", "kaleng"),
+             it("c.jpg", "botol", "kaleng"), it("d.jpg")]  # d negatif asli
+    names = {i: n for n, i in export.peta_kelas(items, {}).items()}
+    # Buang 'kaleng' (peta -> None), seperti payload panel Kelas.
+    kel = {n: i for i, n in names.items()}
+    resep = {"pra": {"ubah_kelas": {"aktif": True,
+                                    "peta": {str(kel["kaleng"]): None}}}}
+    hasil = buatversi.saring_untuk_split(items, {}, resep)
+    peta = {h["img"].name: [s["label"] for s in h["shapes"]] for h in hasil}
+    assert peta["a.jpg"] == ["botol"]          # bertahan utuh
+    assert peta["b.jpg"] == []                 # kaleng saja -> kosong (negatif)
+    assert peta["c.jpg"] == ["botol"]          # kaleng dibuang, botol tinggal
+    assert peta["d.jpg"] == []                 # negatif asli tetap
+    # geometri tak diubah: pts shape botol di c masih ada apa adanya.
+    cc = next(h for h in hasil if h["img"].name == "c.jpg")
+    assert cc["shapes"][0]["pts"] == [[0, 0]]
+    # Tanpa Modify Classes: items dikembalikan apa adanya (objek yang sama).
+    assert buatversi.saring_untuk_split(items, {}, {}) is items
+
+
 def _ds(klien, n_botol=20, n_kaleng=10, n_negatif=10) -> Path:
     """
     Dataset labelme kecil yang timpang dan punya sampel negatif, DI RUANG KERJA

@@ -109,6 +109,32 @@ def test_poligon_menolak_kelas_dominan_kotak(klien, lingkungan):
     assert not (d / ".versi" / "v1").exists()
 
 
+def test_poligon_pertahankan_gambar_campuran_saat_kelas_kotak_dibuang(klien, lingkungan):
+    """Satu foto berisi poligon (produk) DAN kotak (logo) untuk dua model.
+    Versi poligon dengan 'logo' dibuang: gambarnya TETAP ikut dengan poligon
+    produk-nya, kotaknya diabaikan -- bukan seluruh gambar dipulangkan. Dulu
+    satu kotak saja membuang gambar beserta masknya."""
+    masuk(klien, "paul", PW_PAUL)
+    d = _ds_campur(klien, n=6)
+    klien.post(f"/setsrc?path={d}")
+    kel = {k["nama"]: k["i"] for k in klien.post(
+        "/api/versi/estimasi?split=100,0,0", json={"resep": {}}).json()["daftar_kelas"]}
+    resep = _resep(format="poligon",
+                   pra={"ubah_kelas": {"aktif": True,
+                                       "peta": {str(kel["logo"]): None}}})
+    assert _mulai(klien, resep).get("ok"), "logo dibuang -> tak ada kelas dominan-kotak"
+    k = _tunggu(klien)
+    assert k.get("selesai"), k
+    assert not k.get("dipulangkan"), "gambar campuran tak boleh dipulangkan"
+    v = d / ".versi" / "v1"
+    imgs = list((v / "train" / "images").glob("*.jpg"))
+    assert len(imgs) == 6, f"keenam gambar harus tersimpan, dapat {len(imgs)}"
+    lines = _label_lines(v)
+    # Semua baris = poligon produk (kelas 0), >5 kolom; tak ada kotak logo.
+    assert lines, "harus ada label poligon"
+    assert all(len(t) > 5 and t[0] == "0" for t in lines), lines[:3]
+
+
 def test_estimasi_memberi_bentuk_per_kelas(klien, lingkungan):
     """Panel Kelas butuh jumlah kotak & poligon per kelas + totalnya."""
     masuk(klien, "paul", PW_PAUL)
