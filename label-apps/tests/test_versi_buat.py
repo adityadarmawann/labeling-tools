@@ -289,6 +289,21 @@ def test_sampel_negatif_selamat_dan_porsinya_dipulihkan(klien, lingkungan):
     assert 0.12 < porsi < 0.45, f"porsi negatif {porsi:.0%}"
 
 
+def test_saklar_aug_negatif_mati_latar_tak_digandakan(klien, lingkungan):
+    # volume.aug_negatif=False -> sampel negatif TIDAK diaugmentasi, hanya
+    # positif. Diperiksa dari berkas: salinan augmentasi "_aug" yang labelnya
+    # KOSONG berarti negatif yang teraugmentasi -> harus tak ada.
+    masuk(klien, "paul", PW_PAUL)
+    d = _ds(klien, n_botol=20, n_kaleng=10, n_negatif=10)
+    klien.post(f"/setsrc?path={d}")
+    _mulai(klien, {"volume": {"per_gambar": 2, "aug_negatif": False}})
+    _tunggu(klien)
+    aug = list((d / ".versi" / "v1" / "train" / "labels").glob("*_aug*.txt"))
+    assert aug, "positif harus tetap diaugmentasi"
+    assert all(p.stat().st_size > 0 for p in aug), \
+        "sampel negatif (label kosong) tak boleh ikut diaugmentasi saat saklar mati"
+
+
 def test_filter_null_membuang_sampel_negatif_kalau_diminta(klien, lingkungan):
     masuk(klien, "paul", PW_PAUL)
     d = _ds(klien)

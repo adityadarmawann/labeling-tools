@@ -255,7 +255,7 @@
   if (!wz) return;                       // bukan pemilik projek
 
   // ------------------------------------------------------------- keadaan
-  const resep = { pra: {}, aug: {}, fase: {}, volume: { per_gambar: 1 },
+  const resep = { pra: {}, aug: {}, fase: {}, volume: { per_gambar: 1, aug_negatif: true },
                   warna: { mode: 'bentuk' }, format: '' };
   let katalog = null;
   let sumber = null;                     // hasil /api/versi/estimasi terakhir
@@ -1466,6 +1466,7 @@
     const rf = wz.querySelector('input[name="wz-format"]:checked');
     resep.format = rf ? rf.value : '';
     resep.volume.per_gambar = Number(el('wz-salin').value) || 0;
+    resep.volume.aug_negatif = el('wz-aug-neg') ? el('wz-aug-neg').checked : true;
     resep.fase = {
       crop_zoom: { aktif: el('wz-f-crop').checked },
       balans_skala: { aktif: el('wz-f-skala').checked },

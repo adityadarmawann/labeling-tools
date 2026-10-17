@@ -565,11 +565,19 @@ class Pekerjaan:
         """
         Augmentasi dasar: hanya train, N salinan per gambar.
 
-        Gambar tanpa objek IKUT diaugmentasi — itu sampel negatif, dan variasi
-        lampu pada latar kosong justru yang mengajari model menolak ruang
-        kosong. v14 melakukan hal yang sama (f:1181-1194).
+        Gambar tanpa objek IKUT diaugmentasi secara BAWAAN — itu sampel negatif,
+        dan variasi lampu pada latar kosong justru yang mengajari model menolak
+        ruang kosong. v14 melakukan hal yang sama (f:1181-1194).
+
+        Saklar volume.aug_negatif=False mematikan itu: sampel negatif TIDAK
+        digandakan (aslinya sudah di dataset, cukup 1x). Berguna saat negatifnya
+        sudah banyak (mis. hasil merge dataset lain yang kelasnya dibuang jadi
+        latar) sehingga augmentasi akan membuatnya membanjiri positif. Positif
+        tetap diaugmentasi penuh.
         """
-        n_salin = int((self.resep.get("volume") or {}).get("per_gambar", 1))
+        vol = self.resep.get("volume") or {}
+        n_salin = int(vol.get("per_gambar", 1))
+        aug_neg = bool(vol.get("aug_negatif", True))
         if n_salin <= 0:
             self.maju("aug", 0, 0)
             return 0
@@ -577,6 +585,9 @@ class Pekerjaan:
             self.maju("aug", 0, 0)
             return 0
         sumber = list(self.asli["train"])
+        if not aug_neg:
+            sumber = [s for s in sumber
+                      if olah.baca_label(self.dirv / "train" / "labels" / f"{s}.txt")]
         total = len(sumber) * n_salin
         jadi = gagal = 0
         for i, stem in enumerate(sumber):

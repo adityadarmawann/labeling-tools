@@ -238,6 +238,9 @@
 
           <label class="wz-salin">Salinan per gambar
             <input type="number" id="wz-salin" min="0" max="10" value="1"></label>
+          <label class="wz-aug-neg" title="Matikan kalau sampel negatif banyak (mis. hasil merge dataset lain) supaya tak membanjiri positif. Negatif tetap dipakai 1x untuk belajar menolak latar; hanya positif yang digandakan.">
+            <input type="checkbox" id="wz-aug-neg" checked>
+            Augmentasi sampel negatif juga</label>
           <div class="op-daftar" id="wz-aug"></div>
           <button class="op-atur" type="button" data-tambah="aug">Atur formula</button>
 
