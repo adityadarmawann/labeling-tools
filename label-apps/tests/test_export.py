@@ -323,14 +323,42 @@ def test_split_asli_dataset_dipertahankan(tmp_path):
     from app.services import export as ex
 
     items = []
+    objek = [{"label": "o", "type": "polygon",
+              "points": [[1, 1], [9, 1], [9, 9]]}]
     for split, n in (("train", 6), ("valid", 2), ("val", 1), ("test", 3)):
         for i in range(n):
-            items.append({"img": Path(f"/x/{split}-{i}.jpg"), "shapes": [],
+            items.append({"img": Path(f"/x/{split}-{i}.jpg"), "shapes": list(objek),
                           "W": 80, "H": 60, "split": split})
     bag = ex.bagi_split(items, (0.8, 0.1, 0.1))
     assert len(bag["train"]) == 6
     assert len(bag["valid"]) == 3          # `val` digabung ke `valid`
     assert len(bag["test"]) == 3
+
+
+def test_negatif_tidak_pernah_masuk_valid_atau_test(tmp_path):
+    """Sampel negatif (tanpa objek) selalu ke train, bahkan kalau dataset
+    sumber menandainya valid/test (mis. tag Roboflow). Tanpa ini valid bisa
+    berisi latar saja dan mAP selalu 0 -- bug nyata di frisian-flag: 111 gambar
+    valid, nol objek."""
+    from pathlib import Path
+    from app.services import export as ex
+    obj = [{"label": "a", "type": "polygon", "points": [[1, 1], [9, 1], [9, 9]]}]
+    items = []
+    for s in ("train", "valid", "test"):          # positif bertag
+        items.append({"img": Path(f"/x/pos-{s}.jpg"), "W": 80, "H": 60,
+                      "shapes": list(obj), "split": s})
+    for s in ("valid", "test"):                    # negatif bertag valid/test
+        for i in range(3):
+            items.append({"img": Path(f"/x/neg-{s}{i}.jpg"), "W": 80, "H": 60,
+                          "shapes": [], "split": s})
+    bag = ex.bagi_split(items, (0.8, 0.1, 0.1))
+    for s in ("valid", "test"):                    # tak ada latar di valid/test
+        assert all(it["shapes"] for it in bag[s]), \
+            (s, [it["img"].name for it in bag[s]])
+    nama_train = {it["img"].name for it in bag["train"]}
+    assert sum(n.startswith("neg-") for n in nama_train) == 6
+    assert any(it["img"].name == "pos-valid.jpg" for it in bag["valid"])
+    assert any(it["img"].name == "pos-test.jpg" for it in bag["test"])
 
 
 def test_augmentasi_dari_satu_foto_tidak_terpecah_antar_split(tmp_path):
@@ -478,6 +506,11 @@ def test_rasio_mengubah_pembagian(tmp_path):
         p = d / f"i{i:03d}.jpg"
         cv2.imwrite(str(p), np.zeros((20, 20, 3), np.uint8))
     items, _ = scanner.scan(d)
+    # Beri tiap gambar satu objek: negatif sekarang selalu ke train, jadi uji
+    # pengaruh rasio terhadap pembagian harus memakai gambar berobjek.
+    for it in items:
+        it["shapes"] = [{"label": "o", "type": "polygon",
+                         "points": [[1, 1], [9, 1], [9, 9]]}]
     a = ex.bagi_split(items, (0.8, 0.1, 0.1))
     b = ex.bagi_split(items, (0.5, 0.25, 0.25))
     assert len(a["train"]) > len(b["train"])
@@ -517,12 +550,16 @@ def test_ringkasan_dataset_kosong_tidak_bagi_nol(tmp_path):
     assert all(v == 0.0 for v in r["persen"].values())
 
 
-def _it_split(nama, split=None):
-    """Item ringan untuk uji split: pembelahan menilai NAMA berkas, bukan isi,
-    jadi ringkasan hanya butuh nama + W/H + shapes (boleh kosong) dan (opsional)
-    split. valid_kosong tak bergantung pada ada-tidaknya objek."""
+def _it_split(nama, split=None, kosong=False):
+    """Item ringan untuk uji split. Positif secara bawaan (punya satu objek),
+    karena sampel negatif sekarang SELALU diarahkan ke train oleh bagi_split --
+    uji penempatan valid/test harus memakai gambar berobjek. `kosong=True`
+    untuk sengaja menguji negatif."""
     from pathlib import Path
-    it = {"img": Path(nama), "W": 100, "H": 80, "shapes": []}
+    shapes = ([] if kosong else
+              [{"label": "o", "type": "polygon",
+                "pts": np.array([[1, 1], [9, 1], [9, 9]], np.float32)}])
+    it = {"img": Path(nama), "W": 100, "H": 80, "shapes": shapes}
     if split:
         it["split"] = split
     return it

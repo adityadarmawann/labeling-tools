@@ -496,6 +496,19 @@ def kunci_asal(nama: str) -> str:
     return m.group(1) if m else Path(nama).stem
 
 
+def _ada_objek(it: dict) -> bool:
+    """Gambar punya setidaknya satu objek (kotak/poligon berlabel)?
+
+    Gambar tanpa objek adalah sampel negatif (latar). Dipakai bagi_split untuk
+    menjaga negatif keluar dari valid/test.
+    """
+    return any(
+        s.get("label") is not None
+        and (s.get("type") or s.get("shape_type") or "polygon")
+            in ("rectangle", "polygon")
+        for s in (it.get("shapes") or []))
+
+
 def bagi_split(items: list[dict], rasio=RASIO_BAWAAN,
                rencana: dict | None = None) -> dict[str, list[dict]]:
     """
@@ -506,6 +519,13 @@ def bagi_split(items: list[dict], rasio=RASIO_BAWAAN,
     format sekaligus, supaya COCO dan YOLO dari dataset yang sama tidak
     membelah berbeda. Pembelahan cepat di bawah ini hanya cadangan untuk
     ekspor yang dijalankan tanpa menekan tombol itu.
+
+    **Sampel negatif selalu ke train.** Gambar tanpa objek tidak punya label
+    untuk diukur, jadi menaruhnya di valid/test membuat mAP 0 dan evaluasi tak
+    berarti — persis yang terjadi saat dataset hasil merge membawa tag
+    valid/test Roboflow yang isinya latar. Negatif tetap melatih model menolak
+    latar, jadi diarahkan ke train SEBELUM aturan apa pun di bawah berlaku;
+    positifnya yang dibagi.
 
     Dua aturan pada cadangannya, keduanya soal mencegah kebocoran:
 
@@ -523,6 +543,15 @@ def bagi_split(items: list[dict], rasio=RASIO_BAWAAN,
     berapa kali pun memberi pembagian yang sama.
     """
     import hashlib
+
+    # Negatif (gambar tanpa objek) tidak pernah masuk valid/test: dipaksa ke
+    # train lebih dulu, lalu positifnya dibagi dengan aturan di bawah.
+    negatif = [it for it in items if not _ada_objek(it)]
+    if negatif:
+        positif = [it for it in items if _ada_objek(it)]
+        hasil = bagi_split(positif, rasio, rencana)
+        hasil["train"].extend(negatif)
+        return hasil
 
     # 0. Rencana dari mesin pembelahan penuh (sesi + dHash).
     if rencana and rencana.get("peta"):
