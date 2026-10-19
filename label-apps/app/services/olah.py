@@ -1025,14 +1025,21 @@ def _cor_siluet(rgb, pts_px, rng):
     x0, y0 = pts.min(0)
     x1, y1 = pts.max(0)
     diag = float(np.hypot(x1 - x0, y1 - y0)) or 1.0
-    anchor = np.array([(x0 + x1) / 2.0, y1], np.float32)      # kaki objek
-    sy = float(rng.uniform(0.30, 0.70))                       # pipih vertikal
-    sh = float(rng.uniform(-0.45, 0.45))                      # miring (shear)
-    ang = float(rng.uniform(0.15, 2.99))                      # arah cahaya (bawah-ish)
-    jauh = float(rng.uniform(0.25, 0.75)) * diag
-    off = np.array([np.cos(ang) * jauh, abs(np.sin(ang)) * jauh], np.float32)
-    Alin = np.array([[1.0, sh], [0.0, sy]], np.float32)
-    t = (anchor + off) - Alin @ anchor
+    base = np.array([(x0 + x1) / 2.0, (y0 + y1) / 2.0], np.float32)  # pusat objek
+    # Bayangan matahari-rendah MEMANJANG ke satu arah, bukan dipipihkan: siluet
+    # diregang sepanjang arah acak (panjang 1.4-2.6x), sedikit dimiringkan, lalu
+    # digeser menjauh dari objek supaya emanasi dari kakinya ke latar.
+    ang = float(rng.uniform(0.0, 2.0 * np.pi))                # arah bayangan
+    panjang = float(rng.uniform(1.4, 2.6))                    # regang (memanjang)
+    lebar = float(rng.uniform(0.80, 1.05))
+    shear = float(rng.uniform(-0.25, 0.25))
+    c, s = np.cos(ang), np.sin(ang)
+    R = np.array([[c, -s], [s, c]], np.float32)
+    S = np.array([[lebar, shear], [0.0, panjang]], np.float32)
+    Alin = (R @ S @ R.T).astype(np.float32)                  # regang sepanjang ang
+    sumbu = np.array([-s, c], np.float32)                    # arah panjang (= R·y)
+    off = sumbu * (float(rng.uniform(0.20, 0.55)) * diag)
+    t = (base + off) - Alin @ base
     M = np.hstack([Alin, t.reshape(2, 1)]).astype(np.float32)
     cast = cv2.warpAffine(sil, M, (w, h), flags=cv2.INTER_LINEAR,
                           borderValue=0)
