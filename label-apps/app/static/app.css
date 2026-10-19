@@ -2714,6 +2714,9 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
 .vs-bagian{margin-top:18px}
 .vs-bagian h4{font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;
   color:var(--ink-faint);font-weight:600;margin-bottom:9px}
+.vs-buka-hasil{float:right;text-transform:none;letter-spacing:0;font-size:12px;
+  color:var(--aksi);text-decoration:none;font-weight:600}
+.vs-buka-hasil:hover{text-decoration:underline}
 .vs-bagian .halus{margin-top:9px}
 
 /* tiga kotak pembagian, warnanya sama dengan bilah kemajuan di grid */

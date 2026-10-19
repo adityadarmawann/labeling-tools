@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from ..config import ARSIP_EXT, SUMBER_VIDEO, VIDEO_EXT, Settings, get_settings
@@ -154,6 +154,76 @@ async def halaman_versi(request: Request, ds: str = "",
         "boleh_kelola": svc_tugas.boleh_kelola(tdata, sess.user),
         # Projek keypoint: tawarkan ekspor YOLO-pose di menu Ekspor.
         "jenis_pose": svc_tugas.skeleton_aktif(tdata),
+    })
+
+
+@router.get("/versi/hasil", response_class=HTMLResponse)
+async def halaman_versi_hasil(
+        request: Request, nomor: int = 0, ds: str = "",
+        sp: list[str] = Query(default=[]), c: list[str] = Query(default=[]),
+        x: list[str] = Query(default=[]), per: int = 120, hal: int = 1,
+        sess: Session = Depends(current_session),
+        settings: Settings = Depends(get_settings)):
+    """Grid hasil SATU versi: gambar train/valid/test yang benar-benar ditulis,
+    bisa disaring per kelas & split, dengan paginasi. Per-versi: `nomor` memilih
+    versi mana yang ditampilkan (rincian v1 -> hasil v1 saja).
+
+    Paginasi + filter dikerjakan di SERVER atas indeks ringan yang di-cache
+    (buatversi.indeks_hasil), jadi versi berisi puluhan ribu gambar pun tak
+    pernah menaruh semuanya di satu HTML dan tiap klik tak memindai ulang label.
+    Thumbnail dilayani /versi/gambar (resize on-the-fly yang sudah ada)."""
+    from math import ceil
+    from urllib.parse import urlencode
+    from ..services import buatversi
+
+    # Dari link rincian versi, `ds` tak disertakan -> pakai projek yang sedang
+    # terbuka di sesi (sama seperti halaman /versi yang mengantar ke sini).
+    d = projek.temukan(settings.uploads_root, sess.user, ds) if ds \
+        else (Path(sess.src) if sess.src else None)
+    if d is None:
+        return RedirectResponse("/pilih", status_code=303)
+    if str(sess.src or "") != str(d):
+        await asyncio.to_thread(sess.load, d)
+    if not (buatversi.dir_versi(d, nomor) / "data.yaml").exists():
+        return RedirectResponse("/versi", status_code=303)
+
+    idx = await asyncio.to_thread(buatversi.indeks_hasil, d, nomor)
+    pr = await asyncio.to_thread(projek.konteks, d, settings.uploads_root, sess.user)
+
+    spset = {s for s in sp if s in buatversi.SPLIT}
+    cc = set(c)
+    neg_dipilih = "neg" in set(x)
+    ada_filter = bool(cc or neg_dipilih)          # tanpa pilihan = tampilkan semua
+
+    def lolos(it: dict) -> bool:
+        if spset and it["split"] not in spset:
+            return False
+        if not ada_filter:
+            return True
+        if it["neg"]:
+            return neg_dipilih
+        return bool(cc & set(it["kelas"]))
+
+    tampil = [it for it in idx["items"] if lolos(it)]
+    per = max(20, min(int(per or 120), 1000))
+    n = len(tampil)
+    n_hal = max(1, ceil(n / per))
+    hal = max(1, min(int(hal or 1), n_hal))
+    mulai = (hal - 1) * per
+    halaman = tampil[mulai:mulai + per]
+
+    # Query dasar (semua filter KECUALI hal) untuk tautan paginasi.
+    qbase = urlencode([("nomor", nomor), ("per", per)]
+                      + [("sp", s) for s in sp]
+                      + [("c", k) for k in c]
+                      + [("x", k) for k in x], doseq=True)
+
+    return templates.TemplateResponse(request, "versi_hasil.html", {
+        "sess": sess, "projek": pr, "pr": pr, "aktif": "versi",
+        "nomor": nomor, "idx": idx,
+        "items": halaman, "n": n, "per": per, "hal": hal, "n_hal": n_hal,
+        "mulai": mulai, "sp_set": spset, "c_set": cc, "neg_dipilih": neg_dipilih,
+        "qbase": qbase,
     })
 
 

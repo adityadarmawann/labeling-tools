@@ -1802,6 +1802,68 @@ def kelas_versi(ds: Path, nomor: int) -> list[str]:
     return []
 
 
+_INDEKS_CACHE: dict[tuple[str, int], tuple[float, dict]] = {}
+
+
+def indeks_hasil(ds: Path, nomor: int) -> dict:
+    """Indeks RINGAN isi sebuah versi untuk halaman Hasil (grid per-versi):
+    tiap gambar + split-nya + nama kelas yang ada di dalamnya, plus hitungan
+    per-split dan per-kelas.
+
+    Filter kelas/split + paginasi di halaman Hasil dikerjakan ATAS indeks ini di
+    memori, jadi tiap klik paginasi TIDAK memindai ulang puluhan ribu label.
+    Di-cache per (ds, nomor) dan otomatis basi kalau data.yaml versi berubah
+    (versi dibangun ulang). Hanya BACA LABEL (tak mendekode gambar) -> jauh lebih
+    murah dari items_hasil.
+
+    {"kelas": [nama urut indeks],
+     "items": [{"nama": "<split>/images/<file>.jpg", "split", "kelas": [nama],
+                "neg": bool}],
+     "jumlah_split": {train,valid,test}, "hitung_kelas": {nama: n},
+     "negatif": n, "total": n}
+    """
+    d = dir_versi(ds, nomor)
+    yml = d / "data.yaml"
+    mt = yml.stat().st_mtime if yml.exists() else 0.0
+    kunci = (str(d), int(nomor))
+    simpan = _INDEKS_CACHE.get(kunci)
+    if simpan and simpan[0] == mt:
+        return simpan[1]
+    nama_kelas = kelas_versi(ds, nomor)
+    items: list[dict] = []
+    jumlah = {s: 0 for s in SPLIT}
+    hitung: dict[str, int] = defaultdict(int)
+    negatif = 0
+    for split in SPLIT:
+        gdir = d / split / "images"
+        if not gdir.is_dir():
+            continue
+        for ip in sorted(gdir.glob("*.jpg")):
+            lp = d / split / "labels" / f"{ip.stem}.txt"
+            seen: list[str] = []
+            lihat = set()
+            for c, _ in olah.baca_label(lp):
+                n = nama_kelas[c] if 0 <= c < len(nama_kelas) else str(c)
+                if n not in lihat:
+                    lihat.add(n)
+                    seen.append(n)
+            neg = not seen
+            items.append({"nama": f"{split}/images/{ip.name}", "split": split,
+                          "kelas": seen, "neg": neg})
+            jumlah[split] += 1
+            if neg:
+                negatif += 1
+            for n in seen:
+                hitung[n] += 1
+    hasil = {"kelas": nama_kelas, "items": items, "jumlah_split": jumlah,
+             "hitung_kelas": dict(hitung), "negatif": negatif,
+             "total": len(items)}
+    if len(_INDEKS_CACHE) >= 6:                       # bounded: 6 versi terakhir
+        _INDEKS_CACHE.pop(next(iter(_INDEKS_CACHE)))
+    _INDEKS_CACHE[kunci] = (mt, hasil)
+    return hasil
+
+
 def items_hasil(ds: Path, nomor: int):
     """
     Baca berkas hasil sebuah versi jadi bentuk `item` yang dikenal export.py.

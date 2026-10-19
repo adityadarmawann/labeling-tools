@@ -971,3 +971,46 @@ def test_fase_lanjutan_ikut_ditinjau_sebelum_tombol_buat(klien, lingkungan):
     for oid in ("wz-f-crop", "wz-f-skala", "wz-f-kelas", "wz-f-neg"):
         assert js.count(oid) >= 2, (
             f"{oid} dibaca saat menyusun resep tetapi tidak saat meninjau")
+
+
+def test_halaman_hasil_versi_grid_dan_filter(klien, lingkungan):
+    """Halaman Hasil PER-VERSI: grid gambar train/valid/test, filter kelas +
+    split, paginasi server-side, thumbnail ke /versi/gambar versi itu. Rincian
+    v1 -> hasil v1 saja (nomor di URL)."""
+    masuk(klien, "paul", PW_PAUL)
+    d = _ds(klien, n_botol=20, n_kaleng=10, n_negatif=10)
+    klien.post(f"/setsrc?path={d}")
+    resep = {"volume": {"per_gambar": 0},
+             "fase": {"crop_zoom": {"aktif": False}, "balans_skala": {"aktif": False},
+                      "balans_kelas": {"aktif": False}, "porsi_negatif": {"aktif": False}}}
+    assert _mulai(klien, resep).get("ok")
+    assert _tunggu(klien).get("selesai")
+
+    r = klien.get("/versi/hasil?nomor=1")
+    assert r.status_code == 200, r.status_code
+    h = r.text
+    assert "Hasil augmentasi" in h and "versi 1" in h
+    assert "botol" in h and "kaleng" in h              # filter kelas terisi
+    assert "/versi/gambar?nomor=1" in h                # thumbnail versi 1
+    assert 'name="c"' in h and 'name="sp"' in h        # kontrol kelas + split
+    assert "dari <b>40</b> gambar" in h                # total 40 (20+10+10)
+
+    # Paginasi server-side: per=20 atas 40 gambar -> 2 halaman, nav membawa
+    # tautan ke halaman 2 (qbase).
+    rp = klien.get("/versi/hasil?nomor=1&per=20")
+    assert rp.status_code == 200 and "hal=2" in rp.text
+
+    # Filter satu kelas: hanya 20 botol yang tampil (bukan 40), dan kotak
+    # botol tercentang.
+    r2 = klien.get("/versi/hasil?nomor=1&c=botol")
+    assert r2.status_code == 200
+    assert "dari <b>20</b> gambar" in r2.text
+    assert 'value="botol"' in r2.text and "checked" in r2.text
+
+    # Filter negatif: 10 sampel negatif.
+    rn = klien.get("/versi/hasil?nomor=1&x=neg")
+    assert rn.status_code == 200 and "dari <b>10</b> gambar" in rn.text
+
+    # versi tak ada -> balik ke /versi, bukan 500
+    r3 = klien.get("/versi/hasil?nomor=999", follow_redirects=False)
+    assert r3.status_code in (303, 307)

@@ -145,7 +145,8 @@
     // ditunjukkan — dan deretan kosong yang selalu ada lebih membingungkan
     // daripada tidak ada deretan sama sekali.
     const contoh = punyaHasil
-      ? `<div class="vs-bagian"><h4>${(isi.contoh.length)} contoh dari ${tot} gambar</h4>
+      ? `<div class="vs-bagian"><h4>${(isi.contoh.length)} contoh dari ${tot} gambar
+           <a class="vs-buka-hasil" href="/versi/hasil?nomor=${v.nomor}">Buka hasil augmentasi &rarr;</a></h4>
            <div class="vs-strip">` +
         isi.contoh.map((n) =>
           `<img loading="lazy" src="/versi/gambar?nomor=${v.nomor}` +

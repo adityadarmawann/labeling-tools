@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+{% block bodyclass %}berprojek{% endblock %}
+{% block body %}
+<header>
+  <div class="top">
+    <h1>{{ nama_app() }}</h1>
+    {% include "_header.html" %}
+  </div>
+</header>
+
+<main>
+{% include "_sisi.html" %}
+<div class="sisi-isi" data-ds="{{ pr.ds }}">
+
+  {#- Kepala: judul per-versi + ringkasan + kembali -#}
+  <div class="vh-kepala">
+    <div>
+      <a class="vh-balik" href="/versi">&larr; Versi</a>
+      <h2 class="vh-judul">Hasil augmentasi &mdash; versi {{ nomor }}</h2>
+    </div>
+    <div class="vh-ringkas">
+      <span class="vh-pil">Total <b>{{ "{:,}".format(idx.total) }}</b></span>
+      <span class="vh-pil vh-pil-train">train <b>{{ "{:,}".format(idx.jumlah_split.train) }}</b></span>
+      <span class="vh-pil vh-pil-valid">valid <b>{{ "{:,}".format(idx.jumlah_split.valid) }}</b></span>
+      <span class="vh-pil vh-pil-test">test <b>{{ "{:,}".format(idx.jumlah_split.test) }}</b></span>
+      <span class="vh-pil vh-pil-neg">negatif <b>{{ "{:,}".format(idx.negatif) }}</b></span>
+    </div>
+  </div>
+
+  {#- Filter: split + kelas + negatif. GET form -> submit otomatis saat berubah.
+      Semua filter dikerjakan di server (paginasi aman untuk puluhan ribu gambar). -#}
+  <form class="vh-filter" method="get" action="/versi/hasil" id="vh-form">
+    <input type="hidden" name="nomor" value="{{ nomor }}">
+    <input type="hidden" name="per" value="{{ per }}">
+
+    <div class="vh-fgrup">
+      <span class="vh-flabel">Split</span>
+      {% for s in ['train', 'valid', 'test'] %}
+      <label class="vh-cek">
+        <input type="checkbox" name="sp" value="{{ s }}"
+               {% if s in sp_set %}checked{% endif %} onchange="vhSubmit()">
+        {{ s }} <i>{{ idx.jumlah_split[s] }}</i>
+      </label>
+      {% endfor %}
+    </div>
+
+    <div class="vh-fgrup vh-fkelas">
+      <span class="vh-flabel">Kelas</span>
+      {% for nama in idx.kelas %}
+      <label class="vh-cek">
+        <input type="checkbox" name="c" value="{{ nama }}"
+               {% if nama in c_set %}checked{% endif %} onchange="vhSubmit()">
+        {{ nama }} <i>{{ idx.hitung_kelas.get(nama, 0) }}</i>
+      </label>
+      {% endfor %}
+      <label class="vh-cek vh-cek-neg">
+        <input type="checkbox" name="x" value="neg"
+               {% if neg_dipilih %}checked{% endif %} onchange="vhSubmit()">
+        sampel negatif <i>{{ idx.negatif }}</i>
+      </label>
+    </div>
+
+    {% if sp_set or c_set or neg_dipilih %}
+    <a class="vh-bersih" href="/versi/hasil?nomor={{ nomor }}&per={{ per }}">Bersihkan</a>
+    {% endif %}
+  </form>
+
+  {#- Hasil filter + posisi paginasi -#}
+  <div class="vh-sub">
+    Menampilkan <b>{{ mulai + 1 if n else 0 }}&ndash;{{ mulai + items|length }}</b>
+    dari <b>{{ "{:,}".format(n) }}</b> gambar
+    &middot; halaman {{ hal }} / {{ n_hal }}
+  </div>
+
+  {% if items %}
+  <div class="vh-grid">
+    {% for it in items %}
+    <figure class="vh-kartu">
+      <img loading="lazy"
+           src="/versi/gambar?nomor={{ nomor }}&amp;nama={{ it.nama|urlencode }}&amp;s=320"
+           alt="{{ it.nama }}">
+      <figcaption>
+        <span class="vh-badge vh-badge-{{ it.split }}">{{ it.split }}</span>
+        {% if it.neg %}
+          <span class="vh-kls vh-kls-neg">negatif</span>
+        {% else %}
+          {% for k in it.kelas %}<span class="vh-kls">{{ k }}</span>{% endfor %}
+        {% endif %}
+      </figcaption>
+    </figure>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="vh-kosong">Tidak ada gambar yang cocok dengan filter.</div>
+  {% endif %}
+
+  {#- Paginasi: jendela nomor halaman di sekitar halaman kini -#}
+  {% if n_hal > 1 %}
+  <nav class="vh-nav">
+    {% if hal > 1 %}<a href="?{{ qbase }}&hal={{ hal - 1 }}">&larr; Sebelumnya</a>{% endif %}
+    {% set lo = [1, hal - 3]|max %}
+    {% set hi = [n_hal, hal + 3]|min %}
+    {% if lo > 1 %}<a href="?{{ qbase }}&hal=1">1</a><span class="vh-elip">&hellip;</span>{% endif %}
+    {% for p in range(lo, hi + 1) %}
+      {% if p == hal %}<b class="vh-kini">{{ p }}</b>
+      {% else %}<a href="?{{ qbase }}&hal={{ p }}">{{ p }}</a>{% endif %}
+    {% endfor %}
+    {% if hi < n_hal %}<span class="vh-elip">&hellip;</span><a href="?{{ qbase }}&hal={{ n_hal }}">{{ n_hal }}</a>{% endif %}
+    {% if hal < n_hal %}<a href="?{{ qbase }}&hal={{ hal + 1 }}">Berikutnya &rarr;</a>{% endif %}
+  </nav>
+  {% endif %}
+
+</div>
+</main>
+{% endblock %}
+
+{% block skrip %}
+<script>
+  // Submit form filter saat checkbox berubah -> balik ke halaman 1 (filter baru).
+  function vhSubmit() {
+    var f = document.getElementById('vh-form');
+    var h = f.querySelector('input[name="hal"]');
+    if (h) h.value = 1;               // filter berubah -> mulai dari halaman 1
+    f.submit();
+  }
+  // Pemilih jumlah per halaman.
+  (function () {
+    var sel = document.getElementById('vh-per');
+    if (sel) sel.onchange = function () {
+      var f = document.getElementById('vh-form');
+      f.querySelector('input[name="per"]').value = sel.value;
+      vhSubmit();
+    };
+  })();
+</script>
+<style>
+  .vh-kepala{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;
+    justify-content:space-between;margin:4px 0 14px}
+  .vh-balik{font-size:13px;color:var(--ink-dim);text-decoration:none}
+  .vh-balik:hover{text-decoration:underline}
+  .vh-judul{margin:2px 0 0;font-size:20px;color:var(--ink)}
+  .vh-ringkas{display:flex;flex-wrap:wrap;gap:6px}
+  .vh-pil{font-size:12px;padding:3px 9px;border-radius:999px;
+    background:var(--panel);border:1px solid var(--line);color:var(--ink-dim)}
+  .vh-pil b{color:var(--ink);font-weight:600}
+  .vh-pil-train{border-left:3px solid #4f93d6}
+  .vh-pil-valid{border-left:3px solid #2fa98f}
+  .vh-pil-test{border-left:3px solid #d2941f}
+  .vh-filter{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;
+    padding:10px 12px;background:var(--panel);border:1px solid var(--line);
+    border-radius:10px;margin-bottom:10px}
+  .vh-fgrup{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
+  .vh-fkelas{max-height:88px;overflow:auto;flex:1 1 420px}
+  .vh-flabel{font-size:11px;text-transform:uppercase;letter-spacing:.04em;
+    color:var(--ink-faint);margin-right:2px}
+  .vh-cek{display:inline-flex;gap:5px;align-items:center;font-size:13px;
+    color:var(--ink);padding:2px 8px;border-radius:7px;cursor:pointer}
+  .vh-cek:hover{background:var(--hover)}
+  .vh-cek i{font-style:normal;font-size:11px;color:var(--ink-faint)}
+  .vh-cek-neg{color:var(--ink-dim)}
+  .vh-bersih{font-size:12px;color:var(--stop);text-decoration:none;margin-left:auto}
+  .vh-bersih:hover{text-decoration:underline}
+  .vh-sub{font-size:12px;color:var(--ink-faint);margin:4px 2px 10px}
+  .vh-sub b{color:var(--ink)}
+  .vh-grid{display:grid;gap:10px;
+    grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+  .vh-kartu{margin:0;background:var(--panel);border-radius:10px;
+    overflow:hidden;border:1px solid var(--line)}
+  .vh-kartu img{display:block;width:100%;aspect-ratio:1/1;object-fit:cover;
+    background:var(--sunk)}
+  .vh-kartu figcaption{display:flex;flex-wrap:wrap;gap:4px;align-items:center;
+    padding:6px 7px;font-size:11px}
+  .vh-badge{padding:1px 6px;border-radius:5px;font-weight:600;
+    text-transform:uppercase;letter-spacing:.03em;font-size:9.5px;
+    background:var(--lab-bg);color:var(--lab-ink);border-left:3px solid var(--line2)}
+  .vh-badge-train{border-left-color:#4f93d6}
+  .vh-badge-valid{border-left-color:#2fa98f}
+  .vh-badge-test{border-left-color:#d2941f}
+  .vh-kls{padding:1px 6px;border-radius:5px;background:var(--split-bg);
+    color:var(--split-ink)}
+  .vh-kls-neg{background:var(--lab-bg);color:var(--ink-dim)}
+  .vh-kosong{padding:40px;text-align:center;color:var(--ink-faint);
+    background:var(--panel);border:1px solid var(--line);border-radius:10px}
+  .vh-nav{display:flex;flex-wrap:wrap;gap:6px;align-items:center;
+    justify-content:center;margin:18px 0 4px}
+  .vh-nav a,.vh-nav b{padding:5px 11px;border-radius:7px;font-size:13px;
+    text-decoration:none;border:1px solid var(--line)}
+  .vh-nav a{color:var(--ink);background:var(--panel)}
+  .vh-nav a:hover{background:var(--hover)}
+  .vh-nav .vh-kini{background:var(--aksi);color:var(--aksi-ink);border-color:var(--aksi)}
+  .vh-elip{color:var(--ink-faint);padding:0 2px}
+</style>
+{% endblock %}
