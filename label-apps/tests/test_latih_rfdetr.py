@@ -11,6 +11,16 @@ import pytest
 from app.services import latih, latih_rfdetr
 
 
+@pytest.fixture(autouse=True)
+def _kunci_gpu_terisolasi(tmp_path, monkeypatch):
+    """Isolasi kunci-antre-GPU per-uji. latih_rfdetr.main() meminta flock
+    EKSKLUSIF pada KUNCI_GPU global (/tmp/labelapp-latih-gpu.lock) yang dipakai
+    bersama latih_jalan. Tanpa isolasi, uji ini MEMBLOK selama ada training
+    SUNGGUHAN yang sedang memegang kunci itu di mesin yang sama — bukan bug
+    kode, tapi uji merebut antrean produksi. Pakai lock sendiri."""
+    monkeypatch.setattr(latih_rfdetr, "KUNCI_GPU", tmp_path / "gpu-uji.lock")
+
+
 def _versi(tmp: Path, nomor: int, names, *, dengan_gambar=False) -> Path:
     vd = tmp / ".versi" / f"v{nomor}"
     (vd / "train" / "images").mkdir(parents=True, exist_ok=True)
