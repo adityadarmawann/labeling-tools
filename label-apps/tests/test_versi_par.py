@@ -284,3 +284,64 @@ def test_ketiganya_ditawarkan_ke_peramban_beserta_angkanya(oid):
     par = kat[oid]["param"]
     assert "p" in par
     assert [k for k in par if k != "p"], f"{oid} tidak punya angka yang bisa digeser"
+
+
+# ============================================================
+# BAYANGAN SILUET (bentuk objek projek, latar saja, tepi lembut)
+# ============================================================
+import numpy as _np
+
+
+def test_bayangan_siluet_gelapkan_latar_bukan_objek():
+    """Tujuan utama: bayangan berbentuk siluet objek, jatuh di LATAR, dan
+    objeknya SAMA SEKALI tak digelapkan (pilihan 'latar saja')."""
+    img = _np.full((256, 256, 3), 200, _np.uint8)
+    poly = [(96, 96), (160, 96), (160, 160), (96, 160)]      # objek di tengah
+    out = olah.bayangan_siluet(img.copy(), [poly], _np.random.default_rng(7))
+    assert (out[112:144, 112:144] == 200).all(), "interior objek tak boleh berubah"
+    assert (out < 200).any(), "harus ada bayangan di latar"
+    assert out.min() >= int(200 * 0.5), "gelapnya ringan, tak boleh pekat/hitam"
+
+
+def test_bayangan_siluet_deterministik():
+    img = _np.full((256, 256, 3), 180, _np.uint8)
+    poly = [(100, 100), (150, 100), (150, 150), (100, 150)]
+    a = olah.bayangan_siluet(img.copy(), [poly], _np.random.default_rng(3))
+    b = olah.bayangan_siluet(img.copy(), [poly], _np.random.default_rng(3))
+    assert _np.array_equal(a, b), "benih sama -> hasil identik (deterministik)"
+
+
+def test_bayangan_siluet_tepi_lembut():
+    """Tepi berangsur (penumbra), bukan on/off biner seperti segitiga lama."""
+    img = _np.full((256, 256, 3), 200, _np.uint8)
+    poly = [(96, 96), (160, 96), (160, 160), (96, 160)]
+    out = olah.bayangan_siluet(img.copy(), [poly],
+                               _np.random.default_rng(5)).astype(int)
+    tergelap = out[..., 0][out[..., 0] < 200]
+    assert len(tergelap) == 0 or len(_np.unique(tergelap)) > 3, \
+        "tepi harus berangsur (banyak tingkat kegelapan), bukan satu tingkat"
+
+
+def test_bayangan_blob_negatif_menggelapkan_lembut():
+    img = _np.full((200, 200, 3), 190, _np.uint8)
+    out = olah.bayangan_blob(img.copy(), _np.random.default_rng(1))
+    assert out.shape == img.shape and (out < 190).any()
+    assert out.min() >= int(190 * 0.5), "blob negatif pun gelapnya ringan"
+
+
+def test_bayangan_wiring_on_off_di_pipeline():
+    """bangun_pipeline menitipkan par bayangan ke Compose saat aktif, dan None
+    saat dimatikan; augmentasi_sekali menerapkannya hanya saat aktif."""
+    import random
+    img = _np.full((256, 256, 3), 200, _np.uint8)
+    label = [(0, [0.37, 0.37, 0.62, 0.37, 0.62, 0.62, 0.37, 0.62])]
+    on = olah.bangun_pipeline(
+        {"aug": {"bayangan": {"aktif": True, "p": 1.0},
+                 "resize": {"aktif": True, "sisi": 256}}}, sisi=(256, 256))
+    assert getattr(on, "_bayangan", None) is not None
+    o1, _l = olah.augmentasi_sekali(img.copy(), label, on, random.Random(9))
+    assert (o1 < 200).any(), "bayangan harus terpasang lewat augmentasi_sekali"
+    off = olah.bangun_pipeline(
+        {"aug": {"bayangan": {"aktif": False},
+                 "resize": {"aktif": True, "sisi": 256}}}, sisi=(256, 256))
+    assert getattr(off, "_bayangan", None) is None, "mati -> tak ada bayangan"

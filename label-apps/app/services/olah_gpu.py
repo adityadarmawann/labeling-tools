@@ -543,7 +543,11 @@ OPERASI.update({
     "color_jitter": color_jitter,
     "blackbody": blackbody,
     "eksposur": eksposur,
-    "bayangan": bayangan,
+    # "bayangan" SENGAJA tak didaftarkan di sini lagi: bayangan kini dikerjakan
+    # di CPU (olah.bayangan_siluet) sebagai siluet objek yang dicor ke latar,
+    # karena ia butuh poligon label yang hanya tersedia di jalur CPU. Jadi tak
+    # ada bayangan di GPU -> tak dobel. Fungsi bayangan() di atas ditinggalkan
+    # sebagai acuan (tak dipanggil).
 })
 DIPEGANG_GPU = tuple(OPERASI)
 

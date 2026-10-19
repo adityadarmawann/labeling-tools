@@ -952,6 +952,7 @@ def bangun_pipeline(resep: dict, sisi: tuple[int, int] | None = None,
         sisi = ukuran_keluaran(resep)
     lewati = lewati or set()
     urut = []
+    par_bayangan = None
     for oid, _saklar, bangun in AUG_V14:
         if oid in lewati:
             continue
@@ -959,6 +960,14 @@ def bangun_pipeline(resep: dict, sisi: tuple[int, int] | None = None,
         if par is not None and not par.get("aktif", True):
             continue
         p = saring_par(KATALOG_AUG[oid]["param"], par or {})
+        if oid == "bayangan":
+            # Bayangan TIDAK lagi lewat albumentations (RandomShadow =
+            # segitiga acak bertepi keras). Ia dikerjakan sebagai langkah PASCA
+            # pipeline di augmentasi_sekali, memakai SILUET objek yang dilabeli
+            # -> bayangan berbentuk objek projek itu, jatuh di latar, tepi
+            # lembut. Parameternya dititipkan ke Compose di bawah.
+            par_bayangan = p
+            continue
         if oid == "crop_acak" and sisi:
             # Lewat parameter, bukan konstanta: satu-satunya yang boleh
             # menentukan ukuran keluaran adalah langkah Resize.
@@ -971,10 +980,122 @@ def bangun_pipeline(resep: dict, sisi: tuple[int, int] | None = None,
         if not par or not par.get("aktif"):
             continue                      # tambahan bawaannya MATI
         urut.append(bangun(A, saring_par(KATALOG_AUG[oid]["param"], par)))
-    if not urut:
+    if not urut and par_bayangan is None:
         return None
-    return A.Compose(urut, keypoint_params=A.KeypointParams(
+    comp = A.Compose(urut, keypoint_params=A.KeypointParams(
         format="xy", label_fields=["kp_label"], remove_invisible=False))
+    # Dititipkan ke objek Compose supaya augmentasi_sekali tahu harus mencor
+    # bayangan siluet sesudah pipeline, tanpa mengubah tanda tangan pemanggil.
+    comp._bayangan = par_bayangan
+    return comp
+
+
+def _rng(rng):
+    """numpy Generator deterministik dari rng apa pun.
+
+    Build memakai `random.Random` (stdlib) yang tak punya .integers()/.uniform
+    ala numpy; numpy Generator dipakai apa adanya; int/None jadi benih. Dari
+    random.Random diturunkan benih (getrandbits) -> tetap deterministik mengikuti
+    benih build, hanya mengonsumsi sedikit dari alirannya."""
+    if isinstance(rng, np.random.Generator):
+        return rng
+    if rng is None:
+        return np.random.default_rng()
+    if isinstance(rng, int):
+        return np.random.default_rng(rng)
+    try:
+        return np.random.default_rng(rng.getrandbits(63))
+    except AttributeError:
+        return np.random.default_rng()
+
+
+def _cor_siluet(rgb, pts_px, rng):
+    """Satu bayangan: warp SILUET poligon seolah dicor cahaya rendah.
+
+    Dikecilkan vertikal (foreshorten) + dimiringkan (shear) + digeser ke satu
+    arah 'cahaya', jadi bayangannya jatuh ke SAMPING/BAWAH objek, bukan menimpa.
+    Kembalikan mask float32 HxW [0..1] (tepi masih keras; dilembutkan pemanggil).
+    """
+    h, w = rgb.shape[:2]
+    pts = np.asarray(pts_px, np.float32).reshape(-1, 2)
+    if len(pts) < 3:
+        return None
+    sil = np.zeros((h, w), np.uint8)
+    cv2.fillPoly(sil, [pts.astype(np.int32)], 255)
+    x0, y0 = pts.min(0)
+    x1, y1 = pts.max(0)
+    diag = float(np.hypot(x1 - x0, y1 - y0)) or 1.0
+    anchor = np.array([(x0 + x1) / 2.0, y1], np.float32)      # kaki objek
+    sy = float(rng.uniform(0.30, 0.70))                       # pipih vertikal
+    sh = float(rng.uniform(-0.45, 0.45))                      # miring (shear)
+    ang = float(rng.uniform(0.15, 2.99))                      # arah cahaya (bawah-ish)
+    jauh = float(rng.uniform(0.25, 0.75)) * diag
+    off = np.array([np.cos(ang) * jauh, abs(np.sin(ang)) * jauh], np.float32)
+    Alin = np.array([[1.0, sh], [0.0, sy]], np.float32)
+    t = (anchor + off) - Alin @ anchor
+    M = np.hstack([Alin, t.reshape(2, 1)]).astype(np.float32)
+    cast = cv2.warpAffine(sil, M, (w, h), flags=cv2.INTER_LINEAR,
+                          borderValue=0)
+    return cast.astype(np.float32) / 255.0
+
+
+def bayangan_siluet(rgb, polys_px, rng, par=None):
+    """Cor 1-2 bayangan berbentuk SILUET objek ke LATAR (bukan menimpa objek),
+    bertepi lembut dan gelap ringan. `polys_px` = daftar poligon [(x,y),...] di
+    ruang piksel gambar. Mengubah & mengembalikan rgb (uint8)."""
+    par = par or {}
+    rng = _rng(rng)
+    h, w = rgb.shape[:2]
+    polys = [np.asarray(p, np.float32).reshape(-1, 2) for p in polys_px
+             if len(np.asarray(p).reshape(-1, 2)) >= 3]
+    if not polys:
+        return rgb
+    # Union siluet objek: bayangan TAK boleh menimpa objek (pilihan "latar saja").
+    objek = np.zeros((h, w), np.uint8)
+    for p in polys:
+        cv2.fillPoly(objek, [p.astype(np.int32)], 255)
+    n = int(rng.integers(1, 3))                               # 1-2 bayangan
+    idx = rng.permutation(len(polys))[:n]
+    mask = np.zeros((h, w), np.float32)
+    for i in idx:
+        cast = _cor_siluet(rgb, polys[i], rng)
+        if cast is not None:
+            mask = np.maximum(mask, cast)
+    mask[objek > 0] = 0.0                                     # latar saja
+    if mask.max() <= 0:
+        return rgb
+    k = max(3, int(min(h, w) * 0.03) | 1)                     # blur ganjil ~3% sisi
+    mask = cv2.GaussianBlur(mask, (k, k), 0)
+    # Blur menyebarkan bayangan ke tepi objek; nol-kan LAGI area objek supaya
+    # piksel objek benar-benar tak tersentuh (pilihan "latar saja").
+    mask[objek > 0] = 0.0
+    gelap = float(rng.uniform(par.get("gelap_lo", 0.55),
+                              par.get("gelap_hi", 0.82)))      # 0.55-0.82 (ringan)
+    faktor = (1.0 - mask * (1.0 - gelap))[..., None]
+    return np.clip(rgb.astype(np.float32) * faktor, 0, 255).astype(np.uint8)
+
+
+def bayangan_blob(rgb, rng, par=None):
+    """Untuk gambar NEGATIF (tanpa objek): 1-2 bayangan BLOB lembut membulat
+    (bukan segitiga tajam) supaya latar tetap bervariasi. Mengembalikan rgb."""
+    par = par or {}
+    rng = _rng(rng)
+    h, w = rgb.shape[:2]
+    mask = np.zeros((h, w), np.float32)
+    for _ in range(int(rng.integers(1, 3))):
+        cx, cy = int(rng.uniform(0.15, 0.85) * w), int(rng.uniform(0.15, 0.85) * h)
+        ax = int(rng.uniform(0.10, 0.28) * w)
+        ay = int(rng.uniform(0.10, 0.28) * h)
+        ang = int(rng.uniform(0, 180))
+        blob = np.zeros((h, w), np.uint8)
+        cv2.ellipse(blob, (cx, cy), (ax, ay), ang, 0, 360, 255, -1)
+        mask = np.maximum(mask, blob.astype(np.float32) / 255.0)
+    k = max(3, int(min(h, w) * 0.06) | 1)                     # blob lebih lembut
+    mask = cv2.GaussianBlur(mask, (k, k), 0)
+    gelap = float(rng.uniform(par.get("gelap_lo", 0.60),
+                              par.get("gelap_hi", 0.85)))
+    faktor = (1.0 - mask * (1.0 - gelap))[..., None]
+    return np.clip(rgb.astype(np.float32) * faktor, 0, 255).astype(np.uint8)
 
 
 def augmentasi_sekali(img_bgr, label, pipeline, rng=None):
@@ -989,9 +1110,16 @@ def augmentasi_sekali(img_bgr, label, pipeline, rng=None):
     lampu pada latar kosong justru yang mengajari model menolak ruang kosong.
     """
     rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+    par_bay = getattr(pipeline, "_bayangan", None)
     if not label:
         hasil = pipeline(image=rgb, keypoints=[], kp_label=[])
-        return cv2.cvtColor(hasil["image"], cv2.COLOR_RGB2BGR), []
+        out = hasil["image"]
+        # Negatif (tanpa objek): bayangan BLOB lembut, bukan segitiga tajam.
+        if par_bay:
+            r = _rng(rng)
+            if r.random() < par_bay.get("p", 0.18):
+                out = bayangan_blob(out, r, par_bay)
+        return cv2.cvtColor(out, cv2.COLOR_RGB2BGR), []
 
     h, w = rgb.shape[:2]
     titik, milik = [], []
@@ -1016,6 +1144,16 @@ def augmentasi_sekali(img_bgr, label, pipeline, rng=None):
     baru = saring_label(baru)
     if not baru:
         return None
+    # Bayangan ber-SILUET: cor bentuk objek yang dilabeli ke latar, tepi lembut.
+    # Memakai poligon HASIL transform (posisi final) supaya bayangan menempel
+    # pada objek di gambar keluaran.
+    if par_bay:
+        r = _rng(rng)
+        if r.random() < par_bay.get("p", 0.18):
+            polys_px = [[(koor[j] * aw, koor[j + 1] * ah)
+                         for j in range(0, len(koor), 2)]
+                        for (_c, koor) in baru]
+            out = bayangan_siluet(out, polys_px, r, par_bay)
     return cv2.cvtColor(out, cv2.COLOR_RGB2BGR), baru
 
 
