@@ -391,7 +391,7 @@ async def lanjut(request: Request,
 
 
 @router.post("/api/latih/sambung-kaggle")
-async def sambung_kaggle(nomor: int = 0,
+async def sambung_kaggle(nomor: int = 0, akun: str = "",
                          sess: Session = Depends(current_session_api),
                          settings: Settings = Depends(get_settings)):
     """Lanjutkan sebuah training Kaggle yang BERHENTI di tengah (tertunda karena
@@ -414,9 +414,22 @@ async def sambung_kaggle(nomor: int = 0,
     if rek.get("keadaan") in svc.BERJALAN:
         return {"ok": False, "error": "training itu masih berjalan"}
     # Akun Kaggle milik PEMBUAT training (field `oleh`), bukan si penyambung.
-    siap, alasan = svc_kaggle.siap_user(settings, rek.get("oleh") or sess.user)
+    oleh = rek.get("oleh") or sess.user
+    siap, alasan = svc_kaggle.siap_user(settings, oleh)
     if not siap:
         return {"ok": False, "error": alasan}
+    # Pemilih akun (opsional): user memilih akun Kaggle mana yang melanjutkan.
+    # Divalidasi terhadap akun milik PEMBUAT training, lalu ditulis ke rekaman;
+    # orkestrator mengutamakannya (soft -> tetap rotasi bila kuotanya habis).
+    if akun:
+        milik = {a.get("user") for a in
+                 svc_kaggle.ringkas_akun_user(settings, oleh)}
+        if akun not in milik:
+            return {"ok": False,
+                    "error": f"akun Kaggle '{akun}' bukan milik pembuat training ini"}
+        kag = dict(rek.get("kaggle") or {})
+        kag["akun_pilihan"] = akun
+        await asyncio.to_thread(svc.perbarui, d, nomor, kaggle=kag)
     await asyncio.to_thread(svc_kaggle.reset_habis,
                             svc_kaggle.basis_ledger(settings))
     try:

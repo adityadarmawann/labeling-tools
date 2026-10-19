@@ -283,11 +283,22 @@ class FakeKg:
             return 0, "ready"
         if a[:2] in (["datasets", "create"], ["datasets", "version"]):
             return 0, "created"
+        if a[:2] == ["datasets", "delete"]:
+            return 0, "deleted"
         if a[:2] == ["kernels", "push"]:
             self.i += 1
             self.push += 1
             return 0, "pushed"
         leg = self.legs[self.i]
+        if a[:2] == ["datasets", "download"]:
+            # Progres LIVE yang diterbitkan kernel: tulis results.csv + bobot
+            # kalau leg ini menyetel `progres` (epoch yang sempat terbit sebelum
+            # kuota/putus). Tanpa itu, belum ada terbitan.
+            n = leg.get("progres", 0)
+            if n:
+                d = Path(a[a.index("-p") + 1])
+                _tulis_run(d, f"run-l{self.nomor}", n)
+            return (0, "downloaded") if n else (0, "")
         if a[:2] == ["kernels", "status"]:
             if leg.get("quota"):
                 return 0, 'status "KernelWorkerStatus.ERROR" GPU quota exceeded'
@@ -628,3 +639,111 @@ def test_verif_lolos_cocokkan_hash_token(tmp_path):
     assert k.verif_lolos(s, "kBudi", tok) is True
     assert k.verif_lolos(s, "kBudi", "token-beda") is False    # hash tak cocok
     assert k.verif_lolos(s, "kLain", tok) is False             # user Kaggle beda
+
+
+# ============================================================
+# PROGRES LIVE (epoch-live + unduh bobot) — pengamanan token + pulih kuota
+# ============================================================
+
+def test_skrip_latih_menerbitkan_progres_tanpa_bocor_token():
+    """Skrip kernel menerbitkan progres TAPI token tak pernah ditanam di sumber:
+    dibaca dari berkas ter-mount (dataset kredensial) ke env, tak pernah
+    dicetak. prog_id kosong -> fitur mati, skrip tetap valid."""
+    s = k.skrip_latih("segment", "yolov8n-seg.pt", {"epochs": 30}, run="run-l5",
+                      batas_jam=11.0, resume=False,
+                      prog_id="u/higolab-prog-l5-leg0")
+    assert "KGAT_" not in s, "token tak boleh ditanam di sumber kernel"
+    assert "higolab_tok.txt" in s and "KAGGLE_API_TOKEN" in s, \
+        "token dibaca dari berkas ter-mount ke env"
+    assert "print(_TOK" not in s and "print(os.environ" not in s, \
+        "isi token tak pernah dicetak ke log"
+    assert 'PROG_ID = "u/higolab-prog-l5-leg0"' in s
+    assert "_terbitkan()" in s and "_terbitkan(force=True)" in s
+    # Mati: inert, tetap valid, PROG_ID kosong -> _terbitkan() langsung return.
+    s0 = k.skrip_latih("segment", "yolov8n-seg.pt", {"epochs": 30}, run="r",
+                       batas_jam=11.0, resume=False, prog_id="")
+    assert 'PROG_ID = ""' in s0
+
+
+def test_unggah_kredensial_privat_dan_hapus(monkeypatch):
+    """Dataset kredensial: PRIVAT (tanpa --public), slug acak, dan token TAK
+    PERNAH jadi argumen CLI (hanya lewat env di _kg). Bisa dihapus."""
+    calls = []
+    tok = "KGAT_rahasia_123"
+
+    def fake_kg(args, token, timeout=0, masuk=None):
+        calls.append(list(args))
+        if list(args)[:2] == ["datasets", "status"]:
+            return 0, "ready"
+        return 0, "ok"
+
+    monkeypatch.setattr(k, "_kg", fake_kg)
+    monkeypatch.setattr(k, "_tidur", lambda d: None)
+    akun = {"user": "u", "token": tok}
+    dsid = k._unggah_kredensial(akun)
+    assert dsid.startswith("u/higolab-kg-"), dsid
+    create = [c for c in calls if c[:2] == ["datasets", "create"]][0]
+    assert "--public" not in create, "dataset kredensial WAJIB privat"
+    assert not any(tok in " ".join(c) for c in calls), \
+        "token tak boleh pernah muncul di argumen CLI"
+    k._hapus_dataset(akun, dsid)
+    assert any(c[:2] == ["datasets", "delete"] for c in calls)
+
+
+def test_serap_progres_cache_bobot_dan_epoch(tmp_path, monkeypatch):
+    """Tarik dataset progres -> results.csv + last/best ter-cache ke .latih dan
+    jumlah epoch leg terbaca."""
+    monkeypatch.setattr(k, "_tidur", lambda d: None)
+
+    def fake_kg(args, token, timeout=0, masuk=None):
+        if list(args)[:2] == ["datasets", "download"]:
+            d = Path(args[args.index("-p") + 1])
+            _tulis_run(d, "run-l1", 7)
+            return 0, "downloaded"
+        return 0, ""
+
+    monkeypatch.setattr(k, "_kg", fake_kg)
+    dl = tmp_path / "dl"
+    dl.mkdir()
+    ep = k._serap_progres({"user": "u", "token": "t"}, "u/prog", dl, "run-l1")
+    assert ep == 7
+    assert (dl / "weights" / "last.pt").exists()
+    assert (dl / "weights" / "best.pt").exists()
+    assert (dl / "results.csv").exists()
+
+
+def test_main_progres_pulih_saat_kuota_putus(siapkan_main):
+    """Leg terputus kuota TANPA commit output, tapi progres live sempat terbit 4
+    epoch -> epoch itu TIDAK hilang (di-cache + dihitung), leg berikut lanjut 6
+    -> total 10. Inilah pemulihan yang dulu tak ada (L3 hilang ~8 jam)."""
+    tmp_path, jalankan = siapkan_main
+    rc, rek = jalankan(7, target=10,
+                       legs=[{"quota": True, "progres": 4}, {"epochs": 6}],
+                       pool=[{"user": "a", "token": "ta"},
+                             {"user": "b", "token": "tb"}])
+    assert rc == 0 and rek["keadaan"] == "selesai"
+    assert rek["kaggle"]["epochs_done"] == 10, \
+        "epoch dari progres live tak boleh hilang saat kuota putus"
+
+
+def test_main_akun_pilihan_diutamakan(siapkan_main):
+    """Pemilih akun: kalau rekaman punya kaggle.akun_pilihan, akun itu dipakai
+    LEBIH DULU walau akun lain juga tersedia (soft-preference)."""
+    tmp_path, jalankan = siapkan_main
+    rc, rek = jalankan(8, target=5, legs=[{"epochs": 5}],
+                       pool=[{"user": "a", "token": "ta"},
+                             {"user": "b", "token": "tb"}],
+                       kag_awal={"akun_pilihan": "b"})
+    assert rc == 0 and rek["keadaan"] == "selesai"
+    assert rek["kaggle"]["akun"] == "b", "akun pilihan harus diutamakan"
+
+
+def test_main_akun_pilihan_tak_dikenal_jatuh_ke_normal(siapkan_main):
+    """Akun pilihan yang tak ada di pool tak boleh menggagalkan — jatuh ke
+    urutan normal (akun pertama yang berkuota)."""
+    tmp_path, jalankan = siapkan_main
+    rc, rek = jalankan(9, target=5, legs=[{"epochs": 5}],
+                       pool=[{"user": "a", "token": "ta"}],
+                       kag_awal={"akun_pilihan": "zzz"})
+    assert rc == 0 and rek["keadaan"] == "selesai"
+    assert rek["kaggle"]["akun"] == "a"

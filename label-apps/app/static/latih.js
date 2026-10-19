@@ -811,6 +811,63 @@
       </div>` : ''}`;
   }
 
+  // Pop-up pemilih akun untuk "Lanjutkan di Kaggle": tampilkan akun + sisa
+  // kuota, biar user memilih akun mana yang melanjutkan. "Otomatis" = biarkan
+  // server ambil akun pertama yang berkuota (perilaku lama).
+  function bukaPilihAkun(b) {
+    document.querySelectorAll('.tr-akun-pop').forEach((e) => e.remove());
+    const nomor = b.dataset.sambung;
+    const akun = BAHAN.kaggle_akun || [];
+    const pop = document.createElement('div');
+    pop.className = 'tr-akun-pop';
+    pop.style.cssText = 'position:absolute;z-index:9999;background:#1b2330;'
+      + 'border:1px solid #2d3a4d;border-radius:8px;padding:8px;min-width:230px;'
+      + 'box-shadow:0 8px 28px rgba(0,0,0,.45);display:flex;flex-direction:column;'
+      + 'gap:6px;font-size:13px';
+    const opt = (akunId, label, cukup, judul) =>
+      `<button type="button" class="chip tr-akun-opt" data-akun="${akunId}"`
+      + `${cukup ? '' : ' disabled'} title="${judul || ''}" style="text-align:left`
+      + `${cukup ? '' : ';opacity:.5'}">${label}</button>`;
+    const baris = ['<div style="color:#9fb0c3;padding:2px 2px 4px">'
+      + 'Lanjutkan pakai akun:</div>'];
+    akun.forEach((a) => {
+      const sisa = Math.round((a.sisa_jam || 0) * 10) / 10;
+      const cukup = !a.habis && sisa >= 11;        // muat satu leg 11 jam
+      baris.push(opt(a.user, `${a.user} — sisa ${sisa}j`
+        + (cukup ? '' : ' (penuh)'), cukup,
+        cukup ? '' : 'kuota tak cukup untuk satu leg 11 jam'));
+    });
+    baris.push(opt('', 'Otomatis (akun pertama berkuota)', true, ''));
+    baris.push('<button type="button" class="chip tr-akun-batal" '
+      + 'style="color:#9fb0c3">Batal</button>');
+    pop.innerHTML = baris.join('');
+    document.body.appendChild(pop);
+    const r = b.getBoundingClientRect();
+    pop.style.left = (window.scrollX + r.left) + 'px';
+    pop.style.top = (window.scrollY + r.bottom + 4) + 'px';
+    const tutup = () => { pop.remove(); document.removeEventListener('click', luar, true); };
+    const luar = (ev) => { if (!pop.contains(ev.target) && ev.target !== b) tutup(); };
+    setTimeout(() => document.addEventListener('click', luar, true), 0);
+    pop.querySelector('.tr-akun-batal').onclick = tutup;
+    pop.querySelectorAll('.tr-akun-opt').forEach((o) => {
+      o.onclick = async () => {
+        tutup();
+        b.disabled = true;
+        b.textContent = 'Menyambung…';
+        const q = `/api/latih/sambung-kaggle?nomor=${nomor}`
+          + (o.dataset.akun ? `&akun=${encodeURIComponent(o.dataset.akun)}` : '');
+        const j = await ambil(q, {method: 'POST'});
+        if (!j.ok) {
+          alert(j.error || 'gagal menyambung');
+          b.disabled = false;
+          b.textContent = 'Lanjutkan di Kaggle';
+          return;
+        }
+        muatDaftar();
+      };
+    });
+  }
+
   async function muatDaftar() {
     let r;
     try { r = await ambil('/api/latih/daftar'); } catch { return; }
@@ -855,15 +912,7 @@
                                    b.dataset.ars || 'yolo');
     });
     document.querySelectorAll('[data-sambung]').forEach((b) => {
-      b.onclick = async () => {
-        b.disabled = true;
-        b.textContent = 'Menyambung…';
-        const j = await ambil(`/api/latih/sambung-kaggle?nomor=${b.dataset.sambung}`,
-                              {method: 'POST'});
-        if (!j.ok) { alert(j.error || 'gagal menyambung'); b.disabled = false;
-                     b.textContent = 'Lanjutkan di Kaggle'; return; }
-        muatDaftar();
-      };
+      b.onclick = () => bukaPilihAkun(b);
     });
     document.querySelectorAll('[data-hapus]').forEach((b) => {
       b.onclick = async () => {

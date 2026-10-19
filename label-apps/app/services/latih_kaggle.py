@@ -667,6 +667,57 @@ BOBOT = "__BOBOT__"
 RUN   = "__RUN__"
 BATAS_DETIK = float(__BATAS_JAM__) * 3600.0
 RESUME = __RESUME__
+PROG_ID = "__PROG_ID__"          # user/slug dataset progres; "" = fitur mati
+
+# --- kredensial untuk MENERBITKAN progres (epoch live + unduh bobot kapan saja).
+#     Token KGAT dibaca dari dataset privat yang di-mount, dipakai HANYA lewat env
+#     KAGGLE_API_TOKEN, TAK PERNAH dicetak ke log maupun ditulis ke /kaggle/working
+#     (jadi tak ikut ter-commit ke output). Semua langkah best-effort: gagal
+#     menerbitkan TIDAK boleh mengganggu training. ---
+_TOK = ""
+if PROG_ID:
+    try:
+        _tf = glob.glob("/kaggle/input/**/higolab_tok.txt", recursive=True)
+        if _tf:
+            _TOK = open(_tf[0]).read().strip()
+            os.environ["KAGGLE_API_TOKEN"] = _TOK
+            subprocess.run([sys.executable, "-m", "pip", "install", "-q",
+                            "--upgrade", "kaggle"], check=False)
+    except Exception:
+        _TOK = ""
+
+_last_terbit = [0.0]
+def _terbitkan(force=False):
+    if not (PROG_ID and _TOK):
+        return
+    try:
+        now = time.time()
+        if not force and now - _last_terbit[0] < 180.0:   # rate-limit ~3 mnt
+            return
+        st = "/kaggle/working/_prog"
+        shutil.rmtree(st, ignore_errors=True)
+        os.makedirs(st, exist_ok=True)
+        base = "/kaggle/working/" + RUN
+        if os.path.exists(base + "/results.csv"):
+            shutil.copy(base + "/results.csv", st + "/results.csv")
+        for w in ("last.pt", "best.pt"):
+            if os.path.exists(base + "/weights/" + w):
+                shutil.copy(base + "/weights/" + w, st + "/" + w)
+        if not os.listdir(st):
+            return
+        json.dump({"title": PROG_ID.split("/")[-1][:50], "id": PROG_ID,
+                   "licenses": [{"name": "CC0-1.0"}]},
+                  open(st + "/dataset-metadata.json", "w"))
+        r = subprocess.run(["kaggle", "datasets", "status", PROG_ID],
+                           capture_output=True, text=True)
+        ada = "ready" in (r.stdout + r.stderr).lower()
+        cmd = (["kaggle", "datasets", "version", "-p", st, "-m", "live",
+                "-r", "zip", "-q"] if ada else
+               ["kaggle", "datasets", "create", "-p", st, "-r", "zip", "-q"])
+        subprocess.run(cmd, capture_output=True, text=True)
+        _last_terbit[0] = now
+    except Exception as e:
+        print("TERBIT_SKIP", str(e)[:60], flush=True)   # tak pernah cetak token
 
 # --- temukan dataset (data.yaml) di /kaggle/input, apa pun kedalamannya ---
 ys = glob.glob("/kaggle/input/**/data.yaml", recursive=True)
@@ -712,15 +763,20 @@ DEV = "0,1" if torch.cuda.device_count() >= 2 else 0
 print("DEVICE", DEV, "BATAS_JAM", __BATAS_JAM__, "RESUME", RESUME, flush=True)
 
 t0 = time.time()
-def _stop_waktu(trainer):
+def _tiap_epoch(trainer):
+    # Terbitkan progres DULU (results.csv + bobot terbaru sudah ditulis
+    # Ultralytics untuk epoch ini) supaya epoch yang baru selesai langsung bisa
+    # dilihat/diunduh dari HIGOLAB, lalu periksa batas waktu.
+    _terbitkan()
     if time.time() - t0 >= BATAS_DETIK:
         print("BATAS_WAKTU tercapai -> berhenti rapi", flush=True)
         trainer.stop = True
 
 model = YOLO(mula)
-model.add_callback("on_fit_epoch_end", _stop_waktu)
+model.add_callback("on_fit_epoch_end", _tiap_epoch)
 model.train(data=DATA_YAML, task=TUGAS, project="/kaggle/working", name=RUN,
             exist_ok=True, device=DEV, **PAR)
+_terbitkan(force=True)        # terbitan terakhir: hasil final leg ini
 
 import pandas as pd
 rp = "/kaggle/working/" + RUN + "/results.csv"
@@ -735,15 +791,19 @@ print("BEST_EXISTS", os.path.exists(bp), (os.path.getsize(bp) if os.path.exists(
 
 
 def skrip_latih(tugas: str, bobot: str, par: dict, *, run: str,
-                batas_jam: float, resume: bool) -> str:
-    """Rakit skrip kernel. Murni -> diuji tanpa jaringan."""
+                batas_jam: float, resume: bool, prog_id: str = "") -> str:
+    """Rakit skrip kernel. Murni -> diuji tanpa jaringan.
+
+    prog_id (user/slug dataset progres) mengaktifkan penerbitan epoch-live +
+    unduh bobot. Kosong = fitur mati, skrip identik perilaku lamanya."""
     return (_SKRIP_TEMPLAT
             .replace("__PAR_JSON__", json.dumps(par))
             .replace("__TUGAS__", str(tugas))
             .replace("__BOBOT__", str(bobot))
             .replace("__RUN__", str(run))
             .replace("__BATAS_JAM__", repr(float(batas_jam)))
-            .replace("__RESUME__", "True" if resume else "False"))
+            .replace("__RESUME__", "True" if resume else "False")
+            .replace("__PROG_ID__", str(prog_id or "")))
 
 
 # Skrip kernel RF-DETR: pip install rfdetr sendiri (nol dampak lokal), cari
@@ -1126,6 +1186,41 @@ def _poll_kernel(akun: dict, kid: str, lapor) -> tuple[str, str]:
     return "timeout", terakhir
 
 
+def _poll_progres(akun: dict, kid: str, prog_id: str, dl: Path, run: str,
+                  base_ep: int, target: int, lapor) -> tuple[str, str, int]:
+    """Seperti _poll_kernel, tapi tiap ~60 dtk juga menarik dataset progres:
+    epoch dilaporkan LIVE (base_ep + epoch leg ini) dan bobot terbaru di-cache ke
+    .latih. Kembalikan (hasil, teks, live_ep) — live_ep = epoch leg ini yang
+    terlihat dari progres (0 kalau tak ada). Best-effort: kalau progres gagal,
+    ia tetap berperilaku seperti _poll_kernel biasa."""
+    token = akun["token"]
+    t0 = time.time()
+    batas = BATAS_JAM * 3600 + 3600
+    terakhir = ""
+    t_prog = 0.0
+    live_ep = 0
+    while time.time() - t0 < batas:
+        _tidur(20)
+        rc, out = _kg(["kernels", "status", kid], token, timeout=120)
+        low = out.lower()
+        if low != terakhir:
+            terakhir = low
+            lapor(remote=out.strip()[:200])
+        now = time.time()
+        if now - t_prog >= 60.0:                      # tarik progres tiap ~1 mnt
+            t_prog = now
+            ep = _serap_progres(akun, prog_id, dl, run)
+            if ep > live_ep:
+                live_ep = ep
+                lapor(epochs_done=base_ep + live_ep,
+                      pesan=f"epoch {base_ep + live_ep}/{target} (live dari Kaggle)")
+        if "complete" in low:
+            return "complete", out, live_ep
+        if "error" in low or "cancel" in low:
+            return "error", out, live_ep
+    return "timeout", terakhir, live_ep
+
+
 def _tarik_keluaran(akun: dict, kid: str, tujuan: Path) -> Path:
     token = akun["token"]
     Path(tujuan).mkdir(parents=True, exist_ok=True)
@@ -1133,6 +1228,90 @@ def _tarik_keluaran(akun: dict, kid: str, tujuan: Path) -> Path:
     if rc != 0:
         raise RuntimeError(f"tarik output gagal: {out[-300:]}")
     return Path(tujuan)
+
+
+# ============================================================
+# PROGRES LIVE (epoch-live + unduh bobot kapan saja) — ter-guard flag.
+# Kernel menerbitkan results.csv + last/best ke sebuah dataset PROGRES privat;
+# orkestrator menariknya saat poll -> epoch live, cache bobot ke .latih (tombol
+# unduh existing langsung berlaku), dan PULIH saat kuota putus (lanjut dari
+# terbitan terakhir, bukan kehilangan seluruh leg).
+# ============================================================
+# Dimatikan -> jalur Kaggle lama PERSIS, tanpa dataset kredensial/progres apa pun.
+_LIVE_PROGRES = os.environ.get("LABELAPP_KAGGLE_LIVE_PROGRES", "1") \
+    not in ("0", "false", "no", "")
+
+
+def _unggah_kredensial(akun: dict) -> str:
+    """Dataset PRIVAT slug-acak berisi SATU berkas (token KGAT akun), untuk
+    di-mount ke kernel supaya kernel bisa menerbitkan progres. Slug tak bisa
+    ditebak, dataset privat, token TAK PERNAH masuk sumber/log kernel, dan
+    dataset ini DIHAPUS di akhir tiap leg (window eksposur sempit)."""
+    user, token = akun["user"], akun["token"]
+    slug = _slug(f"higolab-kg-{uuid.uuid4().hex[:8]}")
+    dsid = f"{user}/{slug}"
+    with tempfile.TemporaryDirectory() as tmp:
+        p = Path(tmp) / "cred"
+        p.mkdir()
+        (p / "higolab_tok.txt").write_text(token)      # token saja, tak ada lain
+        (p / "dataset-metadata.json").write_text(
+            json.dumps(_meta_dataset(user, slug, slug)))
+        # Kaggle `datasets create` -> PRIVAT secara bawaan (tanpa --public).
+        rc, out = _kg(["datasets", "create", "-p", str(p), "-q"], token, timeout=300)
+    if rc != 0:
+        raise RuntimeError(f"buat dataset kredensial gagal: {_bersih_token(out[-200:], token)}")
+    for _ in range(30):
+        _tidur(5)
+        if "ready" in _kg(["datasets", "status", dsid], token, 120)[1].lower():
+            break
+    return dsid
+
+
+def _hapus_dataset(akun: dict, dsid: str) -> None:
+    """Best-effort: hapus dataset (mis. kredensial/progres). Tak pernah melempar."""
+    if not dsid:
+        return
+    try:
+        _kg(["datasets", "delete", dsid, "-y"], akun["token"], 120)
+    except Exception:                                 # noqa: BLE001
+        pass
+
+
+def _prog_id(akun: dict, nomor: int, leg: int) -> str:
+    """Slug dataset progres untuk SATU leg (user/slug), deterministik supaya
+    orkestrator bisa menariknya tanpa menebak."""
+    return f"{akun['user']}/{_slug(f'higolab-prog-l{nomor}-leg{leg}')}"
+
+
+def _serap_progres(akun: dict, prog_id: str, dl: Path, run: str) -> int:
+    """Tarik dataset progres (kalau sudah ada), simpan results.csv + bobot ke
+    .latih/L<n>/ supaya tombol unduh existing menyajikan yang TERBARU. Kembalikan
+    jumlah epoch leg ini menurut results.csv (0 kalau belum ada). Best-effort:
+    gagal menarik -> 0, tak melempar."""
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            t = Path(tmp)
+            rc, _ = _kg(["datasets", "download", prog_id, "-p", str(t),
+                         "--unzip"], akun["token"], timeout=300)
+            if rc != 0:
+                return 0
+            ep = 0
+            rc_csv = next(iter(t.rglob("results.csv")), None)
+            if rc_csv:
+                (dl / "weights").mkdir(parents=True, exist_ok=True)
+                shutil.copy2(rc_csv, dl / "results.csv")
+                try:
+                    ep = max(0, sum(1 for _ in rc_csv.open()) - 1)
+                except OSError:
+                    ep = 0
+            for w in ("last.pt", "best.pt"):
+                wp = next(iter(t.rglob(w)), None)
+                if wp:
+                    (dl / "weights").mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(wp, dl / "weights" / w)
+            return ep
+    except Exception:                                 # noqa: BLE001
+        return 0
 
 
 def _galat_kuota(teks: str) -> bool:
@@ -1324,6 +1503,12 @@ def main() -> int:
     # training yang sudah berjalan tak terganggu.
     pemilik = str(isi.get("oleh") or "").strip()
     pool = akun_pool_user(settings, pemilik) if pemilik else akun_pool(settings)
+    # Akun pilihan dari "Lanjutkan di Kaggle" (pemilih akun): ditaruh DI DEPAN
+    # supaya _pilih_akun memakainya lebih dulu. SOFT-preference: kalau kuotanya
+    # habis, rotasi ke akun lain tetap jalan -> run panjang tetap selesai.
+    pilih = str((isi.get("kaggle") or {}).get("akun_pilihan") or "").strip()
+    if pilih and pool:
+        pool = sorted(pool, key=lambda a: a.get("user") != pilih)
     if not pool:
         latih.perbarui(ds, nomor, keadaan="gagal",
                        galat=("akun Kaggle milik user ini belum ada — tambahkan "
@@ -1403,30 +1588,60 @@ def main() -> int:
                 ckid = _unggah_checkpoint(ds, dl, akun, ck_slug)
                 sumber.append(ckid)
 
-            skrip = skrip_latih(tugas, bobot, par_leg, run=run,
-                                batas_jam=BATAS_JAM, resume=resume)
-            kid, url = _push_kernel(akun, slug_k, skrip, sumber)
-            lapor(kernel=kid, kernel_url=url, remote="queued",
-                  pesan=f"leg {leg+1} berjalan di Kaggle (akun {akun['user']})")
-
-            t0 = time.time()
-            hasil, teks = _poll_kernel(akun, kid,
-                                       lambda s: lapor(remote=s))
-            _catat_pakai(basis, akun["user"], (time.time() - t0) / 3600.0)
-
-            # Tarik hasil leg ini. ep_leg = epoch yang DISELESAIKAN leg ini
-            # (penomoran leg sendiri), ditambahkan ke kumulatif. best.pt/last.pt/
-            # results.csv terbaru mendarat di .latih/L<n>/ — jadi leg berikutnya
-            # melanjutkan dari sana dan status()/unduh bobot tetap berlaku.
-            ep_leg = 0
-            with tempfile.TemporaryDirectory() as tmp:
+            # Progres live (epoch-live + unduh bobot kapan saja): kernel menulis
+            # ke dataset PROGRES; token akun di-mount via dataset KREDENSIAL privat
+            # slug-acak. Keduanya best-effort — gagal menyiapkan = jatuh ke jalur
+            # lama tanpa menggagalkan leg. Kredensial & progres dihapus di finally.
+            prog_id, cred_id = "", ""
+            if _LIVE_PROGRES:
                 try:
-                    _tarik_keluaran(akun, kid, Path(tmp))
-                    ep_leg = serap_keluaran(Path(tmp), run, dl)
+                    cred_id = _unggah_kredensial(akun)
+                    sumber.append(cred_id)
+                    prog_id = _prog_id(akun, nomor, leg)
+                    _hapus_dataset(akun, prog_id)        # buang sisa senama bila ada
                 except Exception as e:                   # noqa: BLE001
-                    if hasil == "complete":
-                        raise                            # sukses tapi output tak terbaca -> nyata gagal
-                    ep_leg = 0                           # leg tak sukses: tak apa kosong
+                    cred_id = prog_id = ""
+                    lapor(pesan=f"progres live nonaktif (siapkan gagal): {str(e)[:80]}")
+
+            ep_leg = 0
+            try:
+                skrip = skrip_latih(tugas, bobot, par_leg, run=run,
+                                    batas_jam=BATAS_JAM, resume=resume,
+                                    prog_id=prog_id)
+                kid, url = _push_kernel(akun, slug_k, skrip, sumber)
+                lapor(kernel=kid, kernel_url=url, remote="queued",
+                      pesan=f"leg {leg+1} berjalan di Kaggle (akun {akun['user']})")
+
+                t0 = time.time()
+                live_ep = 0
+                if prog_id:
+                    hasil, teks, live_ep = _poll_progres(
+                        akun, kid, prog_id, dl, run, epochs_done, target, lapor)
+                else:
+                    hasil, teks = _poll_kernel(akun, kid, lambda s: lapor(remote=s))
+                _catat_pakai(basis, akun["user"], (time.time() - t0) / 3600.0)
+
+                # Tarik hasil leg ini. ep_leg = epoch yang DISELESAIKAN leg ini
+                # (penomoran leg sendiri), ditambahkan ke kumulatif. best.pt/
+                # last.pt/results.csv terbaru mendarat di .latih/L<n>/ — jadi leg
+                # berikutnya melanjutkan dari sana dan status()/unduh tetap jalan.
+                with tempfile.TemporaryDirectory() as tmp:
+                    try:
+                        _tarik_keluaran(akun, kid, Path(tmp))
+                        ep_leg = serap_keluaran(Path(tmp), run, dl)
+                    except Exception:                    # noqa: BLE001
+                        if hasil == "complete":
+                            raise                        # sukses tapi output tak terbaca -> nyata gagal
+                        ep_leg = 0                       # leg tak sukses: tak apa kosong
+                # Kuota putus di tengah leg -> output kernel TAK ter-commit, tapi
+                # progres live sempat menerbitkan results.csv + bobot (sudah di-
+                # cache ke .latih oleh _poll_progres). Pakai itu supaya epoch yang
+                # sudah dilatih TIDAK hilang — persis masalah leg yang terputus.
+                if ep_leg <= 0 and live_ep > 0:
+                    ep_leg = live_ep
+            finally:
+                _hapus_dataset(akun, cred_id)            # window token sesempit leg
+                _hapus_dataset(akun, prog_id)
 
             if ep_leg > 0:                               # leg maju -> lanjut/selesai
                 epochs_done += ep_leg
