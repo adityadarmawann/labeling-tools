@@ -499,7 +499,9 @@ async def versi_mulai(request: Request, split: str = "", catatan: str = "",
     _td = await asyncio.to_thread(tugas.baca_projek, sess.src,
                                   settings.uploads_root)
     _fmt = str(resep.get("format") or "").strip().lower()
-    jenis_ds = (_fmt if _fmt in tugas.JENIS_ANOTASI
+    # "campuran" = format khusus Mask R-CNN (poligon produk + kotak logo dalam
+    # satu versi). Bukan jenis anotasi projek, jadi diterima terpisah di sini.
+    jenis_ds = (_fmt if _fmt in tugas.JENIS_ANOTASI or _fmt == "campuran"
                 else tugas.jenis_berlaku(_td, items))
     # Guard "tolak campuran": versi segmentasi tak boleh memuat kelas yang
     # didominasi kotak (mis. logo) -- kotak tidak bisa jadi mask. Ditolak di sini

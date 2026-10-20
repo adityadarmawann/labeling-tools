@@ -147,7 +147,12 @@ async def bahan(sess: Session = Depends(current_session_api),
             "rfdetr_alasan": svc.siap_rfdetr()[1],
             "rfdetr_model": list(svc.RFDETR_MODEL),
             "preset_rfdetr": svc.PRESET_RFDETR,
-            "batas_rfdetr": {k: list(v) for k, v in svc.BATAS_RFDETR.items()}}
+            "batas_rfdetr": {k: list(v) for k, v in svc.BATAS_RFDETR.items()},
+            "maskrcnn_siap": svc.siap_maskrcnn()[0],
+            "maskrcnn_alasan": svc.siap_maskrcnn()[1],
+            "maskrcnn_model": list(svc.MASKRCNN_MODEL),
+            "preset_maskrcnn": svc.PRESET_MASKRCNN,
+            "batas_maskrcnn": {k: list(v) for k, v in svc.BATAS_MASKRCNN.items()}}
 
 
 @router.get("/api/latih/daftar")
@@ -186,12 +191,15 @@ async def mulai(request: Request,
     arsitektur = svc.arsitektur_sah(str(body.get("arsitektur") or "yolo").strip().lower())
     rfdetr_model = str(body.get("rfdetr_model") or "").strip().lower()
     rfdetr_multigpu = bool(body.get("rfdetr_multigpu"))   # saklar T4x2 (Kaggle), default mati
+    maskrcnn_model = str(body.get("maskrcnn_model") or "").strip().lower()
     if backend == "kaggle":
         # RF-DETR di Kaggle: kernelnya pip-install rfdetr sendiri, jadi server
         # ini TIDAK perlu rfdetr lokal — cukup akun Kaggle user ini terkonfigurasi.
         siap, alasan = svc_kaggle.siap_user(settings, sess.user)
     elif arsitektur == "rfdetr":
         siap, alasan = svc.siap_rfdetr()
+    elif arsitektur == "maskrcnn":
+        siap, alasan = svc.siap_maskrcnn()
     else:
         siap, alasan = svc.siap_latih()
     if not siap:
@@ -246,7 +254,8 @@ async def mulai(request: Request,
                 warna=warna, backend=backend, preset=preset,
                 arsitektur=arsitektur,
                 rfdetr_model=str(satu.get("rfdetr_model") or rfdetr_model),
-                rfdetr_multigpu=rfdetr_multigpu)
+                rfdetr_multigpu=rfdetr_multigpu,
+                maskrcnn_model=str(satu.get("maskrcnn_model") or maskrcnn_model))
         except ValueError as e:
             return {"ok": False, "error": str(e), "dibuat": dibuat}
         try:
@@ -349,6 +358,55 @@ async def lanjut(request: Request,
             await asyncio.to_thread(svc.jalankan, d, isi["nomor"])
         except Exception as e:                       # noqa: BLE001
             _log.exception("gagal meluncurkan lanjutan RF-DETR")
+            await asyncio.to_thread(svc.perbarui, d, isi["nomor"],
+                                    keadaan="gagal", galat=str(e)[:200])
+            return {"ok": False, "error": str(e)[:200]}
+        return {"ok": True, "nomor": isi["nomor"], "dari": dari}
+
+    # ---- Mask R-CNN: resume SEJATI dari maskrcnn/last.ckpt (model+optimizer+
+    # epoch). epochs = TOTAL baru (> epoch sumber). Lokal saja untuk sekarang. --
+    if arsitektur == "maskrcnn":
+        siap, alasan = svc.siap_maskrcnn()
+        if not siap:
+            return {"ok": False, "error": alasan}
+        src_ckpt = svc.dir_latih(d, dari) / "maskrcnn" / "last.ckpt"
+        if not src_ckpt.exists():
+            return {"ok": False,
+                    "error": f"training L{dari} belum punya checkpoint penuh "
+                             "(maskrcnn/last.ckpt) untuk dilanjutkan"}
+        src_epochs = int((sumber.get("par") or {}).get("epochs") or 0)
+        if epochs <= src_epochs:
+            return {"ok": False,
+                    "error": f"epoch lanjutan ({epochs}) harus lebih besar dari epoch "
+                             f"sumber ({src_epochs}) — Mask R-CNN melanjutkan sampai "
+                             "total epoch ini, bukan menambah dari awal"}
+        par = dict(sumber.get("par") or {})
+        par["epochs"] = epochs
+        nama = str(body.get("nama") or "").strip() \
+            or f"{sumber.get('nama') or f'L{dari}'} lanjutan"
+        catatan = str(body.get("catatan") or "").strip() \
+            or f"Lanjutan Mask R-CNN dari L{dari} ({src_epochs} -> {epochs} epoch)"
+        try:
+            isi = await asyncio.to_thread(
+                svc.siapkan, d, nama=nama, versi_nomor=versi_nomor,
+                tugas="segment", bobot="", par=par, oleh=sess.user, catatan=catatan,
+                warna={}, lanjut_dari=dari, preset=sumber.get("preset") or "rvm",
+                arsitektur="maskrcnn",
+                maskrcnn_model=sumber.get("maskrcnn_model") or "r50v2",
+                backend="lokal")
+        except ValueError as e:
+            return {"ok": False, "error": str(e)}
+        new_dl = svc.dir_latih(d, isi["nomor"])
+
+        def _semai_mr():
+            (new_dl / "maskrcnn").mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src_ckpt, new_dl / "maskrcnn" / "last.ckpt")
+
+        await asyncio.to_thread(_semai_mr)
+        try:
+            await asyncio.to_thread(svc.jalankan, d, isi["nomor"])
+        except Exception as e:                       # noqa: BLE001
+            _log.exception("gagal meluncurkan lanjutan Mask R-CNN")
             await asyncio.to_thread(svc.perbarui, d, isi["nomor"],
                                     keadaan="gagal", galat=str(e)[:200])
             return {"ok": False, "error": str(e)[:200]}

@@ -170,3 +170,35 @@ def test_poligon_sah_kalau_semua_kelas_poligon(klien, lingkungan):
     v = d / ".versi" / "v1"
     lines = _label_lines(v)
     assert lines and all(len(t) > 5 for t in lines), "harus poligon (>5 kolom)"
+
+
+def test_format_campuran_untuk_maskrcnn(klien, lingkungan):
+    """Format 'campuran' (Mask R-CNN): produk (poligon) tetap poligon, logo
+    (kotak) IKUT (tak dibuang) sebagai poligon-rektangel. Satu versi membawa
+    keduanya -> ekspor COCO memberi segmentasi ke semua, dan Mask R-CNN dapat
+    mask produk + kotak logo. Kontras: format 'poligon' MEMBUANG logo-nya."""
+    masuk(klien, "paul", PW_PAUL)
+    d = _ds_campur(klien, n=6)          # tiap gambar: produk polygon + logo rect
+    klien.post(f"/setsrc?path={d}")
+    assert _mulai(klien, _resep(format="campuran")).get("ok")
+    k = _tunggu(klien)
+    assert k.get("selesai"), k
+    v = d / ".versi" / "v1"
+    assert len(list((v / "train" / "images").glob("*.jpg"))) == 6, \
+        "logo tak boleh membuang gambar (campuran menerima kotak)"
+    lines = _label_lines(v)
+    assert lines and all(len(t) > 5 for t in lines), "campuran -> semua poligon"
+    assert {t[0] for t in lines} == {"0", "1"}, "produk DAN logo harus ada"
+
+    # Ekspor COCO versi campuran -> tiap anotasi punya segmentation (mask),
+    # termasuk logo (poligon-rektangel) -> Mask R-CNN dapat kedua kelas.
+    from app.services import ekspor_coco
+    import json as _json
+    out = d / ".versi" / "campuran-coco-uji"
+    ekspor_coco.versi_ke_coco(v, out)
+    data = _json.loads((out / "train" / "_annotations.coco.json").read_text())
+    kcat = {c["id"]: c["name"] for c in data["categories"]}
+    kelas_ann = {kcat[a["category_id"]] for a in data["annotations"]}
+    assert {"produk", "logo"} <= kelas_ann, f"COCO harus punya keduanya: {kelas_ann}"
+    assert all(a["segmentation"] for a in data["annotations"]), \
+        "campuran: semua anotasi (produk+logo) punya segmentasi untuk Mask R-CNN"

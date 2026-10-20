@@ -281,7 +281,7 @@ def preset_pakai_warna(nama: str | None) -> bool:
 # Dimensi BARU, ortogonal terhadap preset/backend/tugas. "yolo" = jalur lama
 # tak berubah; "rfdetr" = transformer DETR dari Roboflow (unggul objek kecil/
 # okludsi — bola basket). Keduanya hidup di .venv-gpu; user memilih di form.
-ARSITEKTUR = ("yolo", "rfdetr")
+ARSITEKTUR = ("yolo", "rfdetr", "maskrcnn")
 
 # Ukuran model RF-DETR yang ditawarkan (resolusi native naik seiring ukuran).
 RFDETR_MODEL = ("nano", "small", "medium", "large")
@@ -331,6 +331,41 @@ def siap_rfdetr() -> tuple[bool, str]:
     if importlib.util.find_spec("rfdetr") is None:
         return False, ("Server ini tanpa paket 'rfdetr' (hanya ada di .venv-gpu). "
                        "Nyalakan dengan LABELAPP_OLAH=gpu untuk melatih RF-DETR.")
+    return True, ""
+
+
+# ---- Mask R-CNN (arsitektur ketiga; satu model: mask produk + kotak logo) ----
+# Lewat torchvision (maskrcnn_resnet50_fpn[_v2]) — Detectron2 tak mendukung torch
+# modern (2.14/cu13/py3.13); torchvision ikut torch, jadi tanpa dependensi baru.
+MASKRCNN_MODEL = ("r50v2", "r50")       # fpn_v2 (akurat) / fpn (lebih ringan)
+MASKRCNN_MODEL_BAWAAN = "r50v2"
+PRESET_MASKRCNN: dict = {
+    "epochs": 50,
+    "batch_size": 2,
+    "lr": 0.005,            # SGD; dijepit warmup linear di worker
+    "resolution": 800,      # min_size transform; max_size ~ 5/3 x di worker
+    "warmup_epochs": 1.0,
+}
+BATAS_MASKRCNN: dict[str, tuple] = {
+    "epochs": (1, 500),
+    "batch_size": (1, 16),
+    "lr": (1e-5, 0.05),
+    "resolution": (320, 1333),
+    "warmup_epochs": (0.0, 10.0),
+}
+
+
+def maskrcnn_model_sah(nama: str | None) -> str:
+    return nama if nama in MASKRCNN_MODEL else MASKRCNN_MODEL_BAWAAN
+
+
+def siap_maskrcnn() -> tuple[bool, str]:
+    """Server ini bisa melatih Mask R-CNN lokal atau tidak. Butuh `torchvision`
+    (ikut torch di .venv-gpu). Di server CPU tanpa torch -> tidak bisa."""
+    import importlib.util
+    if importlib.util.find_spec("torchvision") is None:
+        return False, ("Server ini tanpa 'torchvision' (hanya ada di .venv-gpu). "
+                       "Nyalakan dengan LABELAPP_OLAH=gpu untuk melatih Mask R-CNN.")
     return True, ""
 
 
@@ -689,7 +724,8 @@ def hidup(pid) -> bool:
         # mis. pytest yang menyebut tests/test_latih_rfdetr.py di argv-nya —
         # sehingga proses mati bisa salah terlihat "hidup" saat PID dipakai ulang.
         return any(f"app.services.{w}" in cmd for w in
-                   ("latih_jalan", "latih_kaggle", "latih_rfdetr"))
+                   ("latih_jalan", "latih_kaggle", "latih_rfdetr",
+                    "latih_maskrcnn"))
     except OSError:
         return True
 
@@ -840,6 +876,8 @@ def status(ds, nomor: int) -> dict:
         "rfdetr_model": isi.get("rfdetr_model") or "",
         "rfdetr_multigpu": bool(isi.get("rfdetr_multigpu")),
         "rfdetr": isi.get("rfdetr") or {},
+        "maskrcnn_model": isi.get("maskrcnn_model") or "",
+        "maskrcnn": isi.get("maskrcnn") or {},
         "kaggle": isi.get("kaggle") or {},
         "keadaan": keadaan,
         "epoch": ep, "epochs": epochs, "persen": persen,
@@ -854,6 +892,8 @@ def status(ds, nomor: int) -> dict:
         # DILANJUTKAN (resume sejati). Dipakai kartu untuk menampilkan tombol
         # "Lanjutkan" pada RF-DETR, setara YOLO yang memakai best.pt.
         "rfdetr_ckpt": (d / "rfdetr" / "last.ckpt").exists(),
+        # Checkpoint Mask R-CNN state-penuh -> bisa "Lanjutkan" (resume sejati).
+        "maskrcnn_ckpt": (d / "maskrcnn" / "last.ckpt").exists(),
     }
     return out
 
@@ -914,22 +954,28 @@ def siapkan(ds, *, nama: str, versi_nomor: int, tugas: str, bobot: str,
             warna: dict | None = None, lanjut_dari: int | None = None,
             backend: str = "lokal", preset: str = "rvm",
             arsitektur: str = "yolo", rfdetr_model: str = "",
-            rfdetr_multigpu: bool = False) -> dict:
+            rfdetr_multigpu: bool = False, maskrcnn_model: str = "") -> dict:
     """Catat satu training baru. Belum dijalankan."""
     n = nomor_berikut(ds)
     preset = preset_sah(preset)
     arsitektur = arsitektur_sah(arsitektur)
     rfdetr_model = rfdetr_model_sah(rfdetr_model) if arsitektur == "rfdetr" else ""
+    maskrcnn_model = maskrcnn_model_sah(maskrcnn_model) if arsitektur == "maskrcnn" else ""
     # RF-DETR hanya deteksi kotak — tak punya keypoint/mask. Pose & segment HANYA
     # YOLO. Dipaksa di server supaya UI (yang sudah menyaring) tak bisa dilewati.
     if arsitektur == "rfdetr":
         tugas = "detect"
+    # Mask R-CNN = deteksi+segmentasi instance (kotak + mask), bukan pose.
+    elif arsitektur == "maskrcnn" and tugas == "pose":
+        tugas = "segment"
     # Saklar 2-GPU (Kaggle T4x2) — hanya bermakna untuk RF-DETR; default mati.
     rfdetr_multigpu = bool(rfdetr_multigpu) and arsitektur == "rfdetr"
-    # RF-DETR punya hyperparameter & batas sendiri, dan TIDAK memakai preset
-    # augmentasi/mode_warna YOLO (augmentasinya internal di lib).
+    # Tiap arsitektur punya hyperparameter & batas sendiri, dan TIDAK memakai
+    # preset augmentasi/mode_warna YOLO (augmentasinya internal / torchvision).
     if arsitektur == "rfdetr":
         par_bersih, galat = _saring_par(par, dasar=PRESET_RFDETR, batas=BATAS_RFDETR)
+    elif arsitektur == "maskrcnn":
+        par_bersih, galat = _saring_par(par, dasar=PRESET_MASKRCNN, batas=BATAS_MASKRCNN)
     else:
         par_bersih, galat = _saring_par(par, dasar=preset_par(preset))
     if galat:
@@ -958,7 +1004,7 @@ def siapkan(ds, *, nama: str, versi_nomor: int, tugas: str, bobot: str,
         mode = mw.sah((warna or {}).get("mode"))
         par_bersih.update(mw.par_latih(mode))
     else:
-        warna = {}                           # basket / RF-DETR: tak ada toggle warna
+        warna = {}                     # basket / RF-DETR / Mask R-CNN: tanpa toggle
     if tugas not in TUGAS:
         raise ValueError(f"tugas harus salah satu dari {TUGAS}")
     # Daftar kelas DIBEKUKAN di sini, sama alasannya dengan warna: versinya bisa
@@ -989,6 +1035,7 @@ def siapkan(ds, *, nama: str, versi_nomor: int, tugas: str, bobot: str,
         "arsitektur": arsitektur,
         "rfdetr_model": rfdetr_model,
         "rfdetr_multigpu": rfdetr_multigpu,
+        "maskrcnn_model": maskrcnn_model,
         "par": par_bersih,
         # Hasil periksa_warna DIBEKUKAN di sini, bukan dihitung ulang saat
         # ditampilkan: versinya bisa saja dihapus nanti, dan alasan sebuah
@@ -1062,6 +1109,8 @@ def jalankan(ds, nomor: int) -> dict:
         modul = "app.services.latih_kaggle"
     elif isi.get("arsitektur") == "rfdetr":
         modul = "app.services.latih_rfdetr"
+    elif isi.get("arsitektur") == "maskrcnn":
+        modul = "app.services.latih_maskrcnn"
     else:
         modul = "app.services.latih_jalan"
     perintah = [sys.executable, "-m", modul,

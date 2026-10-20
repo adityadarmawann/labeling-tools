@@ -435,9 +435,14 @@ class Pekerjaan:
         self.jenis = (jenis or "").strip().lower()
         if self.jenis == "kerangka":
             pass                               # projek keypoint/pose
-        elif self.jenis not in ("poligon", "kotak"):
+        elif self.jenis not in ("poligon", "kotak", "campuran"):
             self.jenis = scanner.terapkan_jenis(list(items), "")
-        self.segmentasi = self.jenis == "poligon"
+        # "campuran" = untuk Mask R-CNN: tulis POLIGON untuk semua (produk pakai
+        # poligon aslinya; kotak/logo jadi poligon-rektangel = kotaknya), dan
+        # JANGAN buang shape kotak (bentuk_tak_sesuai hanya membuang saat jenis
+        # "poligon"). Jadi satu versi membawa mask produk + kotak logo bersama,
+        # yang ekspor COCO-nya menyinyalkan partial-mask ke Mask R-CNN.
+        self.segmentasi = self.jenis in ("poligon", "campuran")
         # Projek pose: template skeleton (K keypoint + flip_idx). Build-nya lewat
         # jalur tersendiri (_bangun_pose) dengan augmentasi keypoint-aware.
         self.skeleton = skeleton if isinstance(skeleton, dict) else {}
