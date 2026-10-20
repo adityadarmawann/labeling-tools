@@ -94,6 +94,12 @@
                 <input type="radio" name="wz-format" value="poligon">
                 <span><b>Segmentasi (poligon)</b>. Objek ditulis sebagai mask.
                   Anotasi kotak tidak bisa jadi mask.</span></label>
+              <label class="wz-pilihan">
+                <input type="radio" name="wz-format" value="campuran">
+                <span><b>Campuran (untuk Mask R-CNN)</b>. Objek berpoligon ditulis
+                  sebagai mask, objek berkotak IKUT (jadi poligon-rektangel).
+                  Satu versi membawa mask produk + kotak logo bersama &mdash; untuk
+                  melatih SATU model Mask R-CNN (mask + kotak sekaligus).</span></label>
             </div>
             <p class="wz-format-awas" id="wz-format-awas" hidden></p>
           </div>

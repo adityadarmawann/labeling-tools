@@ -60,6 +60,7 @@
           <select id="tr-arsitektur">
             <option value="yolo">YOLO, cepat, serbaguna (default)</option>
             <option value="rfdetr">RF-DETR, transformer, unggul objek kecil</option>
+            <option value="maskrcnn">Mask R-CNN, satu model: mask + kotak</option>
           </select>
           <span class="tr-bantu" id="tr-arsitektur-ket"></span>
         </label>
@@ -72,6 +73,15 @@
             <option value="small">Small</option>
             <option value="medium">Medium</option>
             <option value="large">Large, paling akurat/berat</option>
+          </select>
+        </label>
+
+        {#- Ukuran model Mask R-CNN (torchvision). Hanya muncul saat Arsitektur
+            = Mask R-CNN. r50v2 lebih akurat, r50 lebih ringan. -#}
+        <label class="tr-label" id="tr-maskrcnn-model-bungkus" hidden>Ukuran model Mask R-CNN
+          <select id="tr-maskrcnn-model">
+            <option value="r50v2">ResNet50-FPN v2 (akurat, default)</option>
+            <option value="r50">ResNet50-FPN (lebih ringan)</option>
           </select>
         </label>
 

@@ -122,6 +122,19 @@
      'Epoch awal dengan laju belajar dinaikkan pelan'],
   ];
 
+  /* Mask R-CNN (torchvision): satu model = mask produk + kotak logo. Lima angka
+     saja; bawaan & batas dari server (BAHAN.preset_maskrcnn / batas_maskrcnn). */
+  const PAR_MASKRCNN = [
+    ['epochs', 'Epoch', '', 'Berapa kali seluruh data dilewati saat melatih'],
+    ['batch_size', 'Batch', 'terlalu besar = VRAM habis',
+     'Berapa gambar diproses sekaligus tiap langkah'],
+    ['lr', 'Learning rate', 'SGD', 'Seberapa besar langkah perbaikan tiap step'],
+    ['resolution', 'Resolution', 'piksel (min_size)',
+     'Sisi terpendek gambar saat diproses. Lebih tinggi = objek kecil lebih terbaca, tapi lebih berat'],
+    ['warmup_epochs', 'Warmup', 'epoch',
+     'Epoch awal dengan laju belajar dinaikkan pelan'],
+  ];
+
   function kotakPar(kunci, label, satuan, jelas, dasar, batas) {
     const p = (dasar || BAHAN.preset)[kunci];
     const b = (batas || BAHAN.batas)[kunci];
@@ -137,14 +150,18 @@
     </label>`;
   }
 
-  /* ---- Arsitektur (YOLO vs RF-DETR) ------------------------------------ */
+  /* ---- Arsitektur (YOLO vs RF-DETR vs Mask R-CNN) --------------------- */
   const arsitekturDipilih = () => {
     const s = $('tr-arsitektur');
-    return (s && s.value === 'rfdetr') ? 'rfdetr' : 'yolo';
+    return (s && (s.value === 'rfdetr' || s.value === 'maskrcnn')) ? s.value : 'yolo';
   };
   const rfdetrModelDipilih = () => {
     const s = $('tr-rfdetr-model');
     return (s && s.value) || 'nano';
+  };
+  const maskrcnnModelDipilih = () => {
+    const s = $('tr-maskrcnn-model');
+    return (s && s.value) || 'r50v2';
   };
 
   function gambarForm() {
@@ -155,6 +172,11 @@
       $('tr-par').innerHTML = PAR_RFDETR.map((x) =>
         kotakPar(x[0], x[1], x[2], x[3],
                  BAHAN.preset_rfdetr || {}, BAHAN.batas_rfdetr || {})).join('');
+      $('tr-par-lanjut').innerHTML = '';
+    } else if (arsitekturDipilih() === 'maskrcnn') {
+      $('tr-par').innerHTML = PAR_MASKRCNN.map((x) =>
+        kotakPar(x[0], x[1], x[2], x[3],
+                 BAHAN.preset_maskrcnn || {}, BAHAN.batas_maskrcnn || {})).join('');
       $('tr-par-lanjut').innerHTML = '';
     } else {
       $('tr-par').innerHTML = PAR_UTAMA.map((x) => kotakPar(...x)).join('');
@@ -237,9 +259,10 @@
   // Basket mengurus warnanya sendiri (variasi rona di preset), jadi panelnya
   // disembunyikan supaya tidak membingungkan.
   function presetPakaiWarna() {
-    // RF-DETR tak memakai panel Bentuk/Warna sama sekali — ia mengurus
-    // augmentasinya sendiri — jadi panelnya selalu tersembunyi di sana.
-    if (arsitekturDipilih() === 'rfdetr') return false;
+    // RF-DETR / Mask R-CNN tak memakai panel Bentuk/Warna — augmentasinya
+    // internal / torchvision — jadi panelnya selalu tersembunyi di sana.
+    const a = arsitekturDipilih();
+    if (a === 'rfdetr' || a === 'maskrcnn') return false;
     const p = presetTerpilih();
     return p ? !!p.warna : true;
   }
@@ -347,17 +370,20 @@
   }
 
   function bacaSatu() {
-    const rf = arsitekturDipilih() === 'rfdetr';
+    const ars = arsitekturDipilih();
+    const rf = ars === 'rfdetr';
+    const mr = ars === 'maskrcnn';
     return {
       nama: $('tr-nama').value.trim(),
       catatan: $('tr-catatan').value.trim(),
-      // RF-DETR hanya deteksi kotak, tak pakai bobot YOLO atau mode warna; yang
-      // menggantikan "bobot awal" adalah ukuran model (nano/small/medium/large).
-      tugas: rf ? 'detect' : $('tr-tugas').value,
-      bobot: rf ? '' : $('tr-bobot').value,
-      mode_warna: rf ? '' : modeDipilih(),
-      arsitektur: rf ? 'rfdetr' : 'yolo',
+      // RF-DETR/Mask R-CNN tak pakai bobot YOLO atau mode warna; penggantinya
+      // ukuran model. Mask R-CNN = segmentasi instance (mask + kotak).
+      tugas: rf ? 'detect' : (mr ? 'segment' : $('tr-tugas').value),
+      bobot: (rf || mr) ? '' : $('tr-bobot').value,
+      mode_warna: (rf || mr) ? '' : modeDipilih(),
+      arsitektur: ars,
       rfdetr_model: rf ? rfdetrModelDipilih() : '',
+      maskrcnn_model: mr ? maskrcnnModelDipilih() : '',
       par: bacaPar(),
     };
   }
@@ -377,9 +403,13 @@
       // Ringkasan parameter mengikuti arsitektur: RF-DETR memakai batch_size /
       // resolution (bukan batch / imgsz milik YOLO) dan ditandai ukuran modelnya.
       const rf = x.arsitektur === 'rfdetr';
+      const mr = x.arsitektur === 'maskrcnn';
       const ringkas = rf
         ? `${x.par.epochs} epoch · batch ${x.par.batch_size} · ${x.par.resolution}px`
           + ` · RF-DETR ${esc(x.rfdetr_model || '')}`
+        : mr
+        ? `${x.par.epochs} epoch · batch ${x.par.batch_size} · ${x.par.resolution}px`
+          + ` · Mask R-CNN ${esc(x.maskrcnn_model || '')}`
         : `${x.par.epochs} epoch · batch ${x.par.batch} · ${x.par.imgsz}px · ${esc(x.tugas)}`;
       return `
       <div class="tr-antre">
@@ -408,14 +438,18 @@
   function terapkanBackend() {
     if (!BAHAN) return;
     const b = ($('tr-backend') && $('tr-backend').value) || 'lokal';
-    const rf = arsitekturDipilih() === 'rfdetr';
+    const ars = arsitekturDipilih();
+    const rf = ars === 'rfdetr';
+    const mr = ars === 'maskrcnn';
     // Gerbang = backend × arsitektur. Kaggle melatih YOLO MAUPUN RF-DETR (kernel
-    // memasang rfdetr sendiri), jadi kesiapannya cukup kaggle_siap. Lokal:
-    // RF-DETR menuntut rfdetr terpasang di mesin ini (rfdetr_siap), YOLO menuntut
-    // ultralytics/GPU (siap).
+    // memasang rfdetr sendiri). Mask R-CNN LOKAL saja untuk sekarang. Lokal:
+    // RF-DETR butuh rfdetr; Mask R-CNN butuh torchvision; YOLO butuh ultralytics.
     let siap, alasan;
-    if (b === 'kaggle') { siap = BAHAN.kaggle_siap; alasan = BAHAN.kaggle_alasan; }
+    if (mr && b === 'kaggle') {
+      siap = false; alasan = 'Mask R-CNN hanya tersedia LOKAL untuk sekarang.';
+    } else if (b === 'kaggle') { siap = BAHAN.kaggle_siap; alasan = BAHAN.kaggle_alasan; }
     else if (rf) { siap = BAHAN.rfdetr_siap; alasan = BAHAN.rfdetr_alasan; }
+    else if (mr) { siap = BAHAN.maskrcnn_siap; alasan = BAHAN.maskrcnn_alasan; }
     else { siap = BAHAN.siap; alasan = BAHAN.alasan; }
     // Saklar 2-GPU hanya relevan untuk RF-DETR + Kaggle (T4x2). Dev lokal 1 GPU.
     const mg = $('tr-rfdetr-multigpu-bungkus');
@@ -554,14 +588,18 @@
      berubah. Gerbang tombol Jalankan (kesiapan) ikut disegarkan. */
   function terapkanArsitektur() {
     if (!BAHAN) return;
-    const rf = arsitekturDipilih() === 'rfdetr';
+    const ars = arsitekturDipilih();
+    const rf = ars === 'rfdetr';
+    const mr = ars === 'maskrcnn';
+    const lain = rf || mr;                           // bukan YOLO
     const tampil = (id, tampak) => { const el = $(id); if (el) el.hidden = !tampak; };
     tampil('tr-rfdetr-model-bungkus', rf);
-    tampil('tr-preset-bungkus', !rf);
-    tampil('tr-tugas-bungkus', !rf);
-    tampil('tr-bobot-bungkus', !rf);
+    tampil('tr-maskrcnn-model-bungkus', mr);
+    tampil('tr-preset-bungkus', !lain);
+    tampil('tr-tugas-bungkus', !lain);               // rf=detect, mr=segment (dipaksa)
+    tampil('tr-bobot-bungkus', !lain);
     const wbox = $('tr-warna');
-    if (wbox) wbox.hidden = !presetPakaiWarna();   // false untuk rfdetr
+    if (wbox) wbox.hidden = !presetPakaiWarna();     // false untuk rfdetr/maskrcnn
     const ket = $('tr-arsitektur-ket');
     if (ket) ket.textContent = rf
       ? 'Bagus untuk objek kecil yang berdesakan, misalnya bola dan pemain '
@@ -569,11 +607,15 @@
         + '(warna, ukuran, dan posisi diubah-ubah otomatis), jadi pakai versi '
         + 'dataset yang biasa saja, tak perlu menyalakan efek tambahan '
         + '(variasi warna, blur, dan sejenisnya) waktu membuat versinya.'
+      : mr
+      ? 'Satu model untuk DUA jenis label sekaligus: bentuk/kemasan sebagai '
+        + 'mask (dari poligon) DAN logo sebagai kotak (dari bbox). Pakai versi '
+        + 'format "Campuran" supaya mask produk dan kotak logo ikut bersama.'
       : 'Pilihan umum: cepat dan ringan, cocok untuk kebanyakan kebutuhan.';
-    gambarForm();                 // tukar isian parameter (YOLO <-> RF-DETR)
-    if (!rf) terapkanPreset();    // pulihkan bawaan preset YOLO
+    gambarForm();                 // tukar isian parameter
+    if (!lain) terapkanPreset();  // pulihkan bawaan preset YOLO
     terapkanBackend();            // segarkan gerbang tombol Jalankan
-    terapkanFilterPose();         // pose -> hanya YOLO (RF-DETR tak punya keypoint)
+    terapkanFilterPose();         // pose -> hanya YOLO
   }
 
   /* FILTER: pose/keypoint hanya bisa dilatih YOLO — RF-DETR deteksi kotak saja,
@@ -591,7 +633,14 @@
         ? 'RF-DETR (tak mendukung pose/keypoint)'
         : 'RF-DETR, transformer, unggul objek kecil';
     }
-    if (pose && asel.value === 'rfdetr') {   // jaring pengaman
+    const optm = asel.querySelector('option[value="maskrcnn"]');
+    if (optm) {
+      optm.disabled = pose;
+      optm.textContent = pose
+        ? 'Mask R-CNN (tak mendukung pose/keypoint)'
+        : 'Mask R-CNN, satu model: mask + kotak';
+    }
+    if (pose && (asel.value === 'rfdetr' || asel.value === 'maskrcnn')) {  // jaring
       asel.value = 'yolo';
       terapkanArsitektur();
     }
@@ -628,10 +677,17 @@
      — sedang RF-DETR ditandai eksplisit beserta ukuran modelnya, supaya di
      daftar yang bercampur jelas mana yang mana tanpa harus membuka Rincian. */
   function pilArsitektur(t) {
-    if (t.arsitektur !== 'rfdetr') return '';
-    const m = t.rfdetr_model ? ' ' + esc(t.rfdetr_model) : '';
-    return `<span class="tr-pil tr-pil-rfdetr"
-      title="Dilatih dengan RF-DETR${m}">RF-DETR${m}</span>`;
+    if (t.arsitektur === 'rfdetr') {
+      const m = t.rfdetr_model ? ' ' + esc(t.rfdetr_model) : '';
+      return `<span class="tr-pil tr-pil-rfdetr"
+        title="Dilatih dengan RF-DETR${m}">RF-DETR${m}</span>`;
+    }
+    if (t.arsitektur === 'maskrcnn') {
+      const m = t.maskrcnn_model ? ' ' + esc(t.maskrcnn_model) : '';
+      return `<span class="tr-pil tr-pil-maskrcnn"
+        title="Dilatih dengan Mask R-CNN${m} (mask produk + kotak logo)">Mask R-CNN${m}</span>`;
+    }
+    return '';
   }
 
   function barisMetrik(m) {
@@ -731,6 +787,8 @@
     // metrik yang SAMA (ketergantungan warna + akurasi). "Lanjutkan" tetap
     // bercabang: RF-DETR punya jalur resume last.ckpt sendiri (t.rfdetr_ckpt).
     const rf = t.arsitektur === 'rfdetr';
+    const mr = t.arsitektur === 'maskrcnn';
+    const ckpt = rf ? t.rfdetr_ckpt : (mr ? t.maskrcnn_ckpt : null);
     // Metrik pendukung: yang utama dibuang supaya tidak muncul dua kali.
     const lain = Object.keys(terbaik).filter((k) => k !== utama).slice(0, 3);
 
@@ -769,10 +827,10 @@
             Lanjutkan di Kaggle</button>` : ''}
         ${t.punya_bobot && bolehKelola ? `<button class="chip" type="button"
             data-uji="${t.nomor}">Uji produksi</button>` : ''}
-        ${(bolehKelola && (rf ? t.rfdetr_ckpt : t.punya_bobot)) ? `<button class="chip" type="button"
+        ${(bolehKelola && ((rf || mr) ? ckpt : t.punya_bobot)) ? `<button class="chip" type="button"
             data-lanjut="${t.nomor}" data-nama="${esc(t.nama)}"
-            data-epochs="${t.epochs || 400}" data-ars="${rf ? 'rfdetr' : 'yolo'}"
-            title="${rf ? 'Lanjutkan training ini sampai total epoch lebih banyak (resume dari checkpoint, bukan dari nol)' : 'Latih lagi mulai dari bobot training ini'}">Lanjutkan</button>` : ''}
+            data-epochs="${t.epochs || 400}" data-ars="${rf ? 'rfdetr' : (mr ? 'maskrcnn' : 'yolo')}"
+            title="${(rf || mr) ? 'Lanjutkan training ini sampai total epoch lebih banyak (resume dari checkpoint, bukan dari nol)' : 'Latih lagi mulai dari bobot training ini'}">Lanjutkan</button>` : ''}
         ${t.punya_bobot ? `<span class="tr-unduh">Unduh
           <a class="chip" href="/latih/bobot?nomor=${t.nomor}&jenis=best" download
              title="${rf ? 'Checkpoint RF-DETR terbaik (.pth dikemas sebagai .pt)'
@@ -1257,6 +1315,8 @@
         <div><dt>Status</dt><dd>${LABEL_KEADAAN[t.keadaan] || t.keadaan}</dd></div>
         <div><dt>Arsitektur</dt><dd>${t.arsitektur === 'rfdetr'
           ? 'RF-DETR' + (t.rfdetr_model ? ' ' + esc(t.rfdetr_model) : '')
+          : t.arsitektur === 'maskrcnn'
+          ? 'Mask R-CNN' + (t.maskrcnn_model ? ' ' + esc(t.maskrcnn_model) : '')
           : 'YOLO'}</dd></div>
         <div><dt>Epoch</dt><dd>${
           t.persen_epoch != null
@@ -1316,14 +1376,15 @@
   let lanjutDari = 0;
   function bukaLanjut(nomor, nama, epochs, arsitektur) {
     lanjutDari = nomor;
-    const rf = arsitektur === 'rfdetr';
+    // RF-DETR & Mask R-CNN = resume sejati dari checkpoint state-penuh; YOLO =
+    // warm-start bobot (best/last). `rf` di sini = "resume sejati".
+    const rf = arsitektur === 'rfdetr' || arsitektur === 'maskrcnn';
     $('tr-lanjut-judul').textContent = `Lanjutkan L${nomor}`;
     // "Titik awal bobot" (best/last) hanya bermakna untuk YOLO (warm-start bobot).
-    // RF-DETR resume dari checkpoint state-penuh (last.ckpt) — tak ada pilihan ini.
     if ($('tr-lanjut-jenis-baris')) $('tr-lanjut-jenis-baris').hidden = rf;
     if (rf) {
-      // RF-DETR = resume sejati: epoch LANJUT (optimizer+epoch ikut), jadi yang
-      // diisi adalah TOTAL epoch baru, wajib lebih besar dari epoch sumber.
+      // resume sejati: epoch LANJUT (optimizer+epoch ikut), jadi yang diisi
+      // adalah TOTAL epoch baru, wajib lebih besar dari epoch sumber.
       $('tr-lanjut-ket').textContent =
         `Melanjutkan L${nomor} dari checkpoint terakhirnya, resume state penuh `
         + `(optimizer & epoch ikut lanjut), bukan dari nol. Isi TOTAL epoch yang `
@@ -1405,6 +1466,8 @@
       let dasar;
       if (arsitekturDipilih() === 'rfdetr') {
         dasar = BAHAN.preset_rfdetr || {};
+      } else if (arsitekturDipilih() === 'maskrcnn') {
+        dasar = BAHAN.preset_maskrcnn || {};
       } else {
         const p = presetTerpilih();
         dasar = (p && p.par) || BAHAN.preset;
@@ -1434,6 +1497,7 @@
       // seperti backend & preset — karena ia menukar bentuk parameternya.
       const arsitektur = arsitekturDipilih();
       const rfdetr_model = rfdetrModelDipilih();
+      const maskrcnn_model = maskrcnnModelDipilih();
       // Saklar 2-GPU (T4x2) — hanya saat RF-DETR + Kaggle; else selalu mati.
       const rfdetr_multigpu = (arsitektur === 'rfdetr' && backend === 'kaggle'
         && $('tr-rfdetr-multigpu') && $('tr-rfdetr-multigpu').checked) || false;
@@ -1442,7 +1506,7 @@
         const j = await ambil('/api/latih/mulai', {
           method: 'POST', headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({versi, batch, backend, preset, arsitektur,
-                                rfdetr_model, rfdetr_multigpu}),
+                                rfdetr_model, rfdetr_multigpu, maskrcnn_model}),
         });
         if (!j.ok) { galat(j.error || 'gagal memulai'); return; }
         ANTREAN = [];
@@ -1588,11 +1652,20 @@
           // — dan bawaannya tetap YOLO, jadi tampilan lama tak berubah sedikit
           // pun bila RF-DETR tidak tersedia. Mengganti arsitektur menukar
           // seluruh bentuk form (lihat terapkanArsitektur).
-          if ((BAHAN.rfdetr_siap || BAHAN.kaggle_siap) && $('tr-arsitektur-bungkus')) {
+          if ((BAHAN.rfdetr_siap || BAHAN.maskrcnn_siap || BAHAN.kaggle_siap)
+              && $('tr-arsitektur-bungkus')) {
             $('tr-arsitektur-bungkus').hidden = false;
+            // Sembunyikan opsi arsitektur yang tak tersedia di server ini.
+            const opR = $('tr-arsitektur') && $('tr-arsitektur').querySelector('option[value="rfdetr"]');
+            if (opR && !BAHAN.rfdetr_siap && !BAHAN.kaggle_siap) opR.hidden = true;
+            const opM = $('tr-arsitektur') && $('tr-arsitektur').querySelector('option[value="maskrcnn"]');
+            if (opM && !BAHAN.maskrcnn_siap) opM.hidden = true;
             if ($('tr-arsitektur')) {
               $('tr-arsitektur').value = 'yolo';
               $('tr-arsitektur').onchange = terapkanArsitektur;
+            }
+            if ($('tr-maskrcnn-model')) {
+              $('tr-maskrcnn-model').onchange = terapkanArsitektur;
             }
             if ($('tr-rfdetr-model')) {
               $('tr-rfdetr-model').value =
