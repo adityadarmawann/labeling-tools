@@ -135,6 +135,15 @@
       <button class="chip" type="submit">Cari</button>
     </form>
 
+    {#- Tombol "Filter" HANYA muncul di HP (CSS). Di layar sempit, seluruh
+        kontrol sekunder (keadaan/kelas/tag/bagian/urut/unduh) dilipat di
+        baliknya supaya pencarian + grid naik lebih cepat; menekannya membuka
+        mereka (.bar-saring.terbuka). Pola mobile baku: cari selalu tampil,
+        saringan lain di balik satu tombol. -#}
+    <button class="chip saring-lipat" id="saring-lipat" type="button"
+            aria-expanded="false" title="Tampilkan saringan">
+      Filter <i class="kd-caret" aria-hidden="true">&#9662;</i></button>
+
     <span class="saring-pisah"></span>
 
     {#- Keadaan. Dulu enam chip berjajar; angkanya terbaca tanpa mengklik, dan

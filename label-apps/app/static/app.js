@@ -2319,3 +2319,19 @@ window.pilihRentang = function (wadah, sel, saatUbah) {
 
   segarkan();
 })();
+
+/* Toolbar saringan di HP: tombol "Filter" melipat/membuka kontrol sekunder
+   (keadaan/kelas/tag/bagian/urut/unduh). Tombolnya cuma terlihat di layar
+   sempit (CSS .saring-lipat), jadi di desktop blok ini tak berpengaruh -- barnya
+   tak pernah memakai kelas .terbuka di sana. Pola mobile baku: cari selalu
+   tampil, saringan lain di balik satu tombol. */
+(() => {
+  const bar = document.querySelector('.bar-saring');
+  const tombol = document.getElementById('saring-lipat');
+  if (!bar || !tombol) return;
+  tombol.addEventListener('click', () => {
+    const buka = !bar.classList.contains('terbuka');
+    bar.classList.toggle('terbuka', buka);
+    tombol.setAttribute('aria-expanded', String(buka));
+  });
+})();

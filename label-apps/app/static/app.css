@@ -840,6 +840,9 @@ input:focus{outline:0;border-color:var(--ok)}
 /* Pemisah kelompok: garis 1px, bukan jarak besar — jaraknya sudah dipakai
    .bar untuk memisah kontrol satu sama lain. */
 .saring-pisah{flex:0 0 auto;width:1px;height:18px;background:var(--line)}
+/* Tombol "Filter" (lipat saringan) hanya untuk HP; di desktop seluruh saringan
+   muat satu baris, jadi tak perlu. Dinyalakan di blok @media (max-width:560px). */
+.saring-lipat{display:none}
 
 /* Pil urut: label statis + select tanpa tepi, satu bentuk dengan .chip.
    Ia sengaja TIDAK pernah menyala: mengurutkan bukan menyaring. */
@@ -956,6 +959,20 @@ input:focus{outline:0;border-color:var(--ok)}
   .bar-saring{gap:6px;padding:8px 0 10px}
   .bar-saring .chip{padding:5px 9px}
   .saring-urut{height:29px;padding:0 7px 0 9px}
+  /* Toolbar saringan HP: tombol "Filter" melipat kontrol sekunder. Default
+     (terlipat): hanya pencarian + Filter (+ Bersihkan, kalau ada saringan
+     aktif) yang tampil -> toolbar cuma 1-2 baris, grid naik cepat. Ditekan ->
+     .bar-saring.terbuka, semua chip muncul (membungkus seperti biasa). "Per
+     baris" tetap tersembunyi (aturan :has(#kartu-kolom) di atas). */
+  .saring-lipat{display:inline-flex;align-items:center;gap:5px}
+  .bar-saring:not(.terbuka) .menu,
+  .bar-saring:not(.terbuka) .saring-urut,
+  .bar-saring:not(.terbuka) #unduh-asli,
+  .bar-saring:not(.terbuka) .saring-pisah,
+  .bar-saring:not(.terbuka) .saring-dorong{display:none}
+  .bar-saring.terbuka{align-items:flex-start}
+  .saring-lipat .kd-caret{transition:transform .15s}
+  .bar-saring.terbuka .saring-lipat .kd-caret{transform:rotate(180deg)}
   /* Bar navigasi projek (Unggah/Anotasi/Dataset/Versi/Training): di 900px ia
      membungkus ke 2-3 baris dan makan tinggi besar ("nav bar gede banget"). Di
      HP dijadikan SATU baris pil yang digeser ke samping, seperti tab mobile
