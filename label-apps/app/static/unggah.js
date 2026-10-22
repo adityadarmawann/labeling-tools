@@ -864,5 +864,60 @@
       { day: 'numeric', month: 'short', year: 'numeric' }) + ' '
       + String(kini.getHours()).padStart(2, '0') + '.'
       + String(kini.getMinutes()).padStart(2, '0');
+
+    pasangUnggahHP();
   });
+
+  /* Unggah dari HP: tombol meminta token (POST /api/unggah/token), lalu QR-nya
+     digambar di peramban dari tautan yang dikembalikan — tanpa pustaka server,
+     tanpa memanggil CDN (qrcode.min.js dibundel). Tautannya juga ditampilkan
+     teks supaya bisa diketik kalau kamera QR ponsel tak tersedia. */
+  function pasangUnggahHP() {
+    const panel = $('ug-hp');
+    if (!panel || typeof qrcode !== 'function') return;
+    const tampil = $('ug-hp-tampil'), qrBox = $('ug-hp-qr'), kode = $('ug-hp-kode');
+    const urlEl = $('ug-hp-url'), catatan = $('ug-hp-catatan'), st = $('ug-hp-status');
+
+    const gambarQR = (url) => {
+      // tipe 0 = ukuran otomatis dari panjang data; koreksi 'M' (15%) cukup
+      // tahan terhadap layar pantulan tanpa membesarkan kode berlebihan.
+      const qr = qrcode(0, 'M');
+      qr.addData(url);
+      qr.make();
+      kode.innerHTML = qr.createSvgTag({ cellSize: 5, margin: 2, scalable: true });
+    };
+
+    const minta = async () => {
+      st.textContent = 'Menyiapkan QR…';
+      tampil.disabled = true;
+      try {
+        const r = await fetch('/api/unggah/token?ds='
+          + encodeURIComponent(panel.dataset.ds || PROJEK), { method: 'POST' });
+        const j = await r.json();
+        if (!j || !j.ok) {
+          st.textContent = (j && j.error) || 'gagal membuat QR';
+          tampil.disabled = false;
+          return;
+        }
+        gambarQR(j.url);
+        urlEl.textContent = j.url;
+        urlEl.href = j.url;
+        // Server ini bersertifikat sendiri, jadi ponsel menampilkan peringatan
+        // keamanan sekali — disebutkan di muka supaya tidak terlihat seperti
+        // tautan rusak.
+        catatan.textContent = 'Tautan berlaku 2 jam. Kalau ponsel menampilkan '
+          + 'peringatan keamanan, pilih Lanjutkan (sertifikatnya milik server '
+          + 'sendiri).';
+        qrBox.hidden = false;
+        tampil.hidden = true;
+        st.textContent = '';
+      } catch (e) {
+        st.textContent = 'gagal menghubungi server';
+        tampil.disabled = false;
+      }
+    };
+
+    tampil.onclick = minta;
+    $('ug-hp-baru').onclick = minta;
+  }
 })();

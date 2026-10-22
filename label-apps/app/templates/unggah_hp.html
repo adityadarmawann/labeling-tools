@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  {# Lebar perangkat + tanpa zoom-paksa: halaman ini dibuka di ponsel, bukan
+     laptop, jadi tata letaknya satu kolom penuh dan tombolnya sebesar jempol. #}
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Unggah dari HP &middot; {{ nama_app() }}</title>
+  <style>
+    :root{
+      --bg:#0f1115; --kartu:#171a21; --garis:#262b36; --teks:#e8eaf0;
+      --halus:#9aa3b2; --aksi:#4c8dff; --aksi-teks:#fff;
+      --ok:#2ecc71; --gagal:#ff5d5d;
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0}
+    body{
+      background:var(--bg); color:var(--teks);
+      font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+      padding:max(14px,env(safe-area-inset-top)) 14px
+              calc(14px + env(safe-area-inset-bottom));
+      -webkit-text-size-adjust:100%;
+    }
+    .wrap{max-width:520px;margin:0 auto}
+    h1{font-size:20px;margin:6px 0 2px}
+    .sub{color:var(--halus);font-size:14px;margin:0 0 18px}
+    .kartu{
+      background:var(--kartu);border:1px solid var(--garis);
+      border-radius:14px;padding:18px;margin-bottom:14px;
+    }
+    .pilih{
+      display:flex;align-items:center;justify-content:center;gap:10px;
+      width:100%;padding:16px;border:none;border-radius:12px;
+      background:var(--aksi);color:var(--aksi-teks);
+      font-size:17px;font-weight:600;cursor:pointer;
+    }
+    .pilih:active{filter:brightness(.92)}
+    .pilih.garis{
+      background:transparent;color:var(--teks);
+      border:1px solid var(--garis);margin-top:10px;
+    }
+    input[type=file]{display:none}
+    .ket{color:var(--halus);font-size:13px;margin:12px 2px 0;text-align:center}
+    .daftar{margin-top:8px}
+    .baris{
+      display:flex;align-items:center;gap:10px;padding:9px 2px;
+      border-top:1px solid var(--garis);font-size:14px;
+    }
+    .baris:first-child{border-top:none}
+    .nama{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .mini{width:44px;height:44px;border-radius:8px;object-fit:cover;
+          background:var(--garis);flex:none}
+    .tanda{font-size:18px;flex:none;width:22px;text-align:center}
+    .tanda.ok{color:var(--ok)} .tanda.gagal{color:var(--gagal)}
+    .tanda.jalan{color:var(--halus)}
+    .ringkas{
+      text-align:center;font-weight:600;margin:4px 0 0;min-height:22px;
+    }
+    .ringkas .g{color:var(--gagal);font-weight:400;font-size:13px}
+    .mati{
+      text-align:center;padding:30px 16px;color:var(--halus);
+    }
+    .mati b{display:block;color:var(--teks);font-size:18px;margin-bottom:8px}
+    .prog{height:6px;background:var(--garis);border-radius:4px;overflow:hidden;
+          margin:14px 0 2px;display:none}
+    .prog.on{display:block}
+    .prog i{display:block;height:100%;width:0;background:var(--aksi);
+            transition:width .15s}
+  </style>
+</head>
+<body>
+<div class="wrap">
+
+  {% if not sah %}
+  <div class="kartu mati">
+    <b>Tautan kedaluwarsa</b>
+    QR ini sudah tidak berlaku. Buka halaman Unggah di laptop lalu tampilkan
+    QR yang baru, dan pindai lagi.
+  </div>
+  {% else %}
+
+  <h1>Unggah ke {{ nama_app() }}</h1>
+  <p class="sub">Projek <b>{{ projek }}</b> &middot; maks {{ max_upload_mb }} MB per gambar</p>
+
+  <div class="kartu" id="panel"
+       data-token="{{ token }}" data-maks="{{ max_upload_mb }}">
+    <label class="pilih">
+      <span aria-hidden="true">&#128247;</span> Ambil foto
+      <input type="file" id="kamera" accept="image/*" capture="environment" multiple>
+    </label>
+    <label class="pilih garis">
+      <span aria-hidden="true">&#128449;</span> Pilih dari galeri
+      <input type="file" id="galeri" accept="image/*" multiple>
+    </label>
+
+    <div class="prog" id="prog"><i id="fill"></i></div>
+    <p class="ringkas" id="ringkas"></p>
+    <div class="daftar" id="daftar"></div>
+  </div>
+
+  <p class="ket">Gambar langsung masuk ke projek di laptop. Biarkan halaman ini
+    terbuka sampai selesai.</p>
+
+  {% endif %}
+</div>
+
+{% if sah %}<script src="{{ statik('unggah_hp.js') }}"></script>{% endif %}
+</body>
+</html>

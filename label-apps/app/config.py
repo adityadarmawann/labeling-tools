@@ -206,6 +206,12 @@ class Settings:
     kaggle_akun_file: Path | None = None
     kaggle_user: str = ""
     kaggle_token_file: Path | None = None
+    # Alamat publik tempat HIGOLAB bisa dijangkau dari LUAR mesin (mis.
+    # "https://103.182.240.28"). Dipakai QR "unggah dari HP": di balik reverse
+    # proxy, uvicorn cuma melihat http://127.0.0.1:PORT, jadi request.base_url
+    # tak bisa dipakai menyusun tautan yang ponsel bisa buka. Kosong = jatuh ke
+    # request.base_url (benar saat tanpa proxy, mis. dev di localhost).
+    basis_publik: str = ""
 
     @property
     def max_upload_bytes(self) -> int:
@@ -288,4 +294,5 @@ def get_settings() -> Settings:
         kaggle_akun_file=_path("KAGGLE_AKUN_FILE"),
         kaggle_user=_get("KAGGLE_USER"),
         kaggle_token_file=_path("KAGGLE_TOKEN_FILE"),
+        basis_publik=_get("BASIS_PUBLIK"),
     )

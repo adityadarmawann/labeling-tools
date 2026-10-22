@@ -299,6 +299,29 @@
         {% endif %}
       </section>
       {% endif %}
+
+      {# Unggah dari HP (meniru Roboflow): QR berisi tautan bertoken yang ponsel
+         buka tanpa login. Hanya projek gambar — ponsel mengunggah foto, dan
+         projek video punya alur "video sumber" sendiri. #}
+      {% if jenis != 'video' %}
+      <section class="panel ug-hp" id="ug-hp" data-ds="{{ pr.ds }}">
+        <h3>Unggah dari HP</h3>
+        <p class="ug-server-ket">Pindai QR dengan kamera ponsel, lalu ambil foto
+          atau pilih dari galeri. Gambarnya langsung masuk ke projek ini.</p>
+        <button class="cta garis" type="button" id="ug-hp-tampil">Tampilkan QR</button>
+        <div class="ug-hp-qr" id="ug-hp-qr" hidden>
+          <div class="ug-hp-kode" id="ug-hp-kode" aria-label="Kode QR unggah"></div>
+          <div class="ug-hp-info">
+            <span class="form-lbl">Atau buka tautan ini di ponsel</span>
+            <a class="ug-hp-url mono" id="ug-hp-url" href="#" target="_blank"
+               rel="noopener">&nbsp;</a>
+            <p class="halus ug-hp-catatan" id="ug-hp-catatan"></p>
+            <button class="chip" type="button" id="ug-hp-baru">Perbarui QR</button>
+          </div>
+        </div>
+        <div class="jalur-status" id="ug-hp-status"></div>
+      </section>
+      {% endif %}
     </div>
   </section>
 
@@ -429,5 +452,6 @@
 </main>
 {% endblock %}
 
-{% block skrip %}<script src="{{ statik('unggah.js') }}"></script>
+{% block skrip %}{% if jenis != 'video' %}<script src="{{ statik('qrcode.min.js') }}"></script>{% endif %}
+<script src="{{ statik('unggah.js') }}"></script>
 {% if jenis == 'video' %}<script src="{{ statik('ingest_klip.js') }}"></script>{% endif %}{% endblock %}

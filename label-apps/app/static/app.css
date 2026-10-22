@@ -3983,3 +3983,18 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
      lebih sedikit per baris — perlakuan yang sama dengan #grid. */
   .akg-grid,.jb-kisi{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
 }
+
+/* Unggah dari HP: kartu QR di halaman unggah (desktop). QR-nya digambar
+   qrcode.min.js sebagai SVG di #ug-hp-kode. Latar putih tetap, bukan ikut
+   tema: pemindai QR ponsel butuh kontras gelap-di-terang, dan kode di atas
+   latar gelap mode malam gagal terbaca. */
+.ug-hp-qr{display:flex;gap:18px;align-items:flex-start;margin-top:12px;
+  flex-wrap:wrap}
+.ug-hp-kode{background:#fff;padding:10px;border-radius:10px;
+  width:188px;height:188px;flex:none;display:flex;align-items:center;
+  justify-content:center}
+.ug-hp-kode svg{width:100%;height:100%;display:block}
+.ug-hp-info{flex:1;min-width:220px;display:flex;flex-direction:column;gap:6px}
+.ug-hp-url{word-break:break-all;font-size:13px}
+.ug-hp-catatan{margin:2px 0 6px}
+.ug-hp-info .chip{align-self:flex-start}

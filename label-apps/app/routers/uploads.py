@@ -18,7 +18,7 @@ from ..config import ARSIP_EXT, SUMBER_VIDEO, VIDEO_EXT, Settings, get_settings
 from ..deps import current_session, current_session_api, is_local
 from ..security import is_admin, load_users, safe_relpath, safe_slug
 from ..services import (arsip, ekstraksi, impor, projek, riwayat, scanner,
-                        tambah, tugas)
+                        tambah, tugas, unggah_token)
 from ..session import Session
 from ..templating import templates
 
@@ -256,6 +256,18 @@ async def _mulai_kurasi(d: Path, settings: Settings) -> None:
 async def upload(request: Request, ds: str = "", name: str = "",
                  sess: Session = Depends(current_session_api),
                  settings: Settings = Depends(get_settings)):
+    return await _lakukan_unggah(request, sess, settings, ds, name)
+
+
+async def _lakukan_unggah(request: Request, sess: Session, settings: Settings,
+                          ds: str, name: str) -> dict:
+    """Terima SATU berkas unggahan ke projek `ds` atas nama `sess`.
+
+    Dipakai bersama dua jalur yang beda cara masuknya tapi identik nasibnya:
+    unggah dari laptop (/upload, sesi cookie) dan unggah dari HP (/unggah-hp/
+    upload, token). Keduanya lewat satu badan ini supaya pemeriksaan izin,
+    batas ukuran, dan penulisan .part->ganti-nama tidak pernah menyimpang.
+    """
     # `name` boleh memuat subfolder (unggahan folder mengirim
     # webkitRelativePath), dan strukturnya dipertahankan.
     #
@@ -343,6 +355,77 @@ async def upload(request: Request, ds: str = "", name: str = "",
     if projek_video and sfx in VIDEO_EXT:
         hasil["sumber"] = f"{SUMBER_VIDEO}/{fn}"
     return hasil
+
+
+# ----------------------------------------------------------- unggah dari HP
+#
+# Kartu "Unggah dari HP" (meniru Roboflow): desktop meminta token, menampilkan
+# QR; ponsel memindainya, membuka halaman unggah ringkas tanpa login, dan
+# gambarnya mendarat di projek yang sama lewat jalur yang sama persis (hanya
+# cara autentikasinya yang beda: token, bukan cookie sesi). Lihat
+# services/unggah_token.py untuk umur & cakupan token.
+
+
+def _basis_publik(request: Request, settings: Settings) -> str:
+    """Alamat yang bisa dijangkau dari LUAR untuk disematkan ke QR.
+
+    Di balik reverse proxy, request.base_url cuma http://127.0.0.1:PORT yang
+    ponsel tak bisa buka; maka LABELAPP_BASIS_PUBLIK dipakai lebih dulu. Tanpa
+    itu (dev di localhost, tanpa proxy) base_url memang benar.
+    """
+    return (settings.basis_publik or str(request.base_url)).rstrip("/")
+
+
+@router.post("/api/unggah/token")
+async def buat_token_hp(request: Request, ds: str = "",
+                        sess: Session = Depends(current_session_api),
+                        settings: Settings = Depends(get_settings)):
+    """Terbitkan tautan+QR unggah HP untuk projek yang sedang dibuka.
+
+    Hak yang sama dengan unggah biasa: hanya yang boleh_unggah ke projek ini
+    yang bisa membuat tautannya, dan tautannya menitipkan HAK ITU SAJA ke
+    ponsel. Projek video tak ditawari — ponsel mengunggah gambar, dan jalur
+    video sumber punya alurnya sendiri."""
+    d, err = _folder_unggah(sess, settings, ds)
+    if err:
+        return {"ok": False, "error": err}
+    if projek.jenis_projek(d) == "video":
+        return {"ok": False,
+                "error": "unggah dari HP hanya untuk projek gambar"}
+    token, exp = unggah_token.buat(sess.user, ds)
+    url = f"{_basis_publik(request, settings)}/unggah-hp?t={token}"
+    return {"ok": True, "url": url, "kedaluwarsa": exp,
+            "aman": url.startswith("https://")}
+
+
+@router.get("/unggah-hp", response_class=HTMLResponse)
+async def halaman_unggah_hp(request: Request, t: str = "",
+                            settings: Settings = Depends(get_settings)):
+    """Halaman unggah ringkas untuk ponsel. TANPA sesi: diautentikasi token
+    di query. Token mati -> halaman yang mengatakannya, bukan form yang
+    tombolnya menolak diam-diam."""
+    info = unggah_token.ambil(t)
+    ktx = {"sah": bool(info), "token": t,
+           "max_upload_mb": settings.max_upload_mb}
+    if info:
+        # Nama projek untuk ditampilkan: bentuk "owner/nama" disederhanakan ke
+        # nama saja (ponsel tak perlu tahu kepemilikan, cuma tujuan).
+        ktx["projek"] = (info["ds"].split("/", 1)[-1] or info["ds"])
+    return templates.TemplateResponse(request, "unggah_hp.html", ktx)
+
+
+@router.put("/unggah-hp/upload")
+async def upload_hp(request: Request, t: str = "", name: str = "",
+                    settings: Settings = Depends(get_settings)):
+    """Terima berkas dari ponsel. Token -> (akun, projek); sisanya identik
+    dengan unggah biasa, termasuk cek ulang boleh_unggah di _folder_unggah
+    (hak yang dicabut menutup unggahan HP juga)."""
+    info = unggah_token.ambil(t)
+    if not info:
+        return {"ok": False,
+                "error": "tautan kedaluwarsa, minta QR baru dari laptop"}
+    sess = Session(info["user"], settings)
+    return await _lakukan_unggah(request, sess, settings, info["ds"], name)
 
 
 @router.post("/unzip")
