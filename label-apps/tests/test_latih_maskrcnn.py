@@ -204,3 +204,30 @@ def test_serap_hitung_epoch(tmp_path):
     dl.mkdir(parents=True, exist_ok=True)
     (dl / "results.csv").write_text("epoch,time,metrics/mAP50-95(B)\n7,9.0,0.5\n")
     assert latih_maskrcnn._serap(dl, {"epoch": 7, "map": 0.5}) == 7
+
+
+def test_raster_melengkapi_poligon_dan_kotak():
+    """Inti "melengkapi segmentasi + bbox" dalam satu target Mask R-CNN:
+    poligon -> mask BENTUK poligon (bukan kotak penuh); kotak-saja (seg kosong)
+    -> mask = KOTAK penuh. Dijalankan dengan numpy+cv2 saja (tanpa torch), jadi
+    aman di suite CPU. Lihat juga smoke GPU yang memakai fungsi yang sama."""
+    np = pytest.importorskip("numpy")
+    cv2 = pytest.importorskip("cv2")
+    _raster = latih_maskrcnn._raster
+
+    # Produk: segitiga -> mask segitiga (jauh lebih kecil dari kotak pembungkus).
+    tri = [20, 20, 60, 20, 40, 70]
+    m_prod = _raster([tri], [20, 20, 60, 70], 128, 128, np, cv2)
+    luas_kotak = (60 - 20) * (70 - 20)
+    assert 0 < int(m_prod.sum()) < luas_kotak * 0.75
+    # Mask produk TIDAK mengisi penuh kotaknya (ada piksel 0 di dalam bbox).
+    sub = m_prod[20:70, 20:60]
+    assert sub.min() == 0 and sub.max() == 1
+
+    # Logo: seg kosong -> mask = kotak penuh.
+    m_logo_kosong = _raster([], [80, 80, 110, 105], 128, 128, np, cv2)
+    m_logo_none = _raster(None, [80, 80, 110, 105], 128, 128, np, cv2)
+    luas_logo = (110 - 80) * (105 - 80)
+    assert int(m_logo_kosong.sum()) == luas_logo
+    assert int(m_logo_none.sum()) == luas_logo
+    assert m_logo_kosong[80:105, 80:110].min() == 1   # terisi penuh

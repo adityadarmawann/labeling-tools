@@ -98,6 +98,30 @@ def baca_coco(coco_dir: Path, split: str) -> tuple[list[dict], list[str]]:
     return list(per_gambar.values()), nama
 
 
+def _raster(seg, box, H, W, np, cv2):
+    """Rasterisasi SATU instance jadi mask HxW uint8 {0,1}. INILAH inti
+    "melengkapi segmentasi + bbox" dalam satu model:
+
+      seg ADA (poligon, mis. produk) -> mask BENTUK ASLI poligon (fillPoly).
+      seg kosong/None (kotak-saja, mis. logo) -> KOTAK jadi mask (logo memang
+        kira-kira kotak), supaya logo tetap punya target mask valid.
+
+    Jadi produk disupervisi mask bentuk-aslinya, logo disupervisi kotaknya, dan
+    keduanya mengalir ke SATU Mask R-CNN. np/cv2 dioper (bukan diimpor di sini)
+    supaya modul tetap aman diimpor di .venv tanpa cv2. Dipakai DS di seam dan
+    diuji langsung oleh smoke GPU."""
+    m = np.zeros((H, W), np.uint8)
+    if seg:                                          # poligon -> mask asli
+        for poli in seg:
+            pts = np.array(poli, np.float32).reshape(-1, 2).astype(np.int32)
+            if len(pts) >= 3:
+                cv2.fillPoly(m, [pts], 1)
+    else:                                            # kotak-saja (logo)
+        x1, y1, x2, y2 = (int(round(v)) for v in box)
+        m[max(0, y1):max(0, y2), max(0, x1):max(0, x2)] = 1
+    return m
+
+
 def _serap(dl: Path, hasil: dict) -> int:
     """Loop training menulis langsung ke .latih/L<n>/ (best.pt/last.pt/
     maskrcnn/last.ckpt/results.csv), jadi di sini cuma memastikan results.csv ada
@@ -140,18 +164,6 @@ def _latih_maskrcnn_asli(coco_dir: Path, dl: Path, model: str, par: dict,
         raise RuntimeError("COCO kosong: tak ada kelas untuk dilatih")
     n_kelas = len(nama) + 1                          # +1 background (indeks 0)
 
-    def raster(seg, box, H, W):
-        m = np.zeros((H, W), np.uint8)
-        if seg:                                      # poligon -> mask asli
-            for poli in seg:
-                pts = np.array(poli, np.float32).reshape(-1, 2).astype(np.int32)
-                if len(pts) >= 3:
-                    cv2.fillPoly(m, [pts], 1)
-        else:                                        # kotak-saja (logo)
-            x1, y1, x2, y2 = (int(round(v)) for v in box)
-            m[max(0, y1):max(0, y2), max(0, x1):max(0, x2)] = 1
-        return m
-
     class DS(Dataset):
         def __init__(self, contoh, latih_mode):
             # Mode latih: buang gambar tanpa objek (box/mask butuh positif).
@@ -170,7 +182,7 @@ def _latih_maskrcnn_asli(coco_dir: Path, dl: Path, model: str, par: dict,
             img = torch.from_numpy(rgb).permute(2, 0, 1).float() / 255.0
             boxes = e["boxes"]
             if boxes:
-                mk = np.stack([raster(s, b, H, W)
+                mk = np.stack([_raster(s, b, H, W, np, cv2)
                                for s, b in zip(e["segs"], boxes)])
                 tgt = {"boxes": torch.as_tensor(boxes, dtype=torch.float32),
                        "labels": torch.as_tensor(e["labels"], dtype=torch.int64),
