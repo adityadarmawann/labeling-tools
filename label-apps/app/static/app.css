@@ -929,19 +929,26 @@ input:focus{outline:0;border-color:var(--ok)}
    mendarat di bawah header yang lengket. */
 .grid{scroll-margin-top:72px}
 
-/* Di HP, kontrol "Per baris" TIDAK berlaku. Lebar minimum --kartu-min yang
-   dipatok JS (pada bawaan 7/baris jatuh ke ~72px di layar sempit) membuat
-   grid auto-fill mengisi 4-5 ubin mungil -- di telepon yang kita mau justru
-   LEBIH SEDIKIT & LEBIH BESAR. Jadi grid mengabaikan --kartu-min dan dipatok
-   minimum 150px: di HP biasa (~360-400px) muat 2 ubin, di layar lebih lebar
-   menuju 560px muat 3. "Per baris" sendiri disembunyikan karena grid kini
-   menyesuaikan diri. Ubin dikembalikan PERSEGI: height:190px lama dibuat saat
-   grid di HP masih satu kolom penuh-lebar, dan pada 2 kolom ia malah bikin
-   ubin terlalu jangkung dengan pita kosong di atas-bawah foto. object-fit:
-   contain tetap: seluruh foto terlihat. */
+/* Di HP, kontrol "Per baris" TIDAK berlaku: grid mengabaikan --kartu-min (yang
+   dipatok JS) dan memakai minimum tetap, lalu "Per baris" disembunyikan karena
+   grid menyesuaikan diri sendiri. Patokannya dirapatkan ke ~102px (dulu 150px):
+   pemakai merasa 2 ubin besar boros ruang dan mau yang padat, jadi di HP biasa
+   (~360-400px) kini muat 3 ubin. Ubin tetap PERSEGI (aspect-ratio 1); object-
+   fit:contain menjaga seluruh foto terlihat. */
 @media (max-width:560px){
-  #grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+  /* Grid HP: LEBIH BANYAK & LEBIH KECIL per baris. Permintaan pemakai: 2 ubin
+     besar terasa boros, maunya padat ("gambar cuma 1-2 sebaris"). minmax ~102px
+     memberi 3 kolom di HP biasa (~360-400px), dan gap dirapatkan dari 18px jadi
+     8px. aspect-ratio 1 menjaga ubin persegi; object-fit:contain tetap. */
+  #grid{grid-template-columns:repeat(auto-fill,minmax(102px,1fr))}
+  .grid{gap:8px}
   .card img{aspect-ratio:1;height:auto}
+  /* Kartu HP = GAMBAR SAJA (gaya Roboflow, sesuai tampilan prod): nama berkas,
+     chip kelas/isu, dan baris tombol disembunyikan supaya grid padat & bersih
+     di 3 kolom. Thumbnail sudah jadi tautan ke /view (lihat index.html), jadi
+     mengetuk gambar tetap membukanya; tombol Labeli ada di halaman Lihat.
+     Kotak centang borongan + titik keadaan tetap (keduanya di dalam gambar). */
+  .card .kartu-nama,.card .meta,.card .acts{display:none}
   /* "Per baris" -- cuma span ini, bukan pil Urut yang berbagi kelas. */
   .saring-urut:has(#kartu-kolom){display:none}
   /* Baris saringan dirapatkan: jarak & padding lebih kecil, chip membungkus
@@ -949,13 +956,30 @@ input:focus{outline:0;border-color:var(--ok)}
   .bar-saring{gap:6px;padding:8px 0 10px}
   .bar-saring .chip{padding:5px 9px}
   .saring-urut{height:29px;padding:0 7px 0 9px}
-  /* Baris info projek (Unggah data/Anotasi/Dataset/Versi/Training) -- sudah
-     jadi baris mendatar membungkus pada 900px; di HP dirapatkan lagi. Prefiks
-     body.berprojek menaikkan spesifisitas supaya menang atas aturan dasar &
-     blok 900px yang ditulis SETELAH blok ini; arah/wrap tetap dari 900px. */
-  body.berprojek .sisi{padding:10px 12px}
-  body.berprojek .sisi-menu{gap:3px}
-  body.berprojek .sisi-item{padding:6px 8px;gap:7px}
+  /* Bar navigasi projek (Unggah/Anotasi/Dataset/Versi/Training): di 900px ia
+     membungkus ke 2-3 baris dan makan tinggi besar ("nav bar gede banget"). Di
+     HP dijadikan SATU baris pil yang digeser ke samping, seperti tab mobile
+     Roboflow -- jauh lebih pendek. Ikon disembunyikan (label + angka sudah
+     cukup, dan menghematnya memuat lebih banyak pil per layar). Kepala projek
+     (sampul + nama) ikut dirapatkan. Prefiks body.berprojek menaikkan
+     spesifisitas supaya menang atas blok 900px yang ditulis SETELAH blok ini. */
+  body.berprojek .sisi{padding:9px 12px;gap:8px}
+  body.berprojek .sisi-balik{font-size:11px}
+  body.berprojek .sisi-sampul{width:34px;height:34px}
+  body.berprojek .sisi-nama{font-size:12.5px}
+  body.berprojek .sisi-sub{font-size:10px}
+  body.berprojek .sisi-menu{flex-wrap:nowrap;overflow-x:auto;gap:6px;
+    padding-bottom:2px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  body.berprojek .sisi-menu::-webkit-scrollbar{display:none}
+  body.berprojek .sisi-item{flex:0 0 auto;white-space:nowrap;gap:5px;
+    padding:6px 11px;font-size:12.5px;border:1px solid var(--line);
+    border-radius:999px}
+  body.berprojek .sisi-item[data-on]{border-color:transparent}
+  body.berprojek .sisi-ikon{display:none}
+  body.berprojek .sisi-angka{margin-left:3px}
+  /* Isi (filter + grid) diberi padding pinggir lebih kecil -> lebih banyak
+     lebar untuk ubin grid. */
+  .sisi-isi{padding:12px}
   /* Kepala dirapatkan di HP: padding pinggir/atas lebih kecil & jarak antar
      kontrol di .top dirapatkan, supaya baris judul + akun makan sedikit tinggi.
      safe-area tetap dihormati (notch iPhone). padding-bawah projek ikut turun. */
