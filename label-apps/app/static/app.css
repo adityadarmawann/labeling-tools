@@ -939,12 +939,13 @@ input:focus{outline:0;border-color:var(--ok)}
    (~360-400px) kini muat 3 ubin. Ubin tetap PERSEGI (aspect-ratio 1); object-
    fit:contain menjaga seluruh foto terlihat. */
 @media (max-width:560px){
-  /* Grid HP: LEBIH BANYAK & LEBIH KECIL per baris. Permintaan pemakai: 2 ubin
-     besar terasa boros, maunya padat ("gambar cuma 1-2 sebaris"). minmax ~102px
-     memberi 3 kolom di HP biasa (~360-400px), dan gap dirapatkan dari 18px jadi
-     8px. aspect-ratio 1 menjaga ubin persegi; object-fit:contain tetap. */
-  #grid{grid-template-columns:repeat(auto-fill,minmax(102px,1fr))}
-  .grid{gap:8px}
+  /* Grid HP: padat. Permintaan pemakai 3x3 (3 baris x 3 kolom) terlihat, dan
+     4x4 kalau muat. minmax ~78px memberi 4 kolom di HP biasa (~360-414px), dan
+     gap 6px; dengan nav + toolbar yang sudah diringkas, 4-6 baris terlihat
+     tanpa gulir -> 4x4 tercapai. aspect-ratio 1 menjaga ubin persegi; object-
+     fit:contain tetap. */
+  #grid{grid-template-columns:repeat(auto-fill,minmax(78px,1fr))}
+  .grid{gap:6px}
   .card img{aspect-ratio:1;height:auto}
   /* Kartu HP = GAMBAR SAJA (gaya Roboflow, sesuai tampilan prod): nama berkas,
      chip kelas/isu, dan baris tombol disembunyikan supaya grid padat & bersih
