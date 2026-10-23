@@ -118,6 +118,38 @@ document.addEventListener('DOMContentLoaded', () => {
   pasangTema(temaTersimpan());
 });
 
+/* Posisi gulir grid dipertahankan lintas muat-ulang.
+ * "Tandai latar" (markbg) dan refresh biasa memuat ulang HALAMAN PENUH; tanpa
+ * ini grid balik ke baris-kolom paling atas dan pengguna harus menggulir lagi
+ * ke tempat terakhir. Disimpan di sessionStorage (per-tab, hilang saat tab
+ * ditutup -> hemat, bukan storage permanen di disk pengguna), SATU angka per
+ * URL (termasuk filter + nomor halaman). Akibatnya: pindah halaman pager (URL
+ * beda) tetap ke atas -- memang benar, itu halaman baru; hanya muat-ulang URL
+ * YANG SAMA (markbg / F5) yang dipulihkan ke offset terakhir. Grid projek
+ * menggulir di #grid-gulung; grid tanpa projek menggulir di jendela. */
+(() => {
+  if (!document.getElementById('grid')) return;      // hanya halaman grid
+  const sc = document.getElementById('grid-gulung')
+             || document.scrollingElement || document.documentElement;
+  const kunci = 'gridscroll:' + location.pathname + location.search;
+  try { history.scrollRestoration = 'manual'; } catch (e) { /* lawas */ }
+  const simpan = () => {
+    try { sessionStorage.setItem(kunci, String(sc.scrollTop | 0)); } catch (e) {}
+  };
+  // pagehide menangkap muat-ulang & navigasi; beforeunload cadangan untuk
+  // peramban yang tak selalu memicu pagehide pada reload.
+  window.addEventListener('pagehide', simpan);
+  window.addEventListener('beforeunload', simpan);
+  let v = 0;
+  try { v = parseInt(sessionStorage.getItem(kunci) || '0', 10) || 0; } catch (e) {}
+  if (v > 0) {
+    const pulih = () => { sc.scrollTop = v; };
+    pulih();                                          // kartu dirender server,
+    requestAnimationFrame(pulih);                     // tingginya dari CSS -> bisa
+    window.addEventListener('load', pulih, { once: true });  // disetel segera
+  }
+})();
+
 // ---------------------------------------------------------------- menu akun
 /*
  * Satu tombol beridentitas di ujung kanan kepala membuka menu berisi Tema,
