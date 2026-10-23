@@ -1994,7 +1994,7 @@ def test_pelabel_bisa_menandai_latar_borongan_dari_halaman_tugasnya(
     assert 'data-bg="1"' in h
     rapat = " ".join(h.split())
     assert "2 sudah dianotasi" in rapat, "latar tidak dihitung sudah dianotasi"
-    assert 'Perlu dilabeli</span><b class="jb-tahap-n">2</b>' in rapat
+    assert "Perlu dilabeli <b>2</b>" in rapat
     # Dan ia bisa disaring lewat daftar kelas, sebaris dengan kelas lainnya.
     # Saringannya kini form GET di server (name="bg"), bukan centang yang
     # menyembunyikan kartu di peramban.
@@ -2991,8 +2991,8 @@ def test_job_saring_status_dataset(klien, lingkungan):
     # Chip menghitung benar: 4 di dataset, 2 belum.
     h = klien.get(f"/tugas/{tid}?ds={d.name}").text
     # Tahap alur: "Di dataset" (4) dan "Sudah dilabeli, belum di dataset" (2).
-    assert 'Di dataset</span><b class="jb-tahap-n">4</b>' in h
-    assert 'belum di dataset</span></span><b class="jb-tahap-n">2</b>' in h
+    assert "Di dataset <b>4</b>" in h
+    assert "Siap ke dataset <b>2</b>" in h
 
     # Saring 'belum' -> hanya 2 yang belum masuk dataset, tanpa cap dataset.
     hb = klien.get(f"/tugas/{tid}?ds={d.name}&dsf=belum").text

@@ -2396,39 +2396,7 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
 .jb-utama{flex:1 1 0;min-width:0}
 .jb-tab{margin-bottom:10px}
 
-/* Baris alur kerja: satu pipa "label -> dataset" menggantikan dua grup tab
-   yang dulu bergabung diam-diam. "Semua" berdiri sebagai ikhtisar di kiri,
-   dipisah garis tipis; tiga tahap sisanya dirangkai panah supaya terbaca
-   sebagai urutan, bukan pilihan yang berdiri sendiri. Satu permukaan cekung
-   (seperti .seg) menyatukannya jadi satu kontrol. */
-.jb-alur{flex:1 1 auto;min-width:0;display:flex;align-items:stretch;gap:2px;
-  padding:4px;background:var(--sunk);border:1px solid var(--line);
-  border-radius:10px;overflow-x:auto;scrollbar-width:thin}
-.jb-tahap{flex:0 0 auto;display:flex;align-items:center;gap:7px;
-  padding:7px 13px;border-radius:7px;text-decoration:none;white-space:nowrap;
-  color:var(--ink-dim);font-size:12.5px;transition:background .12s,color .12s}
-.jb-tahap:hover{color:var(--ink);background:var(--hover)}
-.jb-tahap[data-on]{background:var(--panel);color:var(--ink);font-weight:600;
-  box-shadow:0 1px 3px rgba(var(--bayang),.14)}
-.jb-tahap:focus-visible{outline:2px solid var(--ok);outline-offset:1px}
-.jb-tahap-ket{min-width:0}
-/* Keterangan tambahan tahap ke-3 ("belum di dataset"): lebih kalem daripada
-   inti labelnya supaya kalimat panjang tetap satu tahap, bukan dua. */
-.jb-tahap-sub{color:var(--ink-faint);font-weight:400}
-.jb-tahap[data-on] .jb-tahap-sub{color:var(--ink-dim)}
-/* Angka hidup tiap tahap: pil kecil, tabular supaya lebar tak loncat. */
-.jb-tahap-n{flex:0 0 auto;font-size:11px;font-weight:600;line-height:1;
-  padding:2px 6px;border-radius:999px;background:var(--panel);
-  border:1px solid var(--line);color:var(--ink-dim);
-  font-variant-numeric:tabular-nums}
-.jb-tahap[data-on] .jb-tahap-n{background:var(--aksi);border-color:var(--aksi);
-  color:var(--aksi-ink)}
-/* Panah alur antar tiga tahap pipa; "Semua" dipisah garis vertikal, bukan
-   panah, karena ia ikhtisar dan tak berurutan dengan sisanya. */
-.jb-alur-panah{flex:0 0 auto;display:flex;align-items:center;
-  color:var(--ink-faint);font-size:15px;line-height:1;user-select:none}
-.jb-alur-pisah{flex:0 0 auto;align-self:center;width:1px;height:20px;
-  margin:0 3px;background:var(--line2)}
+
 .jb-aksi{display:flex;gap:8px;align-items:center;flex-wrap:wrap;
   padding:9px 11px;margin-bottom:11px;background:var(--panel);
   border:1px solid var(--line);border-radius:9px}
@@ -2477,12 +2445,10 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
   .jb-tata{flex-direction:column}
   .jb-samping{flex:1 1 auto;width:100%;position:static}
 }
-/* HP: baris alur mengambil satu baris penuh sendiri dan digulir mendatar
-   (pola chip yang sama dipakai .ug-tab/.ptab), supaya tahap tak berdesakan
-   dengan saringan kelas dan tetap terbaca utuh. */
+/* HP: baris tahap jadi satu baris penuh yang digulir mendatar, supaya tombol
+   tahap tak berdesakan dengan saringan kelas dan tetap terbaca utuh. */
 @media (max-width:560px){
-  .jb-alur{flex:1 1 100%;-webkit-overflow-scrolling:touch}
-  .jb-tahap{padding:7px 11px}
+  .seg.jb-tab{flex:1 1 100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
 }
 /* Angka di kontrol tersegmen menempel ke katanya: "Semua50". Diberi jarak di
    sini, bukan spasi di templat, supaya tidak ada spasi yang ikut tersalin saat

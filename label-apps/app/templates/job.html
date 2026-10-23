@@ -82,52 +82,42 @@
     {%- endmacro -%}
     <section class="jb-utama">
       <div class="jb-baris-saring">
-      {#- SATU baris alur kerja, bukan dua grup tab yang dulu bergabung
-          diam-diam. Dulu ada "status anotasi" (saring) dan "status dataset"
-          (dsf) berdampingan, dan tiap orang mengira keduanya saling
-          menggantikan padahal keduanya menumpuk (AND). Alurnya sebenarnya satu
-          pipa: gambar DILABELI, lalu DIMASUKKAN ke dataset. Tiap tahap di sini
-          memetakan ke kombinasi saring+dsf yang persis sama seperti dulu, jadi
-          rute, macro jt(), dan navigasi panah kanvas (gambar_konteks_job yang
-          membaca saring/dsf) tidak berubah sama sekali:
-            Semua ................... saring=semua, dsf=semua
-            Perlu dilabeli .......... saring=belum, dsf=semua
-            Sudah dilabeli, belum ds  saring=sudah, dsf=belum
-            Di dataset .............. saring=semua, dsf=di
-          "Sudah dilabeli, belum di dataset" dulu cuma bisa dicapai dengan
-          memilih DUA tab sekaligus; itulah kombinasi yang paling sering
-          dibutuhkan (pekerjaan selesai yang tinggal dikumpulkan) dan yang
-          paling tidak kelihatan. Kini ia satu tahap tersendiri. -#}
+      {#- SATU grup tombol tersegmen untuk tahapan alur kerja, bukan dua grup tab
+          yang dulu diam-diam bergabung (AND) dan bikin bingung (orang mengira
+          keduanya saling menggantikan). Dibaca kiri ke kanan mengikuti alur:
+          gambar DILABELI dulu, lalu DIMASUKKAN ke dataset. Memakai gaya .seg/
+          .seg-opt yang SAMA dengan kontrol tersegmen lain di app -> jelas tampak
+          sebagai TOMBOL dengan keadaan aktif, bukan teks berpanah. Tiap tahap
+          memetakan ke kombinasi saring+dsf yang PERSIS sama seperti dulu (semua
+          nilai param lama), jadi rute, macro jt(), dan navigasi panah kanvas
+          (gambar_konteks_job membaca saring/dsf) tak berubah:
+            Semua ........... saring=semua, dsf=semua
+            Perlu dilabeli .. saring=belum, dsf=semua
+            Siap ke dataset . saring=sudah, dsf=belum (sudah dilabeli, belum masuk)
+            Di dataset ...... saring=semua, dsf=di
+          "Siap ke dataset" dulu cuma bisa dicapai dengan memilih DUA tab
+          sekaligus, kombinasi tersering yang paling tak kelihatan. Latar TERMASUK
+          "sudah dilabeli". n_label_belum_ds dihitung di rute (berlabel DAN belum
+          di dataset), bukan selisih, supaya tepat kalau ada yang di dataset tanpa
+          label. -#}
       {%- set tahap = '' -%}
       {%- if dsf == 'di' %}{% set tahap = 'dataset' %}
       {%- elif saring == 'belum' %}{% set tahap = 'perlu' %}
       {%- elif saring == 'sudah' and dsf == 'belum' %}{% set tahap = 'siap' %}
       {%- elif saring == 'semua' and dsf == 'semua' %}{% set tahap = 'semua' %}
       {%- endif -%}
-      <nav class="jb-alur" id="jb-tab" role="group"
+      <div class="seg jb-tab" id="jb-tab" role="group"
            aria-label="Tahap gambar dalam alur kerja pelabelan">
-        <a class="jb-tahap jb-tahap-semua"{% if tahap == 'semua' %} data-on aria-current="true"{% endif %}
-           href="{{ jt(s='semua', dd='semua') }}#jb-kisi">
-          <span class="jb-tahap-ket">Semua</span><b class="jb-tahap-n">{{ n }}</b></a>
-        <span class="jb-alur-pisah" aria-hidden="true"></span>
-        <a class="jb-tahap"{% if tahap == 'perlu' %} data-on aria-current="true"{% endif %}
-           href="{{ jt(s='belum', dd='semua') }}#jb-kisi">
-          <span class="jb-tahap-ket">Perlu dilabeli</span><b class="jb-tahap-n">{{ n - n_label }}</b></a>
-        <span class="jb-alur-panah" aria-hidden="true">&rsaquo;</span>
-        {#- Latar TERMASUK "sudah dilabeli": menandai gambar tanpa objek adalah
-            keputusan yang sudah diambil, bukan pekerjaan yang belum dikerjakan.
-            n_label_belum_ds dihitung di rute (berlabel DAN belum di dataset),
-            bukan n_label - n_dataset, supaya tepat kalau ada yang di dataset
-            tanpa label. -#}
-        <a class="jb-tahap"{% if tahap == 'siap' %} data-on aria-current="true"{% endif %}
+        <a class="seg-opt"{% if tahap == 'semua' %} data-on aria-current="true"{% endif %}
+           href="{{ jt(s='semua', dd='semua') }}#jb-kisi">Semua <b>{{ n }}</b></a>
+        <a class="seg-opt"{% if tahap == 'perlu' %} data-on aria-current="true"{% endif %}
+           href="{{ jt(s='belum', dd='semua') }}#jb-kisi">Perlu dilabeli <b>{{ n - n_label }}</b></a>
+        <a class="seg-opt"{% if tahap == 'siap' %} data-on aria-current="true"{% endif %}
            href="{{ jt(s='sudah', dd='belum') }}#jb-kisi"
-           title="Sudah dilabeli tetapi belum dimasukkan ke dataset">
-          <span class="jb-tahap-ket">Sudah dilabeli<span class="jb-tahap-sub">, belum di dataset</span></span><b class="jb-tahap-n">{{ n_label_belum_ds }}</b></a>
-        <span class="jb-alur-panah" aria-hidden="true">&rsaquo;</span>
-        <a class="jb-tahap"{% if tahap == 'dataset' %} data-on aria-current="true"{% endif %}
-           href="{{ jt(s='semua', dd='di') }}#jb-kisi">
-          <span class="jb-tahap-ket">Di dataset</span><b class="jb-tahap-n">{{ n_dataset }}</b></a>
-      </nav>
+           title="Sudah dilabeli, tinggal dimasukkan ke dataset">Siap ke dataset <b>{{ n_label_belum_ds }}</b></a>
+        <a class="seg-opt"{% if tahap == 'dataset' %} data-on aria-current="true"{% endif %}
+           href="{{ jt(s='semua', dd='di') }}#jb-kisi">Di dataset <b>{{ n_dataset }}</b></a>
+      </div>
 
         {#- Saringan kelas: form GET, bukan centang yang menyembunyikan di
             peramban. Latar ikut di daftar yang sama, bukan kotak terpisah —
