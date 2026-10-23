@@ -176,49 +176,79 @@ def bentuk_untuk_kanvas(it: dict, mentah: dict) -> list[dict]:
     return out
 
 
+def _kunci_nav(job, saring, dsf, kelas, latar):
+    """Kunci konteks navigasi: job + semua filter yang membentuk subsetnya."""
+    return (job or "", saring, dsf,
+            tuple(sorted(str(k) for k in (kelas or ()))), bool(latar))
+
+
 def _nav(sess: Session, it: dict, *, job: str = "", saring: str = "semua",
-         dsf: str = "semua", kelas=(), latar: bool = False, uploads_root=None):
+         dsf: str = "semua", kelas=(), latar: bool = False, uploads_root=None,
+         bekukan: bool = False):
     """(prev_it, next_it, posisi, daftar) untuk panah kiri/kanan kanvas.
 
-    Kalau `job` diberi, navigasi DIBATASI ke gambar penugasan itu yang cocok
-    filter — subset yang SAMA dengan grid job — jadi kiri/kanan tidak keluar
-    dari "belum dianotasi". Tanpa `job`, seluruh isi projek (perilaku saat
-    kanvas dibuka dari grid Dataset atau /view). `daftar` juga mengisi panel
-    Files supaya konsisten dengan panahnya.
+    Kalau `job` diberi, navigasi dibatasi ke subset penugasan itu yang cocok
+    filter (mis. "belum dianotasi") -- subset yang SAMA dengan grid job. Subset
+    itu DIBEKUKAN di sesi (sess.nav_beku) saat masuk labeler (bekukan=True di
+    /label), lalu panah kiri/kanan (/api/label-data) memakai snapshot yang sama.
+    Dengan begitu melabeli SATU gambar tidak membuatnya keluar dari daftar lalu
+    nomor "1/600" menyusut dan posisi hilang -- daftar tetap 600 sampai keluar
+    ke papan lalu buka lagi (bekukan ulang). Tanpa `job`, seluruh isi projek
+    (kanvas dibuka dari grid Dataset / /view). `daftar` juga mengisi panel Files.
     """
+    if job and sess.src is not None:
+        kunci = _kunci_nav(job, saring, dsf, kelas, latar)
+        beku = sess.nav_beku
+        if bekukan or not beku or beku.get("kunci") != kunci:
+            with sess.lock:
+                items = list(sess.items)
+            try:
+                data = tugas.baca_projek(sess.src, uploads_root)
+                daftar0 = tugas.gambar_konteks_job(
+                    items, data, sess.src, job, saring=saring, dsf=dsf,
+                    kelas=list(kelas), latar=latar)
+            except OSError:
+                daftar0 = None
+            if daftar0 is not None:
+                beku = {"kunci": kunci,
+                        "nama": [x["img"].name for x in daftar0],
+                        "paths": [str(x["img"].resolve()) for x in daftar0]}
+                sess.nav_beku = beku
+            else:
+                sess.nav_beku = None
+                beku = None
+        if beku is not None:
+            nama, paths = beku["nama"], beku["paths"]
+            daftar = [x for x in (sess.find(p) for p in paths) if x is not None]
+            # Posisi lewat nama (snapshot terurut nama). Gambar yang sedang
+            # dibuka TETAP di snapshot walau sudah dilabeli -> maju/mundur stabil
+            # dan jumlah tetap.
+            i = bisect.bisect_left(nama, it["img"].name)
+            ada = i < len(nama) and nama[i] == it["img"].name
+
+            def _it(idx):
+                return sess.find(paths[idx]) if 0 <= idx < len(paths) else None
+
+            prev_it = _it(i - 1) if i > 0 else None
+            if ada:
+                next_it = _it(i + 1)
+                posisi = (i + 1, len(nama))
+            else:
+                next_it = _it(i)
+                posisi = (i, len(nama))
+            return prev_it, next_it, posisi, daftar
+    # daftar penuh (tanpa job, atau job tak dikenal)
     with sess.lock:
         items = list(sess.items)
-    daftar = None
-    if job and sess.src is not None:
-        try:
-            data = tugas.baca_projek(sess.src, uploads_root)
-            daftar = tugas.gambar_konteks_job(
-                items, data, sess.src, job, saring=saring, dsf=dsf,
-                kelas=list(kelas), latar=latar)
-        except OSError:
-            daftar = None
-    if daftar is None:                         # daftar penuh (perilaku lama)
-        # Cari lewat IDENTITAS, bukan items.index(it): `it` adalah objek yang
-        # sama dari sess.items (sess.find / sess.items[0]), sedang tiap item
-        # memuat bentuk ber-`pts` array numpy — list.index memakai `==` yang
-        # pada array numpy melempar "truth value of an array is ambiguous".
-        # `is` menghindari perbandingan itu sekaligus lebih cepat.
-        i = next((j for j, x in enumerate(items) if x is it), -1)
-        if i < 0:                              # it tak ada di daftar (jaga-jaga)
-            return None, None, (0, len(items)), items
-        prev_it = items[i - 1] if i > 0 else None
-        next_it = items[i + 1] if i < len(items) - 1 else None
-        return prev_it, next_it, (i + 1, len(items)), items
-    # Subset: gambar yang sedang dibuka bisa SUDAH tak cocok filter (mis. baru
-    # dilabeli lalu digeser) — dicari lewat posisi nama supaya tetangganya tetap
-    # yang cocok filter, bukan meleset ke daftar penuh.
-    nama = [x["img"].name for x in daftar]
-    i = bisect.bisect_left(nama, it["img"].name)
-    ada = i < len(nama) and nama[i] == it["img"].name
-    prev_it = daftar[i - 1] if i > 0 else None
-    next_it = (daftar[i + 1] if ada else daftar[i]) if (i + (1 if ada else 0)) < len(daftar) else None
-    posisi = (i + 1, len(daftar)) if ada else (i, len(daftar))
-    return prev_it, next_it, posisi, daftar
+    # Cari lewat IDENTITAS, bukan items.index(it): tiap item memuat bentuk
+    # ber-`pts` array numpy, dan list.index memakai `==` yang melempar pada
+    # numpy ("truth value of an array is ambiguous"). `is` menghindarinya.
+    i = next((j for j, x in enumerate(items) if x is it), -1)
+    if i < 0:
+        return None, None, (0, len(items)), items
+    prev_it = items[i - 1] if i > 0 else None
+    next_it = items[i + 1] if i < len(items) - 1 else None
+    return prev_it, next_it, (i + 1, len(items)), items
 
 
 @router.get("/label", response_class=HTMLResponse)
@@ -252,9 +282,12 @@ async def halaman(request: Request, path: str = "",
         return templates.TemplateResponse(request, "notfound.html", {"sess": sess},
                                           status_code=404)
     mentah = baca_mentah(it["img"].with_suffix(".json"))
+    # Masuk labeler = BEKUKAN snapshot navigasi untuk konteks ini (job+filter).
+    # Panah berikutnya (/api/label-data) memakai snapshot yang sama sampai keluar
+    # lalu masuk lagi -> jumlah "1/600" tak menyusut saat melabeli.
     prev_it, next_it, posisi, daftar = _nav(
         sess, it, job=job, saring=saring, dsf=dsf, kelas=c, latar=bool(bg),
-        uploads_root=settings.uploads_root)
+        uploads_root=settings.uploads_root, bekukan=True)
     # `split` ikut dikirim: pada ekspor Roboflow, nama berkas yang sama bisa
     # muncul di train/valid/test sebagai baris yang tampak kembar, dan tanpa
     # penandanya orang tidak tahu mana yang sedang dibuka.

@@ -54,3 +54,44 @@ def test_nav_it_tak_ada_tak_crash():
     lain = {"img": "x.jpg", "shapes": [{"pts": np.array([[9., 9.]])}]}
     prev, nxt, pos, daftar = annotate._nav(_sess([a]), lain, job="")
     assert prev is None and nxt is None and pos == (0, 1) and daftar == [a]
+
+
+def test_nav_beku_jumlah_tetap_saat_item_dilabeli(monkeypatch):
+    """Masuk dari "belum dianotasi" (mis. 600) -> panah tetap menyusuri 600 walau
+    gambar dilabeli dan keluar dari filter live. Jumlah TAK menyusut & posisi tak
+    hilang sampai keluar ke papan lalu buka lagi (bekukan ulang)."""
+    from pathlib import Path
+    from app.services import tugas
+
+    mk = lambda n: {"img": Path(n), "shapes": []}
+    a, b, cc = mk("a.jpg"), mk("b.jpg"), mk("c.jpg")
+    semua = [a, b, cc]
+    byp = {str(x["img"].resolve()): x for x in semua}
+    sess = SimpleNamespace(lock=threading.Lock(), items=semua, src=Path("/proj"),
+                           nav_beku=None, find=lambda p: byp.get(p))
+    monkeypatch.setattr(tugas, "baca_projek", lambda *a, **k: {})
+    subset = [a, b, cc]                                   # "belum" awal = 3
+    monkeypatch.setattr(tugas, "gambar_konteks_job", lambda *a, **k: list(subset))
+
+    # masuk labeler di b -> BEKUKAN snapshot (3)
+    prev, nxt, pos, daftar = annotate._nav(
+        sess, b, job="J", saring="belum", uploads_root=None, bekukan=True)
+    assert pos == (2, 3) and prev is a and nxt is cc
+    assert len(sess.nav_beku["nama"]) == 3
+
+    # b DILABELI -> subset live menyusut jadi [a, cc]; snapshot TETAP 3
+    subset[:] = [a, cc]
+    prev, nxt, pos, daftar = annotate._nav(
+        sess, b, job="J", saring="belum", uploads_root=None)   # bekukan=False
+    assert pos == (2, 3), f"jumlah menyusut, mestinya tetap 3: {pos}"
+    assert prev is a and nxt is cc and len(daftar) == 3
+
+    # maju ke cc -> masih dalam snapshot 3
+    prev, nxt, pos, _ = annotate._nav(
+        sess, cc, job="J", saring="belum", uploads_root=None)
+    assert pos == (3, 3) and prev is b and nxt is None
+
+    # ganti konteks (saring beda) -> snapshot disegarkan ke subset live sekarang
+    prev, nxt, pos, _ = annotate._nav(
+        sess, a, job="J", saring="sudah", uploads_root=None)
+    assert pos[1] == 2                                   # subset live kini [a, cc]

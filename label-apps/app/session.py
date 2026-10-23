@@ -252,6 +252,13 @@ class Session:
         # halaman, di event loop. Terukur: 90 find() 4,7 detik, 11.409 find()
         # ~10 menit -- itulah "loading setengah jam" yang dilaporkan.
         self._by_path: dict[str, dict] = {}
+        # Snapshot navigasi labeler yang DIBEKUKAN saat masuk dari papan/job.
+        # Panah kiri/kanan menyusuri daftar ini, tetap walau gambar dilabeli dan
+        # keluar dari filter (mis. "belum dianotasi") -- jadi jumlah tak menyusut
+        # dan posisi tak hilang di tengah kerja. Disegarkan saat masuk ulang
+        # (keluar ke papan lalu buka lagi). {kunci, nama[], paths[]}. Lihat
+        # routers/annotate._nav.
+        self.nav_beku: dict | None = None
         # Nilai penanda perubahan saat isi ini dipindai. Lihat _cap_ubah.
         self.cap = 0
         # Tanda tangan folder saat isi ini terakhir dibaca. Lihat sidik_disk:
@@ -352,6 +359,8 @@ class Session:
         # pemindaian ulang angka itu sudah usang, jadi dibuang — kalau tidak,
         # penambahan berikutnya membagi berdasarkan keadaan yang sudah lewat.
         self._penempat = None
+        # Projek baru -> konteks navigasi labeler lama tak berlaku.
+        self.nav_beku = None
         # Rencana lama menyebut nama berkas yang mungkin sudah tidak ada.
         # Membiarkannya berarti ekspor berikutnya membelah memakai keadaan
         # yang sudah lewat.
