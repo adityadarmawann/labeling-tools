@@ -424,6 +424,11 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
     n_label = sum(1 for x in isi if x["berlabel"])
     n_latar = sum(1 for x in isi if x["latar"])
     n_ds = sum(1 for x in isi if x["di_dataset"])
+    # Tahap alur kerja "sudah dilabeli, belum di dataset": gambar yang
+    # pekerjaannya selesai tapi belum dikumpulkan. Dihitung langsung, bukan
+    # n_label - n_ds: tidak semua yang di dataset harus berlabel, jadi selisih
+    # itu bisa meleset. Inilah angka tahap ke-3 di baris alur job.html.
+    n_label_belum_ds = sum(1 for x in isi if x["berlabel"] and not x["di_dataset"])
     # Kelas yang benar-benar dipakai DI JOB INI, bukan seluruh projek: saringan
     # yang menawarkan kelas yang tidak ada isinya selalu memberi nol, dan yang
     # membacanya menyangka jatahnya kosong.
@@ -483,6 +488,7 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
         "saring": saring,
         "dsf": dsf,
         "n_belum_ds": n_semua - n_ds,
+        "n_label_belum_ds": n_label_belum_ds,
         "kelas_aktif": set(kelas_pilih),
         "latar_aktif": latar_pilih,
         # Paginasi. `mulai`/`akhir` 1-berbasis untuk "1–50 dari 86".

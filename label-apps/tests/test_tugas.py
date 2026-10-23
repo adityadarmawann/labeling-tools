@@ -1993,8 +1993,8 @@ def test_pelabel_bisa_menandai_latar_borongan_dari_halaman_tugasnya(
     assert h.count('jb-cap-bg') == 2
     assert 'data-bg="1"' in h
     rapat = " ".join(h.split())
-    assert "Sudah dianotasi <b>2</b>" in rapat, "latar tidak dihitung sudah dianotasi"
-    assert "Belum dianotasi <b>2</b>" in rapat
+    assert "2 sudah dianotasi" in rapat, "latar tidak dihitung sudah dianotasi"
+    assert 'Perlu dilabeli</span><b class="jb-tahap-n">2</b>' in rapat
     # Dan ia bisa disaring lewat daftar kelas, sebaris dengan kelas lainnya.
     # Saringannya kini form GET di server (name="bg"), bukan centang yang
     # menyembunyikan kartu di peramban.
@@ -2104,7 +2104,7 @@ def test_saringan_kelas_di_halaman_tugas(klien, lingkungan):
     assert "data-kelas='[\"mlp\"]'" in rapat
     assert "data-kelas='[]'" in rapat, "gambar latar tidak punya kelas"
     # Keempatnya sudah dikerjakan, tiga berobjek dan satu latar.
-    assert "Sudah dianotasi <b>4</b>" in rapat
+    assert "4 sudah dianotasi" in rapat
 
 
 def test_semua_halaman_menyebut_angka_dikerjakan_yang_sama(klien, lingkungan):
@@ -2152,7 +2152,7 @@ def test_semua_halaman_menyebut_angka_dikerjakan_yang_sama(klien, lingkungan):
     angka["papan"] = int(re.search(r"(\d+) dari \d+ gambar sudah\s+dikerjakan", a).group(1))
 
     j = " ".join(klien.get(f"/tugas/{tid}?ds=seangka").text.split())
-    angka["halaman tugas"] = int(re.search(r"Sudah dianotasi <b>(\d+)</b>", j).group(1))
+    angka["halaman tugas"] = int(re.search(r"(\d+) sudah dianotasi", j).group(1))
 
     pr = sp.konteks(d, lingkungan["roots"] / "_unggahan", "paul")
     angka["kartu + sidebar"] = pr["anotasi"]
@@ -2990,8 +2990,9 @@ def test_job_saring_status_dataset(klien, lingkungan):
 
     # Chip menghitung benar: 4 di dataset, 2 belum.
     h = klien.get(f"/tugas/{tid}?ds={d.name}").text
-    assert "Di dataset <b>4</b>" in h
-    assert "Belum di dataset <b>2</b>" in h
+    # Tahap alur: "Di dataset" (4) dan "Sudah dilabeli, belum di dataset" (2).
+    assert 'Di dataset</span><b class="jb-tahap-n">4</b>' in h
+    assert 'belum di dataset</span></span><b class="jb-tahap-n">2</b>' in h
 
     # Saring 'belum' -> hanya 2 yang belum masuk dataset, tanpa cap dataset.
     hb = klien.get(f"/tugas/{tid}?ds={d.name}&dsf=belum").text
