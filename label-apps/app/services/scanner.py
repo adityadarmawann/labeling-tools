@@ -91,12 +91,25 @@ def dimensi(ip: Path) -> tuple[int, int] | None:
     try:
         with Image.open(ip) as im:
             w, h = im.size
+            o = int((im.getexif() or {}).get(0x0112, 1) or 1)
         if w > 0 and h > 0:
+            # EXIF orientation 5-8 = foto diputar 90/270 derajat: piksel TEGAK-nya
+            # bertukar lebar<->tinggi dari yang tersimpan di header. cv2.imread
+            # (dipakai SAM & pembuatan versi) DAN peramban (auto-orient saat
+            # menggambar) sama-sama menegakkan gambarnya, jadi dimensi di sini
+            # HARUS ikut tegak. Kalau dibiarkan mentah, kanvas label menggambar
+            # gambar tegak ke dalam kotak mentah (W,H tertukar) -> gepeng, dan
+            # titik prompt SAM meleset karena ruang koordinatnya beda. Foto HP 4:3
+            # (orientation 6) persis kasus ini; dataset Roboflow (orientation 1,
+            # kotak) tak terpengaruh. Lihat juga orientasi().
+            if o >= 5:
+                w, h = h, w
             return h, w
     except Exception:
         pass
     # Sebagian format yang dikenali OpenCV tidak dikenali Pillow (dan
-    # sebaliknya); jatuh ke jalur lama daripada membuang gambarnya.
+    # sebaliknya); jatuh ke jalur lama daripada membuang gambarnya. cv2.imread
+    # sudah menerapkan EXIF orientation sendiri, jadi shape-nya sudah tegak.
     im = cv2.imread(str(ip))
     if im is None:
         return None
