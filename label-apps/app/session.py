@@ -64,6 +64,14 @@ def tandai_berubah(src, gambar=None) -> None:
         r.append((n, str(Path(gambar).resolve()) if gambar else None))
         if len(r) > _MAKS_RIWAYAT:
             del r[:len(r) - _MAKS_RIWAYAT]
+    # Menulis anotasi / menandai latar mengubah angka "sudah dilabeli" di kartu
+    # & sidebar; buang cache survei projek itu supaya tak tertinggal (lazy impor,
+    # projek meng-impor session hanya lazy juga -> tak ada siklus).
+    try:
+        from .services import projek
+        projek.lupakan_survei(src)
+    except Exception:                                   # noqa: BLE001
+        pass
 
 
 def cap_sekarang(src) -> int:

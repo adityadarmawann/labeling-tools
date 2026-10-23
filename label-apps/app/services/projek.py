@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 import re
 import shutil
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
@@ -181,7 +182,59 @@ def anotasi_untuk(gambar: Path) -> Path | None:
 # mengubah waktu folder induknya, jadi angka yang tampil bisa tertinggal tanpa
 # ada yang bisa menjelaskan kapan. Simpanan yang pembatalannya tidak dipahami
 # lebih berbahaya daripada halaman yang lambat.
+_survei_cache: dict[str, tuple[float, dict]] = {}
+_survei_lock = threading.Lock()
+# Simpanan BERBATAS WAKTU, bukan berbasis waktu-ubah folder. Lihat _survei:
+# simpanan lama berkunci mtime folder dicabut karena menambah berkas tak selalu
+# mengubahnya -> angka tertinggal tanpa batas. TTL tak punya masalah itu: paling
+# lama basi 15 detik lalu dihitung ulang, tak pernah basi selamanya. Permukaan
+# KERJA (grid, papan anotasi) tidak memakai _survei -- mereka membaca sess.items
+# yang selalu segar -- jadi yang bisa basi sejenak hanya ANGKA RINGKAS di kartu
+# daftar & sidebar, dan itu sepadan dengan menghindari telusur 30rb entri tiap
+# render. Projek 30rb gambar: ~500 ms telusur jadi O(1) dalam jendela ini.
+_SURVEI_TTL = 15.0
+
+
+def _kunci_survei(d) -> str:
+    """Kunci cache yang SAMA apa pun bentuk path pemanggil (resolve), supaya
+    invalidasi dari rute mutasi pasti mengenai entri yang dibuat saat render."""
+    try:
+        return str(Path(d).resolve())
+    except OSError:
+        return str(Path(d))
+
+
+def lupakan_survei(d) -> None:
+    """Buang entri cache survei satu projek -> dihitung ulang segar pada render
+    berikutnya. Dipanggil dari tiap mutasi yang mengubah jumlah gambar/anotasi
+    (unggah, rescan, tulis anotasi), supaya kartu & sidebar tak tertinggal.
+    Murah (pop berkunci); kalau suatu jalur terlewat, entrinya toh pulih sendiri
+    dalam _SURVEI_TTL detik, jadi paling buruk angka basi sejenak, bukan rusak."""
+    kunci = _kunci_survei(d)
+    with _survei_lock:
+        _survei_cache.pop(kunci, None)
+
+
 def _survei(d: Path) -> dict:
+    """Pembungkus ber-TTL atas _survei_hitung (lihat sebab di _survei_cache)."""
+    kunci = _kunci_survei(d)
+    skr = time.time()
+    with _survei_lock:
+        v = _survei_cache.get(kunci)
+        if v is not None and skr - v[0] < _SURVEI_TTL:
+            return v[1]
+    hasil = _survei_hitung(d)
+    with _survei_lock:
+        # Buang entri kedaluwarsa sekalian supaya peta tak menumpuk projek lama.
+        if len(_survei_cache) > 64:
+            for k in [k for k, x in _survei_cache.items()
+                      if skr - x[0] >= _SURVEI_TTL]:
+                _survei_cache.pop(k, None)
+        _survei_cache[kunci] = (skr, hasil)
+    return hasil
+
+
+def _survei_hitung(d: Path) -> dict:
     """Sekali telusur untuk semua angka yang dibutuhkan satu kartu.
 
     Digabung menjadi satu jalan karena menelusuri folder besar itu mahal:
@@ -204,11 +257,12 @@ def _survei(d: Path) -> dict:
     bergantung pada urutan yang dikembalikan sistem berkas, jadi projek yang
     sama bisa menampilkan sampul berbeda di mesin berbeda.
 
-    Sengaja TANPA simpanan. Simpanan sempat dipasang lalu dicabut: kuncinya
-    bergantung pada waktu ubah folder, dan pada mesin ini menambah berkas
-    ternyata tidak selalu mengubahnya — angka di sidebar bisa tertinggal tanpa
-    ada yang bisa menjelaskan kapan. Menelusuri lebih cepat menyelesaikan
-    perkara yang sama tanpa menaruh kebenaran di tempat kedua.
+    Fungsi INI tidak menyimpan apa-apa; pembungkus _survei di atasnya yang
+    memberi simpanan ber-TTL. Dulu _survei sendiri sempat berkunci waktu-ubah
+    folder lalu dicabut (menambah berkas tak selalu mengubahnya -> angka
+    tertinggal tanpa batas). TTL menghindari jebakan itu: paling lama basi 15
+    detik, tak pernah selamanya, dan kebenaran tetap satu tempat (hasil telusur
+    ini) -- yang di-cache cuma SALINAN berumur pendek.
     """
     import os
 

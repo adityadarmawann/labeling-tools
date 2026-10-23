@@ -96,6 +96,11 @@ async def rescan(sess: Session = Depends(current_session_api)):
     if sess.src is None:
         return {"ok": False, "error": "belum ada dataset yang dibuka"}
     n = len(await asyncio.to_thread(sess.reload))
+    # Rescan dipakai tepat saat isi folder berubah dari luar (gambar dihapus/
+    # ditambah di disk) -> buang cache survei agar kartu/sidebar ikut segar.
+    # Impor lazy: dataset.py mengimpor projek per-fungsi, bukan di tingkat modul.
+    from ..services import projek as _projek
+    _projek.lupakan_survei(sess.src)
     return {"ok": True, "n": n}
 
 

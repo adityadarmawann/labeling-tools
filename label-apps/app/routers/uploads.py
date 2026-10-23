@@ -250,6 +250,10 @@ async def _mulai_kurasi(d: Path, settings: Settings) -> None:
     d.mkdir(parents=True, exist_ok=True)
     await asyncio.to_thread(svc_tugas.mulai_kurasi, d,
                             projek.pemilik_dari(settings.uploads_root, d))
+    # Jumlah gambar projek berubah -> buang cache survei supaya kartu/sidebar
+    # langsung segar, tak menunggu TTL. Dipanggil di SETIAP jalur penambah
+    # gambar (lihat pemanggil _mulai_kurasi).
+    projek.lupakan_survei(d)
 
 
 @router.put("/upload")
