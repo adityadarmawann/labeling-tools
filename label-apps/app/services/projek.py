@@ -37,7 +37,9 @@ log = catat("labelapp.projek")
 SAMPAH = "_sampah"
 
 # Folder yang tidak pernah muncul sebagai projek.
-_SEMBUNYI = {SAMPAH, "_unggahan"}
+# _scan-cache: cache hasil pindai (session.py, di bawah uploads_root). Bukan
+# projek -> jangan pernah muncul sebagai kartu, apa pun root yang didaftar.
+_SEMBUNYI = {SAMPAH, "_unggahan", "_scan-cache"}
 
 # Jenis media projek: "image" (bawaan) atau "video". Disimpan di berkas
 # pendamping tersendiri supaya terpisah dari .tugas.json (yang lahir belakangan

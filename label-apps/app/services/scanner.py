@@ -76,6 +76,40 @@ def kunci_isi(item: dict) -> str:
     return hashlib.sha1("|".join(bagian).encode()).hexdigest()[:12]
 
 
+def _sig_berkas(p) -> tuple | None:
+    """(mtime_ns, ukuran) sebuah berkas, None kalau tak ada. Pembanding MURAH
+    (satu stat) untuk tahu apakah isi item sudah berubah sejak di-cache."""
+    try:
+        st = os.stat(p)
+        return (st.st_mtime_ns, st.st_size)
+    except (OSError, TypeError, ValueError):
+        return None
+
+
+def sig_item(item: dict) -> tuple:
+    """Tanda tangan ISI satu item hasil pindai: stat gambar + berkas anotasinya.
+    Dipakai cache pindai inkremental -> item yang tanda tangannya cocok dipakai
+    ulang tanpa dibaca ulang; yang beda dibaca ulang. Harus mencakup SEMUA
+    berkas yang memengaruhi shapes/issues: YOLO = gambar + labels/.txt + .json
+    cadangan; labelme = gambar + .json."""
+    ip = item["img"]
+    if item.get("yolo"):
+        return (_sig_berkas(ip), _sig_berkas(item.get("labels")),
+                _sig_berkas(ip.with_suffix(".json")))
+    return (_sig_berkas(ip), _sig_berkas(item.get("ann")))
+
+
+def sigs_pindai(items: list[dict]) -> dict:
+    """{path-gambar-terselesaikan: sig_item} untuk ditulis ke cache."""
+    out = {}
+    for it in items:
+        try:
+            out[str(it["img"].resolve())] = sig_item(it)
+        except (OSError, ValueError):
+            continue
+    return out
+
+
 def dimensi(ip: Path) -> tuple[int, int] | None:
     """
     (H, W) sebuah gambar, dibaca dari HEADER-nya saja.
@@ -1029,7 +1063,8 @@ def severity(it: dict) -> str:
     return "warn" if it["issues"] else "ok"
 
 
-def _scan_yolo(src: Path, names: dict | None = None, kpt: dict | None = None):
+def _scan_yolo(src: Path, names: dict | None = None, kpt: dict | None = None,
+               peta: dict | None = None):
     items = []
     if names is None:
         names = baca_nama_kelas(src)
@@ -1039,17 +1074,38 @@ def _scan_yolo(src: Path, names: dict | None = None, kpt: dict | None = None):
     if kpt is None:
         kpt = _kpt_dari_projek(src)
     for ip in sorted(p for p in (src / "images").iterdir() if p.suffix.lower() in IMG_EXT):
+        tp = src / "labels" / (ip.stem + ".txt")
+        # Cache inkremental: kalau item ini sudah ada di cache DAN tanda tangan
+        # isinya (gambar+txt+json) tak berubah, pakai ulang tanpa baca+inspect.
+        ulang = _pakai_ulang(peta, ip, (_sig_berkas(ip), _sig_berkas(tp),
+                                        _sig_berkas(ip.with_suffix(".json"))))
+        if ulang is not None:
+            items.append(ulang)
+            continue
         d = dimensi(ip)
         if d is None:
             continue
         H, W = d
-        tp = src / "labels" / (ip.stem + ".txt")
         sh = read_yolo(tp, W, H, names, kpt=kpt)
         _gabung_cadangan(ip, sh)
         items.append({"img": ip, "shapes": sh, "W": W, "H": H, "yolo": True,
                       "labels": tp, "ann": tp,
                       "issues": inspect(sh, W, H, tp.exists())})
     return items, names
+
+
+def _pakai_ulang(peta: dict | None, ip: Path, sig_sekarang: tuple):
+    """Item cache untuk gambar ip kalau tanda tangannya == sig_sekarang; None
+    kalau tak ada di cache atau sudah berubah (-> pemanggil membacanya ulang)."""
+    if not peta:
+        return None
+    try:
+        c = peta.get(str(ip.resolve()))
+    except (OSError, ValueError):
+        return None
+    if c is not None and c[0] == sig_sekarang:
+        return c[1]
+    return None
 
 
 def _gabung_cadangan(ip: Path, shapes: list[dict]) -> None:
@@ -1084,14 +1140,11 @@ def _gabung_cadangan(ip: Path, shapes: list[dict]) -> None:
                                      "shape_type", "flags")}
 
 
-def _scan_labelme(src: Path):
+def _scan_labelme(src: Path, peta: dict | None = None):
     items, seen, broken = [], set(), set()
     for jp in sorted(anotasi_json(src)):
-        try:
-            sh, W, H = read_json(jp)
-        except Exception:
-            broken.add(jp.stem)
-            continue
+        # Gambar pasangannya dicari DULU (butuh untuk kunci cache). json tanpa
+        # gambar tak jadi item mana pun -> dilewati (sama hasilnya dgn dulu).
         ip = None
         for e in IMG_EXT:
             for c in (jp.with_suffix(e), jp.with_suffix(e.upper())):
@@ -1102,6 +1155,16 @@ def _scan_labelme(src: Path):
                 break
         if not ip:
             continue
+        ulang = _pakai_ulang(peta, ip, (_sig_berkas(ip), _sig_berkas(jp)))
+        if ulang is not None:
+            seen.add(ip.resolve())
+            items.append(ulang)
+            continue
+        try:
+            sh, W, H = read_json(jp)
+        except Exception:
+            broken.add(jp.stem)
+            continue
         seen.add(ip.resolve())
         items.append({"img": ip, "shapes": sh, "W": W, "H": H, "ann": jp,
                       "issues": inspect(sh, W, H, True)})
@@ -1111,13 +1174,18 @@ def _scan_labelme(src: Path):
                      if p.suffix.lower() in IMG_EXT and not tersembunyi(p, src)):
         if ip.resolve() in seen:
             continue
+        jp = ip.with_suffix(".json")
+        ulang = _pakai_ulang(peta, ip, (_sig_berkas(ip), _sig_berkas(jp)))
+        if ulang is not None:
+            items.append(ulang)
+            continue
         d = dimensi(ip)
         if d is None:
             continue
         H, W = d
         iss = ["berkas anotasi rusak"] if ip.stem in broken else ["belum dilabeli"]
         items.append({"img": ip, "shapes": [], "W": W, "H": H,
-                      "ann": ip.with_suffix(".json"), "issues": iss})
+                      "ann": jp, "issues": iss})
     # Dataset labelme boleh punya daftar kelas resmi juga (classes.txt atau
     # data.yaml di folder yang sama). Kalau ada, daftar itu yang membuat kanvas
     # bisa menahan salah ketik nama kelas, dan membuat indeks kelas saat
@@ -1158,9 +1226,16 @@ def split_bersarang(src: Path) -> list[Path]:
     return out
 
 
-def scan(src: Path):
+def scan(src: Path, peta: dict | None = None):
     """
     Pindai folder dataset -> (items, names).
+
+    `peta` (opsional) = {path-gambar-terselesaikan: (sig_item, item)} dari cache
+    pindai sebelumnya. Untuk tiap gambar yang tanda tangan isinya TAK berubah,
+    item cache dipakai ulang tanpa baca+inspect ulang -> buka projek 30rb gambar
+    yang cuma berubah sedikit jadi jauh lebih cepat. Enumerasi berkas tetap dari
+    disk (otoritatif), jadi gambar baru tetap dibaca dan yang terhapus hilang
+    sendiri -> hasilnya IDENTIK dengan pindai penuh. Tanpa peta = perilaku lama.
 
     Ekspor Roboflow ditunjuk di AKARNYA akan dipindai seluruh splitnya
     sekaligus, dan tiap gambar diberi tahu berasal dari split mana. Sebelum
@@ -1181,14 +1256,14 @@ def scan(src: Path):
         kpt = _kpt_dari_projek(src)
         items = []
         for d in splits:
-            bagian, _ = _scan_yolo(d, names, kpt)
+            bagian, _ = _scan_yolo(d, names, kpt, peta)
             for it in bagian:
                 it["split"] = d.name
             items.extend(bagian)
     elif _yolo_disini(src):
-        items, names = _scan_yolo(src)
+        items, names = _scan_yolo(src, peta=peta)
     else:
-        items, names = _scan_labelme(src)
+        items, names = _scan_labelme(src, peta=peta)
     items.sort(key=lambda it: (it.get("split", ""), it["img"].name))
     terapkan_jenis(items, jenis_projek(src))
     return items, names

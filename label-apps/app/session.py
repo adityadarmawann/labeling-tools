@@ -11,8 +11,11 @@ dicabut.
 """
 from __future__ import annotations
 
+import gzip
+import hashlib
 import json
 import os
+import pickle
 import secrets
 import shutil
 import threading
@@ -141,6 +144,99 @@ def berubah_sejak(src, cap: int):
         return keluar
 
 
+# ----------------------------------------------------- cache hasil pindai
+#
+# Membuka projek besar memindai SEMUA gambar (buka header + baca label +
+# inspect) ke memori; pada projek 30rb gambar itu ~10 detik, dan terulang tiap
+# kali projek dibuka di sesi baru (login, ganti projek lalu balik, sesudah
+# deploy). Hasil pindai itu disimpan ter-gzip ke disk (projek 30rb ~19 MB) dan
+# dimuat ~1,2 detik -> ~8x lebih cepat SELAMA isi folder tak berubah sejak
+# pindai terakhir.
+#
+# Kunci validitas: tanda tangan folder (sidik_disk = jumlah berkas, mtime
+# terbaru, total byte). Begitu SATU berkas berubah, tanda tangan berbeda, cache
+# DITOLAK, dan folder dipindai ulang -> tak pernah menampilkan data basi. Versi
+# dinaikkan kalau bentuk item/logika scanner berubah, supaya cache lama tak
+# terpakai lintas-deploy.
+#
+# Isinya pickle struktur milik aplikasi ini sendiri, ditulis & dibaca hanya oleh
+# proses ini di folder server (uploads_root/_scan-cache, di luar git, dilewati
+# projek.daftar). Bukan masukan pengguna.
+# Versi dinaikkan kalau BENTUK item atau logika pindai/sig berubah -> cache lama
+# tak terpakai lintas-deploy (mencegah item basi berformat lama).
+_CACHE_PINDAI_VER = 2
+_CACHE_PINDAI_MIN = 2000            # projek kecil: pindai sudah cepat, tak di-cache
+_CACHE_PINDAI_MAKS = 48            # paling banyak sekian berkas cache ditahan
+
+
+def _dir_cache_pindai(settings: Settings) -> Path:
+    return Path(settings.uploads_root) / "_scan-cache"
+
+
+def _berkas_cache_pindai(settings: Settings, src: Path) -> Path:
+    h = hashlib.sha1(str(src).encode()).hexdigest()[:16]
+    return _dir_cache_pindai(settings) / f"{h}.pkl.gz"
+
+
+def baca_cache_pindai(settings: Settings, src: Path):
+    """(items, names, sigs) dari cache kalau ada & versinya cocok; None kalau
+    tidak. TAK dijaga tanda-tangan-folder: pemanggil (load) merekonsiliasi lewat
+    peta -> gambar berubah dibaca ulang, sisanya dipakai ulang. `sigs` =
+    {path: sig_item} untuk membangun peta itu."""
+    p = _berkas_cache_pindai(settings, src)
+    try:
+        with gzip.open(p, "rb") as f:
+            d = pickle.load(f)
+    except Exception:                                   # noqa: BLE001  (cache opsional)
+        return None
+    if not isinstance(d, dict) or d.get("v") != _CACHE_PINDAI_VER:
+        return None
+    items, names, sigs = d.get("items"), d.get("names"), d.get("sigs")
+    if (not isinstance(items, list) or not isinstance(names, dict)
+            or not isinstance(sigs, dict)):
+        return None
+    return items, names, sigs, d.get("sig_folder")
+
+
+def tulis_cache_pindai(settings: Settings, src: Path, items, names,
+                       sig_folder=None) -> None:
+    """Tulis hasil pindai + tanda tangan (per-item DAN folder) ke cache (atomik).
+    Projek kecil dilewati (pindai sudah cepat). sig_folder dipakai jalur cepat:
+    kalau folder tak berubah sama sekali, buka berikutnya memakai item ini tanpa
+    menelusuri apa pun."""
+    if len(items) < _CACHE_PINDAI_MIN:
+        return
+    d = _dir_cache_pindai(settings)
+    try:
+        sigs = scanner.sigs_pindai(items)
+        d.mkdir(parents=True, exist_ok=True)
+        p = _berkas_cache_pindai(settings, src)
+        tmp = p.with_suffix(".gz.tmp")
+        with gzip.open(tmp, "wb", compresslevel=1) as f:
+            pickle.dump({"v": _CACHE_PINDAI_VER, "items": items, "names": names,
+                         "sigs": sigs,
+                         "sig_folder": tuple(sig_folder) if sig_folder else None},
+                        f, protocol=5)
+        tmp.replace(p)
+        _pangkas_cache_pindai(d)
+    except OSError:
+        pass                                            # gagal cache != gagal buka
+
+
+def _pangkas_cache_pindai(d: Path) -> None:
+    """Sisakan N berkas cache terbaru; buang sisanya supaya disk tak menumpuk."""
+    try:
+        berkas = sorted(d.glob("*.pkl.gz"),
+                        key=lambda x: x.stat().st_mtime, reverse=True)
+    except OSError:
+        return
+    for x in berkas[_CACHE_PINDAI_MAKS:]:
+        try:
+            x.unlink()
+        except OSError:
+            pass
+
+
 class Session:
     """Keadaan milik satu akun yang sedang login."""
 
@@ -205,7 +301,39 @@ class Session:
         # Dicatat SEBELUM memindai: perubahan yang datang di tengah pemindaian
         # lebih baik memicu satu pemindaian berlebih daripada terlewat.
         self.cap = cap_sekarang(self.src)
-        self.items, self.names = scanner.scan(self.src)
+        # Tanda tangan folder dihitung LEBIH DULU: dipakai dua kali, sebagai
+        # kunci cache pindai DAN sebagai self._sidik di bawah -- satu telusur
+        # murah (~0,4 dtk utk 30rb) menggantikan dua. Cache memulihkan hasil
+        # pindai ~8x lebih cepat selama folder tak berubah; begitu ada yang
+        # berubah, tanda tangan beda -> cache ditolak -> pindai ulang (tak
+        # pernah basi). Lihat baca_cache_pindai.
+        sig = sidik_disk(self.src)
+        cache = baca_cache_pindai(self.settings, self.src)
+        if cache is not None and tuple(cache[3] or ()) == tuple(sig):
+            # JALUR CEPAT: folder tak berubah sejak cache -> pakai item cache apa
+            # adanya, tanpa menelusuri/stat ulang (sudah tersortir + terapkan_
+            # jenis saat di-cache). ~8x lebih cepat. Dipakai saat buka projek
+            # stabil: sesudah restart/deploy tanpa edit, meninjau, atau pindah
+            # projek lalu balik.
+            self.items, self.names = cache[0], cache[1]
+        else:
+            # Berubah (sedang dilabeli) atau belum ada cache: pindai dengan PETA
+            # dari cache -> item tak berubah dipakai ulang, hanya yang berubah/
+            # baru dibaca ulang; yang terhapus hilang sendiri (enumerasi dari
+            # disk tetap otoritatif). Hasilnya identik dengan pindai penuh.
+            peta = None
+            if cache is not None:
+                sigs_c = cache[2]
+                peta = {}
+                for it in cache[0]:
+                    try:
+                        k = str(it["img"].resolve())
+                    except (OSError, ValueError):
+                        continue
+                    peta[k] = (sigs_c.get(k), it)
+            self.items, self.names = scanner.scan(self.src, peta=peta)
+            tulis_cache_pindai(self.settings, self.src, self.items,
+                               self.names, sig_folder=sig)
         # Template skeleton projek untuk pembacaan-ulang per-item (pose). scan()
         # di atas sudah mengelompokkan baris pose sendiri (membaca .tugas.json),
         # jadi ini HANYA untuk jalur muat_ulang_item/annotate yang memanggil
@@ -217,9 +345,9 @@ class Session:
         except Exception:
             self.skeleton = {}
         self._bangun_indeks()
-        # Dicatat SESUDAH memindai: yang dijanjikan tanda tangan ini adalah
-        # "isi folder saat items terakhir dibaca".
-        self._sidik = sidik_disk(self.src)
+        # Tanda tangan yang SAMA dengan kunci cache di atas: "isi folder saat
+        # items terakhir dibaca". Tak dihitung ulang -- sig di atas sudah itu.
+        self._sidik = sig
         # Penempat memegang jumlah gambar per split saat ia dibuat. Setelah
         # pemindaian ulang angka itu sudah usang, jadi dibuang — kalau tidak,
         # penambahan berikutnya membagi berdasarkan keadaan yang sudah lewat.
