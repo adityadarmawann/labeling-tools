@@ -48,7 +48,8 @@ def test_setelan_sesuai_anylabeling():
     from app.services import autolabel as al
     assert al.SAM_INPUT == (684, 1024), "ukuran kanvas encoder AnyLabeling"
     assert al.EPSILON_ANYLABELING == 0.001, "epsilon approxPolyDP AnyLabeling"
-    assert al.MODEL_DEFAULT == "mobilesam"
+    assert al.MODEL_DEFAULT == "sam2:small"
+    assert al.MODEL_DEFAULT in al.MODEL_DIIZINKAN
 
 
 def test_skala_prompt_dari_matriks_warp(lingkaran):

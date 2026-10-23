@@ -37,7 +37,10 @@ from . import olah_gpu
 
 # ---------------------------------------------------------------- setelan
 
-MODEL_DEFAULT = "mobilesam"
+# Default diubah ke sam2:small atas permintaan tim: batas objeknya lebih rapi
+# daripada MobileSAM. Catatan: ia lewat osam dan menyita ~4 GB GPU pada pemakaian
+# pertama, jadi osam harus hidup. MobileSAM tetap tersedia sebagai pilihan ringan.
+MODEL_DEFAULT = "sam2:small"
 
 MODEL_DIIZINKAN = {
     "mobilesam",            # ONNX lokal, bawaan
