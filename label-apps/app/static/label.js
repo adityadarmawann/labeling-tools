@@ -2929,9 +2929,6 @@ window.addEventListener('beforeunload', ev => {
 document.querySelectorAll('.tool[data-mode]').forEach(b => {
   b.onclick = () => setMode(b.dataset.mode);
 });
-el('ab-p+').onclick = () => setMode('p+');
-el('ab-p-').onclick = () => setMode('p-');
-el('ab-rect').onclick = () => setMode('rect');
 el('ab-clear').onclick = bersihkanPrompt;
 el('ab-finish').onclick = finishObject;
 el('btn-del').onclick = hapusTerpilih;

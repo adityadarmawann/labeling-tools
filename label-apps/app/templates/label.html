@@ -383,15 +383,11 @@
          sementara pil ini dipakai tiap objek. Berjajar di satu pil keduanya
          membuat pil ini selebar setengah layar dan bertabrakan dengan dok. #}
       <span class="lbl">{{ ikon('ai', 17) }}</span>
-      {# Tiga tombol ini pintasan dari alat yang SAMA di palet kanan, yang di
-         sana sudah bernama. Di sini mereka tanpa tulisan supaya pil ini tetap
-         satu baris — dua baris membuatnya tumbuh ke atas dan menutupi palet. #}
-      <button class="ab" id="ab-p+" title="Titik + (Q): klik pada objeknya">
-        {{ ikon('titik-tambah', 17) }}</button>
-      <button class="ab" id="ab-p-" title="Titik − (E): klik pada yang bukan objek">
-        {{ ikon('titik-kurang', 17) }}</button>
-      <button class="ab" id="ab-rect" title="Kotak AI: tarik kotak di sekitar objek">
-        {{ ikon('kotak-ajaib', 17) }}</button>
+      {# Dulu pil ini juga memuat Titik +, Titik -, dan Kotak AI, tetapi itu alat
+         yang SAMA persis dengan grup AI di palet kanan sehingga tampak dobel bagi
+         pengguna. Kini pil ini hanya memegang dua AKSI alurnya yang tak ada di
+         tempat lain: bersihkan prompt, lalu sahkan jadi objek. Alat Titik +/-,
+         Kotak tetap di palet kanan (dan pintasan Q/E/keyboard). #}
       <button class="ab" id="ab-clear" title="Bersihkan prompt (C)">
         {{ ikon('bersih', 17) }}<span>Bersih</span></button>
       <button class="ab ab-ok" id="ab-finish" title="Sahkan jadi objek (F)">
