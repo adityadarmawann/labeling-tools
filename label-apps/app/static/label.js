@@ -3455,6 +3455,38 @@ document.querySelectorAll('.lab-rel .rel').forEach(b => {
   };
 });
 
+/* Di HP palet alat hanya menampilkan alat inti; tombol "Rincian" membuka
+ * sisanya (Kotak AI, Bulat, Garis, Rantai, Titik, Latar, alat bantu keypoint).
+ * Polanya sama dengan tombol saringan grid Dataset (.bar-saring.terbuka): satu
+ * tombol melipat kontrol sekunder. Hanya berpengaruh di layar sempit —
+ * tombolnya disembunyikan CSS di desktop dan .terbuka tak dipakai di sana, jadi
+ * tata letak desktop tak tersentuh. Kami cuma menyalakan/mematikan kelas pada
+ * tombol yang sudah ada; penangan setMode/aksi tiap alat tetap apa adanya. */
+(() => {
+  const palet = document.getElementById('lab-palet');
+  const tombol = document.getElementById('palet-rincian');
+  if (!palet || !tombol) return;
+  const setBuka = buka => {
+    palet.classList.toggle('terbuka', buka);
+    tombol.setAttribute('aria-expanded', String(buka));
+  };
+  tombol.addEventListener('click', () => {
+    if (!_sempit()) return;                 // desktop: tombol tak terlihat
+    setBuka(!palet.classList.contains('terbuka'));
+  });
+  // Memilih salah satu alat sekunder langsung menutup lacinya lagi: begitu
+  // modenya terpasang, palet balik ke tampilan ringkas.
+  palet.querySelectorAll('.tool[data-sekunder]').forEach(b => {
+    b.addEventListener('click', () => setBuka(false));
+  });
+  // Ketuk di luar palet menutupnya (seperti menu View & laci panel).
+  document.addEventListener('click', ev => {
+    if (palet.classList.contains('terbuka') && !palet.contains(ev.target)) setBuka(false);
+  });
+  // Layar dilebarkan lagi: jangan tertinggal "terbuka" secara tak terlihat.
+  window.addEventListener('resize', () => { if (!_sempit()) setBuka(false); });
+})();
+
 muatView();
 (() => {
   let simpanan = null;

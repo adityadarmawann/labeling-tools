@@ -341,6 +341,10 @@ body.lab {
   color: var(--ink-faint); text-align: center; padding: 6px 0 3px;
 }
 .palet-judul:first-child { padding-top: 2px; }
+/* Tombol "Rincian" hanya berguna di HP, tempat palet menyusut jadi alat inti
+   saja (lihat blok @media max-width:560px). Di desktop semua alat sudah muat,
+   jadi tombolnya disembunyikan dan tata letak lama tak berubah sama sekali. */
+.lab-palet .palet-rincian { display: none; }
 .tool.kecil { min-width: 30px; min-height: 30px; width: 30px; height: 30px;
               border-radius: 8px; }
 .tool-sep { width: 26px; height: 1px; background: var(--line); margin: 5px auto; }
@@ -663,6 +667,23 @@ kbd{font-family:ui-monospace,"SF Mono",Menlo,monospace; font-size:10.5px;
   .rel { width: 46px; padding: 7px 0 5px; font-size: 10px; }
   .lab-palet { right: 10px; }
   .lab-palet .tool { width: 54px; }
+  /* Palet alat di HP: tampilkan hanya alat inti (Titik +, Titik −, Poligon,
+     Kotak, Sunting, Template KP / Keypoint); sisanya di balik tombol "Rincian",
+     sama seperti tombol saringan grid Dataset (.bar-saring.terbuka). Membuka
+     "Rincian" memunculkan kembali seluruh alat + judul kelompok, seperti
+     desktop. Kami hanya menyembunyikan/menampilkan tombol yang sudah ada, jadi
+     semua penangan & id tetap bekerja. */
+  .lab-palet .palet-rincian { display: grid; }
+  .lab-palet:not(.terbuka) .tool[data-sekunder],
+  .lab-palet:not(.terbuka) .palet-judul,
+  .lab-palet:not(.terbuka) .tool-sep { display: none; }
+  .lab-palet.terbuka .palet-rincian {
+    background: var(--aksi); color: var(--aksi-ink);
+  }
+  /* Saat "Rincian" terbuka daftar bisa melebihi tinggi layar; ia menggulir di
+     dalam palet (max-height sudah ada), dan batang gulirnya disembunyikan. */
+  .lab-palet { scrollbar-width: none; }
+  .lab-palet::-webkit-scrollbar { width: 0; height: 0; }
   /* Margin kanvas disetel ulang: kanan menyediakan ruang palet (~76px), sisi
      lain dirapatkan supaya gambar dapat area sebesar mungkin. */
   .lab-canvas { margin: 8px 78px 56px 8px; }

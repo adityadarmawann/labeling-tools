@@ -256,7 +256,7 @@
     {# ------------------------------------------------------------- palet alat
        Mengambang di tepi kanan kanvas, sejajar tangan yang sedang menggambar.
        Dulu ia rel gelap di tepi kiri layar, sejauh mungkin dari tempat kerja. #}
-    <div class="lab-palet" role="toolbar" aria-label="Alat">
+    <div class="lab-palet" id="lab-palet" role="toolbar" aria-label="Alat">
       {# Tiap alat memakai NAMA, bukan ikon telanjang. Ikon saja menuntut orang
          menebak, dan tiga alat SAM adalah yang paling tidak bisa ditebak:
          tidak ada kiasan yang sudah umum untuk "klik supaya AI memasukkan
@@ -269,7 +269,7 @@
       <button class="tool" data-mode="p-"
               title="Titik − (E): klik pada bagian yang BUKAN objek, SAM membuang bagian itu">
         {{ ikon('titik-kurang', 21) }}<span>Titik −</span></button>
-      <button class="tool" data-mode="rect"
+      <button class="tool" data-mode="rect" data-sekunder
               title="Kotak AI: tarik kotak di sekitar objek, SAM yang membuat poligonnya">
         {{ ikon('kotak-ajaib', 21) }}<span>Kotak</span></button>
 
@@ -280,15 +280,15 @@
       <button class="tool" data-mode="kotak"
               title="Kotak (R): tarik kotak, langsung jadi objek">
         {{ ikon('kotak', 21) }}<span>Kotak</span></button>
-      <button class="tool" data-mode="circle"
+      <button class="tool" data-mode="circle" data-sekunder
               title="Lingkaran: tarik dari titik pusat ke tepi">
         {{ ikon('lingkaran', 21) }}<span>Bulat</span></button>
-      <button class="tool" data-mode="line" title="Garis: dua klik">
+      <button class="tool" data-mode="line" data-sekunder title="Garis: dua klik">
         {{ ikon('garis', 21) }}<span>Garis</span></button>
-      <button class="tool" data-mode="linestrip"
+      <button class="tool" data-mode="linestrip" data-sekunder
               title="Garis patah: klik terus, akhiri dengan Ctrl+klik atau Enter">
         {{ ikon('garis-patah', 21) }}<span>Rantai</span></button>
-      <button class="tool" data-mode="point" title="Titik: satu klik satu objek">
+      <button class="tool" data-mode="point" data-sekunder title="Titik: satu klik satu objek">
         {{ ikon('titik', 21) }}<span>Titik</span></button>
 
       <span class="tool-sep"></span>
@@ -315,13 +315,13 @@
       <button class="tool" data-mode="pose"
               title="Keypoint (K): klik taruh titik berurut; Shift = occluded">
         {{ ikon('titik', 21) }}<span>Keypoint</span></button>
-      <button class="tool" type="button" id="btn-drop-tpl"
+      <button class="tool" type="button" id="btn-drop-tpl" data-sekunder
               title="Drop semua titik template sekaligus, lalu geser di mode Sunting">
         {{ ikon('titik', 21) }}<span>Drop semua</span></button>
-      <button class="tool" type="button" id="btn-lewati-kp"
+      <button class="tool" type="button" id="btn-lewati-kp" data-sekunder
               title="Lewati: tandai keypoint sekarang sebagai ABSEN (v0)">
         {{ ikon('titik', 21) }}<span>Lewati</span></button>
-      <button class="tool" type="button" id="btn-rapikan-bbox"
+      <button class="tool" type="button" id="btn-rapikan-bbox" data-sekunder
               title="Rapikan bbox otomatis mengikuti keypoint tiap instance">
         {{ ikon('kotak', 21) }}<span>Rapikan box</span></button>
       {% if boleh_ubah %}
@@ -329,12 +329,12 @@
           duplikat, jadikan box, jadikan negatif, hapus. Beroperasi pada instance
           yang sedang terpilih/disorot. Klik kanan pada kotak/titik instance juga
           membuka menu yang sama. -#}
-      <button class="tool" type="button" id="btn-opsi-instance"
+      <button class="tool" type="button" id="btn-opsi-instance" data-sekunder
               title="Opsi instance pose terpilih: Flip H/V, visibilitas, duplikat, jadikan box/negatif, hapus">
         {{ ikon('sunting', 21) }}<span>Opsi instance</span></button>
       {% endif %}
       {% if boleh_kelola %}
-      <button class="tool" type="button" id="btn-tata-default"
+      <button class="tool" type="button" id="btn-tata-default" data-sekunder
               title="Jadikan susunan instance terakhir sebagai tata letak default (untuk Drop semua)">
         {{ ikon('titik', 21) }}<span>Tata default</span></button>
       {% endif %}
@@ -348,7 +348,7 @@
           sudah latar, tombolnya menyala (data-on) dan sekali klik lagi
           membatalkannya. -#}
       <span class="tool-sep"></span>
-      <button class="tool tool-latar" type="button" id="btn-latar"
+      <button class="tool tool-latar" type="button" id="btn-latar" data-sekunder
               title="Tandai gambar ini sebagai latar (tanpa objek)">
         <svg class="ik" width="21" height="21" viewBox="0 0 24 24" fill="none"
              stroke="currentColor" stroke-width="2" stroke-linecap="round"
@@ -357,6 +357,21 @@
           <path d="M8 15l3-3 2 2 3-4"/>
         </svg><span id="btn-latar-teks">Latar</span></button>
       {% endif %}
+
+      {# Di HP palet menyusut jadi alat inti saja; tombol ini membuka sisanya
+         (Kotak AI, Bulat, Garis, Rantai, Titik, Latar, dan alat bantu keypoint).
+         Hanya tampil di layar sempit lewat CSS; di desktop semua alat tetap
+         terlihat seperti biasa, tombolnya disembunyikan. Pola sama dengan tombol
+         saringan di grid Dataset (.bar-saring.terbuka). #}
+      <button class="tool palet-rincian" type="button" id="palet-rincian"
+              aria-expanded="false" aria-controls="lab-palet"
+              title="Alat lain: Kotak AI, Bulat, Garis, Rantai, Titik, Latar">
+        <svg class="ik" width="21" height="21" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2" stroke-linecap="round"
+             stroke-linejoin="round" aria-hidden="true">
+          <circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/>
+          <circle cx="19" cy="12" r="1.3"/>
+        </svg><span>Rincian</span></button>
     </div>
 
     {# -------------------------------------------------------------- bar SAM
