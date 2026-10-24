@@ -34,6 +34,10 @@ import cv2
 import numpy as np
 
 from . import olah_gpu
+from . import gpu_sinyal
+from ..log import catat
+
+log = catat("labelapp.autolabel")
 
 # ---------------------------------------------------------------- setelan
 
@@ -148,8 +152,11 @@ class MobileSam:
         # dipakai, padahal saklarnya jelas-jelas berkata cpu. Saklar yang
         # menentukan; ketersediaan paket cuma syarat tambahan.
         penyedia = ort.get_available_providers()
+        # Selama training memegang GPU, MobileSAM pun diload di CPU supaya tak
+        # ikut merebut VRAM (walau kecil, menjaga satu aturan untuk semua SAM).
         pakai_gpu = (olah_gpu.MODE == "gpu"
-                     and "CUDAExecutionProvider" in penyedia)
+                     and "CUDAExecutionProvider" in penyedia
+                     and not gpu_sinyal.latih_aktif())
         pilih = (["CUDAExecutionProvider", "CPUExecutionProvider"]
                  if pakai_gpu else ["CPUExecutionProvider"])
         self.encoder = ort.InferenceSession(str(encoder), opsi, providers=pilih)
@@ -358,6 +365,12 @@ def _boleh_gpu_osam(model) -> bool:
         return False
     if not OSAM_GPU and model not in OSAM_GPU_KECIL:
         return False
+    # Training sedang memegang GPU -> SAM ke CPU, apa pun sisa VRAM-nya. Ini lebih
+    # tegas daripada ambang VRAM semata: di awal training (muat data, sebelum
+    # model naik GPU) VRAM sempat terlihat longgar, dan tanpa penjaga ini SAM bisa
+    # menyelinap naik GPU lalu training OOM saat modelnya menyusul.
+    if gpu_sinyal.latih_aktif():
+        return False
     try:
         import torch
         if not torch.cuda.is_available():
@@ -442,6 +455,45 @@ def _segment(img: Path, points, labels, model: str, eps: float) -> Usulan:
         if model == "mobilesam":
             return _segment_mobilesam(img, points, labels, eps)
         return _segment_osam(img, points, labels, model, eps)
+
+
+def bebaskan_gpu() -> bool:
+    """Lepaskan SEMUA sesi SAM yang menahan VRAM (MobileSAM + model osam), lalu
+    kosongkan cache CUDA. Dipakai TEPAT sebelum training lokal dimulai supaya GPU
+    8 GB tidak kehabisan memori gara-gara sesi SAM yang masih residen (~4 GB untuk
+    sam2:small). Aman dipanggil kapan saja: kalau tak ada yang residen, tak ada
+    efek. Sesinya dimuat ULANG otomatis pada klik SAM berikutnya -- dan selama
+    training berjalan, muatan ulang itu jatuh ke CPU (lihat _boleh_gpu_osam dan
+    MobileSam.__init__), jadi VRAM tetap milik training."""
+    global _sesi_mobilesam
+    lepas = False
+    with _KUNCI:                     # jangan lepas sesi di tengah inferensi
+        if _sesi_mobilesam is not None:
+            _sesi_mobilesam = None
+            lepas = True
+        try:
+            import osam.apis as _a
+            if getattr(_a, "running_model", None) is not None:
+                _a.running_model = None
+                lepas = True
+            # Sesi NMS osam (dipakai sebagian model) juga menahan sedikit VRAM.
+            if getattr(_a, "_non_maximum_suppression_inference_session", None) is not None:
+                _a._non_maximum_suppression_inference_session = None
+        except Exception:            # noqa: BLE001 -- osam belum pernah dipakai
+            pass
+    # Melepas objek sesi -> kolektor sampah menutup arena CUDA onnxruntime; lalu
+    # minta torch melepas blok cache-nya juga.
+    import gc
+    gc.collect()
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception:                # noqa: BLE001
+        pass
+    if lepas:
+        log.info("VRAM SAM dibebaskan untuk training")
+    return lepas
 
 
 # ---------------------------------------------------------------- API

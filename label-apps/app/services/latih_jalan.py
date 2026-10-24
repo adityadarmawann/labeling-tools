@@ -42,6 +42,7 @@ from pathlib import Path
 # Dijalankan sebagai modul dengan cwd di akar aplikasi, jadi impor relatif
 # paket tetap berlaku.
 from . import latih
+from . import gpu_sinyal
 
 KUNCI_GPU = Path(tempfile.gettempdir()) / "labelapp-latih-gpu.lock"
 
@@ -95,6 +96,9 @@ def main() -> int:
         fcntl.flock(f, fcntl.LOCK_EX)            # menunggu sampai dapat
         print("  giliran didapat")
 
+    # GPU kini dipegang training ini. Tandai supaya SAM di proses app memilih CPU
+    # selama training, tak merebut VRAM. Penanda dilepas di blok finally.
+    gpu_sinyal.tandai_latih()
     t0 = time.time()
     latih.perbarui(ds, nomor, keadaan="jalan", mulai_pada=_sekarang(),
                    pid=os.getpid())
@@ -213,6 +217,7 @@ def main() -> int:
         traceback.print_exc()
         return 1
     finally:
+        gpu_sinyal.lepas_latih()      # GPU dilepas -> SAM boleh naik GPU lagi
         try:
             fcntl.flock(f, fcntl.LOCK_UN)
             f.close()

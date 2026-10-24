@@ -1212,6 +1212,18 @@ def jalankan(ds, nomor: int) -> dict:
         modul = "app.services.latih_maskrcnn"
     else:
         modul = "app.services.latih_jalan"
+    lokal_gpu = modul != "app.services.latih_kaggle"
+    if lokal_gpu:
+        # Bebaskan VRAM yang ditahan sesi SAM di proses app SEBELUM training mulai
+        # -- di GPU 8 GB, sesi sam2:small (~4 GB) yang residen bisa membuat
+        # training OOM. Sesi SAM dimuat ulang (ke CPU) pada klik berikutnya.
+        try:
+            from . import autolabel
+            autolabel.bebaskan_gpu()
+        except Exception:                      # noqa: BLE001
+            log.warning("gagal membebaskan VRAM SAM sebelum training",
+                        exc_info=True)
+
     perintah = [sys.executable, "-m", modul,
                 str(Path(ds).resolve()), str(nomor)]
     env = dict(os.environ)
@@ -1230,6 +1242,13 @@ def jalankan(ds, nomor: int) -> dict:
                              # server dimatikan atau --reload menyalakannya
                              # ulang. Itu seluruh alasan memakai subproses.
                              start_new_session=True)
+    if lokal_gpu:
+        # Tandai sejak SPAWN (pakai pid anak) supaya tak ada celah: antara app
+        # membebaskan VRAM dan subproses sempat memasang penandanya sendiri, klik
+        # SAM bisa menyelinap naik GPU lagi. Subproses menegaskan ulang penanda
+        # ini saat memegang flock, dan melepasnya di finally.
+        from . import gpu_sinyal
+        gpu_sinyal.tandai_latih(p.pid)
     log.info("training L%s dimulai di %s (pid %s)", nomor, Path(ds).name, p.pid)
     return perbarui(ds, nomor, pid=p.pid, keadaan="antre")
 
