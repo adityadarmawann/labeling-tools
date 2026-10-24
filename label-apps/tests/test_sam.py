@@ -143,7 +143,7 @@ def test_osam_dipaksa_memakai_cpu():
     assert dipakai.get("providers") == ["CPUExecutionProvider"], dipakai
 
 
-def test_paksaan_osam_tidak_menyentuh_mobilesam():
+def test_paksaan_osam_tidak_menyentuh_mobilesam(monkeypatch):
     """MobileSAM punya sesinya sendiri dan TETAP boleh memakai GPU.
 
     Keduanya sama-sama onnxruntime, jadi perbaikan yang dipasang terlalu lebar
@@ -151,6 +151,11 @@ def test_paksaan_osam_tidak_menyentuh_mobilesam():
     — akan ikut menyeret MobileSAM (dan torch) ke CPU tanpa ada yang sadar.
     """
     from app.services import autolabel as al, olah_gpu
+
+    # Uji ini soal provider CUDA, bukan soal penanda training; netralkan penanda
+    # supaya tak terpengaruh training nyata / test lain yang kebetulan paralel.
+    monkeypatch.setattr(al.gpu_sinyal, "latih_aktif", lambda: False)
+    monkeypatch.setattr(al, "_sesi_mobilesam", None, raising=False)
 
     al._siapkan_osam()
     if olah_gpu.MODE != "gpu":
@@ -178,6 +183,9 @@ def test_osam_routing_kecil_gpu_besar_dan_sesak_cpu(monkeypatch):
     if al.OSAM_GPU:
         pytest.skip("LABELAPP_OSAM_GPU sengaja dinyalakan (paksa semua GPU)")
 
+    # Uji ini soal ambang VRAM & ukuran model; netralkan penanda training supaya
+    # hasilnya tak bergantung ada-tidaknya training nyata saat suite berjalan.
+    monkeypatch.setattr(al.gpu_sinyal, "latih_aktif", lambda: False)
     monkeypatch.setattr(olah_gpu, "MODE", "gpu", raising=False)
     fake = types.SimpleNamespace(cuda=types.SimpleNamespace(
         is_available=lambda: True,

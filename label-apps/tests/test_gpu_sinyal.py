@@ -11,7 +11,17 @@ from __future__ import annotations
 
 import os
 
+import pytest
+
 from app.services import gpu_sinyal, autolabel
+
+
+@pytest.fixture(autouse=True)
+def _penanda_terisolasi(tmp_path, monkeypatch):
+    """Penanda GPU ada di /tmp dan dibagi seluruh mesin. Saat suite berjalan
+    paralel (atau ada training nyata), itu bisa saling mengganggu. Arahkan ke
+    berkas sementara per-test supaya test ini tak pernah menyentuh penanda asli."""
+    monkeypatch.setattr(gpu_sinyal, "_MARKER", tmp_path / "gpu-aktif.json")
 
 
 def _bersihkan():
