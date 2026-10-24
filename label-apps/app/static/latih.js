@@ -202,6 +202,33 @@
     pilihVersi();
   }
 
+  /* Bobot awal BAWAAN per tugas: segmentasi -> yolo26n-seg.pt, kotak/deteksi ->
+     yolo26n.pt, pose -> yolo26n-pose.pt. Dicocokkan berdasarkan NAMA berkas
+     (path bisa absolut) dan tugasnya; kalau yang persis tak ada di server, jatuh
+     ke bobot pertama bertugas sama. */
+  const BOBOT_BAWAAN = { segment: 'yolo26n-seg.pt', detect: 'yolo26n.pt',
+                         pose: 'yolo26n-pose.pt' };
+  function bobotBawaanUntuk(tugas) {
+    const list = (BAHAN && BAHAN.bobot) || [];
+    const mau = BOBOT_BAWAAN[tugas];
+    const namaBerkas = (b) => String(b.path || '').split('/').pop();
+    const persis = list.find((b) => b.tugas === tugas && namaBerkas(b) === mau);
+    if (persis) return persis.path;
+    const sama = list.find((b) => b.tugas === tugas);
+    return sama ? sama.path : (list[0] ? list[0].path : '');
+  }
+  // Setel dropdown bobot ke bawaan tugas + segarkan keterangannya. Mengubah
+  // .value secara program TIDAK memicu onchange, jadi tak ada loop dengan
+  // tr-bobot.onchange (yang sebaliknya menyetir tugas dari bobot).
+  function pakaiBobotBawaan(tugas) {
+    if (!BAHAN || !BAHAN.bobot) return;
+    const p = bobotBawaanUntuk(tugas);
+    if (!p) return;
+    $('tr-bobot').value = p;
+    $('tr-bobot-ket').textContent =
+      (BAHAN.bobot.find((b) => b.path === p) || {}).ket || '';
+  }
+
   /* Versi berganti -> panel warna berganti -> angka warna ikut disetel.
      Inilah sinkronisasi yang diminta, dan ia berjalan otomatis supaya tidak
      bergantung pada orang mengingat untuk menyetelnya. */
@@ -227,6 +254,8 @@
     } else {
       $('tr-tugas-ket').textContent = '';
     }
+    // Bobot awal ikut tugasnya (versi kotak -> yolo26n.pt, bukan nyangkut -seg).
+    pakaiBobotBawaan($('tr-tugas').value);
     terapkanFilterPose();          // tugas bisa berubah -> saring arsitektur
 
     // Bawaannya mengikuti cara versinya dibuat — itu yang hampir selalu
@@ -1603,8 +1632,14 @@
             if (o) $('tr-tugas').value = o.dataset.tugas || 'segment';
             terapkanFilterPose();      // bobot pose -> tugas pose -> saring arsitektur
           };
-          // Ganti tugas manual (mis. ke pose) ikut menyaring arsitektur.
-          if ($('tr-tugas')) $('tr-tugas').onchange = terapkanFilterPose;
+          // Ganti tugas manual: bobot awal ikut jadi bawaan tugas itu
+          // (segmentasi -> yolo26n-seg.pt, kotak -> yolo26n.pt), lalu saring
+          // arsitektur. Mengubah .value bobot tak memicu onchange-nya, jadi tak
+          // ada loop balik ke tugas.
+          if ($('tr-tugas')) $('tr-tugas').onchange = () => {
+            pakaiBobotBawaan($('tr-tugas').value);
+            terapkanFilterPose();
+          };
           gambarForm();
           // Selektor "Jenis preset" (SmartBin / Basket) — ramah untuk awam.
           // Mengganti preset memuat ulang bawaan setelan + menampilkan/
