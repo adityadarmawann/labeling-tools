@@ -143,3 +143,90 @@ def kirim_undangan(settings, ke: str, tautan: str, projek: str) -> bool:
     except Exception as e:                            # noqa: BLE001
         log.warning("gagal kirim email undangan ke %s: %s", ke, e)
         return False
+
+
+# ------------------------------------------------------------ hasil training
+# Label & kalimat untuk tiap keadaan akhir training. Dipakai menyusun subjek
+# yang langsung kelihatan di kotak masuk tanpa membuka email.
+_LABEL_LATIH = {
+    "selesai": ("BERHASIL",   "selesai dengan berhasil"),
+    "gagal":   ("GAGAL",      "berhenti karena gagal"),
+    "batal":   ("DIBATALKAN", "dibatalkan"),
+    "hilang":  ("TERPUTUS",   "terputus karena prosesnya berhenti mendadak"),
+}
+
+
+def _teks_hasil(nama_sapa, projek, nama, keadaan, catatan, rincian, tautan):
+    label, kalimat = _LABEL_LATIH.get(keadaan, (keadaan.upper(), keadaan))
+    sapa = f"Halo {nama_sapa}," if nama_sapa else "Halo,"
+    baris = [
+        f"Projek    : {projek}",
+        f"Training  : {nama}",
+        f"Status    : {label}",
+    ]
+    # Catatan hanya dimunculkan kalau benar-benar ada isinya (permintaan tim:
+    # kalau kosong, jangan ada baris "Catatan ..." sama sekali).
+    if catatan:
+        baris.append(f"Catatan   : {catatan}")
+    if rincian:
+        baris.append(f"{'Hasil' if keadaan == 'selesai' else 'Penyebab':<9} : {rincian}")
+    isi = "\n".join(baris)
+    ekor = f"\nBuka HIGOLAB: {tautan}\n" if tautan else ""
+    return (
+        f"{sapa}\n\n"
+        f"Training di HIGOLAB sudah {kalimat}.\n\n"
+        f"{isi}\n"
+        f"{ekor}\n"
+        f"Email ini otomatis dari HIGOLAB.\n\n"
+        f"Salam,\n{TIM}\n{ORG}\n")
+
+
+def _html_hasil(nama_sapa, projek, nama, keadaan, catatan, rincian, tautan):
+    label, kalimat = _LABEL_LATIH.get(keadaan, (keadaan.upper(), keadaan))
+    warna = "#1f8a70" if keadaan == "selesai" else (
+        "#b42318" if keadaan in ("gagal", "hilang") else "#b54708")
+    sapa = f"Halo {_esc(nama_sapa)}," if nama_sapa else "Halo,"
+    baris = [("Projek", projek), ("Training", nama)]
+    if catatan:
+        baris.append(("Catatan", catatan))
+    if rincian:
+        baris.append(("Hasil" if keadaan == "selesai" else "Penyebab", rincian))
+    sel = "".join(
+        f'<tr><td style="padding:3px 12px 3px 0;color:#667085;'
+        f'vertical-align:top">{_esc(k)}</td>'
+        f'<td style="padding:3px 0;color:#1f2937">{_esc(v)}</td></tr>'
+        for k, v in baris)
+    tombol = (
+        f'<p><a href="{_esc(tautan)}" style="display:inline-block;padding:10px 18px;'
+        'background:#1f8a70;color:#ffffff;text-decoration:none;border-radius:6px">'
+        "Buka HIGOLAB</a></p>" if tautan else "")
+    return (
+        '<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;'
+        'color:#1f2937;line-height:1.6;max-width:560px">'
+        f"<p>{sapa}</p>"
+        f"<p>Training di HIGOLAB sudah {_esc(kalimat)}.</p>"
+        f'<p><span style="display:inline-block;padding:3px 10px;border-radius:5px;'
+        f'background:{warna};color:#fff;font-weight:700;font-size:12px">{label}</span></p>'
+        f'<table style="border-collapse:collapse;font-size:14px">{sel}</table>'
+        f"{tombol}"
+        '<p style="color:#98a2b3;font-size:12px">Email ini otomatis dari HIGOLAB.</p>'
+        f"<p>Salam,<br><br><b>{_esc(TIM)}</b><br>{_esc(ORG)}</p>"
+        "</div>")
+
+
+def kirim_hasil_latih(settings, ke: str, projek: str, nama: str, keadaan: str,
+                      catatan: str = "", rincian: str = "", tautan: str = "") -> bool:
+    """Kirim email hasil satu training ke pemiliknya. True kalau terkirim; False
+    (dan tercatat) kalau gagal -- kegagalan email tak boleh merusak apa pun di
+    pemanggil, jadi tidak pernah melempar."""
+    label = _LABEL_LATIH.get(keadaan, (keadaan.upper(),))[0]
+    subjek = f'[HIGOLAB] Training "{nama}" {label} ({projek})'
+    sapa = _nama_dari_email(ke)
+    try:
+        kirim(settings, ke, subjek,
+              _teks_hasil(sapa, projek, nama, keadaan, catatan, rincian, tautan),
+              _html_hasil(sapa, projek, nama, keadaan, catatan, rincian, tautan))
+        return True
+    except Exception as e:                            # noqa: BLE001
+        log.warning("gagal kirim email hasil training ke %s: %s", ke, e)
+        return False

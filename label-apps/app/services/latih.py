@@ -606,6 +606,99 @@ def perbarui(ds, nomor: int, **nilai) -> dict:
 
 
 # ============================================================
+# NOTIFIKASI EMAIL HASIL TRAINING
+# ============================================================
+#
+# Saat training mencapai keadaan akhir, pemiliknya sering tidak sedang menonton
+# -- apalagi kalau GPU kehabisan memori dan ia baru tahu berjam-jam kemudian saat
+# membuka HIGOLAB lagi. Fungsi ini mengirim SATU email ringkas ke email akun
+# pemiliknya. Idempoten lewat flag `surel_terkirim` di record, jadi boleh
+# dipanggil dari subprocess training MAUPUN dari status() ketika ia menemukan
+# proses yang mati mendadak -- email tetap cuma sekali. SMTP mati (smtp_host
+# kosong) = diam saja, tak ada yang rusak.
+
+_AKHIR = ("selesai", "gagal", "batal", "hilang")
+_kunci_surel = threading.Lock()
+_surel_proses: set = set()
+
+
+def _rincian_hasil(ds, nomor: int, keadaan: str, isi: dict) -> str:
+    """Satu baris untuk badan email: metrik terbaik kalau berhasil, pesan galat
+    kalau gagal/hilang. Kosong kalau tak ada yang berguna."""
+    if keadaan == "selesai":
+        h = baca_hasil_csv(dir_latih(ds, nomor))
+        ep = h.get("epoch") or 0
+        tb = h.get("terbaik") or {}
+        bagian = [f"{ep} epoch"] if ep else []
+        bagian += [f"{lbl} {v:.3f}" for lbl, v in list(tb.items())[:3]]
+        return ", ".join(bagian)
+    if keadaan in ("gagal", "hilang"):
+        g = (isi.get("galat") or "").strip()
+        if not g and keadaan == "hilang":
+            g = "proses berhenti mendadak (kemungkinan kehabisan memori)"
+        return g
+    return ""
+
+
+def beritahu_hasil(ds, nomor: int) -> bool:
+    """Kirim email hasil training ke pemiliknya, SEKALI saja. True kalau terkirim.
+
+    Aman dipanggil berulang & dari proses mana pun: flag `surel_terkirim` di
+    record mencegah kirim ganda, dan kegagalan apa pun ditelan (training/status
+    tak boleh rusak gara-gara email)."""
+    try:
+        isi = baca(ds, nomor)
+        if not isi or isi.get("surel_terkirim"):
+            return False
+        keadaan = isi.get("keadaan")
+        if keadaan not in _AKHIR:
+            return False
+
+        from ..config import get_settings
+        from . import surel
+        settings = get_settings()
+        if not surel.aktif(settings):
+            return False
+
+        # Tujuan = email akun yang menjalankan training (pemilik projek pribadi).
+        ke = ""
+        try:
+            from .. import security
+            users = json.loads(Path(settings.users_file).read_text())
+            ke = security.email_akun(users, isi.get("oleh") or "")
+        except (OSError, ValueError, TypeError):
+            ke = ""
+        if not ke:
+            return False
+
+        # Kunci dalam-proses: cegah beberapa polling status() mengirim bersamaan.
+        # Antar-PROSES dijaga flag persisten di record.
+        kunci = (str(ds), int(nomor))
+        with _kunci_surel:
+            isi = baca(ds, nomor) or {}
+            if isi.get("surel_terkirim") or kunci in _surel_proses:
+                return False
+            _surel_proses.add(kunci)
+        try:
+            base = (settings.basis_publik or "").rstrip("/")
+            terkirim = surel.kirim_hasil_latih(
+                settings, ke, Path(ds).name,
+                isi.get("nama") or f"Training L{nomor}", keadaan,
+                (isi.get("catatan") or "").strip(),
+                _rincian_hasil(ds, nomor, keadaan, isi),
+                (base + "/") if base else "")
+            if terkirim:
+                perbarui(ds, nomor, surel_terkirim=True)
+            return terkirim
+        finally:
+            with _kunci_surel:
+                _surel_proses.discard(kunci)
+    except Exception as e:                            # noqa: BLE001
+        log.warning("gagal memberi tahu hasil training %s L%s: %s", ds, nomor, e)
+        return False
+
+
+# ============================================================
 # MEMBACA KEMAJUAN DARI DISK
 # ============================================================
 #
@@ -814,6 +907,12 @@ def status(ds, nomor: int) -> dict:
         isi = perbarui(ds, nomor, keadaan=keadaan,
                        selesai_pada=isi.get("selesai_pada")
                        or datetime.now().strftime("%Y-%m-%d %H:%M"))
+        # Prosesnya mati mendadak tanpa sempat mengabari sendiri (mis. dibunuh
+        # OOM-killer), jadi subprocess tak mengirim email. Kirim di sini, tapi di
+        # thread latar supaya SMTP (sampai 20 dtk) tak memblok permintaan web.
+        if not isi.get("surel_terkirim"):
+            threading.Thread(target=beritahu_hasil, args=(ds, nomor),
+                             daemon=True).start()
 
     csv = baca_hasil_csv(d)
     epochs = int((isi.get("par") or {}).get("epochs") or 0)

@@ -178,8 +178,9 @@ class Settings:
     # sengaja. Tempel-URL satuan dan unggah berkas tidak tersentuh saklar ini;
     # keduanya selalu boleh (lihat services/video_ingest.scraper_aktif).
     scraper: bool = False
-    # ---- Kirim email undangan lewat SMTP pihak ketiga (Brevo/SendGrid/dll) ----
-    # Dipakai mengirim link undangan otomatis. Kredensialnya (terutama smtp_pass)
+    # ---- Kirim email lewat SMTP pihak ketiga (Brevo/SendGrid/dll) ----
+    # Dipakai mengirim link undangan otomatis DAN pemberitahuan hasil training
+    # (selesai/gagal) ke email pemilik projek. Kredensialnya (terutama smtp_pass)
     # TIDAK ditaruh di env/*.env yang terlacak git -- setel lewat variabel
     # lingkungan runtime di skrip start/systemd. smtp_host kosong = fitur MATI,
     # undangan jatuh ke "salin link" seperti biasa. smtp_from = alamat pengirim

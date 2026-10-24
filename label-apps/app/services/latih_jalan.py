@@ -79,6 +79,7 @@ def main() -> int:
     except Exception as e:                       # noqa: BLE001
         latih.perbarui(ds, nomor, keadaan="gagal", galat=str(e)[:300],
                        selesai_pada=_sekarang())
+        latih.beritahu_hasil(ds, nomor)
         print(f"GAGAL sebelum mulai: {e}", file=sys.stderr)
         return 1
 
@@ -217,6 +218,10 @@ def main() -> int:
             f.close()
         except OSError:
             pass
+        # Keadaan akhir (selesai/gagal/batal) sudah tercatat di atas; kabari
+        # pemiliknya lewat email. Idempoten & menelan galatnya sendiri, jadi aman
+        # di finally dan tak akan mengubah kode keluar proses.
+        latih.beritahu_hasil(ds, nomor)
 
 
 if __name__ == "__main__":
