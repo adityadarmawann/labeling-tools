@@ -206,6 +206,24 @@ def test_filter_buang_katalog_otomatis(klien, lingkungan):
     assert len(list(d.glob("g*.jpg"))) == 10             # sumber utuh
 
 
+def test_estimasi_kelas_final(klien, lingkungan):
+    """Estimasi mengembalikan daftar kelas FINAL (hasil) persis seperti data.yaml:
+    buang -> latar dan ganti nama tercermin, terurut."""
+    masuk(klien, "paul", PW_PAUL)
+    d = _ds(klien, n_botol=6, n_kaleng=6, n_negatif=0)
+    klien.post(f"/setsrc?path={d}")
+    e0 = klien.post("/api/versi/estimasi?split=80,10,10", json={"resep": {}}).json()
+    assert set(e0["kelas_final"]) == {"botol", "kaleng"}, e0
+    idx = {k["nama"]: k["i"] for k in e0["daftar_kelas"]}
+    # botol -> latar (buang), kaleng diganti nama jadi "kaleng-ff".
+    resep = {"pra": {"ubah_kelas": {"aktif": True,
+             "peta": {str(idx["botol"]): None},
+             "nama": {str(idx["kaleng"]): "kaleng-ff"}}}}
+    e1 = klien.post("/api/versi/estimasi?split=80,10,10",
+                    json={"resep": resep}).json()
+    assert e1["kelas_final"] == ["kaleng-ff"], e1
+
+
 def test_kemajuan_membawa_nomor_untuk_resume_nama_versi(klien, lingkungan):
     """Saat halaman Versi dibuka ulang selagi build jalan, Nama versi diisi dari
     kemajuan.nomor (bukan dari muatSumber, yang tak dipanggil di jalur resume).

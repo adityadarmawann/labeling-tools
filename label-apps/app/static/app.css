@@ -2718,6 +2718,21 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
   background:var(--sunk);border-radius:9px;padding:11px 13px;margin-bottom:14px}
 .wz-perkira b{color:var(--ink)}
 .wz-perkira .halus{display:block;margin-top:6px}
+/* Kelas final (hasil): daftar nama kelas yang benar-benar masuk model, dengan
+   id (indeks) data.yaml. Ditaruh DI ATAS rincian supaya hal paling penting --
+   "model nanti kenal kelas apa saja" -- terbaca lebih dulu. */
+.wz-kf{border:1px solid var(--line);border-radius:9px;padding:11px 13px;
+  margin-bottom:14px;background:var(--sunk)}
+.wz-kf-judul{font-size:12.5px;color:var(--ink-faint);margin-bottom:9px}
+.wz-kf-judul b{color:var(--ink);font-weight:700}
+.wz-kf-chips{display:flex;flex-wrap:wrap;gap:6px}
+.wz-kf-chip{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;
+  color:var(--ink);background:var(--bg);border:1px solid var(--line);
+  border-radius:999px;padding:3px 10px 3px 4px}
+.wz-kf-chip i{display:inline-flex;align-items:center;justify-content:center;
+  min-width:19px;height:19px;padding:0 5px;border-radius:999px;font-style:normal;
+  font-size:11px;font-weight:700;background:var(--aksi);color:var(--aksi-ink)}
+.wz-kf-chips .halus{color:var(--ink-faint)}
 
 /* panel kerja */
 .wz-kerja{padding:18px 2px 4px}

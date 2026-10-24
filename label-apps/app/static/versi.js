@@ -1548,9 +1548,34 @@
       `<div><span>Salinan per gambar</span><b>${el('wz-salin').value}</b></div>` +
       `<div><span>Fase lanjutan</span><b class="wz-fase-tinjau">${fase}</b></div>` +
       `<div><span>Pembagian</span><b>${rasioTeks().replace(/,/g, ' / ')}</b></div>`;
+    const kf = el('wz-kelas-final');
+    if (kf) {
+      kf.hidden = false;
+      kf.innerHTML = '<div class="wz-kf-judul">Kelas final (hasil)</div>'
+        + '<div class="wz-kf-chips"><span class="halus">menyiapkan…</span></div>';
+    }
     el('wz-perkira').textContent = 'menghitung perkiraan…';
     const r = await kirimResep('/api/versi/estimasi');
     if (!r || !r.ok) { el('wz-perkira').textContent = (r && r.error) || 'gagal'; return; }
+    // Daftar kelas FINAL dari server (sesudah buang/gabung/ganti nama), persis
+    // isi data.yaml -- supaya user tahu kelas apa saja yang fiks masuk model,
+    // dengan id (indeks) yang sama dengan yang dilatih.
+    if (kf) {
+      const kfEsc = (s) => String(s).replace(/[&<>"]/g, (c) =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+      const lst = r.kelas_final || [];
+      if (lst.length) {
+        kf.hidden = false;
+        kf.innerHTML =
+          `<div class="wz-kf-judul">Kelas final (hasil) &middot; <b>${lst.length}</b> kelas `
+          + 'masuk model</div>'
+          + '<div class="wz-kf-chips">'
+          + lst.map((n, i) => `<span class="wz-kf-chip"><i>${i}</i>${kfEsc(n)}</span>`).join('')
+          + '</div>';
+      } else {
+        kf.hidden = true;
+      }
+    }
     // Sumber kebenarannya server, bukan ingatan klien: sesi bisa saja sudah
     // punya rencana dari kunjungan sebelumnya di tab yang sama.
     if (belahMode() === 'bocor') { adaRencana = !!r.berencana; segarkanBelah(); }

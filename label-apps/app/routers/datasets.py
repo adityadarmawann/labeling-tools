@@ -387,8 +387,21 @@ async def versi_estimasi(request: Request, split: str = "", belah: str = "",
                                      export.baca_rasio(rasio), rencana)
     peta = {it["img"].name: s for s, d in bagian.items() for it in d}
     e = await asyncio.to_thread(buatversi.perkirakan, items, names, resep, peta)
+
+    # Daftar kelas FINAL (hasil) persis seperti yang akan ditulis ke data.yaml:
+    # sesudah Modify Classes (buang -> latar, gabung, ganti nama) dan dipadatkan.
+    # Jalur yang SAMA dengan build (export.peta_kelas + buatversi.rencana_kelas),
+    # jadi yang ditampilkan di pratinjau identik dengan isi model nantinya.
+    def _kelas_final():
+        pk = export.peta_kelas(items, names)          # nama -> indeks
+        _, nm = buatversi.rencana_kelas(
+            {i: n for n, i in pk.items()}, len(pk), resep)
+        return nm
+    kelas_final = await asyncio.to_thread(_kelas_final)
+
     kosong = shutil.disk_usage(sess.src).free
     return {"ok": True, **e, "berencana": bool(rencana),
+            "kelas_final": kelas_final,
             "dibuang_saring": dibuang_saring,
             "rasio_pesan": export.periksa_rasio(rasio),
             "nomor_berikut": await asyncio.to_thread(versi.nomor_berikut, sess.src),
