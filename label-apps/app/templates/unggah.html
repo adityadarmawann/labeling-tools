@@ -178,12 +178,18 @@
         {%- if tata == "split" %}, dibagi mengikuti rasio train/valid/test yang
         sudah jalan{% elif tata == "yolo" %}, masuk ke <span class="mono">images</span>
         dan <span class="mono">labels</span> yang sudah ada{% endif %} &middot;
+        {%- if tata == "datar" %}
+        gambar, anotasi, dan video &middot;
+        maks {{ max_upload_mb }} MB/gambar, video sampai {{ max_video_mb }} MB
+        {%- else %}
         gambar dan anotasi saja, tanpa <span class="mono">.zip</span> &middot;
         maks {{ max_upload_mb }} MB per berkas
+        {%- endif %}
         {%- else %}
         subfolder <span class="mono">images</span> /
         <span class="mono">labels</span> ikut terjaga &middot;
-        maks {{ max_upload_mb }} MB per berkas, {{ max_zip_mb }} MB untuk .zip
+        maks {{ max_upload_mb }} MB/gambar, {{ max_zip_mb }} MB untuk .zip,
+        video sampai {{ max_video_mb }} MB
         {%- endif %}</span>
     </div>
 

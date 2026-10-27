@@ -118,6 +118,7 @@ async def halaman_unggah(request: Request, ds: str = "",
         "tata": tambah.tata_letak(d) if berisi else "",
         "max_upload_mb": settings.max_upload_mb,
         "max_zip_mb": settings.max_zip_mb,
+        "max_video_mb": settings.max_video_mb,
         "riwayat": riwayat.baca(settings, sess.user),
     })
 
