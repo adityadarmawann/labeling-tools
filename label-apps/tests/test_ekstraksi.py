@@ -147,3 +147,20 @@ def test_bukan_video_ditolak(tmp_path):
     bukan.write_text("ini bukan video")
     with pytest.raises(ekstraksi.EkstrakTolak):
         ekstraksi.ekstrak(bukan, tmp_path / "out")
+
+
+def test_kerapatan_faktor_slider():
+    """Slider mengirim FAKTOR kontinu (relatif 'sedang'); 1.0 = sedang, geser
+    kiri/kanan mengurangi/menambah, tetap dijepit maksimum MAKS_FRAME."""
+    # Tengah (faktor 1.0) identik dengan preset 'sedang'.
+    assert ekstraksi.target_frame(60, kerapatan=1.0) == ekstraksi.target_frame(60, "sedang")
+    # Geser kiri < tengah < geser kanan.
+    kiri = ekstraksi.target_frame(60, kerapatan=0.5)
+    tengah = ekstraksi.target_frame(60, kerapatan=1.0)
+    kanan = ekstraksi.target_frame(60, kerapatan=2.0)
+    assert kiri < tengah < kanan
+    # Video panjang + faktor besar tetap tak meledak jadi ribuan.
+    assert ekstraksi.target_frame(3 * 3600, kerapatan=2.0) == ekstraksi.MAKS_FRAME
+    # Faktor 0/None -> jatuh ke preset.
+    assert ekstraksi.target_frame(60, "rapat", kerapatan=0) == ekstraksi.target_frame(60, "rapat")
+    assert ekstraksi.target_frame(60, "jarang", kerapatan=None) == ekstraksi.target_frame(60, "jarang")

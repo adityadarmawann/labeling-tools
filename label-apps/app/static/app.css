@@ -1933,6 +1933,15 @@ input:focus{outline:0;border-color:var(--ok)}
 /* Tombol utama sedikit lebih besar dari chip di sebelahnya: dari sudut mata,
    ukuran yang membedakannya, bukan warnanya saja. */
 .ug-bilah .chip.aksi{padding:7px 15px;font-size:13px}
+/* Slider kerapatan ekstraksi video: geser kiri (sedikit) ke kanan (banyak). */
+.ug-krp{flex:0 0 auto;display:flex;align-items:center;gap:9px}
+.ug-krp-ujung{font-size:11px;color:var(--ink-faint);white-space:nowrap}
+.ug-krp input[type=range]{width:180px;max-width:46vw;accent-color:var(--aksi);
+  cursor:pointer}
+@media (max-width:560px){
+  .ug-krp{flex:1 1 100%}
+  .ug-krp input[type=range]{flex:1 1 auto;width:auto;max-width:none}
+}
 
 /* Kisi menggulir SENDIRI, bukan ikut halaman. Pada 5.000 berkas, tombol
    "Simpan dan lanjutkan" yang ikut tergulir berada puluhan layar jauhnya

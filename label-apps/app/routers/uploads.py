@@ -493,6 +493,7 @@ async def unzip(ds: str = "", name: str = "",
 
 @router.post("/ekstrak")
 async def ekstrak_video(ds: str = "", name: str = "", preset: str = "sedang",
+                        kerapatan: float = 0.0,
                         sess: Session = Depends(current_session_api),
                         settings: Settings = Depends(get_settings)):
     """
@@ -503,7 +504,8 @@ async def ekstrak_video(ds: str = "", name: str = "", preset: str = "sedang",
     Hanya untuk projek IMAGE — projek video menyimpan videonya apa adanya, dan
     jalur itu belum ada.
 
-    `preset` mengatur kerapatan: "jarang"/"sedang"/"rapat" (lihat ekstraksi).
+    Kerapatan ekstraksi: `kerapatan` (faktor kontinu dari slider, >0 menang)
+    ATAU `preset` lama ("jarang"/"sedang"/"rapat"). Lihat ekstraksi.
     """
     fn = safe_relpath(name, video=True)
     if not fn or Path(fn).suffix.lower() not in VIDEO_EXT:
@@ -522,7 +524,7 @@ async def ekstrak_video(ds: str = "", name: str = "", preset: str = "sedang",
     try:
         hasil = await asyncio.to_thread(
             ekstraksi.ekstrak, vp, vp.parent, ekstraksi.sah_preset(preset),
-            vp.stem)
+            vp.stem, (kerapatan if kerapatan and kerapatan > 0 else None))
     except ekstraksi.EkstrakTolak as e:
         return {"ok": False, "error": str(e)[:140]}
     except Exception as e:                       # cv2 bisa melempar macam-macam

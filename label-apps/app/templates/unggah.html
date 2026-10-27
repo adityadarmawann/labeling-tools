@@ -363,17 +363,18 @@
       <div class="ug-bilah ug-video-opsi" id="ug-video-opsi" hidden>
         <div class="ug-bilah-ket ug-video-ket">
           <b><span id="ug-video-n">0</span> video &rarr; diekstrak jadi frame</b>
-          <span id="ug-preset-hint">Sedang, seimbang (video 1 mnt &asymp; 60 gambar).</span>
+          <span id="ug-preset-hint">Seimbang (video 1 mnt &asymp; 60 gambar).</span>
         </div>
         <span class="spacer"></span>
-        <div class="seg" id="ug-preset" role="group"
-             aria-label="Kerapatan ekstraksi frame video">
-          <label class="seg-opt">
-            <input type="radio" name="ug-preset" value="jarang"> Jarang</label>
-          <label class="seg-opt" data-on>
-            <input type="radio" name="ug-preset" value="sedang" checked> Sedang</label>
-          <label class="seg-opt">
-            <input type="radio" name="ug-preset" value="rapat"> Rapat</label>
+        {# Geser kiri = lebih sedikit frame, kanan = lebih banyak. Default di
+           tengah (sama dengan preset "sedang" lama). Jumlah akhir tetap dijepit
+           maksimum 600 frame per video, jadi video panjang tak meledak. #}
+        <div class="ug-krp" role="group" aria-label="Kerapatan ekstraksi frame">
+          <span class="ug-krp-ujung">Sedikit</span>
+          <input type="range" id="ug-kerapatan" min="0" max="100" step="1"
+                 value="50" aria-label="Kerapatan ekstraksi frame video"
+                 aria-describedby="ug-preset-hint">
+          <span class="ug-krp-ujung">Banyak</span>
         </div>
       </div>
 

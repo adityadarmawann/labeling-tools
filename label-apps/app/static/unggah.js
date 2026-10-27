@@ -108,6 +108,7 @@
       if (berkas.has(nama)) continue;
       berkas.set(nama, { file: f, nama, gambar: adalahGambar(nama),
                          arsip: adalahArsip(nama), video: adalahVideo(nama) });
+      if (adalahVideo(nama)) muatDurasi(berkas.get(nama));
       baru++;
     }
     if (!berkas.size) {
@@ -307,6 +308,7 @@
       opsi.hidden = video === 0;
       const n = $('ug-video-n');
       if (n) n.textContent = String(video);
+      if (video) segarkanHintKerapatan();   // tampilkan perkiraan jumlah segera
     }
   }
 
@@ -399,11 +401,71 @@
     });
   }
 
-  // Preset kerapatan ekstraksi video yang sedang dipilih; "sedang" kalau
-  // panelnya belum ada (tak ada video) atau tak ada yang tercentang.
-  function presetDipilih() {
-    const c = document.querySelector('input[name="ug-preset"]:checked');
-    return c ? c.value : 'sedang';
+  // Faktor kerapatan dari slider (0..100), relatif preset "sedang" (= faktor
+  // 1.0). Geser kiri -> frame lebih sedikit, kanan -> lebih banyak. Logaritmik:
+  // 0 -> 0.5x, 50 (tengah, default) -> 1.0x, 100 -> 2.0x. Server tetap menjepit
+  // maksimum 600 frame/video, jadi video panjang tak meledak jadi ribuan.
+  function kerapatanDipilih() {
+    const s = $('ug-kerapatan');
+    const v = s ? Number(s.value) : 50;
+    return Math.pow(2, (v - 50) / 50);
+  }
+
+  // Perkiraan jumlah frame untuk satu video berdurasi `dur` detik pada faktor
+  // slider -- rumus & penjepit SAMA dengan server (KOEF 8.6 * faktor *
+  // durasi^0.47, dijepit [3, 600]).
+  function targetFrameJS(dur, faktor) {
+    if (!(dur > 0)) return 0;
+    return Math.min(600, Math.max(3,
+      Math.round(8.6 * faktor * Math.pow(dur, 0.47))));
+  }
+
+  // Baca durasi video di browser (loadedmetadata) supaya hint bisa menyebut
+  // PERKIRAAN jumlah gambar NYATA, bukan sekadar "per 1 menit". Gagal/takbisa
+  // baca -> durasi 0, hint jatuh ke perkiraan per menit.
+  function muatDurasi(b) {
+    if (!b || !b.file || b.durasi !== undefined) return;
+    b.durasi = 0;
+    try {
+      const v = document.createElement('video');
+      v.preload = 'metadata';
+      const url = URL.createObjectURL(b.file);
+      v.onloadedmetadata = () => {
+        b.durasi = (isFinite(v.duration) && v.duration > 0) ? v.duration : 0;
+        URL.revokeObjectURL(url);
+        segarkanHintKerapatan();
+      };
+      v.onerror = () => URL.revokeObjectURL(url);
+      v.src = url;
+    } catch (e) { /* abai: hint pakai perkiraan per menit */ }
+  }
+
+  // Beri tahu user berapa gambar yang akan diekstrak pada posisi slider
+  // sekarang: total dari durasi video yang distaging kalau sudah terbaca, atau
+  // perkiraan "per 1 menit" sebagai cadangan. Terpanggil tiap slider digeser
+  // dan tiap durasi sebuah video selesai dibaca.
+  function segarkanHintKerapatan() {
+    const h = $('ug-preset-hint');
+    if (!h) return;
+    const f = kerapatanDipilih();
+    const kata = f < 0.8 ? 'Lebih sedikit' : (f > 1.25 ? 'Lebih banyak' : 'Seimbang');
+    const vids = [...berkas.values()].filter((b) => b.video);
+    const berDurasi = vids.filter((b) => b.durasi > 0);
+    if (berDurasi.length) {
+      const total = berDurasi.reduce((s, b) => s + targetFrameJS(b.durasi, f), 0);
+      h.textContent = `${kata}: ≈ ${total} gambar`
+        + (vids.length > 1 ? ` dari ${vids.length} video` : '')
+        + (berDurasi.length < vids.length ? ' (sebagian durasi belum terbaca)' : '')
+        + '. Maksimum 600 per video.';
+    } else {
+      const perMenit = targetFrameJS(60, f);
+      h.textContent =
+        `${kata} (video 1 mnt ≈ ${perMenit} gambar, maksimum 600 per video).`;
+    }
+  }
+  if ($('ug-kerapatan')) {
+    $('ug-kerapatan').addEventListener('input', segarkanHintKerapatan);
+    segarkanHintKerapatan();
   }
 
   // Nama berkas yang SUDAH berhasil, bertahan lintas percobaan: "Coba lagi
@@ -439,7 +501,7 @@
     let byteKirim = 0, selesai = 0, gagal = 0;
     const arsip = [];
     const video = [];
-    const preset = presetDipilih();
+    const kerapatan = kerapatanDipilih();
     const t0 = Date.now();
 
     const lukisBilah = (byteSekarang, ke) => {
@@ -509,7 +571,7 @@
       try {
         const j = await post('/ekstrak?ds=' + encodeURIComponent(PROJEK)
           + '&name=' + encodeURIComponent(nama)
-          + '&preset=' + encodeURIComponent(preset));
+          + '&kerapatan=' + encodeURIComponent(kerapatan));
         if (j.ok) {
           frameTotal += (j.n || 0);
           const buang = (j.buram || 0) + (j.duplikat || 0);
@@ -782,25 +844,8 @@
       gambarUlang();
     });
 
-    // Pilihan kerapatan ekstraksi video (hanya tampil saat ada video).
-    const segPreset = $('ug-preset');
-    if (segPreset) {
-      const HINT = {
-        jarang: 'Jarang, paling sedikit frame (video 1 mnt ≈ 30 gambar).',
-        sedang: 'Sedang, seimbang (video 1 mnt ≈ 60 gambar).',
-        rapat: 'Rapat, paling rapat (video 1 mnt ≈ 100 gambar).',
-      };
-      const tandaiPreset = () => {
-        const c = segPreset.querySelector('input:checked');
-        for (const l of segPreset.querySelectorAll('.seg-opt')) {
-          l.toggleAttribute('data-on', c && l.contains(c));
-        }
-        const h = $('ug-preset-hint');
-        if (h && c) h.textContent = HINT[c.value] || '';
-      };
-      segPreset.addEventListener('change', tandaiPreset);
-      tandaiPreset();
-    }
+    // Kerapatan ekstraksi video kini slider (#ug-kerapatan); penanganannya ada
+    // di dekat kerapatanDipilih()/segarkanHintKerapatan() di atas.
 
     const ti = $('ug-tag-input');
     ti.addEventListener('keydown', (e) => {

@@ -75,10 +75,22 @@ def sah_preset(preset: str) -> str:
     return p if p in PRESET_SAH else PRESET_BAWAAN
 
 
-def target_frame(durasi: float, preset: str) -> int:
-    """Jumlah frame yang disasar untuk sebuah durasi (detik) dan preset."""
+def target_frame(durasi: float, preset: str = PRESET_BAWAAN,
+                 kerapatan: float | None = None) -> int:
+    """Jumlah frame yang disasar untuk sebuah durasi (detik).
+
+    Dua cara menentukan kerapatan, dan `kerapatan` menang kalau diberi:
+      - preset ("jarang"/"sedang"/"rapat"), jalur lama; ATAU
+      - `kerapatan`: FAKTOR pengali kontinu relatif "sedang" (slider). 1.0 =
+        sama dengan "sedang"; 0.5 kira-kira "jarang", ~1.67 kira-kira "rapat".
+    Keduanya dijepit ke [MIN_FRAME, MAKS_FRAME], jadi video sepanjang apa pun
+    tak pernah meledak jadi ribuan gambar."""
     durasi = max(0.0, float(durasi))
-    n = round(_KOEF[sah_preset(preset)] * (durasi ** _PANGKAT)) if durasi > 0 else 0
+    if kerapatan and kerapatan > 0:
+        koef = _KOEF["sedang"] * float(kerapatan)
+    else:
+        koef = _KOEF[sah_preset(preset)]
+    n = round(koef * (durasi ** _PANGKAT)) if durasi > 0 else 0
     return int(min(MAKS_FRAME, max(MIN_FRAME, n)))
 
 
@@ -122,7 +134,7 @@ def _duplikat(a: "np.ndarray", b: "np.ndarray") -> bool:
 
 
 def ekstrak(video: Path, keluar: Path, preset: str = PRESET_BAWAAN,
-            prefix: str = "") -> dict:
+            prefix: str = "", kerapatan: float | None = None) -> dict:
     """
     Potong `video` menjadi gambar JPG di folder `keluar`.
 
@@ -144,7 +156,7 @@ def ekstrak(video: Path, keluar: Path, preset: str = PRESET_BAWAAN,
         F, fps, durasi = _durasi(cap)
         if F <= 0:
             raise EkstrakTolak("video tidak berisi frame yang bisa dibaca")
-        target = target_frame(durasi, preset)
+        target = target_frame(durasi, preset, kerapatan)
         M = min(F, max(target, round(target * _OVERS)))
         kandidat = _indeks_kandidat(F, M)
         kset = set(kandidat)
