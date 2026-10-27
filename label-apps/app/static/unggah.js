@@ -588,9 +588,11 @@
           + '&fps=' + encodeURIComponent(fps));
         if (j.ok) {
           frameTotal += (j.n || 0);
-          const buang = (j.buram || 0) + (j.duplikat || 0);
+          const rinci = [];
+          if (j.buram) rinci.push(`${j.buram} buram`);
+          if (j.duplikat) rinci.push(`${j.duplikat} mirip/kembar`);
           toast(`${nama}: ${j.n} frame`
-            + (buang ? ` (${buang} buram/duplikat dibuang)` : ''));
+            + (rinci.length ? ` (${rinci.join(' + ')} dibuang)` : ''));
         } else { videoGagal++; toast('Gagal mengekstrak ' + nama + ': ' + j.error); }
       } catch (e) { videoGagal++; toast('Gagal menghubungi server saat mengekstrak'); }
     }
