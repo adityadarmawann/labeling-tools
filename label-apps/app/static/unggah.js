@@ -375,7 +375,11 @@
     return new Promise((resolve) => {
       const xhr = new XMLHttpRequest();
       xhr.open('PUT', url);
-      xhr.timeout = 120000;                 // 2 menit per berkas
+      // Timeout diskalakan ke UKURAN berkas, bukan 2 menit mati: video bisa
+      // beberapa GB dan butuh belasan menit di jaringan kantor. Anggap lantai
+      // laju sangat pelan 250 KB/dtk (2,8 GB ~ 3 jam batas atas), minimum 2
+      // menit untuk berkas kecil. onprogress tetap mengabari lajunya.
+      xhr.timeout = Math.max(120000, Math.ceil((file.size || 0) / 250000) * 1000);
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable && onByte) onByte(e.loaded);
       };
