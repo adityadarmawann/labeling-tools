@@ -204,5 +204,5 @@ def test_hp_video_rusak_tak_mematikan(tmp_path):
     from app.config import get_settings
     vp = tmp_path / "rusak.mp4"
     vp.write_bytes(b"bukan video")
-    uploads._ekstrak_hp_latar(vp, tmp_path, get_settings())   # tak boleh raise
+    uploads._jalankan_ekstrak_latar(vp, tmp_path, get_settings())   # tak boleh raise
     assert not vp.exists()                                    # tetap dibuang

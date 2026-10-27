@@ -37,6 +37,11 @@
     <span class="ug-langkah-item" id="ug-langkah-3">
       <span class="ug-langkah-no">3</span>Unggah</span>
   </nav>
+
+  {# Spanduk status ekstraksi video DI LATAR. Diisi unggah.js dari
+     /api/ekstrak/status; muncul sendiri saat halaman dibuka kalau ada video
+     yang masih/baru diekstrak, jadi user yang menutup tab tetap tahu statusnya. #}
+  <div class="ug-ekstrak" id="ug-ekstrak" hidden aria-live="polite"></div>
   {% endif %}
 
   {% if jenis == 'video' %}

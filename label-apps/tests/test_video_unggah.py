@@ -43,24 +43,38 @@ def _buat_projek(klien, nama, jenis):
     return j
 
 
+def _tunggu_ekstrak(klien, ds, video, timeout=25.0):
+    """Ekstraksi kini DI LATAR (thread): poll /api/ekstrak/status sampai video
+    itu 'selesai'/'gagal', lalu kembalikan rekamannya."""
+    import time
+    batas = time.time() + timeout
+    while time.time() < batas:
+        st = klien.get(f"/api/ekstrak/status?ds={ds}").json().get("status", {})
+        rec = st.get(video) or {}
+        if rec.get("keadaan") in ("selesai", "gagal"):
+            return rec
+        time.sleep(0.1)
+    return {}
+
+
 def test_video_ke_projek_image_diekstrak_dan_dihapus(klien, lingkungan):
     masuk(klien, "paul", PW_PAUL)
     _buat_projek(klien, "vid-img", "image")
     data = _video_bytes(lingkungan["tmp"])
 
-    r = klien.put("/upload?ds=vid-img&name=klip.mp4", content=data)
-    j = r.json()
-    assert j["ok"] and j["video"] is True, j
+    assert klien.put("/upload?ds=vid-img&name=klip.mp4",
+                     content=data).json()["video"] is True
 
-    r = klien.post("/ekstrak?ds=vid-img&name=klip.mp4&preset=sedang")
-    j = r.json()
-    assert j["ok"], j
-    assert j["n"] > 0 and j["video_dihapus"] is True
-    assert j["preset"] == "sedang"
+    # /ekstrak MEMULAI ekstraksi di latar dan balas segera.
+    j = klien.post("/ekstrak?ds=vid-img&name=klip.mp4&fps=2").json()
+    assert j["ok"] and j.get("latar") is True, j
+
+    rec = _tunggu_ekstrak(klien, "vid-img", "klip.mp4")
+    assert rec.get("keadaan") == "selesai" and rec.get("n", 0) > 0, rec
 
     proj = lingkungan["ruang"] / "vid-img"
     assert not (proj / "klip.mp4").exists()                 # video dibuang
-    assert len(list(proj.glob("*.jpg"))) == j["n"]          # frame mendarat
+    assert len(list(proj.glob("*.jpg"))) == rec["n"]        # frame mendarat
 
 
 def test_video_kedua_ke_projek_flat_yang_sudah_berisi(klien, lingkungan):
@@ -69,32 +83,36 @@ def test_video_kedua_ke_projek_flat_yang_sudah_berisi(klien, lingkungan):
     masuk(klien, "paul", PW_PAUL)
     _buat_projek(klien, "vid-multi", "image")
     data = _video_bytes(lingkungan["tmp"])
-
-    # Video 1.
-    assert klien.put("/upload?ds=vid-multi&name=a.mp4", content=data).json()["ok"]
-    j1 = klien.post("/ekstrak?ds=vid-multi&name=a.mp4&fps=2").json()
-    assert j1["ok"] and j1["n"] > 0, j1
     proj = lingkungan["ruang"] / "vid-multi"
+
+    assert klien.put("/upload?ds=vid-multi&name=a.mp4", content=data).json()["ok"]
+    assert klien.post("/ekstrak?ds=vid-multi&name=a.mp4&fps=2").json()["ok"]
+    r1 = _tunggu_ekstrak(klien, "vid-multi", "a.mp4")
+    assert r1.get("keadaan") == "selesai", r1
     n1 = len(list(proj.glob("*.jpg")))
-    assert n1 == j1["n"]
+    assert n1 == r1["n"]
 
     # Projek kini "berisi" + flat; video KEDUA harus tetap bisa.
     assert klien.put("/upload?ds=vid-multi&name=b.mp4", content=data).json()["ok"]
-    j2 = klien.post("/ekstrak?ds=vid-multi&name=b.mp4&fps=2").json()
-    assert j2["ok"] and j2["n"] > 0, j2
+    assert klien.post("/ekstrak?ds=vid-multi&name=b.mp4&fps=2").json()["ok"]
+    r2 = _tunggu_ekstrak(klien, "vid-multi", "b.mp4")
+    assert r2.get("keadaan") == "selesai", r2
     assert not (proj / "b.mp4").exists()                    # video kedua dibuang
-    assert len(list(proj.glob("*.jpg"))) == n1 + j2["n"]    # frame bertambah
+    assert len(list(proj.glob("*.jpg"))) == n1 + r2["n"]    # frame bertambah
 
 
 def test_preset_tak_sah_jatuh_ke_bawaan(klien, lingkungan):
+    # Preset ngaco -> jatuh ke bawaan di dalam ekstraksi; di sini cukup dipastikan
+    # ekstraksinya tetap jalan & selesai (fallback preset diuji di test_ekstraksi).
     masuk(klien, "paul", PW_PAUL)
     _buat_projek(klien, "vid-preset", "image")
     data = _video_bytes(lingkungan["tmp"])
     klien.put("/upload?ds=vid-preset&name=klip.mp4", content=data)
 
-    r = klien.post("/ekstrak?ds=vid-preset&name=klip.mp4&preset=ngaco")
-    j = r.json()
-    assert j["ok"] and j["preset"] == "sedang", j
+    j = klien.post("/ekstrak?ds=vid-preset&name=klip.mp4&preset=ngaco").json()
+    assert j["ok"] and j.get("latar") is True, j
+    rec = _tunggu_ekstrak(klien, "vid-preset", "klip.mp4")
+    assert rec.get("keadaan") == "selesai", rec
 
 
 def test_ekstrak_pada_projek_video_ditolak(klien, lingkungan):

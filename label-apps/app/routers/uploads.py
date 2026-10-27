@@ -9,7 +9,9 @@ satu berkas gagal tidak menggagalkan seluruh batch.
 from __future__ import annotations
 
 import asyncio
+import json
 import threading
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Query, Request
@@ -424,26 +426,77 @@ async def halaman_unggah_hp(request: Request, t: str = "",
     return templates.TemplateResponse(request, "unggah_hp.html", ktx)
 
 
-def _ekstrak_hp_latar(vp: Path, d: Path, settings: Settings) -> None:
-    """Ekstrak video unggahan HP jadi frame DI LATAR, lalu buang videonya.
+# ------------------------------------------------------ status ekstraksi video
+# Ekstraksi video jalan DI LATAR (thread lepas dari permintaan), jadi aman walau
+# tab browser ditutup di tengah jalan -- tetapi user yang membuka lagi harus bisa
+# tahu "masih jalan / selesai / gagal". Status ditulis ke berkas .ekstraksi.json
+# di dalam projek (diawali titik -> dilewati scanner, tak terhitung sebagai data)
+# dan dibaca lewat /api/ekstrak/status. Rekaman lama dipangkas supaya tak tumbuh.
+_BERKAS_STATUS = ".ekstraksi.json"
+_status_lock = threading.Lock()
 
-    Dijalankan di thread terpisah dari permintaan: sebuah video HP bisa 5 GB dan
-    ekstraksinya makan puluhan detik, sementara permintaan PUT-nya sudah harus
-    balas begitu berkasnya mendarat -- kalau ekstraksi ditahan di dalam
-    permintaan, ia gampang menembus timeout nginx untuk unggahan sebesar itu.
-    HP tak punya slider, jadi pakai fps bawaan (ekstraksi.FPS_BAWAAN); buang
-    buram/kembar tetap merapikan, dijepit maksimum MAKS_FRAME/video."""
-    from ..services import tugas as svc_tugas
+
+def _status_baca(d: Path) -> dict:
     try:
-        r = ekstraksi.ekstrak(vp, vp.parent, ekstraksi.PRESET_BAWAAN,
-                              vp.stem, None, ekstraksi.FPS_BAWAAN)
+        data = json.loads((d / _BERKAS_STATUS).read_text())
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _status_tulis(d: Path, video: str, **nilai) -> None:
+    with _status_lock:
+        data = _status_baca(d)
+        rec = data.get(video) or {}
+        rec.update(nilai)
+        data[video] = rec
+        # Pangkas: simpan paling banyak 30 rekaman terakhir (yang jalan + recent).
+        if len(data) > 30:
+            urut = sorted(data.items(),
+                          key=lambda kv: (kv[1].get("keadaan") == "jalan",
+                                          kv[1].get("mulai") or ""))
+            data = dict(urut[-30:])
+        try:
+            p = d / _BERKAS_STATUS
+            tmp = p.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(data, indent=1))
+            tmp.replace(p)
+        except OSError:
+            pass
+
+
+def _jalankan_ekstrak_latar(vp: Path, d: Path, settings: Settings, *,
+                            fps: float | None = None,
+                            kerapatan: float | None = None,
+                            preset: str = "sedang") -> None:
+    """Ekstrak satu video jadi frame DI LATAR, catat statusnya, buang videonya.
+
+    Dijalankan di thread terpisah dari permintaan supaya: (1) unggahan/ekstraksi
+    besar tak menembus timeout nginx, dan (2) menutup tab TIDAK membatalkan
+    ekstraksi maupun penghapusan video -- keduanya terjadi di sini, bukan di kode
+    permintaan yang bisa dibatalkan saat klien putus. Statusnya tercatat agar
+    user yang membuka lagi tahu masih jalan / selesai / gagal."""
+    from ..services import tugas as svc_tugas
+    video = vp.name
+    _status_tulis(d, video, keadaan="jalan", galat="",
+                  mulai=datetime.now().strftime("%Y-%m-%d %H:%M"))
+    try:
+        r = ekstraksi.ekstrak(vp, vp.parent, ekstraksi.sah_preset(preset),
+                              vp.stem, kerapatan, fps)
         vp.unlink(missing_ok=True)       # video dibuang setelah frame selamat
-        log.info("ekstrak HP %s -> %d frame", vp.name, r.get("ditulis", 0))
+        _status_tulis(d, video, keadaan="selesai", n=r.get("ditulis", 0),
+                      buram=r.get("buram", 0),
+                      selesai=datetime.now().strftime("%Y-%m-%d %H:%M"))
+        log.info("ekstrak %s -> %d frame", video, r.get("ditulis", 0))
     except ekstraksi.EkstrakTolak as e:
+        # Video tak bisa dibaca / tak menghasilkan frame: retry sia-sia, buang.
         vp.unlink(missing_ok=True)
-        log.warning("ekstrak HP ditolak %s: %s", vp.name, e)
+        _status_tulis(d, video, keadaan="gagal", galat=str(e)[:140])
+        log.warning("ekstrak ditolak %s: %s", video, e)
     except Exception as e:               # noqa: BLE001 -- cv2 macam-macam
-        log.warning("ekstrak HP gagal %s: %s", vp.name, e)
+        # Galat lain (mungkin transient): video DIPERTAHANKAN supaya bisa diulang.
+        _status_tulis(d, video, keadaan="gagal", galat=f"gagal mengekstrak: {str(e)[:90]}")
+        log.warning("ekstrak gagal %s: %s", video, e)
     finally:
         # Frame baru -> kurasi ulang + segarkan cache survei (kartu/sidebar).
         try:
@@ -475,8 +528,10 @@ async def upload_hp(request: Request, t: str = "", name: str = "",
         d, err = _folder_unggah(sess, settings, info["ds"])
         vp = (d / hasil["name"]) if not err else None
         if vp and vp.is_file():
-            threading.Thread(target=_ekstrak_hp_latar,
-                             args=(vp, d, settings), daemon=True).start()
+            # HP tak punya slider -> fps bawaan.
+            threading.Thread(
+                target=_jalankan_ekstrak_latar, args=(vp, d, settings),
+                kwargs={"fps": ekstraksi.FPS_BAWAAN}, daemon=True).start()
             hasil["ekstrak_latar"] = True   # beri tahu HP: diproses di latar
     return hasil
 
@@ -571,23 +626,39 @@ async def ekstrak_video(ds: str = "", name: str = "", preset: str = "sedang",
     if not vp.is_file():
         return {"ok": False, "error": "videonya tidak ada di folder unggahan"}
 
-    try:
-        hasil = await asyncio.to_thread(
-            ekstraksi.ekstrak, vp, vp.parent, ekstraksi.sah_preset(preset),
-            vp.stem, (kerapatan if kerapatan and kerapatan > 0 else None),
-            (fps if fps and fps > 0 else None))
-    except ekstraksi.EkstrakTolak as e:
-        return {"ok": False, "error": str(e)[:140]}
-    except Exception as e:                       # cv2 bisa melempar macam-macam
-        return {"ok": False, "error": f"gagal mengekstrak: {str(e)[:90]}"}
+    # Ekstraksi DI LATAR: video panjang (HEVC 60fps bisa 10+ menit) tak boleh
+    # menahan permintaan sampai menembus timeout, dan menutup tab tak boleh
+    # membatalkannya. Thread lepas ini mencatat status (jalan/selesai/gagal) +
+    # membuang videonya sendiri; UI memantaunya lewat /api/ekstrak/status.
+    threading.Thread(
+        target=_jalankan_ekstrak_latar, args=(vp, d, settings),
+        kwargs={"fps": (fps if fps and fps > 0 else None),
+                "kerapatan": (kerapatan if kerapatan and kerapatan > 0 else None),
+                "preset": preset}, daemon=True).start()
+    return {"ok": True, "latar": True, "name": fn}
 
-    # Videonya dibuang setelah frame-nya selamat — menyimpan salinan mentahnya
-    # cuma menghabiskan disk dan tak pernah terbaca sebagai bagian dataset.
-    vp.unlink(missing_ok=True)
-    return {"ok": True, "n": hasil["ditulis"], "buram": hasil["buram"],
-            "duplikat": hasil["duplikat"], "durasi": hasil["durasi"],
-            "target": hasil["target"], "preset": hasil["preset"],
-            "video_dihapus": True}
+
+@router.get("/api/ekstrak/status")
+async def ekstrak_status(ds: str = "",
+                         sess: Session = Depends(current_session_api),
+                         settings: Settings = Depends(get_settings)):
+    """Status ekstraksi video di LATAR untuk projek `ds`: tiap video + keadaan
+    (jalan/selesai/gagal), jumlah frame, dan galat. Dipakai UI supaya user yang
+    membuka lagi tahu prosesnya masih jalan atau sudah selesai/gagal."""
+    d, err = _folder_unggah(sess, settings, ds)
+    if err:
+        return {"ok": False, "error": err}
+    data = _status_baca(d)
+    # Sertakan jumlah frame yang SUDAH tertulis untuk yang masih 'jalan', supaya
+    # bilahnya terasa bergerak (dihitung dari berkas, murah untuk sesekali).
+    for nama, rec in data.items():
+        if rec.get("keadaan") == "jalan":
+            prefix = safe_slug(Path(nama).stem) or "frame"
+            try:
+                rec["sudah"] = sum(1 for p in d.glob(f"{prefix}-*.jpg"))
+            except OSError:
+                pass
+    return {"ok": True, "status": data}
 
 
 @router.get("/api/impor/survei")

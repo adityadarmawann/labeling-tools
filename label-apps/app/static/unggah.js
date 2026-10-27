@@ -479,6 +479,48 @@
     segarkanHintKerapatan();
   }
 
+  // Spanduk status ekstraksi video DI LATAR. Dibaca dari /api/ekstrak/status,
+  // jadi muncul lagi otomatis saat halaman DIBUKA walau tab sebelumnya ditutup
+  // di tengah ekstraksi -- user selalu tahu masih jalan / selesai / gagal.
+  let _ekstrakTimer = null;
+  function pantauEkstrak() {
+    const box = $('ug-ekstrak');
+    if (!box) return;
+    send('/api/ekstrak/status?ds=' + encodeURIComponent(PROJEK)).then((j) => {
+      if (!j || !j.ok) return;
+      const st = j.status || {};
+      const baris = Object.keys(st).map((v) => {
+        const r = st[v] || {};
+        const nm = `<span class="ug-ekstrak-nama">${esc(v)}</span>`;
+        if (r.keadaan === 'jalan') {
+          const n = r.sudah != null ? ` · ${Number(r.sudah).toLocaleString('id-ID')} frame` : '';
+          return `<div class="ug-ekstrak-baris ug-ekstrak-jalan"><span class="ug-ekstrak-spin">`
+            + `</span><span>${nm} sedang diekstrak jadi gambar${n}…</span></div>`;
+        }
+        if (r.keadaan === 'selesai') {
+          const n = r.n != null ? ` · ${Number(r.n).toLocaleString('id-ID')} gambar` : '';
+          return `<div class="ug-ekstrak-baris ug-ekstrak-ok">`
+            + `<span class="ug-ekstrak-ikon">✓</span><span>${nm} selesai${n}</span></div>`;
+        }
+        if (r.keadaan === 'gagal') {
+          return `<div class="ug-ekstrak-baris ug-ekstrak-gagal">`
+            + `<span class="ug-ekstrak-ikon">✕</span><span>${nm} gagal`
+            + (r.galat ? ` — ${esc(r.galat)}` : '') + `</span></div>`;
+        }
+        return '';
+      }).filter(Boolean);
+      if (!baris.length) { box.hidden = true; return; }
+      box.innerHTML = baris.join('');
+      box.hidden = false;
+      const adaJalan = Object.values(st).some((r) => r && r.keadaan === 'jalan');
+      clearTimeout(_ekstrakTimer);
+      if (adaJalan) _ekstrakTimer = setTimeout(pantauEkstrak, 3000);
+    }).catch(() => {});
+  }
+  // Saat halaman dibuka: tampilkan status ekstraksi yang mungkin masih jalan
+  // dari kunjungan sebelumnya (tab ditutup di tengah proses).
+  if ($('ug-ekstrak')) pantauEkstrak();
+
   // Nama berkas yang SUDAH berhasil, bertahan lintas percobaan: "Coba lagi
   // sisanya" tidak mengirim ulang yang sudah masuk.
   const berhasil = new Set();
@@ -575,26 +617,21 @@
       } catch (e) { pr.gagal('Gagal menghubungi server saat membongkar'); return; }
     }
 
-    // Video diekstrak jadi frame SETELAH terunggah utuh, satu per satu. Frame
-    // masuk ke projek dan videonya dibuang server; di sini cukup menunggu dan
-    // melaporkan jumlahnya. Satu video gagal tidak menghentikan sisanya.
-    let frameTotal = 0, videoGagal = 0;
+    // Video diekstrak jadi frame DI LATAR di server: prosesnya lanjut walau tab
+    // ditutup, dan videonya dibuang server setelah frame selamat. Di sini cukup
+    // MEMULAI tiap ekstraksi; progres/hasilnya dipantau spanduk #ug-ekstrak
+    // (pantauEkstrak), yang juga muncul lagi otomatis saat halaman dibuka ulang.
+    let adaEkstrak = false;
     for (let i = 0; i < video.length; i++) {
       const nama = video[i];
-      pr.taktentu(`Mengekstrak frame dari ${nama}… (${i + 1}/${video.length})`);
+      pr.taktentu(`Memulai ekstraksi ${nama}… (${i + 1}/${video.length})`);
       try {
         const j = await post('/ekstrak?ds=' + encodeURIComponent(PROJEK)
           + '&name=' + encodeURIComponent(nama)
           + '&fps=' + encodeURIComponent(fps));
-        if (j.ok) {
-          frameTotal += (j.n || 0);
-          const rinci = [];
-          if (j.buram) rinci.push(`${j.buram} buram`);
-          if (j.duplikat) rinci.push(`${j.duplikat} mirip/kembar`);
-          toast(`${nama}: ${j.n} frame`
-            + (rinci.length ? ` (${rinci.join(' + ')} dibuang)` : ''));
-        } else { videoGagal++; toast('Gagal mengekstrak ' + nama + ': ' + j.error); }
-      } catch (e) { videoGagal++; toast('Gagal menghubungi server saat mengekstrak'); }
+        if (j.ok) adaEkstrak = true;
+        else toast('Gagal memulai ekstraksi ' + nama + ': ' + j.error);
+      } catch (e) { toast('Gagal menghubungi server saat memulai ekstraksi'); }
     }
 
     pr.taktentu('Memindai isi dataset…');
@@ -626,17 +663,18 @@
     const sisaMentah = Math.max(0, nTotal - totalMasuk);
 
     // Jelas menyebut "selesai" dan jumlahnya: keluhan aslinya justru tidak
-    // tahu unggahannya tuntas atau belum.
-    const ekstra = frameTotal
-      ? ` · ${frameTotal.toLocaleString('id-ID')} frame dari video`
-        + (videoGagal ? `, ${videoGagal} video gagal` : '')
-      : (videoGagal ? ` · ${videoGagal} video gagal diekstrak` : '');
+    // tahu unggahannya tuntas atau belum. Video diekstrak DI LATAR, jadi di sini
+    // cukup diberi tahu; jumlah frame menyusul di spanduk status.
+    const ekstra = adaEkstrak
+      ? ' · video sedang diekstrak jadi frame di latar (lihat status di atas)'
+      : '';
     const pesan = gagal
       ? `Selesai, ${(berhasil.size).toLocaleString('id-ID')} terkirim, `
         + `${gagal} gagal · ${nTotal.toLocaleString('id-ID')} gambar di dataset`
         + ekstra
       : `Selesai, ${nTotal.toLocaleString('id-ID')} gambar di dataset` + ekstra;
     pr.selesai(pesan);
+    if (adaEkstrak) pantauEkstrak();        // mulai pantau ekstraksi latar
     $('ug-batal').hidden = true;
     $('ug-coba-lagi').hidden = true;
     $('ug-lanjut').hidden = false;
