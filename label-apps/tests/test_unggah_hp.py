@@ -154,3 +154,55 @@ def test_unggah_token_mati_ditolak(aplikasi, lingkungan):
     hp = TestClient(aplikasi)
     j = hp.put("/unggah-hp/upload?t=palsu&name=a.jpg", content=b"x" * 16).json()
     assert not j["ok"] and "kedaluwarsa" in j["error"].lower()
+
+
+def _buat_video_kecil(path, n=40, fps=30.0, ukuran=(320, 240)):
+    """Video mp4 kecil dengan isi berubah tiap frame (tajam, tak kembar)."""
+    import cv2
+    import numpy as np
+    vw = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"mp4v"), fps, ukuran)
+    assert vw.isOpened()
+    rng = np.random.default_rng(0)
+    for _ in range(n):
+        vw.write(rng.integers(0, 255, (ukuran[1], ukuran[0], 3), dtype=np.uint8))
+    vw.release()
+    return path
+
+
+def test_hp_video_diekstrak_jadi_frame_di_latar(klien, aplikasi, lingkungan):
+    """Video dari HP ke projek IMAGE: route balas cepat (ekstrak_latar), lalu
+    thread latar mengekstrak jadi frame dan membuang videonya."""
+    import pathlib
+    import time
+    masuk(klien, "paul", PW_PAUL)
+    klien.post("/api/projek/baru?nama=klip-hp")
+    tok = klien.post("/api/unggah/token?ds=klip-hp").json()["url"].split("t=", 1)[1]
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = ruang / "klip-hp"
+
+    vid = _buat_video_kecil(d.parent / "sumber.mp4")   # bikin di luar projek
+    hp = TestClient(aplikasi)
+    j = hp.put("/unggah-hp/upload?t=%s&name=rekaman.mp4" % tok,
+               content=vid.read_bytes()).json()
+    assert j["ok"] and j.get("video") and j.get("ekstrak_latar"), j
+
+    # Thread latar: tunggu frame muncul & video terbuang (maks ~10 dtk).
+    frame = []
+    for _ in range(100):
+        frame = list(d.glob("*.jpg"))
+        if frame and not (d / "rekaman.mp4").exists():
+            break
+        time.sleep(0.1)
+    assert frame, "tidak ada frame terekstrak"
+    assert not (d / "rekaman.mp4").exists(), "video mentah tak dibuang"
+
+
+def test_hp_video_rusak_tak_mematikan(tmp_path):
+    """Berkas 'video' yang tak bisa dibaca: helper latar menghapusnya & tak
+    melempar (tak boleh menjatuhkan server)."""
+    from app.routers import uploads
+    from app.config import get_settings
+    vp = tmp_path / "rusak.mp4"
+    vp.write_bytes(b"bukan video")
+    uploads._ekstrak_hp_latar(vp, tmp_path, get_settings())   # tak boleh raise
+    assert not vp.exists()                                    # tetap dibuang

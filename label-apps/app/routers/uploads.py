@@ -9,6 +9,7 @@ satu berkas gagal tidak menggagalkan seluruh batch.
 from __future__ import annotations
 
 import asyncio
+import threading
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Query, Request
@@ -21,6 +22,9 @@ from ..services import (arsip, ekstraksi, impor, projek, riwayat, scanner,
                         tambah, tugas, unggah_token)
 from ..session import Session
 from ..templating import templates
+from ..log import catat
+
+log = catat("labelapp.uploads")
 
 router = APIRouter(tags=["uploads"])
 
@@ -410,7 +414,8 @@ async def halaman_unggah_hp(request: Request, t: str = "",
     tombolnya menolak diam-diam."""
     info = unggah_token.ambil(t)
     ktx = {"sah": bool(info), "token": t,
-           "max_upload_mb": settings.max_upload_mb}
+           "max_upload_mb": settings.max_upload_mb,
+           "max_video_mb": settings.max_video_mb}
     if info:
         # Nama projek untuk ditampilkan: bentuk "owner/nama" disederhanakan ke
         # nama saja (ponsel tak perlu tahu kepemilikan, cuma tujuan).
@@ -418,18 +423,60 @@ async def halaman_unggah_hp(request: Request, t: str = "",
     return templates.TemplateResponse(request, "unggah_hp.html", ktx)
 
 
+def _ekstrak_hp_latar(vp: Path, d: Path, settings: Settings) -> None:
+    """Ekstrak video unggahan HP jadi frame DI LATAR, lalu buang videonya.
+
+    Dijalankan di thread terpisah dari permintaan: sebuah video HP bisa 5 GB dan
+    ekstraksinya makan puluhan detik, sementara permintaan PUT-nya sudah harus
+    balas begitu berkasnya mendarat -- kalau ekstraksi ditahan di dalam
+    permintaan, ia gampang menembus timeout nginx untuk unggahan sebesar itu.
+    Kerapatan 'sedang' (bawaan); hasilnya dijepit maksimum 600 frame/video."""
+    from ..services import tugas as svc_tugas
+    try:
+        r = ekstraksi.ekstrak(vp, vp.parent, ekstraksi.sah_preset("sedang"),
+                              vp.stem, None)
+        vp.unlink(missing_ok=True)       # video dibuang setelah frame selamat
+        log.info("ekstrak HP %s -> %d frame", vp.name, r.get("ditulis", 0))
+    except ekstraksi.EkstrakTolak as e:
+        vp.unlink(missing_ok=True)
+        log.warning("ekstrak HP ditolak %s: %s", vp.name, e)
+    except Exception as e:               # noqa: BLE001 -- cv2 macam-macam
+        log.warning("ekstrak HP gagal %s: %s", vp.name, e)
+    finally:
+        # Frame baru -> kurasi ulang + segarkan cache survei (kartu/sidebar).
+        try:
+            svc_tugas.mulai_kurasi(d, projek.pemilik_dari(settings.uploads_root, d))
+            projek.lupakan_survei(d)
+        except Exception:                # noqa: BLE001
+            pass
+
+
 @router.put("/unggah-hp/upload")
 async def upload_hp(request: Request, t: str = "", name: str = "",
                     settings: Settings = Depends(get_settings)):
     """Terima berkas dari ponsel. Token -> (akun, projek); sisanya identik
     dengan unggah biasa, termasuk cek ulang boleh_unggah di _folder_unggah
-    (hak yang dicabut menutup unggahan HP juga)."""
+    (hak yang dicabut menutup unggahan HP juga).
+
+    Video: HP tak bisa memanggil /ekstrak (itu jalur sesi cookie), jadi kalau
+    yang diunggah video ke projek image, server mengekstraknya DI LATAR di sini.
+    """
     info = unggah_token.ambil(t)
     if not info:
         return {"ok": False,
                 "error": "tautan kedaluwarsa, minta QR baru dari laptop"}
     sess = Session(info["user"], settings)
-    return await _lakukan_unggah(request, sess, settings, info["ds"], name)
+    hasil = await _lakukan_unggah(request, sess, settings, info["ds"], name)
+
+    if hasil.get("ok") and hasil.get("video") and not hasil.get("sumber"):
+        # video=True & tanpa 'sumber' = video mendarat di akar projek IMAGE.
+        d, err = _folder_unggah(sess, settings, info["ds"])
+        vp = (d / hasil["name"]) if not err else None
+        if vp and vp.is_file():
+            threading.Thread(target=_ekstrak_hp_latar,
+                             args=(vp, d, settings), daemon=True).start()
+            hasil["ekstrak_latar"] = True   # beri tahu HP: diproses di latar
+    return hasil
 
 
 @router.post("/unzip")

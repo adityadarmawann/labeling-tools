@@ -127,7 +127,7 @@ class Settings:
     max_zip_mb: int = 4096
     # Video (diekstrak jadi frame) punya batas sendiri: satu klip bisa jauh
     # lebih besar dari satu gambar, tapi tak sebesar ekspor dataset penuh.
-    max_video_mb: int = 2048
+    max_video_mb: int = 5120
     # Perlindungan zip bomb: total isi setelah dibongkar dibatasi sekian kali
     # ukuran arsipnya. Ekspor dataset berisi JPEG yang sudah termampatkan,
     # jadi rasionya mendekati 1 — nilai 20 sudah sangat longgar.
@@ -273,7 +273,7 @@ def get_settings() -> Settings:
         default_src=_path("DEFAULT_SRC"),
         impor_roots=_paths("IMPOR_ROOTS"),
         max_upload_mb=max(1, _int("MAX_UPLOAD_MB", 80)),
-        max_video_mb=max(1, _int("MAX_VIDEO_MB", 2048)),
+        max_video_mb=max(1, _int("MAX_VIDEO_MB", 5120)),
         max_zip_mb=max(1, _int("MAX_ZIP_MB", 4096)),
         anylabeling=_get("ANYLABELING") or "anylabeling",
         open_mode="dir" if _get("OPEN_MODE") == "dir" else "file",
