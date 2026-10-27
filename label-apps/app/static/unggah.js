@@ -453,14 +453,14 @@
     const berDurasi = vids.filter((b) => b.durasi > 0);
     if (berDurasi.length) {
       const total = berDurasi.reduce((s, b) => s + targetFrameJS(b.durasi, f), 0);
-      h.textContent = `${kata}: ≈ ${total} gambar`
+      h.textContent = `${kata}: sampai ≈ ${total} gambar`
         + (vids.length > 1 ? ` dari ${vids.length} video` : '')
         + (berDurasi.length < vids.length ? ' (sebagian durasi belum terbaca)' : '')
-        + '. Maksimum 600 per video.';
+        + '. Frame buram/kembar dibuang otomatis, resolusi asli, maks 600 per video.';
     } else {
       const perMenit = targetFrameJS(60, f);
-      h.textContent =
-        `${kata} (video 1 mnt ≈ ${perMenit} gambar, maksimum 600 per video).`;
+      h.textContent = `${kata} (video 1 mnt sampai ≈ ${perMenit} gambar; `
+        + 'buram/kembar dibuang, resolusi asli, maks 600 per video).';
     }
   }
   if ($('ug-kerapatan')) {
