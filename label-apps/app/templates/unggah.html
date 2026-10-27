@@ -165,7 +165,7 @@
     <div class="drop ug-drop" id="ug-drop">
       <span class="ug-drop-ikon" aria-hidden="true">&uarr;</span>
       <b class="ug-drop-judul">Tarik gambar, folder dataset, berkas
-        <span class="mono">.zip</span>{% if not berisi %}, atau video{% endif %}
+        <span class="mono">.zip</span>{% if not berisi or tata == 'datar' %}, atau video{% endif %}
         ke sini</b>
       <span class="ug-drop-atau">atau pilih sendiri</span>
       <span class="ug-drop-tombol">
@@ -197,7 +197,7 @@
        IMG_EXT + ANN_EXT + META_EXT + ARSIP_EXT di app/config.py. Video
        (VIDEO_EXT) hanya ditawarkan pada projek image yang masih kosong. #}
     <input id="ug-berkas" type="file" multiple hidden
-           accept=".jpg,.jpeg,.png,.bmp,.webp,.tif,.tiff,.json,.txt,.yaml,.yml,.zip{% if not berisi %},.mp4,.mov,.webm,.mkv,.avi,.m4v{% endif %}">
+           accept=".jpg,.jpeg,.png,.bmp,.webp,.tif,.tiff,.json,.txt,.yaml,.yml,.zip{% if not berisi or tata == 'datar' %},.mp4,.mov,.webm,.mkv,.avi,.m4v{% endif %}">
 
     <div class="ug-bawah">
       <section class="panel ug-format">

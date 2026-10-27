@@ -63,6 +63,29 @@ def test_video_ke_projek_image_diekstrak_dan_dihapus(klien, lingkungan):
     assert len(list(proj.glob("*.jpg"))) == j["n"]          # frame mendarat
 
 
+def test_video_kedua_ke_projek_flat_yang_sudah_berisi(klien, lingkungan):
+    """Projek flat yang SUDAH berisi frame (dari video pertama) tetap menerima
+    video berikutnya lewat /upload + /ekstrak -- 'semua fitur gambar bisa'."""
+    masuk(klien, "paul", PW_PAUL)
+    _buat_projek(klien, "vid-multi", "image")
+    data = _video_bytes(lingkungan["tmp"])
+
+    # Video 1.
+    assert klien.put("/upload?ds=vid-multi&name=a.mp4", content=data).json()["ok"]
+    j1 = klien.post("/ekstrak?ds=vid-multi&name=a.mp4&fps=2").json()
+    assert j1["ok"] and j1["n"] > 0, j1
+    proj = lingkungan["ruang"] / "vid-multi"
+    n1 = len(list(proj.glob("*.jpg")))
+    assert n1 == j1["n"]
+
+    # Projek kini "berisi" + flat; video KEDUA harus tetap bisa.
+    assert klien.put("/upload?ds=vid-multi&name=b.mp4", content=data).json()["ok"]
+    j2 = klien.post("/ekstrak?ds=vid-multi&name=b.mp4&fps=2").json()
+    assert j2["ok"] and j2["n"] > 0, j2
+    assert not (proj / "b.mp4").exists()                    # video kedua dibuang
+    assert len(list(proj.glob("*.jpg"))) == n1 + j2["n"]    # frame bertambah
+
+
 def test_preset_tak_sah_jatuh_ke_bawaan(klien, lingkungan):
     masuk(klien, "paul", PW_PAUL)
     _buat_projek(klien, "vid-preset", "image")

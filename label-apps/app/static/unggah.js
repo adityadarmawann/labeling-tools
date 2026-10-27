@@ -26,6 +26,12 @@
      kosong lewat /upload, yang menerima apa saja termasuk .zip lalu dipindai
      dari nol. Yang menentukan keadaan projeknya, bukan pilihan pengguna. */
   const BERISI = halaman.dataset.berisi === '1';
+  // Video boleh diunggah ke projek KOSONG maupun projek gambar FLAT (gambar di
+  // akar, tata "datar") -- frame hasil ekstraksi mendarat di akar, konsisten.
+  // Hanya dataset bersplit/yolo (train/valid/test) yang dikecualikan: frame
+  // mentah tak punya tempat di struktur itu. Untuk video, berkasnya SELALU lewat
+  // /upload (+ /ekstrak), bukan /tambah yang tak bisa mengekstrak.
+  const BOLEH_VIDEO = !BERISI || halaman.dataset.tata === 'datar';
   // Projek VIDEO: "Ambil dari folder di server" mendaftarkan dataset KLIP
   // (train/val folder-per-kelas atau .zip) sebagai VERSI aksi lewat
   // /api/aksi/impor-path, bukan jalur salin-gambar. Hanya admin.
@@ -97,7 +103,7 @@
       const nama = namaKirim(f);
       // Video hanya sah pada projek image yang kosong; di luar itu ia bukan
       // format yang didukung di halaman ini.
-      const bolehVideo = !BERISI && adalahVideo(nama);
+      const bolehVideo = BOLEH_VIDEO && adalahVideo(nama);
       if (!UP_EXT.some(e => nama.toLowerCase().endsWith(e)) && !bolehVideo) {
         ditolak++; continue;
       }
@@ -523,7 +529,10 @@
 
     for (const b of semua) {
       if (batal) { pr.gagal(`Dibatalkan setelah ${selesai} berkas`); return; }
-      const url = BERISI
+      // Video SELALU lewat /upload (lalu /ekstrak): /tambah tak bisa
+      // mengekstrak. Berkas lain di projek berisi tetap lewat /tambah supaya
+      // tata letaknya terjaga.
+      const url = (BERISI && !b.video)
         ? '/tambah?name=' + encodeURIComponent(b.nama)
         : '/upload?ds=' + encodeURIComponent(PROJEK)
           + '&name=' + encodeURIComponent(b.nama);
