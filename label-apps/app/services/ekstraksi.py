@@ -146,7 +146,7 @@ def _duplikat(a: "np.ndarray", b: "np.ndarray") -> bool:
 
 def ekstrak(video: Path, keluar: Path, preset: str = PRESET_BAWAAN,
             prefix: str = "", kerapatan: float | None = None,
-            fps: float | None = None) -> dict:
+            fps: float | None = None, dedup: bool = False) -> dict:
     """
     Potong `video` menjadi gambar JPG di folder `keluar`.
 
@@ -191,9 +191,11 @@ def ekstrak(video: Path, keluar: Path, preset: str = PRESET_BAWAAN,
         # Ambang buram relatif terhadap video ini sendiri, dengan lantai mutlak.
         ambang = max(_BURAM_LANTAI, _BURAM_RASIO * float(np.median(list(skor.values()))))
 
-        # Saring berurut: buang buram, lalu buang yang kembar dengan yang
-        # terakhir disimpan. Dedup dipakai pada frame yang SUDAH lolos buram
-        # supaya thumbnail acuannya memang frame yang akan ditulis.
+        # Saring berurut: buang buram selalu; buang kembar HANYA kalau dedup=True.
+        # Dedup MATI secara bawaan: untuk rekaman beraksi (olahraga) objek selalu
+        # bergerak, dan dedup rata-rata-global justru membuang momen berbeda yang
+        # bola/pemainnya kecil di frame. Dengan fps user yang menentukan kerapatan,
+        # mempertahankan tiap frame terpilih lebih sesuai keinginan.
         simpan: list[int] = []
         buang_buram = 0
         buang_dup = 0
@@ -202,7 +204,7 @@ def ekstrak(video: Path, keluar: Path, preset: str = PRESET_BAWAAN,
             if skor[idx] < ambang:
                 buang_buram += 1
                 continue
-            if acuan is not None and _duplikat(thumb[idx], acuan):
+            if dedup and acuan is not None and _duplikat(thumb[idx], acuan):
                 buang_dup += 1
                 continue
             simpan.append(idx)

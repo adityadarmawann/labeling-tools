@@ -104,14 +104,19 @@ def test_preset_rapat_lebih_banyak_dari_jarang(tmp_path):
     assert rp["ditulis"] > jr["ditulis"]
 
 
-def test_frame_kembar_dibuang(tmp_path):
-    # Satu frame diulang 60x: hanya satu yang layak disimpan, sisanya kembar.
+def test_dedup_hanya_saat_dinyalakan(tmp_path):
+    # Satu frame diulang 60x. Dedup default MATI: frame mirip TIDAK dibuang
+    # (rekaman beraksi -> tiap frame dipertahankan). Dedup eksplisit NYALA:
+    # hanya satu yang disimpan.
     satu = _frame_tajam(7)
     _tulis_video(tmp_path / "diam.mp4", [satu] * 60)
-    r = ekstraksi.ekstrak(tmp_path / "diam.mp4", tmp_path / "out", preset="sedang")
-    assert r["ditulis"] == 1
-    assert r["duplikat"] >= 1
-    assert len(list((tmp_path / "out").glob("*.jpg"))) == 1
+
+    mati = ekstraksi.ekstrak(tmp_path / "diam.mp4", tmp_path / "off", preset="sedang")
+    assert mati["duplikat"] == 0 and mati["ditulis"] > 1      # bawaan: tak dibuang
+
+    nyala = ekstraksi.ekstrak(tmp_path / "diam.mp4", tmp_path / "on",
+                              preset="sedang", dedup=True)
+    assert nyala["ditulis"] == 1 and nyala["duplikat"] >= 1   # dedup=True: dibuang
 
 
 def test_video_blank_semua_terbuang_sebagai_buram(tmp_path):
