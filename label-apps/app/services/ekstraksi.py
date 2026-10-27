@@ -41,10 +41,18 @@ PRESET_BAWAAN = "sedang"
 _KOEF = {"jarang": 4.3, "sedang": 8.6, "rapat": 14.4}
 _PANGKAT = 0.47
 
+# Sampling berbasis FPS (gaya Roboflow): user memilih berapa frame per detik,
+# jumlah target = durasi * fps, lalu disebar MERATA (_indeks_kandidat) sehingga
+# jarak antar-frame tetap = benar-benar fps. Menang atas preset/kerapatan lama.
+# Dengan FPS user yang mengatur kerapatan, batas atas cuma jaring pengaman
+# (bukan lagi pembatas desain); buang buram/kembar tetap merapikan hasilnya.
+FPS_BAWAAN = 2.0
+
 # Batas aman jumlah frame per video. MIN menjaga klip sangat pendek tetap
-# memberi sesuatu; MAKS mencegah video berjam-jam meledak jadi ribuan gambar.
+# memberi sesuatu; MAKS jaring pengaman supaya fps tinggi x video sangat panjang
+# tak meledak tak terbatas (buram/kembar biasanya menahannya jauh di bawah ini).
 MIN_FRAME = 3
-MAKS_FRAME = 600
+MAKS_FRAME = 5000
 
 # Kandidat diambil lebih banyak dari target (oversample) supaya masih ada sisa
 # untuk dibuang saat menyaring buram/duplikat tanpa jatuh jauh di bawah target.
@@ -76,21 +84,24 @@ def sah_preset(preset: str) -> str:
 
 
 def target_frame(durasi: float, preset: str = PRESET_BAWAAN,
-                 kerapatan: float | None = None) -> int:
+                 kerapatan: float | None = None, fps: float | None = None) -> int:
     """Jumlah frame yang disasar untuk sebuah durasi (detik).
 
-    Dua cara menentukan kerapatan, dan `kerapatan` menang kalau diberi:
-      - preset ("jarang"/"sedang"/"rapat"), jalur lama; ATAU
-      - `kerapatan`: FAKTOR pengali kontinu relatif "sedang" (slider). 1.0 =
-        sama dengan "sedang"; 0.5 kira-kira "jarang", ~1.67 kira-kira "rapat".
-    Keduanya dijepit ke [MIN_FRAME, MAKS_FRAME], jadi video sepanjang apa pun
-    tak pernah meledak jadi ribuan gambar."""
+    Urutan prioritas (yang pertama terisi menang):
+      1. `fps`  : frame per detik (gaya Roboflow). target = durasi * fps.
+      2. `kerapatan` : FAKTOR pengali kontinu relatif preset "sedang" (slider lama).
+      3. `preset`    : "jarang"/"sedang"/"rapat" (kurva sublinear lama).
+    Semuanya dijepit ke [MIN_FRAME, MAKS_FRAME]. Buang buram/kembar berjalan
+    SETELAH ini, jadi hasil akhir bisa sedikit lebih kecil dari target."""
     durasi = max(0.0, float(durasi))
-    if kerapatan and kerapatan > 0:
-        koef = _KOEF["sedang"] * float(kerapatan)
+    if durasi <= 0:
+        n = 0
+    elif fps and fps > 0:
+        n = round(durasi * float(fps))
+    elif kerapatan and kerapatan > 0:
+        n = round(_KOEF["sedang"] * float(kerapatan) * (durasi ** _PANGKAT))
     else:
-        koef = _KOEF[sah_preset(preset)]
-    n = round(koef * (durasi ** _PANGKAT)) if durasi > 0 else 0
+        n = round(_KOEF[sah_preset(preset)] * (durasi ** _PANGKAT))
     return int(min(MAKS_FRAME, max(MIN_FRAME, n)))
 
 
@@ -134,7 +145,8 @@ def _duplikat(a: "np.ndarray", b: "np.ndarray") -> bool:
 
 
 def ekstrak(video: Path, keluar: Path, preset: str = PRESET_BAWAAN,
-            prefix: str = "", kerapatan: float | None = None) -> dict:
+            prefix: str = "", kerapatan: float | None = None,
+            fps: float | None = None) -> dict:
     """
     Potong `video` menjadi gambar JPG di folder `keluar`.
 
@@ -153,10 +165,10 @@ def ekstrak(video: Path, keluar: Path, preset: str = PRESET_BAWAAN,
         cap.release()
         raise EkstrakTolak("video tidak bisa dibuka atau formatnya tak didukung")
     try:
-        F, fps, durasi = _durasi(cap)
+        F, _fps_vid, durasi = _durasi(cap)   # fps VIDEO (bukan fps sampling param)
         if F <= 0:
             raise EkstrakTolak("video tidak berisi frame yang bisa dibaca")
-        target = target_frame(durasi, preset, kerapatan)
+        target = target_frame(durasi, preset, kerapatan, fps)
         M = min(F, max(target, round(target * _OVERS)))
         kandidat = _indeks_kandidat(F, M)
         kset = set(kandidat)

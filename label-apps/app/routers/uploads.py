@@ -430,11 +430,12 @@ def _ekstrak_hp_latar(vp: Path, d: Path, settings: Settings) -> None:
     ekstraksinya makan puluhan detik, sementara permintaan PUT-nya sudah harus
     balas begitu berkasnya mendarat -- kalau ekstraksi ditahan di dalam
     permintaan, ia gampang menembus timeout nginx untuk unggahan sebesar itu.
-    Kerapatan 'sedang' (bawaan); hasilnya dijepit maksimum 600 frame/video."""
+    HP tak punya slider, jadi pakai fps bawaan (ekstraksi.FPS_BAWAAN); buang
+    buram/kembar tetap merapikan, dijepit maksimum MAKS_FRAME/video."""
     from ..services import tugas as svc_tugas
     try:
-        r = ekstraksi.ekstrak(vp, vp.parent, ekstraksi.sah_preset("sedang"),
-                              vp.stem, None)
+        r = ekstraksi.ekstrak(vp, vp.parent, ekstraksi.PRESET_BAWAAN,
+                              vp.stem, None, ekstraksi.FPS_BAWAAN)
         vp.unlink(missing_ok=True)       # video dibuang setelah frame selamat
         log.info("ekstrak HP %s -> %d frame", vp.name, r.get("ditulis", 0))
     except ekstraksi.EkstrakTolak as e:
@@ -540,7 +541,7 @@ async def unzip(ds: str = "", name: str = "",
 
 @router.post("/ekstrak")
 async def ekstrak_video(ds: str = "", name: str = "", preset: str = "sedang",
-                        kerapatan: float = 0.0,
+                        kerapatan: float = 0.0, fps: float = 0.0,
                         sess: Session = Depends(current_session_api),
                         settings: Settings = Depends(get_settings)):
     """
@@ -551,8 +552,9 @@ async def ekstrak_video(ds: str = "", name: str = "", preset: str = "sedang",
     Hanya untuk projek IMAGE — projek video menyimpan videonya apa adanya, dan
     jalur itu belum ada.
 
-    Kerapatan ekstraksi: `kerapatan` (faktor kontinu dari slider, >0 menang)
-    ATAU `preset` lama ("jarang"/"sedang"/"rapat"). Lihat ekstraksi.
+    Kerapatan ekstraksi (yang pertama terisi menang): `fps` (frame per detik,
+    gaya Roboflow, >0 menang) -> `kerapatan` (faktor slider lama) -> `preset`.
+    Buang buram/kembar berjalan apa pun pilihannya. Lihat ekstraksi.
     """
     fn = safe_relpath(name, video=True)
     if not fn or Path(fn).suffix.lower() not in VIDEO_EXT:
@@ -571,7 +573,8 @@ async def ekstrak_video(ds: str = "", name: str = "", preset: str = "sedang",
     try:
         hasil = await asyncio.to_thread(
             ekstraksi.ekstrak, vp, vp.parent, ekstraksi.sah_preset(preset),
-            vp.stem, (kerapatan if kerapatan and kerapatan > 0 else None))
+            vp.stem, (kerapatan if kerapatan and kerapatan > 0 else None),
+            (fps if fps and fps > 0 else None))
     except ekstraksi.EkstrakTolak as e:
         return {"ok": False, "error": str(e)[:140]}
     except Exception as e:                       # cv2 bisa melempar macam-macam

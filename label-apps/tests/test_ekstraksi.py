@@ -159,8 +159,23 @@ def test_kerapatan_faktor_slider():
     tengah = ekstraksi.target_frame(60, kerapatan=1.0)
     kanan = ekstraksi.target_frame(60, kerapatan=2.0)
     assert kiri < tengah < kanan
-    # Video panjang + faktor besar tetap tak meledak jadi ribuan.
-    assert ekstraksi.target_frame(3 * 3600, kerapatan=2.0) == ekstraksi.MAKS_FRAME
+    # Video panjang tetap dijepit <= MAKS_FRAME.
+    assert ekstraksi.target_frame(3 * 3600, kerapatan=2.0) <= ekstraksi.MAKS_FRAME
     # Faktor 0/None -> jatuh ke preset.
     assert ekstraksi.target_frame(60, "rapat", kerapatan=0) == ekstraksi.target_frame(60, "rapat")
     assert ekstraksi.target_frame(60, "jarang", kerapatan=None) == ekstraksi.target_frame(60, "jarang")
+
+
+def test_fps_sampling_dan_prioritas():
+    """Mode FPS (gaya Roboflow): target = durasi * fps, dijepit [MIN, MAKS],
+    dan MENANG atas kerapatan/preset."""
+    assert ekstraksi.target_frame(60, fps=2.0) == 120        # 1 mnt @ 2 fps
+    assert ekstraksi.target_frame(24 * 60, fps=2.0) == 2880  # 24 mnt @ 2 fps
+    # fps tinggi x video panjang dijepit ke cap, tak tak-terbatas.
+    assert ekstraksi.target_frame(24 * 60, fps=5.0) == ekstraksi.MAKS_FRAME
+    # fps menang atas kerapatan & preset kalau diberi.
+    assert ekstraksi.target_frame(60, "rapat", kerapatan=9.9, fps=1.0) == 60
+    # fps lebih tinggi -> lebih banyak frame (sampai cap).
+    assert (ekstraksi.target_frame(600, fps=0.5)
+            < ekstraksi.target_frame(600, fps=1.0)
+            < ekstraksi.target_frame(600, fps=3.0))

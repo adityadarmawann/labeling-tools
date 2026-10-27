@@ -401,23 +401,21 @@
     });
   }
 
-  // Faktor kerapatan dari slider (0..100), relatif preset "sedang" (= faktor
-  // 1.0). Geser kiri -> frame lebih sedikit, kanan -> lebih banyak. Logaritmik:
-  // 0 -> 0.5x, 50 (tengah, default) -> 1.0x, 100 -> 2.0x. Server tetap menjepit
-  // maksimum 600 frame/video, jadi video panjang tak meledak jadi ribuan.
-  function kerapatanDipilih() {
-    const s = $('ug-kerapatan');
-    const v = s ? Number(s.value) : 50;
-    return Math.pow(2, (v - 50) / 50);
+  // FPS (frame per detik) yang dipilih slider, gaya Roboflow. Langkah diskret
+  // yang "bulat" supaya enak dibaca; default 2 fps (index 3) -- seimbang untuk
+  // olahraga/gerak cepat. Geser kiri = fps rendah (sedikit), kanan = fps tinggi.
+  const FPS_STEPS = [0.25, 0.5, 1, 2, 3, 5, 8];
+  function fpsDipilih() {
+    const s = $('ug-fps');
+    const i = s ? Math.max(0, Math.min(FPS_STEPS.length - 1, Number(s.value))) : 3;
+    return FPS_STEPS[i];
   }
 
-  // Perkiraan jumlah frame untuk satu video berdurasi `dur` detik pada faktor
-  // slider -- rumus & penjepit SAMA dengan server (KOEF 8.6 * faktor *
-  // durasi^0.47, dijepit [3, 600]).
-  function targetFrameJS(dur, faktor) {
+  // Perkiraan jumlah frame untuk satu video `dur` detik pada fps terpilih --
+  // rumus & penjepit SAMA dengan server (durasi * fps, dijepit [3, 5000]).
+  function targetFrameJS(dur, fps) {
     if (!(dur > 0)) return 0;
-    return Math.min(600, Math.max(3,
-      Math.round(8.6 * faktor * Math.pow(dur, 0.47))));
+    return Math.min(5000, Math.max(3, Math.round(dur * fps)));
   }
 
   // Baca durasi video di browser (loadedmetadata) supaya hint bisa menyebut
@@ -447,24 +445,27 @@
   function segarkanHintKerapatan() {
     const h = $('ug-preset-hint');
     if (!h) return;
-    const f = kerapatanDipilih();
-    const kata = f < 0.8 ? 'Lebih sedikit' : (f > 1.25 ? 'Lebih banyak' : 'Seimbang');
+    const fps = fpsDipilih();
+    const det = 1 / fps;
+    const tiap = det >= 1
+      ? `${Math.round(det)} dtk`
+      : `${det.toFixed(2).replace(/\.?0+$/, '').replace('.', ',')} dtk`;
+    const fpsTxt = `${String(fps).replace('.', ',')} fps (1 frame tiap ${tiap})`;
+    const ekor = ' Frame buram/kembar dibuang otomatis, resolusi asli, maks 5000/video.';
     const vids = [...berkas.values()].filter((b) => b.video);
     const berDurasi = vids.filter((b) => b.durasi > 0);
     if (berDurasi.length) {
-      const total = berDurasi.reduce((s, b) => s + targetFrameJS(b.durasi, f), 0);
-      h.textContent = `${kata}: sampai ≈ ${total} gambar`
+      const total = berDurasi.reduce((s, b) => s + targetFrameJS(b.durasi, fps), 0);
+      h.textContent = `${fpsTxt}: sampai ≈ ${total} gambar`
         + (vids.length > 1 ? ` dari ${vids.length} video` : '')
         + (berDurasi.length < vids.length ? ' (sebagian durasi belum terbaca)' : '')
-        + '. Frame buram/kembar dibuang otomatis, resolusi asli, maks 600 per video.';
+        + '.' + ekor;
     } else {
-      const perMenit = targetFrameJS(60, f);
-      h.textContent = `${kata} (video 1 mnt sampai ≈ ${perMenit} gambar; `
-        + 'buram/kembar dibuang, resolusi asli, maks 600 per video).';
+      h.textContent = `${fpsTxt}: video 1 mnt ≈ ${targetFrameJS(60, fps)} gambar.` + ekor;
     }
   }
-  if ($('ug-kerapatan')) {
-    $('ug-kerapatan').addEventListener('input', segarkanHintKerapatan);
+  if ($('ug-fps')) {
+    $('ug-fps').addEventListener('input', segarkanHintKerapatan);
     segarkanHintKerapatan();
   }
 
@@ -501,7 +502,7 @@
     let byteKirim = 0, selesai = 0, gagal = 0;
     const arsip = [];
     const video = [];
-    const kerapatan = kerapatanDipilih();
+    const fps = fpsDipilih();
     const t0 = Date.now();
 
     const lukisBilah = (byteSekarang, ke) => {
@@ -571,7 +572,7 @@
       try {
         const j = await post('/ekstrak?ds=' + encodeURIComponent(PROJEK)
           + '&name=' + encodeURIComponent(nama)
-          + '&kerapatan=' + encodeURIComponent(kerapatan));
+          + '&fps=' + encodeURIComponent(fps));
         if (j.ok) {
           frameTotal += (j.n || 0);
           const buang = (j.buram || 0) + (j.duplikat || 0);
@@ -844,8 +845,8 @@
       gambarUlang();
     });
 
-    // Kerapatan ekstraksi video kini slider (#ug-kerapatan); penanganannya ada
-    // di dekat kerapatanDipilih()/segarkanHintKerapatan() di atas.
+    // Kerapatan ekstraksi video kini slider FPS (#ug-fps); penanganannya ada
+    // di dekat fpsDipilih()/segarkanHintKerapatan() di atas.
 
     const ti = $('ug-tag-input');
     ti.addEventListener('keydown', (e) => {

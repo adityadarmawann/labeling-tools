@@ -363,18 +363,19 @@
       <div class="ug-bilah ug-video-opsi" id="ug-video-opsi" hidden>
         <div class="ug-bilah-ket ug-video-ket">
           <b><span id="ug-video-n">0</span> video &rarr; diekstrak jadi frame</b>
-          <span id="ug-preset-hint">Seimbang (video 1 mnt &asymp; 60 gambar).</span>
+          <span id="ug-preset-hint">2 fps (1 frame tiap 0,5 dtk).</span>
         </div>
         <span class="spacer"></span>
-        {# Geser kiri = lebih sedikit frame, kanan = lebih banyak. Default di
-           tengah (sama dengan preset "sedang" lama). Jumlah akhir tetap dijepit
-           maksimum 600 frame per video, jadi video panjang tak meledak. #}
-        <div class="ug-krp" role="group" aria-label="Kerapatan ekstraksi frame">
-          <span class="ug-krp-ujung">Sedikit</span>
-          <input type="range" id="ug-kerapatan" min="0" max="100" step="1"
-                 value="50" aria-label="Kerapatan ekstraksi frame video"
+        {# Kerapatan gaya Roboflow: FPS (frame per detik). Geser kiri = fps rendah
+           (sedikit, hemat anotasi), kanan = fps tinggi (banyak, untuk gerak cepat
+           spt bola masuk ring). Default 2 fps. Frame buram & kembar tetap dibuang
+           otomatis apa pun fps-nya. Nilai fps dari langkah diskret di unggah.js. #}
+        <div class="ug-krp" role="group" aria-label="Frame per detik ekstraksi">
+          <span class="ug-krp-ujung">Jarang</span>
+          <input type="range" id="ug-fps" min="0" max="6" step="1"
+                 value="3" aria-label="Frame per detik ekstraksi video"
                  aria-describedby="ug-preset-hint">
-          <span class="ug-krp-ujung">Banyak</span>
+          <span class="ug-krp-ujung">Rapat</span>
         </div>
       </div>
 
