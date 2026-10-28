@@ -239,7 +239,9 @@
           <div><span>Ukuran</span><b>${punyaHasil ? `${rs.lebar || 640}×${rs.tinggi || 640}` : '-'}</b></div>
           <div><span>Rasio diminta</span><b>${v.rasio || '-'}</b></div>
           ${hasil.jenis ? `<div><span>Format anotasi</span><b>${
-            hasil.jenis === 'kotak' ? 'Kotak (deteksi)' : 'Poligon (segmentasi)'
+            ({kotak: 'Kotak (deteksi)', poligon: 'Poligon (segmentasi)',
+              campuran: 'Campuran (mask + kotak)', kerangka: 'Kerangka (pose)'}
+             [hasil.jenis]) || 'Poligon (segmentasi)'
           }</b></div>` : ''}
           ${isi.byte ? `<div><span>Ukuran di disk</span><b>${mb(isi.byte)}</b></div>` : ''}
         </div>
