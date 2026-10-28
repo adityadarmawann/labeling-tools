@@ -111,6 +111,14 @@ class EkstrakTolak(Exception):
     """Video tak bisa dibaca atau tak menghasilkan satu frame pun."""
 
 
+def tmp_dir(keluar, prefix) -> Path:
+    """Folder sementara tempat ffmpeg menulis frame SEBELUM dipindahkan ke
+    folder akhir. Dibuat publik supaya pemantau status bisa menghitung frame
+    yang sedang ditulis (progress) dan membersihkannya kalau ekstraksi terputus."""
+    from ..security import safe_slug as _slug
+    return Path(keluar) / ("._ekstrak_" + (_slug(prefix) or "frame"))
+
+
 def sah_preset(preset: str) -> str:
     p = str(preset or "").strip().lower()
     return p if p in PRESET_SAH else PRESET_BAWAAN
@@ -262,7 +270,7 @@ def _ekstrak_ffmpeg(video: Path, keluar: Path, ff: str,
         bagian.append("format=yuv420p")
     vf = ",".join(bagian)
 
-    tmp = keluar / ("._ekstrak_" + (safe_slug(prefix) or "frame"))
+    tmp = tmp_dir(keluar, prefix)
     shutil.rmtree(tmp, ignore_errors=True)
     tmp.mkdir(parents=True, exist_ok=True)
     try:

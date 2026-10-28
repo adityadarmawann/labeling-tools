@@ -176,3 +176,22 @@ def test_hapus_batch_frame_ekstrak_kartu_hilang(klien, lingkungan):
     # tanpa perlu menekan tombol x terpisah.
     st = klien.get("/api/ekstrak/status?ds=vid-hapus").json()["status"]
     assert "IMG.mp4" not in st, st
+
+
+def test_ekstraksi_menyegarkan_papan_tanpa_reload(klien, lingkungan):
+    """Sesudah ekstraksi selesai, papan Anotasi (SESI YANG SAMA, tanpa
+    logout/muat ulang penuh) harus menampilkan frame baru. Ini menjaga bug
+    'sidebar 4453 tapi kartu kosong': ekstraksi memanggil tandai_berubah supaya
+    segarkan() mendeteksi daftar gambar yang berubah."""
+    masuk(klien, "paul", PW_PAUL)
+    _buat_projek(klien, "vid-segar", "image")
+    # Buka papan DULU -> sesi memuat projek (0 gambar), cap tercatat.
+    assert "Tanpa nama unggahan" not in klien.get("/anotasi?ds=vid-segar").text
+    klien.put("/upload?ds=vid-segar&name=IMG.mp4", content=_video_bytes(lingkungan["tmp"]))
+    klien.post("/ekstrak?ds=vid-segar&name=IMG.mp4&fps=2")
+    rec = _tunggu_ekstrak(klien, "vid-segar", "IMG.mp4")
+    assert rec["n"] > 0
+    # Papan kini harus menampilkan kartu frame baru via segarkan(), bukan tetap
+    # kosong seperti sebelum perbaikan.
+    html = klien.get("/anotasi?ds=vid-segar").text
+    assert "Tanpa nama unggahan" in html, "papan tak menyegar setelah ekstraksi"

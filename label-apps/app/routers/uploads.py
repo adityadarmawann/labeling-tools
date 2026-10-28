@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import shutil
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -437,6 +439,15 @@ async def halaman_unggah_hp(request: Request, t: str = "",
 # dan dibaca lewat /api/ekstrak/status. Rekaman lama dipangkas supaya tak tumbuh.
 _BERKAS_STATUS = ".ekstraksi.json"
 _status_lock = threading.Lock()
+# Video yang ekstraksinya BENAR-BENAR jalan di PROSES INI (kunci "<dir>|<video>").
+# Dipakai mendeteksi rekaman "jalan" yang yatim: kalau statusnya "jalan" tapi
+# tak ada di sini (thread mati / server dimulai ulang), ia terputus -- bukan
+# sedang jalan -- jadi tak boleh berputar selamanya.
+_ekstrak_hidup: set[str] = set()
+
+
+def _kunci_hidup(d: Path, video: str) -> str:
+    return f"{Path(d).resolve()}|{video}"
 
 
 def _status_baca(d: Path) -> dict:
@@ -503,8 +514,13 @@ def _jalankan_ekstrak_latar(vp: Path, d: Path, settings: Settings, *,
     permintaan yang bisa dibatalkan saat klien putus. Statusnya tercatat agar
     user yang membuka lagi tahu masih jalan / selesai / gagal."""
     from ..services import tugas as svc_tugas
+    from ..session import tandai_berubah
     video = vp.name
-    _status_tulis(d, video, keadaan="jalan", galat="",
+    # `pid` dicatat supaya pemantau status tahu rekaman "jalan" ini milik proses
+    # yang MASIH hidup; sesudah server dimulai ulang pid-nya beda -> terdeteksi
+    # terputus. Dan daftarkan ke _ekstrak_hidup untuk deteksi thread mati.
+    _ekstrak_hidup.add(_kunci_hidup(d, video))
+    _status_tulis(d, video, keadaan="jalan", galat="", pid=os.getpid(),
                   mulai=datetime.now().strftime("%Y-%m-%d %H:%M"))
     try:
         r = ekstraksi.ekstrak(vp, vp.parent, ekstraksi.sah_preset(preset),
@@ -524,10 +540,16 @@ def _jalankan_ekstrak_latar(vp: Path, d: Path, settings: Settings, *,
         _status_tulis(d, video, keadaan="gagal", galat=f"gagal mengekstrak: {str(e)[:90]}")
         log.warning("ekstrak gagal %s: %s", video, e)
     finally:
-        # Frame baru -> kurasi ulang + segarkan cache survei (kartu/sidebar).
+        _ekstrak_hidup.discard(_kunci_hidup(d, video))
+        # Frame baru -> kurasi ulang + beri tahu SEMUA sesi bahwa daftar gambar
+        # berubah. tandai_berubah menaikkan penanda (segarkan() di papan/grid
+        # jadi memaksa pindai ulang -> frame baru LANGSUNG muncul tanpa perlu
+        # restart) DAN membuang cache survei di dalamnya. Tanpa ini, ekstraksi
+        # menulis 4.453 frame ke disk tapi papan tetap kosong sampai server
+        # dimuat ulang.
         try:
             svc_tugas.mulai_kurasi(d, projek.pemilik_dari(settings.uploads_root, d))
-            projek.lupakan_survei(d)
+            tandai_berubah(d, None)
         except Exception:                # noqa: BLE001
             pass
 
@@ -675,15 +697,41 @@ async def ekstrak_status(ds: str = "",
     if err:
         return {"ok": False, "error": err}
     data = _status_baca(d)
-    # Sertakan jumlah frame yang SUDAH tertulis untuk yang masih 'jalan', supaya
-    # bilahnya terasa bergerak (dihitung dari berkas, murah untuk sesekali).
     for nama, rec in data.items():
-        if rec.get("keadaan") == "jalan":
-            prefix = safe_slug(Path(nama).stem) or "frame"
+        if rec.get("keadaan") != "jalan":
+            continue
+        prefix = safe_slug(Path(nama).stem) or "frame"
+        # Rekaman "jalan" yang YATIM: prosesnya sudah beda (server dimulai ulang)
+        # atau thread-nya tak ada lagi di proses ini (mati). Itu TERPUTUS, bukan
+        # sedang jalan -- kalau dibiarkan, spanduknya berputar selamanya. Tandai
+        # gagal (bisa ditutup/diulang) dan bersihkan folder sementaranya.
+        pid = rec.get("pid")
+        yatim = (pid != os.getpid()) or \
+                (_kunci_hidup(d, nama) not in _ekstrak_hidup)
+        if yatim:
+            _status_tulis(d, nama, keadaan="gagal",
+                          galat="terputus (proses berhenti / server dimulai "
+                                "ulang). Unggah dan ekstrak lagi.")
+            rec["keadaan"] = "gagal"
+            rec["galat"] = "terputus (proses berhenti / server dimulai ulang). " \
+                           "Unggah dan ekstrak lagi."
             try:
-                rec["sudah"] = sum(1 for p in d.glob(f"{prefix}-*.jpg"))
-            except OSError:
+                shutil.rmtree(ekstraksi.tmp_dir(d, Path(nama).stem),
+                              ignore_errors=True)
+            except Exception:            # noqa: BLE001
                 pass
+            continue
+        # Masih benar-benar jalan: progres = frame yang sudah final DI folder
+        # projek + frame yang sedang ditulis ffmpeg di folder sementara. Tanpa
+        # yang kedua, angkanya diam di 0 sepanjang ffmpeg (ia memindah frame ke
+        # projek hanya di AKHIR), jadi user mengira prosesnya macet.
+        try:
+            n_final = sum(1 for _ in d.glob(f"{prefix}-*.jpg"))
+            tmp = ekstraksi.tmp_dir(d, Path(nama).stem)
+            n_tmp = sum(1 for _ in tmp.glob("*.jpg")) if tmp.is_dir() else 0
+            rec["sudah"] = n_final + n_tmp
+        except OSError:
+            pass
     return {"ok": True, "status": data}
 
 
