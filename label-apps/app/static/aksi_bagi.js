@@ -99,7 +99,7 @@
         const n = (a.batch_scope || []).length;
         return n ? `Labeler · ${n} batch` : 'Labeler · scope kosong';
       }
-      if (a.akses === 'semua') return 'Labeler · menyeluruh';
+      if (a.akses === 'semua') return 'Labeler · seluruh projek';
       return 'Labeler · jatah papan';
     }
     return 'Anggota';
@@ -230,10 +230,11 @@
     $('bg-scope').hidden = !(peran === 'pelabel' && akses === 'spesifik');
     const ket = $('bg-peran-ket');
     ket.textContent = peran === 'editor'
-      ? 'Editor: boleh mengunggah/memotong media + melabeli SEMUA klip. Tak mengelola projek/anggota.'
+      ? 'Editor = anggota SELURUH projek: boleh unggah/potong media + melabeli '
+        + 'semua klip. (Tak mengelola projek/anggota.)'
       : akses === 'spesifik'
-        ? 'Labeler spesifik: hanya melabeli batch klip yang dicentang.'
-        : 'Labeler menyeluruh: melabeli semua klip, tak mengunggah.';
+        ? 'Hanya melabeli BATCH klip yang dicentang — bukan seluruh projek.'
+        : 'Melabeli SEMUA klip di seluruh projek (tak mengunggah).';
   }
 
   function resetForm() {
@@ -242,8 +243,16 @@
     $('bg-undang-nama').hidden = true;
     $('bg-email').value = '';
     setSeg('bg-peran', 'pelabel');
-    setSeg('bg-akses', 'semua');
-    renderScope([]);
+    // Dibuka dari konteks SATU batch -> default BAGIKAN BATCH ITU SAJA (tercentang),
+    // bukan seluruh projek. Tanpa konteks batch -> default "Seluruh projek".
+    const batchKonteks = (isi.dataset.batch || '').trim();
+    if (batchKonteks) {
+      setSeg('bg-akses', 'spesifik');
+      renderScope([batchKonteks]);
+    } else {
+      setSeg('bg-akses', 'semua');
+      renderScope([]);
+    }
     $('bg-undang-kirim').textContent = 'Undang';
     $('bg-undang-batal').hidden = true;
     $('bg-undang-jalur').replaceChildren();
