@@ -104,6 +104,22 @@ def _lupakan_kalau_dicabut(sess: Session) -> Session:
     Murah untuk projek sendiri: boleh_buka menjawabnya dari bentuk pathnya
     saja, tanpa menyentuh disk.
     """
+    # Pulihkan projek yang terbuka tapi hilang dari ingatan: sesudah server
+    # dimulai ulang (deploy) sesi dibangun ulang dengan src=None tetapi PATH-nya
+    # tersimpan. Dimuat di sini -- murah lewat cache pindai -- supaya halaman
+    # yang dibiarkan terbuka melewati deploy tetap bisa menyimpan/membagi/hapus,
+    # bukan menjawab "belum ada dataset terbuka". Sekali coba; kalau projeknya
+    # sudah tak ada, lupakan stash-nya. Dep ini sync -> jalan di threadpool
+    # FastAPI, jadi I/O di sini tidak memblokir event loop.
+    if sess.src is None and getattr(sess, "_src_simpan", None):
+        from pathlib import Path as _P
+        p = _P(sess._src_simpan)
+        sess._src_simpan = None
+        try:
+            if p.is_dir():
+                sess.load(p)
+        except Exception:                               # noqa: BLE001
+            pass
     if sess.src is None:
         return sess
     from .services.projek import boleh_buka

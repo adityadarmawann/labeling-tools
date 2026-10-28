@@ -244,6 +244,14 @@ class Session:
         self.user = user
         self.settings = settings
         self.src: Path | None = None
+        # PATH projek yang terbuka, DISIMPAN untuk pulih sesudah server dimulai
+        # ulang (deploy): sesi dibangun ulang dengan src=None, lalu dimuat lagi
+        # LAZY di permintaan pertama (deps._lupakan_kalau_dicabut). Supaya rute
+        # mutasi tak menjawab "belum ada dataset terbuka" pada halaman terbuka.
+        self._src_simpan: str | None = None
+        # SessionStore pemilik sesi ini (diisi _bangun), supaya load() menyimpan
+        # path projek baru tanpa mengikat ke store global (ramah uji).
+        self._store = None
         self.items: list[dict] = []
         # Indeks path->item, dibangun sekali per pemindaian. find() dipanggil
         # sekali PER thumbnail, dan halaman job memuat 11.409 thumbnail dalam
@@ -304,6 +312,7 @@ class Session:
 
     def load(self, src: Path) -> list[dict]:
         """Pindai folder baru dan buang cache thumbnail folder sebelumnya."""
+        _src_lama = str(self.src) if self.src else ""
         self.src = Path(src).resolve()
         # Dicatat SEBELUM memindai: perubahan yang datang di tengah pemindaian
         # lebih baik memicu satu pemindaian berlebih daripada terlewat.
@@ -367,6 +376,16 @@ class Session:
         self.rencana_split = None
         self.reset_thumbs()
         annotations.write_label_file(self)
+        # Projek sudah dimuat -> stash tak perlu lagi. Dan kalau projeknya BEDA
+        # dari sebelumnya, catat ke penyimpanan sesi supaya sesudah restart
+        # ingat projek yang terbuka. Hanya saat BERUBAH: muat ulang projek yang
+        # sama (segarkan) tak perlu menulis _sesi.json.
+        self._src_simpan = None
+        if str(self.src) != _src_lama and self._store is not None:
+            try:
+                self._store.catat()
+            except Exception:                              # noqa: BLE001
+                pass
         return self.items
 
     def segarkan(self) -> bool:
@@ -626,7 +645,8 @@ class SessionStore:
         self._lock = threading.Lock()
         self._berkas: Path | None = None
 
-    def _bangun(self, user: str, settings: Settings, ts: float | None = None) -> Session:
+    def _bangun(self, user: str, settings: Settings, ts: float | None = None,
+                src: str | None = None) -> Session:
         # users.json dibaca SEKALI untuk ketiga medan yang dititipkan ke sesi
         # (peran, nama tampil, foto). Akun yang sudah tak ada -> tolak: jangan
         # pulihkan sesi untuk akun yang dihapus.
@@ -640,6 +660,12 @@ class SessionStore:
         sess.nama = (rec.get("nama") or "").strip() or user
         sess.foto = rec.get("foto") or ""
         sess._ts = ts or time.time()
+        # Stash path projek yang terbuka saat sesi ini terakhir disimpan; dimuat
+        # LAZY di permintaan pertama (deps._lupakan_kalau_dicabut), bukan di sini
+        # -- memuat semua projek saat startup bisa lambat, dan sebagian sesi tak
+        # akan pernah dipakai lagi.
+        sess._src_simpan = (src or "").strip() or None
+        sess._store = self
         return sess
 
     def siapkan(self, settings: Settings, reset: bool = False) -> None:
@@ -664,7 +690,7 @@ class SessionStore:
                 continue
             try:
                 pulih[sid] = self._bangun(rec.get("user") or "", settings,
-                                          rec.get("ts"))
+                                          rec.get("ts"), rec.get("src"))
             except Exception:                           # noqa: BLE001
                 continue                                # akun hilang/rusak
         with self._lock:
@@ -679,14 +705,30 @@ class SessionStore:
             except OSError:
                 pass
 
+    def catat(self) -> None:
+        """Simpan keadaan sesi ke disk (dipanggil saat sebuah sesi membuka
+        projek baru, supaya PATH-nya ikut bertahan melewati restart). Publik
+        karena Session.load memanggilnya; isinya sama dengan _tulis."""
+        self._tulis()
+
     def _tulis(self) -> None:
-        """Tulis peta sid->akun ke disk, atomik, chmod 600. Hanya sid + akun +
-        waktu -- bukan src/items (mahal; dibangun ulang saat dipakai)."""
+        """Tulis peta sid->akun ke disk, atomik, chmod 600. sid + akun + waktu,
+        PLUS path projek yang terbuka (`src`) -- bukan items (mahal; dipindai
+        ulang lewat cache saat dipakai). `src` dipakai memulihkan projek yang
+        terbuka sesudah restart supaya rute mutasi tak putus (lihat
+        deps._lupakan_kalau_dicabut)."""
         if not self._berkas:
             return
         with self._lock:
-            sesi = {sid: {"user": s.user, "ts": getattr(s, "_ts", 0) or time.time()}
-                    for sid, s in self._data.items()}
+            sesi = {}
+            for sid, s in self._data.items():
+                rec = {"user": s.user, "ts": getattr(s, "_ts", 0) or time.time()}
+                # src yang sedang terbuka, atau yang masih tersimpan tapi belum
+                # dimuat (sesi yang dipulihkan tapi belum menyentuh projeknya).
+                sp = str(s.src) if s.src else getattr(s, "_src_simpan", None)
+                if sp:
+                    rec["src"] = sp
+                sesi[sid] = rec
         try:
             self._berkas.parent.mkdir(parents=True, exist_ok=True)
             tmp = self._berkas.with_suffix(".json.tmp")
