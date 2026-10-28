@@ -1090,16 +1090,31 @@ async def hapus_batch(request: Request,
         if b:
             batch_dari[k] = b
 
-    kunci = svc.keys_batch_belum(data, semua, batch, batch_dari)
+    # Pemilik boleh membuang batch-nya sendiri walau sudah DITUGASKAN KE DIRINYA
+    # (unggahan kini auto-ditugaskan ke pemilik, jadi tanpa ini batch baru pun tak
+    # bisa dihapus). Yang ditugaskan ke labeler LAIN atau sudah di dataset tetap
+    # dilindungi. Gambar yang boleh dibuang dilepas dari job pemilik lebih dulu.
+    kunci, lindungi_lain, lindungi_ds = svc.keys_batch_hapus(
+        data, semua, batch, batch_dari, data["pemilik"])
     boleh = [peta[k] for k in kunci if k in peta]
     if not boleh:
-        return {"ok": False, "error": "tidak ada gambar di batch itu yang "
-                                      "bisa dihapus"}
+        pesan = "tidak ada gambar di batch itu yang bisa kamu hapus"
+        tambahan = []
+        if lindungi_lain:
+            tambahan.append(f"{lindungi_lain} sudah ditugaskan ke orang lain")
+        if lindungi_ds:
+            tambahan.append(f"{lindungi_ds} sudah masuk dataset")
+        if tambahan:
+            pesan += " (" + ", ".join(tambahan) + ")"
+        return {"ok": False, "error": pesan}
+    await asyncio.to_thread(svc.lepas_dari_job_pemilik, sess.src,
+                            data["pemilik"], kunci)
     r = await asyncio.to_thread(svc.buang_gambar, sess.src, boleh, data["pemilik"])
     # Berkasnya sudah pindah dari disk; pindai ulang supaya sesi ini tidak lagi
     # menunjuk gambar yang tak ada.
     await asyncio.to_thread(sess.load, sess.src)
-    return {"ok": True, **r, "batch": batch}
+    return {"ok": True, **r, "batch": batch,
+            "dilindungi": lindungi_lain + lindungi_ds}
 
 
 @router.post("/api/tugas/dataset")

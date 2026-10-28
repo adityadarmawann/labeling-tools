@@ -61,15 +61,16 @@
       // SELURUH batch sekaligus, dan akibatnya tidak langsung terlihat di papan.
       if (!confirm(`Hapus ${n} gambar dari batch "${nama}"?\n\n`
                    + 'Berkasnya pindah ke tempat sampah projek dan bisa '
-                   + 'dipulihkan. Gambar batch ini yang sudah dibagi ke orang '
-                   + 'atau sudah masuk dataset tidak ikut terhapus.')) return;
+                   + 'dipulihkan. Gambar yang ditugaskan ke orang LAIN atau sudah '
+                   + 'masuk dataset dilindungi (tidak ikut terhapus).')) return;
       b.disabled = true;
       const j = await send('/api/tugas/hapus-batch', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ batch }),
       });
       if (!j.ok) { toast(j.error); b.disabled = false; return; }
-      toast(`${j.dibuang} gambar dibuang ke tempat sampah`);
+      toast(`${j.dibuang} gambar dibuang ke tempat sampah`
+            + (j.dilindungi ? ` · ${j.dilindungi} dilindungi (orang lain/dataset)` : ''));
       location.reload();
     };
   }

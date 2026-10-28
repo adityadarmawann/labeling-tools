@@ -1621,6 +1621,42 @@ def test_rute_hapus_batch_membuang_ke_sampah(klien, lingkungan):
                       json={"batch": "Unggahan X"}).json()["ok"] is False
 
 
+def test_keys_batch_hapus_pemilik_vs_orang_lain():
+    """keys_batch_hapus: belum ditugaskan + ditugaskan ke PEMILIK boleh dihapus;
+    ke labeler LAIN dan yang sudah di dataset DILINDUNGI."""
+    data = {"pemilik": "paul", "dataset": ["d.jpg"], "dataset_waktu": {},
+            "tugas": {"j1": {"pelabel": "paul", "gambar": ["a.jpg"]},
+                      "j2": {"pelabel": "anggi", "gambar": ["b.jpg"]}}}
+    semua = {"a.jpg", "b.jpg", "c.jpg", "d.jpg"}
+    bd = {k: "X" for k in semua}
+    bisa, lo, ds = tugas.keys_batch_hapus(data, semua, "X", bd, "paul")
+    assert bisa == ["a.jpg", "c.jpg"]          # pemilik sendiri + belum ditugaskan
+    assert lo == 1 and ds == 1                 # anggi + dataset dilindungi
+
+
+def test_hapus_batch_milik_sendiri_terhapus_orang_lain_dilindungi(klien, lingkungan):
+    """Fix: unggahan kini auto-ditugaskan ke pemilik, jadi 'Hapus batch' HARUS
+    bisa membuang batch yang ditugaskan ke pemilik sendiri; labeler lain tetap
+    dilindungi."""
+    from app.services import tag, tugas as svc
+    from tests.test_data import masuk, PW_PAUL
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    d = _projek(lingkungan["ruang"], "hbself", n=3, label=False)
+    nama = sorted(p.name for p in d.glob("*.jpg"))
+    tag.pasang(d, nama, batch="X")
+    kunci = [tag.kunci_gambar(d, d / n) for n in nama]
+    svc.tugaskan(d, "paul", "paul", kunci[:2])     # 2 ke pemilik
+    svc.tugaskan(d, "paul", "anggi", kunci[2:])    # 1 ke labeler lain
+    klien.post(f"/setsrc?path={d}")
+
+    j = klien.post("/api/tugas/hapus-batch", json={"batch": "X"}).json()
+    assert j["ok"] and j["dibuang"] == 2, j        # milik pemilik ikut terhapus
+    assert j["dilindungi"] == 1, j                 # anggi dilindungi
+    assert len(list(d.glob("*.jpg"))) == 1         # 1 (punya anggi) tetap ada
+
+
 def test_kartu_dataset_mencatat_waktu_masuk(tmp_path):
     """Kartu kolom Dataset menampilkan KAPAN unggahan itu masuk dataset.
 

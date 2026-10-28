@@ -544,6 +544,60 @@ def keys_batch_belum(data: dict, semua: set[str], batch: str,
                   and (bd.get(k) or "") == batch)
 
 
+def keys_batch_hapus(data: dict, semua: set[str], batch: str,
+                     batch_dari: dict[str, str] | None,
+                     pemilik: str) -> tuple[list[str], int, int]:
+    """Kunci satu BATCH yang pemilik BOLEH hapus total, + yang dilindungi.
+
+    Beda dari keys_batch_belum (yang cuma yang murni belum ditugaskan): sistem
+    kini otomatis menugaskan unggahan ke pemilik sendiri, sehingga batch baru pun
+    langsung "ditugaskan" dan tak bisa dihapus. Jadi di sini yang ditugaskan ke
+    PEMILIK SENDIRI ikut boleh dihapus (nanti dilepas dari jobnya dulu). Yang
+    DILINDUNGI: ditugaskan ke labeler LAIN, atau sudah masuk dataset.
+
+    Kembalikan (bisa_hapus, n_lindungi_orang_lain, n_lindungi_dataset)."""
+    bd = batch_dari or {}
+    bisa: list[str] = []
+    lindungi_lain = 0
+    lindungi_ds = 0
+    for k in semua:
+        if (bd.get(k) or "") != batch:
+            continue
+        if sudah_dimasukkan(data, k):
+            lindungi_ds += 1
+            continue
+        pel = pelabel_gambar(data, k)          # "" = belum ditugaskan
+        if not pel or pel == pemilik:
+            bisa.append(k)
+        else:
+            lindungi_lain += 1
+    return sorted(bisa), lindungi_lain, lindungi_ds
+
+
+def lepas_dari_job_pemilik(ds: Path, pemilik: str, kunci_lepas) -> int:
+    """Lepas sekumpulan gambar dari job milik PEMILIK (pelabel==pemilik) supaya
+    bisa dihapus; job yang jadi kosong ikut dibuang. Job labeler lain tak
+    disentuh. Kembalikan jumlah gambar yang dilepas."""
+    lepas = set(kunci_lepas)
+    if not lepas:
+        return 0
+    n = 0
+    with _kunci:
+        data = baca(ds, pemilik)
+        for tid, t in list(data["tugas"].items()):
+            if str(t.get("pelabel") or "") != pemilik:
+                continue
+            g = t.get("gambar") or []
+            sisa = [k for k in g if k not in lepas]
+            n += len(g) - len(sisa)
+            if sisa:
+                t["gambar"] = sisa
+            else:
+                data["tugas"].pop(tid, None)   # job kosong -> buang
+        _tulis(ds, data)
+    return n
+
+
 def masukkan(ds: Path, kunci_daftar: list[str], pemilik: str = "") -> dict:
     """Nyatakan sekumpulan gambar masuk dataset."""
     with _kunci:
