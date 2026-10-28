@@ -729,15 +729,24 @@ class SessionStore:
                 if sp:
                     rec["src"] = sp
                 sesi[sid] = rec
+        # Nama tmp UNIK per penulisan (pid + acak): catat() kini dipanggil tiap
+        # sesi BERPINDAH projek, bukan cuma login/logout, jadi dua utas bisa
+        # menulis berbarengan. Tmp bersama ".json.tmp" bisa saling menimpa
+        # sebelum replace -> _sesi.json korup. Replace-nya tetap atomik.
+        tmp = (self._berkas.parent
+               / f"{self._berkas.name}.{os.getpid()}-{secrets.token_hex(4)}.tmp")
         try:
             self._berkas.parent.mkdir(parents=True, exist_ok=True)
-            tmp = self._berkas.with_suffix(".json.tmp")
             tmp.write_text(json.dumps({"boot": _btime(), "sesi": sesi}),
                            encoding="utf-8")
             os.chmod(tmp, 0o600)
             tmp.replace(self._berkas)
         except OSError:
-            pass                                        # gagal persist != gagal login
+            try:
+                tmp.unlink(missing_ok=True)             # jangan tinggalkan tmp yatim
+            except OSError:
+                pass
+            # gagal persist != gagal login
 
     def create(self, user: str, settings: Settings) -> tuple[str, Session]:
         sid = secrets.token_urlsafe(32)
