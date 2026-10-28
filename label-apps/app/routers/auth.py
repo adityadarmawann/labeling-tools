@@ -301,7 +301,11 @@ async def daftar_kirim(request: Request, user: str = Form(""),
         log.info("pendaftaran mandiri: %r (email=%r) langsung aktif + masuk",
                  akun, (email or "").strip())
         sid, _sess = store.create(akun, settings)
-        resp = RedirectResponse(next or "/", status_code=status.HTTP_303_SEE_OTHER)
+        # Sama seperti /login: hanya jalur di dalam aplikasi ini. '//' dan skema
+        # apa pun dibuang, supaya kolom tersembunyi ini tak bisa dipakai
+        # mengarahkan orang yang baru mendaftar ke situs lain.
+        tujuan = next if next.startswith("/") and not next.startswith("//") else "/"
+        resp = RedirectResponse(tujuan, status_code=status.HTTP_303_SEE_OTHER)
         resp.set_cookie(COOKIE_NAME, sid, httponly=True, samesite="lax", path="/",
                         secure=kuki_aman(request), max_age=30 * 86400)
         return resp

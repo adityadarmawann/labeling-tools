@@ -398,3 +398,31 @@ def test_daftar_langsung_aktif_kalau_setelannya_dinyalakan(klien, lingkungan,
         assert masuk(klien, "rizky", "sandi-rizky-1"), "harusnya langsung bisa masuk"
     finally:
         get_settings.cache_clear()
+
+
+def test_daftar_langsung_tak_bisa_dipakai_redirect_keluar(klien, lingkungan,
+                                                          monkeypatch):
+    """Kolom `next` tersembunyi di form daftar tak boleh jadi pintu pengalihan
+    ke situs lain. Jalur /login sudah membersihkan '//' dan skema; cabang
+    auto-login daftar_langsung harus memakai penjagaan yang sama -- kalau tidak,
+    POST /daftar?next=//jahat bisa melempar pendaftar baru ke situs phishing."""
+    from app.config import get_settings
+    get_settings.cache_clear()
+    monkeypatch.setenv("LABELAPP_DAFTAR_LANGSUNG", "1")
+    try:
+        for jahat in ("//jahat.example", "https://jahat.example"):
+            r = klien.post("/daftar", data={
+                "user": f"u{abs(hash(jahat)) % 9999}", "pw": "sandi-rahasia-1",
+                "pw2": "sandi-rahasia-1", "next": jahat},
+                follow_redirects=False)
+            assert r.status_code == 303, r.text[:200]
+            # Diarahkan ke dalam aplikasi, BUKAN ke alamat luar yang diselipkan.
+            assert r.headers["location"] == "/", (jahat, r.headers.get("location"))
+            klien.cookies.clear()
+        # Jalur di DALAM aplikasi tetap dihormati.
+        r = klien.post("/daftar", data={
+            "user": "dalam", "pw": "sandi-rahasia-1", "pw2": "sandi-rahasia-1",
+            "next": "/versi?ds=x"}, follow_redirects=False)
+        assert r.status_code == 303 and r.headers["location"] == "/versi?ds=x"
+    finally:
+        get_settings.cache_clear()
