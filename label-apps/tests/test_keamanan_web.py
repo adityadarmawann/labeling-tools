@@ -45,6 +45,23 @@ def test_cookie_sesi_secure_di_https(klien):
     assert "labelapp_sid=" in sc and "secure" in sc.lower()
 
 
+def test_ingat_saya_cookie_persisten(klien):
+    # "Ingat saya" dicentang -> cookie PERSISTEN (ada Max-Age), tetap masuk
+    # walau browser ditutup.
+    r = klien.post("/login", data={"user": "anggi", "pw": PW_ANGGI, "ingat": "1"},
+                   follow_redirects=False)
+    sc = r.headers.get("set-cookie", "")
+    assert "labelapp_sid=" in sc and "max-age=" in sc.lower()
+
+
+def test_tanpa_ingat_cookie_sesi(klien):
+    # Tanpa "ingat" -> cookie SESI (tak ada Max-Age), hilang saat browser ditutup.
+    r = klien.post("/login", data={"user": "anggi", "pw": PW_ANGGI},
+                   follow_redirects=False)
+    sc = r.headers.get("set-cookie", "")
+    assert "labelapp_sid=" in sc and "max-age=" not in sc.lower()
+
+
 def test_rate_limit_login_terproksi(klien, monkeypatch):
     from app.routers import auth
     monkeypatch.setattr(auth, "FAILED_LOGIN_DELAY", 0.0)

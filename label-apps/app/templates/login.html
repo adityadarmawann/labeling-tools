@@ -16,6 +16,11 @@
     <label class="form-lbl" for="p">Password</label>
     <input id="p" aria-label="Kata sandi" name="pw" type="password" autocomplete="current-password">
 
+    {# Dicentang -> tetap masuk walau Chrome ditutup (cookie persisten 30 hari).
+       Lepas centang di komputer bersama supaya sesi hilang saat browser ditutup. #}
+    <label class="login-ingat"><input type="checkbox" name="ingat" value="1" checked>
+      Ingat saya di perangkat ini</label>
+
     <button class="cta" type="submit">Masuk</button>
     {% if error %}<p class="bad">{{ error }}</p>{% endif %}
 

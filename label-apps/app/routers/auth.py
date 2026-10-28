@@ -114,6 +114,7 @@ async def login(request: Request,
                 user: str = Form(""),
                 pw: str = Form(""),
                 next: str = Form(""),
+                ingat: str = Form(""),
                 settings: Settings = Depends(get_settings)):
     # Rate-limit hanya untuk lalu lintas yang datang LEWAT PROXY (internet
     # publik): nginx selalu memasang X-Forwarded-For, sedangkan koneksi langsung
@@ -171,8 +172,12 @@ async def login(request: Request,
     # mereka percaya.
     tujuan = next if next.startswith("/") and not next.startswith("//") else "/"
     resp = RedirectResponse(tujuan, status_code=status.HTTP_303_SEE_OTHER)
+    # "Ingat saya" -> cookie PERSISTEN (bertahan Chrome ditutup, sampai 30 hari
+    # = sama dengan umur sesi server di session.py). Tak dicentang -> cookie
+    # sesi (hilang saat browser ditutup), untuk komputer bersama.
     resp.set_cookie(COOKIE_NAME, sid, httponly=True, samesite="lax", path="/",
-                    secure=kuki_aman(request))
+                    secure=kuki_aman(request),
+                    max_age=(30 * 86400 if ingat else None))
     return resp
 
 
@@ -284,8 +289,9 @@ async def daftar_kirim(request: Request, user: str = Form(""),
                  akun, (email or "").strip())
         sid, _sess = store.create(akun, settings)
         resp = RedirectResponse(next, status_code=status.HTTP_303_SEE_OTHER)
+        # Baru mendaftar lewat undangan -> langsung diingat (persisten 30 hari).
         resp.set_cookie(COOKIE_NAME, sid, httponly=True, samesite="lax", path="/",
-                        secure=kuki_aman(request))
+                        secure=kuki_aman(request), max_age=30 * 86400)
         return resp
 
     log.info("pendaftaran mandiri: %r (email=%r) %s", akun,
