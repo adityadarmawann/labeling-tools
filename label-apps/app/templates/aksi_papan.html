@@ -50,6 +50,14 @@
         {{ o.di_dataset }} di dataset</span>
     </div>
     {%- endfor %}
+    {%- if boleh_kelola %}
+    <a class="an-kartu-orang an-tambah-anggota"
+       href="/aksi/bagi?ds={{ pr.ds | urlquote }}"
+       title="Tambah atau kelola anggota projek">
+      <span class="an-tambah-plus" aria-hidden="true">+</span>
+      <span class="an-tambah-teks">Tambah / kelola<br>anggota</span>
+    </a>
+    {%- endif %}
   </section>
   {% endif %}
 
