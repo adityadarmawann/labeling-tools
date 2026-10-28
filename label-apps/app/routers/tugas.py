@@ -154,7 +154,12 @@ async def halaman_papan(request: Request, ds: str = "", urut: str = "terbaru",
     if str(sess.src or "") != str(d):
         await asyncio.to_thread(sess.load, d)
     else:
-        await asyncio.to_thread(sess.segarkan)
+        # periksa_disk, BUKAN segarkan: halaman ini menampilkan DAFTAR gambar,
+        # dan frame hasil ekstraksi video (atau gambar yang dibuang) ditulis ke
+        # disk tanpa menaikkan penanda in-app, jadi segarkan() melewatkannya dan
+        # papan/pembagian tampak KOSONG padahal gambarnya ada. periksa_disk
+        # menangkapnya lewat tanda tangan folder, sama seperti grid Dataset.
+        await asyncio.to_thread(sess.periksa_disk)
 
     data = svc.baca_projek(d, settings.uploads_root)
     # Bersihkan job 0 gambar yang terlanjur ada (leftover dari membagi gambar
@@ -408,7 +413,9 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
         # pekerjaannya dibagi, anotasi yang dibuat pelabel tidak pernah
         # terlihat oleh pemilik projek — papan kemajuannya membeku di angka
         # saat ia membukanya, dan memuat ulang halaman tidak menolong.
-        await asyncio.to_thread(sess.segarkan)
+        # periksa_disk (bukan segarkan) supaya gambar yang ditambah/ dibuang di
+        # disk (mis. frame ekstraksi) ikut tertangkap, seperti grid Dataset.
+        await asyncio.to_thread(sess.periksa_disk)
 
     data = svc.baca_projek(d, settings.uploads_root)
     job = data["tugas"].get(tid)
@@ -555,7 +562,12 @@ async def halaman_bagi(request: Request, ds: str = "", batch: str = "",
     if str(sess.src or "") != str(d):
         await asyncio.to_thread(sess.load, d)
     else:
-        await asyncio.to_thread(sess.segarkan)
+        # periksa_disk, BUKAN segarkan: halaman ini menampilkan DAFTAR gambar,
+        # dan frame hasil ekstraksi video (atau gambar yang dibuang) ditulis ke
+        # disk tanpa menaikkan penanda in-app, jadi segarkan() melewatkannya dan
+        # papan/pembagian tampak KOSONG padahal gambarnya ada. periksa_disk
+        # menangkapnya lewat tanda tangan folder, sama seperti grid Dataset.
+        await asyncio.to_thread(sess.periksa_disk)
 
     data = svc.baca_projek(d, settings.uploads_root)
     pr = await asyncio.to_thread(sp.konteks, d, settings.uploads_root, sess.user)

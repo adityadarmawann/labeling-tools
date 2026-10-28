@@ -195,3 +195,25 @@ def test_ekstraksi_menyegarkan_papan_tanpa_reload(klien, lingkungan):
     # kosong seperti sebelum perbaikan.
     html = klien.get("/anotasi?ds=vid-segar").text
     assert "Tanpa nama unggahan" in html, "papan tak menyegar setelah ekstraksi"
+
+
+def test_papan_tangkap_frame_ditulis_langsung_ke_disk(klien, lingkungan):
+    """Papan Anotasi HARUS menampilkan gambar yang muncul di disk walau TAK ada
+    sinyal in-app (mis. frame ekstraksi yang ditulis proses lain). Dulu papan
+    pakai segarkan() yang cuma lihat penanda in-app, jadi kartu kosong padahal
+    sidebar/grid (yang pakai periksa_disk) sudah menghitung gambarnya."""
+    import cv2, numpy as np
+    masuk(klien, "paul", PW_PAUL)
+    _buat_projek(klien, "vid-disk", "image")
+    proj = lingkungan["ruang"] / "vid-disk"
+    # Buka papan DULU -> sesi memuat projek (0 gambar), tanda tangan disk tercatat.
+    assert "Tanpa nama unggahan" not in klien.get("/anotasi?ds=vid-disk").text
+    # Tulis frame LANGSUNG ke disk, meniru ekstraksi proses lain -- TANPA lewat
+    # rute/tandai_berubah.
+    for i in range(5):
+        cv2.imwrite(str(proj / f"IMG-{i:03d}.jpg"),
+                    np.random.default_rng(i).integers(0, 255, (40, 60, 3), np.uint8))
+    # Papan (sesi yang SAMA) harus kini menampilkannya via periksa_disk.
+    assert "Tanpa nama unggahan" in klien.get("/anotasi?ds=vid-disk").text
+    # Dan halaman /bagi (tempat membagikan) juga, bukan cuma papan.
+    assert klien.get("/bagi?ds=vid-disk").status_code == 200
