@@ -80,11 +80,29 @@
     return tk;
   }
 
+  // PUT lewat XHR (bukan fetch) supaya ADA timeout: video HP bisa beberapa GB,
+  // dan koneksi yang menggantung-tak-putus pada fetch tak pernah selesai -- baris
+  // unggahannya diam selamanya. Lantai 2 menit + skala ukuran, sama dgn desktop.
+  function putBerkas(url, file) {
+    return new Promise(function (resolve, reject) {
+      var xhr = new XMLHttpRequest();
+      xhr.open("PUT", url);
+      xhr.timeout = Math.max(120000, Math.ceil((file.size || 0) / 250000) * 1000);
+      xhr.onload = function () {
+        var j = {};
+        try { j = JSON.parse(xhr.responseText || "{}"); } catch (e) { j = {}; }
+        resolve(j);
+      };
+      xhr.onerror = function () { reject(new Error("jaringan")); };
+      xhr.ontimeout = function () { reject(new Error("timeout")); };
+      xhr.send(file);
+    });
+  }
+
   function kirim(item) {
     var url = "/unggah-hp/upload?t=" + encodeURIComponent(token) +
       "&name=" + encodeURIComponent(item.nama);
-    return fetch(url, { method: "PUT", body: item.file })
-      .then(function (r) { return r.json().catch(function () { return {}; }); })
+    return putBerkas(url, item.file)
       .then(function (j) {
         if (j && j.ok) {
           ok++; item.tk.className = "tanda ok"; item.tk.textContent = "✓";

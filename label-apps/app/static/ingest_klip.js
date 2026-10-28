@@ -74,6 +74,24 @@
     el('ik-potong-kartu').scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
+  // PUT video lewat XHR (bukan fetch) supaya ADA timeout: klip bisa beberapa GB,
+  // dan fetch yang menggantung tak pernah selesai. Lantai 2 menit + skala ukuran.
+  function putKlip(url, file) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('PUT', url);
+      xhr.timeout = Math.max(120000, Math.ceil((file.size || 0) / 250000) * 1000);
+      xhr.onload = () => {
+        let j = {};
+        try { j = JSON.parse(xhr.responseText || '{}'); } catch (e) { j = {}; }
+        resolve({ ok: xhr.status >= 200 && xhr.status < 300, j });
+      };
+      xhr.onerror = () => reject(new Error('jaringan'));
+      xhr.ontimeout = () => reject(new Error('timeout (unggahan menggantung)'));
+      xhr.send(file);
+    });
+  }
+
   // ---- unggah berkas video (PUT /upload -> _sumber/) ----
   const fin = el('ik-unggah-file');
   if (fin) fin.addEventListener('change', async () => {
@@ -82,10 +100,9 @@
     const maju = el('ik-unggah-maju');
     maju.textContent = `Mengunggah ${(f.size / 1048576).toFixed(0)} MB…`;
     try {
-      const resp = await fetch(`/upload?ds=${EDS}&name=${enc(f.name)}`, { method: 'PUT', body: f });
-      const j = await resp.json().catch(() => ({}));
+      const { ok, j } = await putKlip(`/upload?ds=${EDS}&name=${enc(f.name)}`, f);
       fin.value = '';
-      if (!resp.ok || j.ok === false) { maju.textContent = j.error || 'gagal unggah'; toast(j.error || 'gagal unggah'); return; }
+      if (!ok || j.ok === false) { maju.textContent = j.error || 'gagal unggah'; toast(j.error || 'gagal unggah'); return; }
       maju.textContent = 'Terunggah.';
       await muatSumber();
       pilihSumber(f.name);
