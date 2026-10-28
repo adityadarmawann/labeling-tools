@@ -195,3 +195,24 @@ def test_kirim_ditambahkan_pemberitahuan(monkeypatch):
     assert "ditambahkan" in body and "frisian-flag" in body
     assert "https://h.test/" in body            # tautan buka HIGOLAB
     assert "undangan" not in body.lower()        # bukan alur daftar/terima
+
+
+def test_kirim_ditugaskan_pemberitahuan(monkeypatch):
+    """Pelabel diberi tahu lewat email saat sebuah batch/job ditugaskan
+    kepadanya, lengkap dengan jumlah, judul batch, dan satuan (gambar/klip)."""
+    _FakeSMTP.instances = []
+    monkeypatch.setattr(surel.smtplib, "SMTP", _FakeSMTP)
+    assert surel.kirim_ditugaskan(_s(), "rizky@higo.id", "frisian-flag",
+                                   jumlah=25, judul="Batch pagi",
+                                   tautan="https://h.test/") is True
+    msg = _FakeSMTP.instances[-1].sent[-1]
+    assert msg["Subject"] == 'Tugas baru di proyek "frisian-flag" di HIGOLAB'
+    body = msg.get_body(preferencelist=("plain",)).get_content()
+    assert "25 gambar" in body and "Batch pagi" in body
+    assert "frisian-flag" in body and "https://h.test/" in body
+    # Satuan "klip" untuk proyek video.
+    assert surel.kirim_ditugaskan(_s(), "rizky@higo.id", "pertandingan",
+                                   jumlah=8, satuan="klip") is True
+    body2 = _FakeSMTP.instances[-1].sent[-1].get_body(
+        preferencelist=("plain",)).get_content()
+    assert "8 klip" in body2

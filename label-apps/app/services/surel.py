@@ -197,6 +197,68 @@ def kirim_ditambahkan(settings, ke: str, projek: str, tautan: str = "") -> bool:
         return False
 
 
+def _frasa_tugas(jumlah, judul, satuan="gambar"):
+    """"5 gambar (Batch pagi)" atau sekadar "5 gambar" kalau tak berjudul."""
+    inti = f"{jumlah} {satuan}" if jumlah else satuan
+    return f"{inti} ({judul})" if judul else inti
+
+
+def _teks_ditugaskan(nama, projek, jumlah, judul, tautan, satuan="gambar"):
+    sapa = f"Halo {nama}," if nama else "Halo,"
+    ekor = f"\nBuka HIGOLAB: {tautan}\n" if tautan else ""
+    return (
+        f"{sapa}\n\n"
+        f"Anda baru saja mendapat tugas melabeli "
+        f"{_frasa_tugas(jumlah, judul, satuan)} "
+        f"di proyek \"{projek}\" di HIGOLAB.\n\n"
+        "Masuk ke HIGOLAB, buka proyek ini, dan tugas Anda akan muncul di daftar "
+        "pekerjaan.\n"
+        f"{ekor}\n"
+        "Catatan: HIGOLAB hanya bisa diakses lewat jaringan Wi-Fi kantor HIGO "
+        "(atau VPN perusahaan).\n\n"
+        f"Salam,\n{TIM}\n{ORG}\n")
+
+
+def _html_ditugaskan(nama, projek, jumlah, judul, tautan, satuan="gambar"):
+    sapa = f"Halo {_esc(nama)}," if nama else "Halo,"
+    tombol = (
+        f'<p><a href="{_esc(tautan)}" style="display:inline-block;padding:10px 18px;'
+        'background:#1f8a70;color:#ffffff;text-decoration:none;border-radius:6px">'
+        "Buka HIGOLAB</a></p>" if tautan else "")
+    return (
+        '<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;'
+        'color:#1f2937;line-height:1.6;max-width:560px">'
+        f"<p>{sapa}</p>"
+        f"<p>Anda baru saja mendapat tugas melabeli "
+        f"<b>{_esc(_frasa_tugas(jumlah, judul, satuan))}</b> di proyek "
+        f"<b>{_esc(projek)}</b> di HIGOLAB.</p>"
+        "<p>Masuk ke HIGOLAB, buka proyek ini, dan tugas Anda akan muncul di "
+        "daftar pekerjaan.</p>"
+        f"{tombol}"
+        '<p style="color:#667085;font-size:12px">HIGOLAB hanya bisa diakses lewat '
+        "jaringan Wi-Fi kantor HIGO (atau VPN perusahaan).</p>"
+        f"<p>Salam,<br><br><b>{_esc(TIM)}</b><br>{_esc(ORG)}</p>"
+        "</div>")
+
+
+def kirim_ditugaskan(settings, ke: str, projek: str, jumlah: int = 0,
+                     judul: str = "", tautan: str = "",
+                     satuan: str = "gambar") -> bool:
+    """Email ke pelabel saat sebuah batch/job BARU ditugaskan kepadanya, supaya
+    ia tahu ada pekerjaan baru tanpa harus membuka web dulu. `satuan` = "gambar"
+    atau "klip". True kalau terkirim."""
+    nama = _nama_dari_email(ke)
+    subjek = f'Tugas baru di proyek "{projek}" di HIGOLAB'
+    try:
+        kirim(settings, ke, subjek,
+              _teks_ditugaskan(nama, projek, jumlah, judul, tautan, satuan),
+              _html_ditugaskan(nama, projek, jumlah, judul, tautan, satuan))
+        return True
+    except Exception as e:                            # noqa: BLE001
+        log.warning("gagal kirim email 'ditugaskan' ke %s: %s", ke, e)
+        return False
+
+
 # ------------------------------------------------------------ hasil training
 # Label & kalimat untuk tiap keadaan akhir training. Dipakai menyusun subjek
 # yang langsung kelihatan di kotak masuk tanpa membuka email.

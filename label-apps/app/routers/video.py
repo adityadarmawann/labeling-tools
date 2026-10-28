@@ -933,7 +933,17 @@ async def aksi_bagi(request: Request, ds: str = "",
     if r.get("kosong"):
         return {"ok": False, "error": "semua klip itu sudah ditugaskan ke job "
                 "lain — tidak ada job baru dibuat"}
-    return {"ok": True, **r}
+    # Beri tahu pelabel lewat email bahwa ada tugas klip baru (kecuali kalau ia
+    # membagikan ke dirinya sendiri). Tak menggagalkan pembagian kalau email
+    # mati/gagal.
+    terkirim = False
+    if pelabel and pelabel != sess.user:
+        from .tugas import _email_ditugaskan
+        terkirim = await _email_ditugaskan(
+            settings, request, pelabel, d.name,
+            r.get("n", 0), r.get("judul") or str(body.get("judul") or ""),
+            satuan="klip")
+    return {"ok": True, "email_terkirim": terkirim, **r}
 
 
 @router.get("/klip")

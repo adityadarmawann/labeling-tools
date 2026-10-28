@@ -665,6 +665,29 @@ async def _email_ditambahkan(settings, request, akun: str, projek_nama: str) -> 
         return False
 
 
+async def _email_ditugaskan(settings, request, akun: str, projek_nama: str,
+                            jumlah: int = 0, judul: str = "",
+                            satuan: str = "gambar") -> bool:
+    """Beri tahu lewat email pelabel bahwa sebuah batch/job baru ditugaskan
+    kepadanya. Diam kalau SMTP mati / akun tak punya email; tak pernah
+    menggagalkan pembagian. True kalau terkirim."""
+    try:
+        if not surel.aktif(settings):
+            return False
+        from ..security import load_users, email_akun
+        ke = email_akun(load_users(settings.users_file), akun)
+        if not ke:
+            return False
+        base = (settings.basis_publik
+                or (str(request.base_url).rstrip("/") if request else "")).rstrip("/")
+        tautan = (base + "/") if base else ""
+        return await asyncio.to_thread(surel.kirim_ditugaskan, settings, ke,
+                                       projek_nama or "HIGOLAB", jumlah, judul,
+                                       tautan, satuan)
+    except Exception:                                 # noqa: BLE001
+        return False
+
+
 @router.post("/api/tugas/undang")
 async def undang(akun: str = "", peran: str = "pelabel", akses: str = "",
                  batch: str = "", request: Request = None,
@@ -912,7 +935,16 @@ async def bagi(request: Request, sess: Session = Depends(current_session_api),
     # tugaskan() sempat melihatnya, jadi enam path masuk dan balasannya
     # menyebut satu terbagi, dua dilewati, tanpa menyinggung tiga sisanya.
     r["dilewati"] = r.get("dilewati", 0) + tidak_dikenal
-    return {"ok": True, **r}
+    # Beri tahu pelabel lewat email bahwa ada tugas baru (kecuali kalau ia
+    # membagikan ke dirinya sendiri). Tak menggagalkan pembagian kalau email
+    # mati/gagal.
+    terkirim = False
+    if pelabel and pelabel != sess.user:
+        terkirim = await _email_ditugaskan(
+            settings, request, pelabel,
+            sess.src.name if sess.src else "",
+            r.get("n", 0), r.get("judul") or str(body.get("judul") or ""))
+    return {"ok": True, "email_terkirim": terkirim, **r}
 
 
 @router.post("/api/tugas/ubah")
