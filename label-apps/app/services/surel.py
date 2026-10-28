@@ -145,6 +145,58 @@ def kirim_undangan(settings, ke: str, tautan: str, projek: str) -> bool:
         return False
 
 
+def _teks_ditambahkan(nama, projek, tautan):
+    sapa = f"Halo {nama}," if nama else "Halo,"
+    ekor = f"\nBuka HIGOLAB: {tautan}\n" if tautan else ""
+    return (
+        f"{sapa}\n\n"
+        f"Anda baru saja ditambahkan sebagai anggota proyek \"{projek}\" di "
+        "HIGOLAB oleh tim.\n\n"
+        "Akun Anda sudah terdaftar, jadi tak perlu mendaftar lagi: cukup masuk, "
+        "dan proyek ini akan muncul di daftar \"Projek yang dibagikan\".\n"
+        f"{ekor}\n"
+        "Catatan: HIGOLAB hanya bisa diakses lewat jaringan Wi-Fi kantor HIGO "
+        "(atau VPN perusahaan).\n\n"
+        f"Salam,\n{TIM}\n{ORG}\n")
+
+
+def _html_ditambahkan(nama, projek, tautan):
+    sapa = f"Halo {_esc(nama)}," if nama else "Halo,"
+    tombol = (
+        f'<p><a href="{_esc(tautan)}" style="display:inline-block;padding:10px 18px;'
+        'background:#1f8a70;color:#ffffff;text-decoration:none;border-radius:6px">'
+        "Buka HIGOLAB</a></p>" if tautan else "")
+    return (
+        '<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;'
+        'color:#1f2937;line-height:1.6;max-width:560px">'
+        f"<p>{sapa}</p>"
+        f"<p>Anda baru saja ditambahkan sebagai anggota proyek "
+        f"<b>{_esc(projek)}</b> di HIGOLAB oleh tim.</p>"
+        "<p>Akun Anda sudah terdaftar, jadi tak perlu mendaftar lagi: cukup "
+        "masuk, dan proyek ini akan muncul di daftar "
+        "<b>Projek yang dibagikan</b>.</p>"
+        f"{tombol}"
+        '<p style="color:#667085;font-size:12px">HIGOLAB hanya bisa diakses lewat '
+        "jaringan Wi-Fi kantor HIGO (atau VPN perusahaan).</p>"
+        f"<p>Salam,<br><br><b>{_esc(TIM)}</b><br>{_esc(ORG)}</p>"
+        "</div>")
+
+
+def kirim_ditambahkan(settings, ke: str, projek: str, tautan: str = "") -> bool:
+    """Email ke anggota yang AKUNNYA SUDAH ADA, baru ditambahkan ke sebuah
+    proyek. Bukan tautan undangan (tak perlu daftar/terima), hanya pemberitahuan
+    supaya ia tahu ada proyek baru yang dibagikan. True kalau terkirim."""
+    nama = _nama_dari_email(ke)
+    subjek = f'Anda ditambahkan ke proyek "{projek}" di HIGOLAB'
+    try:
+        kirim(settings, ke, subjek, _teks_ditambahkan(nama, projek, tautan),
+              _html_ditambahkan(nama, projek, tautan))
+        return True
+    except Exception as e:                            # noqa: BLE001
+        log.warning("gagal kirim email 'ditambahkan' ke %s: %s", ke, e)
+        return False
+
+
 # ------------------------------------------------------------ hasil training
 # Label & kalimat untuk tiap keadaan akhir training. Dipakai menyusun subjek
 # yang langsung kelihatan di kotak masuk tanpa membuka email.

@@ -180,3 +180,18 @@ def test_beritahu_hasil_hanya_keadaan_akhir(tmp_path, monkeypatch):
     latih = _siapkan_record(tmp_path, monkeypatch, keadaan="jalan")
     assert latih.beritahu_hasil(tmp_path, 1) is False
     assert len(_FakeSMTP.instances) == 0
+
+
+def test_kirim_ditambahkan_pemberitahuan(monkeypatch):
+    """Anggota yang akunnya sudah ada diberi tahu lewat email saat ditambahkan
+    ke projek -- bukan tautan undangan, tapi pemberitahuan + tombol buka."""
+    _FakeSMTP.instances = []
+    monkeypatch.setattr(surel.smtplib, "SMTP", _FakeSMTP)
+    assert surel.kirim_ditambahkan(_s(), "rizky@higo.id", "frisian-flag",
+                                   "https://h.test/") is True
+    msg = _FakeSMTP.instances[-1].sent[-1]
+    assert msg["Subject"] == 'Anda ditambahkan ke proyek "frisian-flag" di HIGOLAB'
+    body = msg.get_body(preferencelist=("plain",)).get_content()
+    assert "ditambahkan" in body and "frisian-flag" in body
+    assert "https://h.test/" in body            # tautan buka HIGOLAB
+    assert "undangan" not in body.lower()        # bukan alur daftar/terima

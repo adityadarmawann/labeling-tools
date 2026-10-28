@@ -645,9 +645,30 @@ async def periksa_akun(q: str = "", sess: Session = Depends(current_session_api)
             "nama": rec.get("nama") or akun, "anggota": anggota, "peran": peran}
 
 
+async def _email_ditambahkan(settings, request, akun: str, projek_nama: str) -> bool:
+    """Beri tahu lewat email anggota yang AKUNNYA SUDAH ADA bahwa ia baru
+    ditambahkan ke sebuah projek. Diam kalau SMTP mati / akun tak punya email;
+    tak pernah menggagalkan undangan. True kalau terkirim."""
+    try:
+        if not surel.aktif(settings):
+            return False
+        from ..security import load_users, email_akun
+        ke = email_akun(load_users(settings.users_file), akun)
+        if not ke:
+            return False
+        base = (settings.basis_publik
+                or (str(request.base_url).rstrip("/") if request else "")).rstrip("/")
+        tautan = (base + "/") if base else ""
+        return await asyncio.to_thread(surel.kirim_ditambahkan, settings, ke,
+                                       projek_nama or "HIGOLAB", tautan)
+    except Exception:                                 # noqa: BLE001
+        return False
+
+
 @router.post("/api/tugas/undang")
 async def undang(akun: str = "", peran: str = "pelabel", akses: str = "",
-                 batch: str = "", sess: Session = Depends(current_session_api),
+                 batch: str = "", request: Request = None,
+                 sess: Session = Depends(current_session_api),
                  settings: Settings = Depends(get_settings)):
     """Undang akun yang sudah ada, dengan peran & scope-nya.
 
@@ -671,7 +692,11 @@ async def undang(akun: str = "", peran: str = "pelabel", akses: str = "",
                                       "diundang"}
     r = await asyncio.to_thread(svc.undang, sess.src, data["pemilik"], akun,
                                 peran, akses or None, batch)
-    return {"ok": True, **r}
+    # Beri tahu anggota lewat email bahwa ia ditambahkan (kalau SMTP aktif &
+    # akunnya punya email). Tak menggagalkan undangan kalau email mati/gagal.
+    terkirim = await _email_ditambahkan(settings, request, akun,
+                                        sess.src.name if sess.src else "")
+    return {"ok": True, "email_terkirim": terkirim, **r}
 
 
 @router.post("/api/tugas/keluarkan-anggota")
@@ -757,7 +782,11 @@ async def undang_email(email: str = "", peran: str = "pelabel", akses: str = "",
         if surel_akun and surel_akun == alamat.lower():
             r = await asyncio.to_thread(svc.undang, sess.src, sess.user, akun,
                                         peran, akses or None, batch)
-            return {"ok": True, "akun": akun, "sudah_terdaftar": True, **r}
+            # Akun sudah ada -> bukan tautan, tapi tetap diberi tahu lewat email.
+            terkirim = await _email_ditambahkan(
+                settings, request, akun, sess.src.name if sess.src else "")
+            return {"ok": True, "akun": akun, "sudah_terdaftar": True,
+                    "email_terkirim": terkirim, **r}
 
     try:
         r = await asyncio.to_thread(svc.undang_email, sess.src, sess.user,
