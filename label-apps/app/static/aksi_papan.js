@@ -64,15 +64,16 @@
       const nama = b.dataset.nama || 'unggahan ini';
       const n = b.dataset.n || '';
       if (!confirm(`Hapus unggahan "${nama}"${n ? ` (${n} klip)` : ''}?\n\n`
-        + 'Klip yang belum ditugaskan dipindah ke keranjang sampah klip. '
-        + 'Bisa dipulihkan dari server; klip yang sudah dibagi atau sudah '
-        + 'masuk dataset tidak ikut terhapus.')) return;
+        + 'Klip dipindah ke keranjang sampah klip (bisa dipulihkan). Klip yang '
+        + 'ditugaskan ke orang LAIN atau sudah masuk dataset dilindungi (tidak '
+        + 'ikut terhapus).')) return;
       const r = await send(`/api/aksi/hapus-batch?ds=${EDS}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ batch }),
       });
       if (!r || !r.ok) { toast((r && r.error) || 'gagal'); return; }
-      toast(`${r.dibuang || 0} klip dipindah ke sampah`);
+      toast(`${r.dibuang || 0} klip dipindah ke sampah`
+            + (r.dilindungi ? ` · ${r.dilindungi} dilindungi (orang lain/dataset)` : ''));
       location.reload();
     };
   }

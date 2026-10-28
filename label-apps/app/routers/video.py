@@ -774,6 +774,30 @@ def _belum_ditugaskan_klip(data: dict, pindai: dict, batch: str = "") -> list[st
     return out
 
 
+def _klip_bisa_hapus(data: dict, pindai: dict, batch: str,
+                     pemilik: str) -> tuple[list[str], int, int]:
+    """Klip satu unggahan yang pemilik BOLEH hapus: belum ditugaskan ATAU
+    ditugaskan ke PEMILIK sendiri; yang ke labeler LAIN atau sudah di dataset
+    DILINDUNGI. Padanan tugas.keys_batch_hapus untuk klip.
+    Kembalikan (bisa, n_lindungi_orang_lain, n_lindungi_dataset)."""
+    bisa: list[str] = []
+    lindungi_lain = 0
+    lindungi_ds = 0
+    for it in pindai["items"]:
+        rel = it["rel"]
+        if batch and it["batch"] != batch:
+            continue
+        if tugas.sudah_dimasukkan(data, rel):
+            lindungi_ds += 1
+            continue
+        pel = tugas.pelabel_gambar(data, rel)      # "" = belum ditugaskan
+        if not pel or pel == pemilik:
+            bisa.append(rel)
+        else:
+            lindungi_lain += 1
+    return bisa, lindungi_lain, lindungi_ds
+
+
 def _buang_klip_ke_sampah(d, rels: list[str]) -> int:
     """Pindahkan berkas klip ke keranjang `klip/.sampah/<cap>/` — bisa
     dipulihkan, tak pernah dihapus (sejalan "Hapus batch" gambar yang pindah ke
@@ -1097,16 +1121,27 @@ async def aksi_hapus_batch(request: Request, ds: str = "",
     body = await bodi_json(request)
     batch = str(body.get("batch") or "")
     pindai = await asyncio.to_thread(klip_scan.pindai, d)
-    rels = _belum_ditugaskan_klip(tdata, pindai, batch)
+    # Pemilik boleh membuang batch yang ditugaskan ke DIRINYA (unggahan kini
+    # auto-ditugaskan), labeler lain & dataset dilindungi -- paritas gambar.
+    rels, lindungi_lain, lindungi_ds = _klip_bisa_hapus(tdata, pindai, batch,
+                                                        tdata["pemilik"])
     if not rels:
-        return {"ok": False, "error": "tidak ada klip di unggahan itu yang bisa "
-                                      "dihapus (yang sudah dibagi/masuk dataset "
-                                      "tak ikut)"}
+        pesan = "tidak ada klip di unggahan itu yang bisa kamu hapus"
+        tambahan = []
+        if lindungi_lain:
+            tambahan.append(f"{lindungi_lain} sudah ditugaskan ke orang lain")
+        if lindungi_ds:
+            tambahan.append(f"{lindungi_ds} sudah masuk dataset")
+        if tambahan:
+            pesan += " (" + ", ".join(tambahan) + ")"
+        return {"ok": False, "error": pesan}
+    await asyncio.to_thread(tugas.lepas_dari_job_pemilik, d, tdata["pemilik"], rels)
     n = await asyncio.to_thread(_buang_klip_ke_sampah, d, rels)
     # Rapikan tag sidecar supaya tak menunjuk klip yang sudah pindah.
     pindai2 = await asyncio.to_thread(klip_scan.pindai, d)
     await asyncio.to_thread(klip_tag.rapikan, d, pindai2["semua"])
-    return {"ok": True, "dibuang": n, "batch": batch}
+    return {"ok": True, "dibuang": n, "batch": batch,
+            "dilindungi": lindungi_lain + lindungi_ds}
 
 
 @router.post("/api/aksi/dataset/keluarkan")
