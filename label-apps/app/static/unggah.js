@@ -497,15 +497,20 @@
           return `<div class="ug-ekstrak-baris ug-ekstrak-jalan"><span class="ug-ekstrak-spin">`
             + `</span><span>${nm} sedang diekstrak jadi gambar${n}…</span></div>`;
         }
+        // Baris yang SUDAH kelar (selesai/gagal) bisa ditutup supaya tak
+        // menetap selamanya tiap halaman dibuka. Yang 'jalan' tanpa tombol.
+        const tutup = `<button type="button" class="ug-ekstrak-tutup"`
+          + ` data-video="${esc(v)}" title="Sembunyikan" aria-label="Sembunyikan">×</button>`;
         if (r.keadaan === 'selesai') {
           const n = r.n != null ? ` · ${Number(r.n).toLocaleString('id-ID')} gambar` : '';
           return `<div class="ug-ekstrak-baris ug-ekstrak-ok">`
-            + `<span class="ug-ekstrak-ikon">✓</span><span>${nm} selesai${n}</span></div>`;
+            + `<span class="ug-ekstrak-ikon">✓</span><span>${nm} selesai${n}</span>`
+            + tutup + `</div>`;
         }
         if (r.keadaan === 'gagal') {
           return `<div class="ug-ekstrak-baris ug-ekstrak-gagal">`
             + `<span class="ug-ekstrak-ikon">✕</span><span>${nm} gagal`
-            + (r.galat ? ` — ${esc(r.galat)}` : '') + `</span></div>`;
+            + (r.galat ? ` — ${esc(r.galat)}` : '') + `</span>` + tutup + `</div>`;
         }
         return '';
       }).filter(Boolean);
@@ -517,6 +522,22 @@
       if (adaJalan) _ekstrakTimer = setTimeout(pantauEkstrak, 3000);
     }).catch(() => {});
   }
+  // Klik ✕ pada baris yang sudah kelar: buang rekamannya di server supaya tak
+  // muncul lagi, lalu hilangkan barisnya. Delegasi sekali, bukan per render.
+  (function pasangTutupEkstrak() {
+    const box = $('ug-ekstrak');
+    if (!box) return;
+    box.addEventListener('click', (e) => {
+      const b = e.target.closest('.ug-ekstrak-tutup');
+      if (!b) return;
+      const vid = b.dataset.video || '';
+      const row = b.closest('.ug-ekstrak-baris');
+      if (row) row.remove();
+      if (!box.querySelector('.ug-ekstrak-baris')) box.hidden = true;
+      send('/api/ekstrak/tutup?ds=' + encodeURIComponent(PROJEK)
+        + '&video=' + encodeURIComponent(vid), { method: 'POST' }).catch(() => {});
+    });
+  })();
   // Saat halaman dibuka: tampilkan status ekstraksi yang mungkin masih jalan
   // dari kunjungan sebelumnya (tab ditutup di tengah proses).
   if ($('ug-ekstrak')) pantauEkstrak();

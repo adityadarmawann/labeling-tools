@@ -76,6 +76,16 @@ def test_video_ke_projek_image_diekstrak_dan_dihapus(klien, lingkungan):
     assert not (proj / "klip.mp4").exists()                 # video dibuang
     assert len(list(proj.glob("*.jpg"))) == rec["n"]        # frame mendarat
 
+    # Spanduk "selesai" bisa ditutup supaya tak menetap tiap halaman dibuka.
+    st = klien.get("/api/ekstrak/status?ds=vid-img").json()["status"]
+    assert "klip.mp4" in st                                  # masih tercatat
+    assert klien.post("/api/ekstrak/tutup?ds=vid-img&video=klip.mp4").json()["ok"]
+    st2 = klien.get("/api/ekstrak/status?ds=vid-img").json()["status"]
+    assert "klip.mp4" not in st2                             # sudah hilang
+    # Menutup lagi aman (idempoten), dan frame-nya TIDAK ikut terhapus.
+    assert klien.post("/api/ekstrak/tutup?ds=vid-img&video=klip.mp4").json()["ok"]
+    assert len(list(proj.glob("*.jpg"))) == rec["n"]
+
 
 def test_video_kedua_ke_projek_flat_yang_sudah_berisi(klien, lingkungan):
     """Projek flat yang SUDAH berisi frame (dari video pertama) tetap menerima

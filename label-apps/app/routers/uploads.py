@@ -468,6 +468,29 @@ def _status_tulis(d: Path, video: str, **nilai) -> None:
             pass
 
 
+def _status_hapus(d: Path, video: str | None = None) -> None:
+    """Buang rekaman status yang SUDAH kelar (selesai/gagal) supaya spanduknya
+    tidak menetap selamanya. `video` tertentu -> buang satu itu; None -> buang
+    semua yang bukan 'jalan'. Rekaman yang masih 'jalan' TAK pernah dibuang."""
+    with _status_lock:
+        data = _status_baca(d)
+        if video:
+            rec = data.get(video)
+            if not rec or rec.get("keadaan") == "jalan":
+                return
+            data.pop(video, None)
+        else:
+            data = {k: v for k, v in data.items()
+                    if (v or {}).get("keadaan") == "jalan"}
+        try:
+            p = d / _BERKAS_STATUS
+            tmp = p.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(data, indent=1))
+            tmp.replace(p)
+        except OSError:
+            pass
+
+
 def _jalankan_ekstrak_latar(vp: Path, d: Path, settings: Settings, *,
                             fps: float | None = None,
                             kerapatan: float | None = None,
@@ -662,6 +685,19 @@ async def ekstrak_status(ds: str = "",
             except OSError:
                 pass
     return {"ok": True, "status": data}
+
+
+@router.post("/api/ekstrak/tutup")
+async def ekstrak_tutup(ds: str = "", video: str = "",
+                        sess: Session = Depends(current_session_api),
+                        settings: Settings = Depends(get_settings)):
+    """Sembunyikan spanduk status ekstraksi yang SUDAH kelar. `video` kosong =
+    bersihkan semua yang selesai/gagal. Yang masih 'jalan' tak tersentuh."""
+    d, err = _folder_unggah(sess, settings, ds)
+    if err:
+        return {"ok": False, "error": err}
+    await asyncio.to_thread(_status_hapus, d, video or None)
+    return {"ok": True}
 
 
 @router.get("/api/impor/survei")

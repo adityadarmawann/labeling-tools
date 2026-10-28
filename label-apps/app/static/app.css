@@ -1940,6 +1940,12 @@ input:focus{outline:0;border-color:var(--ok)}
 .ug-ekstrak-baris{display:flex;align-items:center;gap:8px;font-size:12.5px;
   color:var(--ink)}
 .ug-ekstrak-ikon{flex:none;width:16px;text-align:center}
+/* Tombol sembunyikan di baris yang sudah kelar (selesai/gagal). Didorong ke
+   ujung kanan; samar sampai disentuh supaya tidak merebut perhatian. */
+.ug-ekstrak-tutup{margin-left:auto;flex:none;width:20px;height:20px;padding:0;
+  border:none;background:transparent;color:var(--ink-faint);font-size:16px;
+  line-height:1;border-radius:5px;cursor:pointer}
+.ug-ekstrak-tutup:hover{background:var(--line);color:var(--ink)}
 .ug-ekstrak-jalan{color:var(--ink-dim)}
 .ug-ekstrak-ok{color:var(--ok)}
 .ug-ekstrak-gagal{color:var(--gagal)}
