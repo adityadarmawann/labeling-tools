@@ -145,3 +145,34 @@ def test_ekstrak_tanpa_video_memberi_pesan_jelas(klien, lingkungan):
     r = klien.post("/ekstrak?ds=vid-kosong&name=tidakada.mp4")
     j = r.json()
     assert j["ok"] is False and "tidak ada" in j["error"], j
+
+
+def test_hapus_batch_frame_ekstrak_kartu_hilang(klien, lingkungan):
+    """Frame hasil ekstraksi video (batch 'Tanpa nama unggahan') bisa dihapus
+    lewat papan, dan KARTUNYA ikut hilang -- bukan cuma isinya. `ds` dikirim
+    supaya tetap jalan walau sesi kehilangan projek yang terbuka (sehabis
+    restart/deploy)."""
+    masuk(klien, "paul", PW_PAUL)
+    _buat_projek(klien, "vid-hapus", "image")
+    klien.put("/upload?ds=vid-hapus&name=IMG.mp4", content=_video_bytes(lingkungan["tmp"]))
+    klien.post("/ekstrak?ds=vid-hapus&name=IMG.mp4&fps=2")
+    rec = _tunggu_ekstrak(klien, "vid-hapus", "IMG.mp4")
+    assert rec["n"] > 0
+    proj = lingkungan["ruang"] / "vid-hapus"
+
+    # Papan menampilkan kartu 'Tanpa nama unggahan' sebelum dihapus.
+    assert "Tanpa nama unggahan" in klien.get("/anotasi?ds=vid-hapus").text
+
+    # Hapus lewat rute papan -- dengan ds, tanpa membuka projek dulu (meniru
+    # sesi yang baru di-restart).
+    klien.get("/logout"); masuk(klien, "paul", PW_PAUL)        # sesi segar, src kosong
+    j = klien.post("/api/tugas/hapus-batch",
+                   json={"batch": "", "ds": "vid-hapus"}).json()
+    assert j["ok"] and j["dibuang"] == rec["n"], j
+    assert len(list(proj.glob("*.jpg"))) == 0                   # isinya hilang
+    # Dan kartunya ikut hilang dari papan.
+    assert "Tanpa nama unggahan" not in klien.get("/anotasi?ds=vid-hapus").text
+    # Spanduk status ekstraksi ("selesai") ikut terbersihkan oleh Hapus batch --
+    # tanpa perlu menekan tombol x terpisah.
+    st = klien.get("/api/ekstrak/status?ds=vid-hapus").json()["status"]
+    assert "IMG.mp4" not in st, st

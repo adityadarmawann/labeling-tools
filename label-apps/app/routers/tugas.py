@@ -1146,7 +1146,8 @@ async def dataset_siap(request: Request,
 
 @router.post("/api/tugas/hapus-batch")
 async def hapus_batch(request: Request,
-                      sess: Session = Depends(current_session_api)):
+                      sess: Session = Depends(current_session_api),
+                      settings: Settings = Depends(get_settings)):
     """
     Buang SEMUA gambar satu batch yang masih "Belum ditugaskan" ke tempat sampah
     projek, bisa dipulihkan.
@@ -1159,13 +1160,23 @@ async def hapus_batch(request: Request,
     Menghapus MEDIA adalah pengelolaan, bukan pelabelan — jadi hanya pemilik atau
     Editor (boleh_unggah), sama seperti /api/tugas/hapus-gambar.
     """
+    body = await bodi_json(request)
+    # Tahan banting terhadap RESTART server (mis. sehabis deploy): restart
+    # mengosongkan projek yang terbuka di sesi (status di memori), jadi papan
+    # yang sudah terbuka lalu menekan "Hapus batch" tanpa ini dijawab "belum ada
+    # dataset terbuka" dan batchnya tampak tak terhapus. `ds` dari peramban
+    # membuka ulang projeknya lebih dulu.
+    ds = str(body.get("ds") or "")
+    if ds:
+        d0 = svc_projek.temukan(settings.uploads_root, sess.user, ds)
+        if d0 is not None and str(sess.src or "") != str(d0):
+            await asyncio.to_thread(sess.load, d0)
     data, galat = _siap(sess)
     if galat:
         return {"ok": False, "error": galat}
     if not svc.boleh_unggah(data, sess.user):
         return {"ok": False, "error": "hanya pemilik atau Editor yang bisa "
                                       "menghapus batch"}
-    body = await bodi_json(request)
     batch = str(body.get("batch") or "")
 
     with sess.lock:
@@ -1201,8 +1212,20 @@ async def hapus_batch(request: Request,
                             data["pemilik"], kunci)
     r = await asyncio.to_thread(svc.buang_gambar, sess.src, boleh, data["pemilik"])
     # Berkasnya sudah pindah dari disk; pindai ulang supaya sesi ini tidak lagi
-    # menunjuk gambar yang tak ada.
+    # menunjuk gambar yang tak ada, dan buang cache survei supaya kartu/sidebar
+    # (yang membaca survei, bukan sess.items) ikut segar -- tanpa ini angka
+    # "Belum ditugaskan" di sidebar tetap memuat gambar yang sudah dibuang.
     await asyncio.to_thread(sess.load, sess.src)
+    svc_projek.lupakan_survei(sess.src)
+    # Menghapus batch = beres, jadi spanduk status ekstraksi video yang SUDAH
+    # kelar untuk projek ini ikut dibersihkan. User tak perlu menekan tombol x
+    # terpisah: sekali klik "Hapus batch", notifikasinya langsung hilang juga.
+    # Ekstraksi yang MASIH berjalan tak tersentuh (dijaga _status_hapus).
+    try:
+        from .uploads import _status_hapus
+        await asyncio.to_thread(_status_hapus, sess.src, None)
+    except Exception:                                 # noqa: BLE001
+        pass
     return {"ok": True, **r, "batch": batch,
             "dilindungi": lindungi_lain + lindungi_ds}
 

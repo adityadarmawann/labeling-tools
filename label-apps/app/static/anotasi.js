@@ -64,9 +64,13 @@
                    + 'dipulihkan. Gambar yang ditugaskan ke orang LAIN atau sudah '
                    + 'masuk dataset dilindungi (tidak ikut terhapus).')) return;
       b.disabled = true;
+      // `ds` ikut dikirim supaya penghapusan tetap jalan walau sesi server
+      // kehilangan projek yang terbuka (mis. tepat sesudah deploy/restart).
+      const ds = (document.getElementById('an-isi') || {}).dataset
+        ? document.getElementById('an-isi').dataset.ds || '' : '';
       const j = await send('/api/tugas/hapus-batch', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ batch }),
+        body: JSON.stringify({ batch, ds }),
       });
       if (!j.ok) { toast(j.error); b.disabled = false; return; }
       toast(`${j.dibuang} gambar dibuang ke tempat sampah`
