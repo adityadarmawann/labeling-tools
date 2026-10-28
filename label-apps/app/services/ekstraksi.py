@@ -20,7 +20,7 @@ Decode-nya lewat FFMPEG, bukan OpenCV. Video ponsel masa kini banyak yang HDR
 (HLG/PQ, 10-bit); OpenCV mengurai HDR TANPA tone-mapping sehingga gambarnya
 tampak terlalu terang/pudar dan tak sesuai aslinya, sementara ffmpeg (dengan
 zscale+tonemap) menurunkannya ke SDR bt709 dengan benar. ffmpeg juga menjaga
-resolusi penuh dan menulis JPG mutu tinggi (-q:v 2). OpenCV tetap dipakai
+resolusi penuh dan menulis JPG mutu tinggi (-q:v 4). OpenCV tetap dipakai
 sebagai cadangan kalau ffmpeg tak tersedia di server.
 
 Skor buram (varian Laplacian) dan deduplikasi (selisih thumbnail abu-abu)
@@ -87,7 +87,11 @@ _THUMB = 16
 _DUP_AMBANG = 3.0
 
 _JPEG_MUTU = 95            # cadangan OpenCV (cv2.imwrite)
-_FF_QSCALE = "2"           # mutu mjpeg ffmpeg: 1=terbaik..31=terburuk (2 ~ bagus)
+# Mutu mjpeg ffmpeg: 1=terbaik..31=terburuk. 4 (~JPEG q85) dipilih sengaja:
+# tajam penuh untuk melabeli, tapi ukurannya terjaga -- 1080p ~0,5 MB, 4K ~2 MB
+# (kasus berisik; rekaman nyata lebih kecil), jadi 4K tak menembus 3 MB seperti
+# q:v 2. "Pecah" yang dulu dari decode HDR salah, bukan dari angka ini.
+_FF_QSCALE = "4"
 _FPS_BAWAAN = 25.0
 
 # color_transfer HDR SEJATI (fungsi transfer PQ/HLG) -> HARUS di-tone-map ke
