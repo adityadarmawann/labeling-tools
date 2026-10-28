@@ -349,6 +349,8 @@ async def halaman(request: Request, path: str = "",
         # Template keypoint projek + hak ubah (editor template owner-only).
         "skeleton": skeleton,
         "boleh_kelola": boleh_kelola,
+        # Format anotasi projek -> alat DEFAULT di labeler (kotak/kerangka/poligon).
+        "jenis_anotasi": tdata.get("jenis_anotasi") or "",
     })
 
 

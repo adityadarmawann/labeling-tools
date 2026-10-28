@@ -43,6 +43,17 @@
         {{ o.di_dataset }} di dataset</span>
     </div>
     {%- endfor %}
+    {%- if boleh_kelola %}
+    {#- Tambah/kelola anggota projek. Dulu hanya ada lewat "Bagi tugas" per batch,
+        jadi orang tak menemukannya. Kartu ini di samping kartu pemilik langsung
+        membuka panel anggota di halaman Bagi. -#}
+    <a class="an-kartu-orang an-tambah-anggota"
+       href="/bagi?ds={{ pr.ds | urlquote }}"
+       title="Tambah atau kelola anggota projek">
+      <span class="an-tambah-plus" aria-hidden="true">+</span>
+      <span class="an-tambah-teks">Tambah / kelola<br>anggota</span>
+    </a>
+    {%- endif %}
   </section>
   {% endif %}
 

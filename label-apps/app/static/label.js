@@ -4126,3 +4126,19 @@ function bukaDlgKpVis(gid) {
   const dlg = el('dlg-kp-vis');
   if (dlg) dlg.addEventListener('click', ev => { if (ev.target === dlg) dlg.hidden = true; });
 })();
+
+/* Alat DEFAULT mengikuti FORMAT ANOTASI projek (D.jenis_anotasi), supaya klik
+   "Labeli" langsung pada alat yang sesuai jenis projek, bukan selalu Titik+
+   (segmentasi):
+     - "kotak"    -> alat Kotak (gambar bbox langsung).
+     - "kerangka" -> mode Keypoint (kalau template skeleton ada).
+     - selain itu ("poligon"/otomatis) -> Titik+ (SAM, segmentasi) seperti dulu.
+   Hanya mengubah alat awal; semua alat lain tetap bisa dipilih manual. */
+(function alatAwalSesuaiFormat() {
+  try {
+    let m = 'p+';
+    if (D.jenis_anotasi === 'kotak') m = 'kotak';
+    else if (D.jenis_anotasi === 'kerangka' && poseProjek()) m = 'pose';
+    setMode(m);
+  } catch (e) { /* abai: biarkan default p+ */ }
+})();

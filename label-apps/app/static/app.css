@@ -2296,6 +2296,14 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
 .an-kartu-orang{background:var(--panel);border:1px solid var(--line);
   border-radius:9px;padding:11px 12px 10px}
 .an-kartu-orang.an-aku{border-color:var(--aksi)}
+/* Kartu "Tambah/kelola anggota" di samping kartu pemilik. */
+.an-tambah-anggota{display:flex;align-items:center;gap:11px;text-decoration:none;
+  border-style:dashed;color:var(--ink-dim);transition:border-color .12s,color .12s}
+.an-tambah-anggota:hover{border-color:var(--aksi);color:var(--ink)}
+.an-tambah-plus{display:inline-flex;align-items:center;justify-content:center;
+  width:34px;height:34px;flex:none;border-radius:50%;background:var(--sunk);
+  font-size:20px;line-height:1;color:var(--aksi)}
+.an-tambah-teks{font-size:13px;font-weight:600;line-height:1.25}
 .an-orang-atas{display:flex;gap:9px;align-items:center;margin-bottom:8px}
 .an-orang-teks{display:flex;flex-direction:column;min-width:0;flex:1 1 auto}
 .an-orang-teks b{font-size:12.5px;color:var(--ink)}
