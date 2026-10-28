@@ -658,10 +658,22 @@
     pr.taktentu('Memindai isi dataset…');
     // /useupload membuka folder unggahan sebagai dataset; untuk yang sudah
     // terbuka cukup dipindai ulang supaya gambar barunya ikut terhitung.
-    const buka = BERISI
+    let buka = BERISI
       ? await post('/rescan')
       : await post('/useupload?ds=' + encodeURIComponent(PROJEK));
-    if (!buka.ok) { pr.gagal(buka.error || 'Gagal memindai dataset'); return; }
+    if (!buka.ok) {
+      // Unggahan video-SAJA ke projek kosong: saat ini belum ada satu frame pun
+      // (ekstraksi baru DIMULAI di latar), jadi "tidak ada gambar terbaca" itu
+      // WAJAR -- bukan kegagalan. Lanjut ke status ekstraksi; frame menyusul.
+      // Tanpa ini, unggahan video pertama ke projek kosong selalu dilaporkan
+      // "gagal" padahal videonya terunggah dan ekstraksinya jalan.
+      if (adaEkstrak) {
+        buka = { ok: true, n: 0, masuk_dataset: 0 };
+      } else {
+        pr.gagal(buka.error || 'Gagal memindai dataset');
+        return;
+      }
+    }
 
     if (namaBatch || tag.length) {
       pr.taktentu('Menandai gambar…');
