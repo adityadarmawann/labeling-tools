@@ -294,9 +294,19 @@ async def daftar_kirim(request: Request, user: str = Form(""),
                         secure=kuki_aman(request), max_age=30 * 86400)
         return resp
 
-    log.info("pendaftaran mandiri: %r (email=%r) %s", akun,
-             (email or "").strip(),
-             "langsung aktif" if settings.daftar_langsung
-             else "menunggu persetujuan")
+    if settings.daftar_langsung:
+        # Akun LANGSUNG aktif -> langsung masuk, sama seperti alur undangan.
+        # Dulu malah menampilkan layar "selesai" tanpa cookie, jadi orang yang
+        # baru mendaftar harus mengetik ulang kredensialnya di halaman login.
+        log.info("pendaftaran mandiri: %r (email=%r) langsung aktif + masuk",
+                 akun, (email or "").strip())
+        sid, _sess = store.create(akun, settings)
+        resp = RedirectResponse(next or "/", status_code=status.HTTP_303_SEE_OTHER)
+        resp.set_cookie(COOKIE_NAME, sid, httponly=True, samesite="lax", path="/",
+                        secure=kuki_aman(request), max_age=30 * 86400)
+        return resp
+
+    log.info("pendaftaran mandiri: %r (email=%r) menunggu persetujuan", akun,
+             (email or "").strip())
     return templates.TemplateResponse(request, "daftar.html", {
-        "boleh": True, "selesai": akun, "langsung": settings.daftar_langsung})
+        "boleh": True, "selesai": akun, "langsung": False})

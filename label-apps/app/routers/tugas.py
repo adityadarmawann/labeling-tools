@@ -765,12 +765,18 @@ async def undang(akun: str = "", peran: str = "pelabel", akses: str = "",
         # "X jadi anggota" padahal tidak terjadi apa-apa.
         return {"ok": False, "error": "pemilik projek ini tidak perlu "
                                       "diundang"}
+    # Sudah anggota SEBELUM ini? Kalau ya, undang() cuma memperbarui peran/
+    # scope-nya -> JANGAN kirim ulang email "kamu ditambahkan" (dulu tiap atur
+    # ulang lewat kotak Undang memicu email duplikat).
+    sudah_anggota = akun in (data.get("anggota") or {})
     r = await asyncio.to_thread(svc.undang, sess.src, data["pemilik"], akun,
                                 peran, akses or None, batch)
-    # Beri tahu anggota lewat email bahwa ia ditambahkan (kalau SMTP aktif &
+    # Beri tahu anggota lewat email bahwa ia BARU ditambahkan (kalau SMTP aktif &
     # akunnya punya email). Tak menggagalkan undangan kalau email mati/gagal.
-    terkirim = await _email_ditambahkan(settings, request, akun,
-                                        sess.src.name if sess.src else "")
+    terkirim = False
+    if not sudah_anggota:
+        terkirim = await _email_ditambahkan(settings, request, akun,
+                                            sess.src.name if sess.src else "")
     return {"ok": True, "email_terkirim": terkirim, **r}
 
 
@@ -1001,7 +1007,7 @@ async def bagi(request: Request, sess: Session = Depends(current_session_api),
 
 @router.post("/api/tugas/ubah")
 async def ubah(id: str = "", pelabel: str = "", catatan: str | None = None,
-               judul: str | None = None,
+               judul: str | None = None, request: Request = None,
                sess: Session = Depends(current_session_api),
                settings: Settings = Depends(get_settings)):
     """Tugaskan ulang, ubah catatan, atau ganti judul job."""
@@ -1014,13 +1020,26 @@ async def ubah(id: str = "", pelabel: str = "", catatan: str | None = None,
         tolak = _akun_sah(pelabel, settings)
         if tolak:
             return {"ok": False, "error": tolak}
+    # Keadaan SEBELUM diubah: untuk tahu apakah job benar-benar dipindah ke orang
+    # baru (biar notifikasi email hanya terkirim saat penugasan ulang, bukan saat
+    # cuma mengganti catatan/judul).
+    job_lama = (data.get("tugas") or {}).get(id) or {}
+    pelabel_lama = str(job_lama.get("pelabel") or "")
+    n_job = len(job_lama.get("gambar") or [])
     try:
         r = await asyncio.to_thread(svc.ubah_job, sess.src, sess.user, id,
                                     pelabel=pelabel or None,
                                     catatan=catatan, judul=judul)
     except KeyError:
         return {"ok": False, "error": f"tugas {id} tidak ada"}
-    return {"ok": True, **r}
+    # Penugasan ulang ke ORANG BARU -> beri tahu dia lewat email, konsisten
+    # dengan /api/tugas/bagi (dulu reassign tak pernah mengirim apa pun).
+    terkirim = False
+    if pelabel and pelabel != pelabel_lama and pelabel != sess.user:
+        terkirim = await _email_ditugaskan(
+            settings, request, pelabel, sess.src.name if sess.src else "",
+            n_job, r.get("judul") or job_lama.get("judul") or "")
+    return {"ok": True, "email_terkirim": terkirim, **r}
 
 
 @router.post("/api/tugas/bubarkan")
