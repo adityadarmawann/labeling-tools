@@ -1518,6 +1518,17 @@ def buang_gambar(ds: Path, item_daftar: list[dict], pemilik: str = "") -> dict:
             g = job.get("gambar") or []
             job["gambar"] = [k for k in g if k not in kunci_buang]
         _tulis(ds, data)
+    # Beri tahu SEMUA sesi bahwa daftar gambar berubah. Tanpa ini, segarkan()
+    # (yang dipanggil tiap muat papan/grid) mengandalkan penanda _cap_ubah yang
+    # TAK pernah naik saat berkas dipindah ke sampah, sehingga sesi yang tidak
+    # memuat ulang sendiri tetap menampilkan kartu batch yang isinya sudah tak
+    # ada. gambar=None memaksa pemindaian ulang penuh (perubahan daftar, bukan
+    # isi satu berkas). Lihat session.tandai_berubah / segarkan.
+    try:
+        from ..session import tandai_berubah
+        tandai_berubah(ds, None)
+    except Exception:                                 # noqa: BLE001
+        pass
     log.info("%s gambar dibuang ke sampah di %s", dipindah, dsr.name)
     return {"dibuang": dipindah, "sampah": str(kotak)}
 

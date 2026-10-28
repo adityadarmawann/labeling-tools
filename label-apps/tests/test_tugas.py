@@ -3293,3 +3293,26 @@ def test_rute_kelas_starter_owner_dan_set_asing(klien, lingkungan):
     # kelas eksplisit juga bisa
     j3 = klien.post("/api/tugas/kelas-starter", json={"kelas": ["x", "y"]}).json()
     assert j3["ok"] and j3["kelas_awal"] == ["x", "y"]
+
+
+def test_buang_gambar_memberi_sinyal_perubahan(tmp_path):
+    """buang_gambar HARUS menaikkan penanda perubahan (tandai_berubah) supaya
+    segarkan() di sesi mana pun mendeteksi gambar yang dibuang -- kalau tidak,
+    kartu batch 'Belum ditugaskan' tetap tampil padahal isinya sudah dihapus."""
+    import numpy as np, cv2
+    from app.session import cap_sekarang
+    d = _ds(tmp_path, "buang")
+    paths = []
+    for i in range(3):
+        p = d / f"g{i}.jpg"
+        cv2.imwrite(str(p), np.random.default_rng(i).integers(0, 255, (40, 60, 3), np.uint8))
+        paths.append(p)
+    items = [{"img": p, "ann": p.with_suffix(".json"), "labels": None} for p in paths]
+    cap0 = cap_sekarang(d)
+    r = tugas.buang_gambar(d, items, "paul")
+    assert r["dibuang"] == 3
+    assert cap_sekarang(d) > cap0, "buang_gambar tidak memberi sinyal -> segarkan buta"
+    # Pindai ulang: gambar benar-benar lenyap dari daftar hidup (di _sampah-gambar).
+    from app.services import scanner
+    its, _ = scanner.scan(d)
+    assert len(its) == 0
