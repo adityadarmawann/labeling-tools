@@ -3045,6 +3045,9 @@ async function muatGambar(path, dorongRiwayat) {
   // Bar atas dan daftar berkas.
   el('lab-berkas').textContent = d.nama; el('lab-berkas').title = d.nama;
   el('lab-ukuran').textContent = d.W + '×' + d.H;
+  // Jejak "oleh <pelabel> <tgl>" ikut gambar yang sekarang -- bukan tertinggal
+  // di gambar sebelumnya saat menyusuri dengan panah.
+  perbaruiJejak(d.pelabel_terakhir || '', d.disunting || 0);
   el('lab-urut-n').textContent = d.posisi[0] + ' / ' + d.posisi[1];
   if (el('lab-files-ct')) el('lab-files-ct').textContent = d.posisi[0] + '/' + d.posisi[1];
   perbaruiNav('prev', d.prev);

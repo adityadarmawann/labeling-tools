@@ -177,6 +177,11 @@ async def halaman_papan(request: Request, ds: str = "", urut: str = "terbaru",
     # 11.000 gambar itu tiga kali 0,5 detik hanya untuk kunci yang sama.
     kunci_dari = {id(it): svc_tag.kunci_gambar(d, it["img"]) for it in items}
     semua = set(kunci_dari.values())
+    # Bersihkan catatan tag milik gambar yang sudah TAK ADA (mis. sesudah hapus
+    # batch): kalau tidak, nama batch-nya menetap sebagai "scope" hantu di
+    # pemilih /bagi dan menggelembungkan hitungan. rapikan() menulis HANYA kalau
+    # memang ada yang yatim, jadi murah saat bersih. Padanan klip_tag.rapikan.
+    await asyncio.to_thread(svc_tag.rapikan, d, semua)
     # "Sudah dikerjakan" berarti punya berkas anotasi, TERMASUK yang ditandai
     # latar. Menandai gambar sebagai tanpa objek adalah keputusan yang sudah
     # diambil; menghitungnya sebagai belum dikerjakan membuat kemajuan pelabel

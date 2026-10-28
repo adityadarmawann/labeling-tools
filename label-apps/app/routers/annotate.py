@@ -414,6 +414,11 @@ async def label_data(path: str = "", job: str = "", saring: str = "semua",
         "rusak": "berkas anotasi rusak" in (it.get("issues") or []),
         "sev": scanner.severity(it),
         "n": len(it["shapes"]),
+        # Siapa terakhir menyimpan gambar INI & kapan, supaya jejak di kepala
+        # kanvas ikut berubah saat pindah gambar pakai panah (dulu hanya diisi
+        # saat halaman penuh dimuat / sesudah Simpan, jadi basi saat navigasi).
+        "pelabel_terakhir": str(mentah.get("pelabel") or ""),
+        "disunting": int(mentah.get("disunting") or 0),
     }
 
 
