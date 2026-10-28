@@ -74,6 +74,13 @@ async def pasang(request: Request,
         # yang dikirim peramban tidak bisa diandalkan, karena isi .zip baru
         # diketahui setelah dibongkar DI SERVER, dan peramban tidak pernah
         # melihat nama berkas di dalamnya.
+        #
+        # Frame video diekstrak di LATAR: saat /useupload tadi berjalan projek
+        # masih 0 frame, jadi sess.items bisa tertinggal di belakang isi disk.
+        # Segarkan dari disk dulu (murni-signature, murah kalau tak berubah)
+        # supaya frame hasil ekstraksi ikut terhitung -- tanpa ini nama batch
+        # dan tag mendarat di NOL gambar untuk unggahan video-saja.
+        await asyncio.to_thread(sess.periksa_disk)
         data = await asyncio.to_thread(svc.baca, sess.src)
         kunci = [k for k in (svc.kunci_gambar(sess.src, it["img"])
                              for it in sess.items)

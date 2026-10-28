@@ -148,6 +148,41 @@ def test_rute_tag_menandai_lalu_menghitungnya(klien, lingkungan):
     assert len(isi["gambar"]) == 2
 
 
+def test_tanpa_batch_menangkap_frame_yang_muncul_sesudah_dataset_dibuka(
+        klien, lingkungan):
+    """Frame video diekstrak di LATAR, SESUDAH /useupload memindai projek yang
+    saat itu masih 0 frame. Jadi ketika unggah.js memanggil tanpa_batch,
+    sess.items masih tertinggal di belakang isi disk. Rute harus menyegarkan
+    dari disk dulu; tanpa itu nama batch + tag mendarat di NOL gambar untuk
+    unggahan video-saja (bug: frame hasil ekstraksi tak pernah dapat nama batch).
+    """
+    import pathlib
+
+    import cv2
+    import numpy as np
+
+    from tests.test_data import masuk, PW_PAUL
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = _projek(ruang, "ekstrak-latar", n=2, label=False)
+    klien.post(f"/setsrc?path={d}")
+
+    # Frame baru ditulis ke disk SESUDAH projek dibuka (seperti thread ekstraksi
+    # yang menulis frame setelah sesi memindai projek kosong).
+    baru = d / "ekstraksi-IMG_baru_0100.jpg"
+    cv2.imwrite(str(baru), np.full((40, 60, 3), 123, np.uint8))
+
+    j = klien.post("/api/tag/pasang",
+                   json={"tanpa_batch": True, "batch": "Rekaman 1",
+                         "tambah": ["basket"]}).json()
+    assert j["ok"] and j["n"] == 3, j      # 2 awal + 1 yang muncul kemudian
+    # Frame yang muncul BELAKANGAN pun kebagian nama batch, bukan terlewat.
+    data = tag.baca(d)
+    assert tag.untuk(data, baru.name)["batch"] == "Rekaman 1", data
+
+
 def test_tag_tanpa_dataset_terbuka_ditolak_dengan_jelas(klien, lingkungan):
     from tests.test_data import masuk, PW_PAUL
 

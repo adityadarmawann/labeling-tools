@@ -529,7 +529,13 @@
   // unggahan video tetap di sini dan baru lanjut ke pembagian SESUDAH frame jadi,
   // bukan masuk ke halaman pembagian yang masih kosong.
   async function tungguEkstrak(pr, videos) {
-    const nama = new Set(videos);
+    // Status ekstraksi dikunci dengan NAMA DASAR berkas di server (vp.name),
+    // sedangkan `videos` bisa memuat jalur bersubfolder dari unggah folder
+    // (webkitRelativePath). Samakan ke nama dasar supaya pencocokannya tak
+    // pernah meleset -- kalau tidak, lingkaran ini berputar selamanya untuk
+    // video yang diunggah lewat folder dan "Bagi tugas" tak pernah aktif.
+    const namaDasar = (p) => String(p).split('/').pop();
+    const nama = new Set(videos.map(namaDasar));
     for (;;) {
       let st = {};
       try {
