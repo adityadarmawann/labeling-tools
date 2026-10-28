@@ -384,10 +384,17 @@ def test_daftar_langsung_aktif_kalau_setelannya_dinyalakan(klien, lingkungan,
     monkeypatch.setenv("LABELAPP_DAFTAR_LANGSUNG", "1")
     try:
         r = klien.post("/daftar", data={"user": "rizky", "pw": "sandi-rizky-1",
-                                        "pw2": "sandi-rizky-1"})
-        assert r.status_code == 200 and "sudah bisa dipakai" in r.text
+                                        "pw2": "sandi-rizky-1"},
+                       follow_redirects=False)
+        # daftar_langsung -> akun LANGSUNG aktif DAN pendaftarnya langsung masuk
+        # (redirect 303 + cookie sesi), bukan layar "selesai" yang menyuruh login
+        # ulang.
+        assert r.status_code == 303, r.text[:200]
+        from app.security import COOKIE_NAME
+        assert klien.cookies.get(COOKIE_NAME), "pendaftaran langsung harus auto-login"
         assert "menunggu" not in _users(lingkungan)["rizky"] \
             or _users(lingkungan)["rizky"]["menunggu"] is False
+        # Kredensialnya memang bisa dipakai masuk (ulang) juga.
         assert masuk(klien, "rizky", "sandi-rizky-1"), "harusnya langsung bisa masuk"
     finally:
         get_settings.cache_clear()
