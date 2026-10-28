@@ -2910,7 +2910,10 @@ def test_thumbnail_etag_menjawab_304(klien, lingkungan):
     assert r1.status_code == 200
     etag = r1.headers.get("etag")
     assert etag, "tidak ada ETag"
-    assert "max-age=300" in r1.headers.get("cache-control", "")
+    # no-cache: peramban SELALU memvalidasi ulang ETag (bukan menyajikan dari
+    # cache diam-diam sampai 5 menit) -- supaya ganti warna kelas / edit mask
+    # langsung terlihat, sambil tetap murah lewat 304.
+    assert "no-cache" in r1.headers.get("cache-control", "")
 
     r2 = klien.get(f"/thumb?path={img}&s=220", headers={"If-None-Match": etag})
     assert r2.status_code == 304, "ETag cocok tapi tidak menjawab 304"
@@ -3316,3 +3319,18 @@ def test_buang_gambar_memberi_sinyal_perubahan(tmp_path):
     from app.services import scanner
     its, _ = scanner.scan(d)
     assert len(its) == 0
+
+
+def test_belum_ditugaskan_siap_batch_tegas():
+    """None = semua batch; "" = HANYA tanpa-nama; "X" = hanya X. Dulu "" keliru
+    memasukkan seluruh batch (tombol kartu tanpa-nama -> over-insert)."""
+    data = tugas.kosong("paul")
+    data["warisan"] = False
+    data["kurasi"] = True
+    semua = {"a.jpg", "b.jpg", "c.jpg"}
+    berlabel = set(semua)
+    batch_dari = {"a.jpg": "pagi", "b.jpg": "pagi"}        # c.jpg tanpa batch
+    f = tugas.belum_ditugaskan_siap
+    assert set(f(data, berlabel, semua, None, batch_dari)) == semua       # semua
+    assert f(data, berlabel, semua, "", batch_dari) == ["c.jpg"]          # tanpa-nama
+    assert set(f(data, berlabel, semua, "pagi", batch_dari)) == {"a.jpg", "b.jpg"}

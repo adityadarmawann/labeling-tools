@@ -35,6 +35,9 @@
   for (const b of document.querySelectorAll('.an-siap')) {
     b.onclick = async () => {
       const batch = b.dataset.siap || '';
+      // Tombol "Masukkan semua" (an-siap-semua) = seluruh batch; tombol kartu =
+      // HANYA batch itu (termasuk "" = tanpa nama unggahan).
+      const semua = b.classList.contains('an-siap-semua');
       const n = (b.textContent.match(/\d+/) || [''])[0];
       // Ditanyakan lebih dulu karena akibatnya tidak terlihat di halaman ini:
       // gambarnya pindah ke Dataset, dan sejak itu ikut terekspor.
@@ -44,7 +47,7 @@
       b.disabled = true;
       const j = await send('/api/tugas/dataset-siap', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ batch }),
+        body: JSON.stringify({ batch, semua }),
       });
       if (!j.ok) { toast(j.error); b.disabled = false; return; }
       toast(`${j.ditambah} gambar masuk dataset`);

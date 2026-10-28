@@ -17,6 +17,11 @@
   if (!isi || !$('jb-kisi')) return;
 
   const BOLEH = isi.dataset.boleh === '1';
+  // "Keluarkan dari dataset" & "Hapus dari projek" = pengelolaan media, hanya
+  // pemilik/Editor (boleh_unggah). Pelabel job ini boleh menandai/memasukkan,
+  // tapi tidak mengeluarkan/menghapus -- jadi dua tombol itu disembunyikan,
+  // bukan dibiarkan muncul lalu ditolak rutenya.
+  const BOLEH_UNGGAH = isi.dataset.unggah === '1';
   // Hanya kartu di halaman yang sedang tampil. Tidak ada lagi yang tersembunyi
   // oleh saringan: yang tidak cocok saringan tidak dikirim server sama sekali.
   const ubin = [...document.querySelectorAll('.jb-ubin')];
@@ -35,6 +40,12 @@
 
   if (!BOLEH) return;
 
+  // Sembunyikan tombol pengelolaan media untuk yang bukan pemilik/Editor.
+  if (!BOLEH_UNGGAH) {
+    const k = $('jb-keluarkan'); if (k) k.hidden = true;
+    const h = $('jb-hapus'); if (h) h.hidden = true;
+  }
+
   const terpilih = () => ubin.filter(
     u => u.querySelector('.jb-pilih') && u.querySelector('.jb-pilih').checked);
 
@@ -46,12 +57,12 @@
     $('jb-masukkan').textContent = n ? `Tambahkan ${n} ke dataset`
                                      : 'Tambahkan ke dataset';
     $('jb-masukkan').disabled = !n;
-    $('jb-keluarkan').disabled = !n;
+    $('jb-keluarkan').disabled = !n || !BOLEH_UNGGAH;
     $('jb-latar').textContent = n ? `Tandai ${n} latar` : 'Tandai latar';
     $('jb-latar').disabled = !n;
     $('jb-batal-latar').disabled = !n;
     $('jb-hapus').textContent = n ? `Hapus ${n} dari projek` : 'Hapus dari projek';
-    $('jb-hapus').disabled = !n;
+    $('jb-hapus').disabled = !n || !BOLEH_UNGGAH;
     const semua = $('jb-centang-semua');
     semua.checked = n > 0 && n === ubin.length;
     semua.indeterminate = n > 0 && n < ubin.length;

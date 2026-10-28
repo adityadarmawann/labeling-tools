@@ -12,7 +12,8 @@
 <main>
 {% include "_sisi.html" %}
 <div class="sisi-isi" id="jb-isi" data-ds="{{ pr.ds }}" data-tid="{{ tid }}"
-     data-boleh="{{ 1 if boleh_ubah else 0 }}">
+     data-boleh="{{ 1 if boleh_ubah else 0 }}"
+     data-unggah="{{ 1 if boleh_unggah else 0 }}">
 
   <a class="sisi-balik jb-balik" href="/anotasi?ds={{ pr.ds | urlquote }}">
     &larr; Papan anotasi</a>

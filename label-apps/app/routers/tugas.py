@@ -538,6 +538,12 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
         # rutenya memang mengizinkan.
         "boleh_ubah": (sess.user == job.get("pelabel")
                        or svc.boleh_unggah(data, sess.user)),
+        # "Keluarkan dari dataset" & "Hapus dari projek" adalah PENGELOLAAN
+        # media: rutenya (ke_dataset-keluarkan, hapus-gambar) menuntut
+        # boleh_unggah (pemilik/Editor), BUKAN sekadar pelabel job ini. Dikirim
+        # terpisah supaya tombolnya tak muncul untuk pelabel biasa yang pasti
+        # ditolak rutenya.
+        "boleh_unggah": svc.boleh_unggah(data, sess.user),
     })
     simpan_per(resp, per_q)
     return resp
@@ -1133,7 +1139,10 @@ async def dataset_siap(request: Request,
     from ..services import scanner
 
     body = await bodi_json(request)
-    batch = str(body.get("batch") or "")
+    # `semua` True = tombol "Masukkan semua" (semua batch). Tanpa itu, `batch`
+    # dipakai TEGAS -- termasuk "" untuk kelompok "Tanpa nama unggahan", yang
+    # dulu keliru memasukkan seluruh batch.
+    batch = None if body.get("semua") else str(body.get("batch") or "")
 
     with sess.lock:
         items = list(sess.items)

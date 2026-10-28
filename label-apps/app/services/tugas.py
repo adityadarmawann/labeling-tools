@@ -510,7 +510,7 @@ def kurasi_projek_lama(uploads_root: Path) -> list[dict]:
 
 
 def belum_ditugaskan_siap(data: dict, berlabel: set[str], semua: set[str],
-                          batch: str = "",
+                          batch: str | None = None,
                           batch_dari: dict[str, str] | None = None) -> list[str]:
     """
     Gambar yang sudah dianotasi tetapi tidak ditugaskan ke siapa pun.
@@ -519,13 +519,19 @@ def belum_ditugaskan_siap(data: dict, berlabel: set[str], semua: set[str],
     sini, bukan dikirim peramban sebagai daftar path: daftar yang datang dari
     luar bisa memuat gambar yang justru sedang dikerjakan orang lain, dan
     memasukkannya berarti menyatakan pekerjaan orang selesai tanpa ia tahu.
+
+    `batch` None = SEMUA unggahan (tombol "Masukkan semua"); string = HANYA
+    batch itu, termasuk "" untuk kelompok "Tanpa nama unggahan". Dulu dipakai
+    `not batch` sehingga "" diperlakukan sama dengan None -> tombol kartu batch
+    tanpa-nama justru memasukkan SELURUH batch. Dibedakan tegas sekarang, sama
+    seperti keys_batch_hapus.
     """
     bd = batch_dari or {}
     ditugaskan = {k for t in data["tugas"].values() for k in (t.get("gambar") or [])}
     return sorted(k for k in semua
                   if k in berlabel and k not in ditugaskan
                   and not sudah_dimasukkan(data, k)
-                  and (not batch or (bd.get(k) or "") == batch))
+                  and (batch is None or (bd.get(k) or "") == batch))
 
 
 def keys_batch_belum(data: dict, semua: set[str], batch: str,
@@ -1169,7 +1175,8 @@ def masuk_dataset_berlabel(ds: Path, pemilik: str = "") -> int:
         if b:
             batch_dari[k] = b
     data = baca(ds, pemilik)
-    kunci = belum_ditugaskan_siap(data, berlabel, semua, "", batch_dari)
+    # None = SEMUA (unggahan dataset berlabel ikut masuk apa pun batch-nya).
+    kunci = belum_ditugaskan_siap(data, berlabel, semua, None, batch_dari)
     if not kunci:
         return 0
     masukkan(ds, kunci, data["pemilik"] or pemilik)

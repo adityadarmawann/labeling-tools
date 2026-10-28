@@ -581,14 +581,14 @@ async def thumb(request: Request, path: str = "", s: int = 320,
     etag = '"' + render.nama_thumb(it, side).rsplit(".", 1)[0] + '"'
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=304, headers={
-            "ETag": etag, "Cache-Control": "private, max-age=300"})
+            "ETag": etag, "Cache-Control": "private, no-cache"})
 
     tp = await asyncio.to_thread(render.thumb_path, sess, it, side)
     if not tp:
         return Response(status_code=404)
     return Response(tp.read_bytes(), media_type="image/jpeg",
                     headers={"ETag": etag,
-                             "Cache-Control": "private, max-age=300"})
+                             "Cache-Control": "private, no-cache"})
 
 
 @router.post("/markbg")
