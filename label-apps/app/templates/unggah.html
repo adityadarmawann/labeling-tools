@@ -379,8 +379,9 @@
         <span class="spacer"></span>
         {# Kerapatan gaya Roboflow: FPS (frame per detik). Geser kiri = fps rendah
            (sedikit, hemat anotasi), kanan = fps tinggi (banyak, untuk gerak cepat
-           spt bola masuk ring). Default 2 fps. Frame buram & kembar tetap dibuang
-           otomatis apa pun fps-nya. Nilai fps dari langkah diskret di unggah.js. #}
+           spt bola masuk ring). Default 2 fps. Hanya frame yang benar-benar rusak
+           (smear ekstrem/blank) yang dibuang; frame gerak-cepat tetap disimpan,
+           dedup mati. Nilai fps dari langkah diskret di unggah.js. #}
         <div class="ug-krp" role="group" aria-label="Frame per detik ekstraksi">
           <span class="ug-krp-ujung">Jarang</span>
           <input type="range" id="ug-fps" min="0" max="6" step="1"

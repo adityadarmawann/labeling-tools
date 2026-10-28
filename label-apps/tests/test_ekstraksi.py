@@ -214,3 +214,18 @@ def test_ffmpeg_tak_ada_jatuh_ke_opencv(tmp_path, monkeypatch):
     vp = _video_tajam(tmp_path / "v.mp4", n=60, fps=30.0)
     r = ekstraksi.ekstrak(vp, tmp_path / "hasil", prefix="v", fps=3.0)
     assert r["ditulis"] >= 1 and r["nama"]
+
+
+def test_gerak_cepat_tak_dibuang_sebagai_buram(tmp_path):
+    """Frame motion-blur sedang (mis. basket gerak cepat) HARUS tetap disimpan.
+    Ambang buram sengaja longgar (0.15 x median), jadi hanya smear ekstrem/blank
+    yang dibuang -- bukan frame aksi yang cuma agak kabur."""
+    assert ekstraksi._BURAM_RASIO <= 0.2, "ambang buram jangan dinaikkan lagi"
+    kernel = np.zeros((1, 15), np.float32)
+    kernel[0, :] = 1 / 15                          # motion-blur mendatar
+    frames = [_frame_tajam(i) for i in range(29)]
+    frames.insert(14, cv2.filter2D(_frame_tajam(29), -1, kernel))
+    _tulis_video(tmp_path / "v.mp4", frames, fps=30.0)
+    r = ekstraksi.ekstrak(tmp_path / "v.mp4", tmp_path / "out", fps=15.0)
+    # Frame motion-blur ~25% median: dibuang di ambang lama (0.35), DISIMPAN kini.
+    assert r["buram"] == 0, "frame gerak-cepat ikut terbuang -- ambang kelewat ketat"

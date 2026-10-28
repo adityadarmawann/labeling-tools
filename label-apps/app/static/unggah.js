@@ -461,7 +461,7 @@
       ? `${Math.round(det)} dtk`
       : `${det.toFixed(2).replace(/\.?0+$/, '').replace('.', ',')} dtk`;
     const fpsTxt = `${String(fps).replace('.', ',')} fps (1 frame tiap ${tiap})`;
-    const ekor = ' Hanya frame buram parah dibuang; frame mirip tetap disimpan. Resolusi asli, maks 5000/video.';
+    const ekor = ' Hanya frame yang benar-benar rusak (smear ekstrem/blank) dibuang; frame gerak-cepat & mirip tetap disimpan. Resolusi asli, maks 5000/video.';
     const vids = [...berkas.values()].filter((b) => b.video);
     const berDurasi = vids.filter((b) => b.durasi > 0);
     if (berDurasi.length) {

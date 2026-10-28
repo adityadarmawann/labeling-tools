@@ -71,7 +71,14 @@ _OVERS = 1.6
 # BURAM_RASIO * median seluruh kandidat (buram RELATIF terhadap video itu
 # sendiri — ambang mutlak tak berlaku lintas resolusi/konten), tapi tak pernah
 # lebih longgar dari BURAM_LANTAI (menangkap frame rata/blank yang nyaris nol).
-_BURAM_RASIO = 0.35
+#
+# RASIO sengaja RENDAH (0.15, bukan 0.35): untuk rekaman gerak cepat (mis.
+# basket) tiap frame bisa sedikit motion-blur, dan membuang yang "agak buram"
+# ikut membuang momen aksi yang justru mau dilabeli (pemain melompat, bola di
+# udara). Dengan 0.15, hanya frame yang BENAR-BENAR rusak — smear ekstrem /
+# blank (< 15% ketajaman median, atau di bawah lantai) — yang dibuang; frame
+# gerak-cepat biasa tetap disimpan.
+_BURAM_RASIO = 0.15
 _BURAM_LANTAI = 8.0
 
 # Deduplikasi: dua frame dianggap kembar kalau rata-rata selisih absolut
