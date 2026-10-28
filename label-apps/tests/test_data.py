@@ -1932,7 +1932,10 @@ def test_warna_kelas_sama_antara_server_dan_kanvas_dan_tidak_acak(lingkungan):
     # PALET harus SAMA PERSIS di tiga tempat (render.py, label.js, versi.js),
     # kalau tidak satu kelas berwarna beda di kanvas, grid, dan halaman Versi.
     statik = pathlib.Path(__file__).parent.parent / "app" / "static"
-    for js in ("label.js", "versi.js"):
+    # label.js & versi.js (gambar) + aksi_dataset.js & aksi.js (video aksi):
+    # SEMUA harus sama persis dengan render.py supaya satu kelas berwarna sama di
+    # kanvas, grid, halaman Versi, dan grid/label klip aksi.
+    for js in ("label.js", "versi.js", "aksi_dataset.js", "aksi.js"):
         teks = (statik / js).read_text(encoding="utf-8")
         m = re.search(r"const PALET = \[(.*?)\];", teks, re.S)
         assert m, f"PALET tak ditemukan di {js}"

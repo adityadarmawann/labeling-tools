@@ -16,11 +16,23 @@ const EDS = encodeURIComponent(D.ds);
 const enc = encodeURIComponent;
 const el = id => document.getElementById(id);
 
+// Palet kelas SAMA PERSIS dengan render.py / label.js / versi.js, supaya warna
+// bawaan kelas aksi kontras-tinggi & konsisten (bukan rona HSL serupa). Warna
+// pilihan projek (D.warna[i], dari aksi.warna) tetap menang.
+const PALET = [
+  '#e6194b', '#3cb44b', '#4363d8', '#f58231', '#911eb4', '#008080',
+  '#f032e6', '#9a6324', '#808000', '#e67e22', '#2980b9', '#c0392b',
+  '#16a085', '#8e44ad', '#d35400', '#27ae60', '#2c3e50', '#e84393',
+  '#00a8cc', '#f1c40f', '#6ab04c', '#eb4d4b', '#686de0', '#30336b',
+];
+function hashKode(s) {
+  let h = 0;
+  for (let k = 0; k < s.length; k++) h = (h * 31 + s.charCodeAt(k)) | 0;
+  return Math.abs(h);
+}
 function warnaKelas(nama, i) {
   if (D.warna && D.warna[i] != null) return D.warna[i];
-  let h = 0;
-  for (let k = 0; k < nama.length; k++) h = (h * 31 + nama.charCodeAt(k)) % 360;
-  return `hsl(${h} 55% 45%)`;
+  return PALET[hashKode(String(nama)) % PALET.length];
 }
 const IDX_KELAS = {};
 (D.kelas || []).forEach((k, i) => { IDX_KELAS[k] = i; });

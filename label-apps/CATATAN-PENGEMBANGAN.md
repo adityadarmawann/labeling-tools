@@ -20,22 +20,23 @@ popup + warna pilihan tersimpan per projek) sudah dikerjakan untuk alur
 - Grid Dataset/Job + halaman Versi + `/view`: swatch ikut warna pilihan lewat
   filter `warnakelas(nama, peta)` dan `versi.js`.
 
-**Yang BELUM disentuh (sengaja, fokus gambar dulu).** Projek video memakai
-sistem warna TERPISAH untuk kelas aksi klip:
+**SUDAH (warna bawaan disamakan).** `warnaKelas` di `aksi_dataset.js` dan
+`aksi.js` kini memakai **PALET kontras-tinggi yang sama** dengan gambar sebagai
+fallback (bukan rona HSL lama); warna pilihan projek (`D.warna[i]` dari
+`aksi.warna`) tetap menang. PALET-nya dijaga sama persis di keempat berkas
+(`render.py`, `label.js`, `versi.js`, `aksi_dataset.js`, `aksi.js`) oleh
+`test_warna_kelas_sama_...`. Kelas aksi SUDAH bisa diberi warna lewat input
+warna native di editor kelas aksi.
 
-- `app/static/aksi_dataset.js` `warnaKelas(nama, i)` masih memakai
-  `D.warna[i]` (array warna template `aksi.warna`) dengan fallback HSL lama,
-  bukan `PALET`/`PALET_GRID`.
-- Warna kelas aksi disimpan di `aksi.warna` (`_sah_aksi` di `tugas.py`), bukan
-  di `kelas_warna`. Belum ada pemilih warna popup untuk kelas aksi.
+**Yang masih OPSIONAL (enhancement, bukan bug).** Projek video memakai sistem
+warna TERPISAH (`aksi.warna`, index-based) dari gambar (`kelas_warna`,
+name-based):
 
-**Saat dilanjutkan.** Samakan pengalamannya dengan alur gambar:
-1. Pakai `PALET`/`PALET_GRID` yang sama sebagai default + grid pemilih.
-2. Sediakan pemilih warna popup untuk kelas aksi (padanan `pilihWarnaKelas`),
-   menyimpan ke `aksi.warna` lewat rute yang sudah ada / baru.
-3. Pastikan warna identik di: grid klip, poster, dan ringkasan versi video.
-4. Cerminkan `PALET` di satu tempat kalau bisa (hindari tiga salinan: sekarang
-   ada di `render.py`, `label.js`, `versi.js` — semua HARUS sama persis).
+1. Pemilih warna **popup grid** (padanan `pilihWarnaKelas`/`PALET_GRID`) untuk
+   kelas aksi — sekarang pakai input warna native (berfungsi, cuma beda gaya).
+2. `PALET` masih disalin di beberapa berkas JS (tak ada bundler); dijaga oleh
+   test parity. Satukan kalau nanti ada modul bersama.
+3. (Verifikasi) warna identik di grid klip, poster, dan ringkasan versi video.
 
 ## Simpan keypoint pose ke YOLO .txt (HIGH, butuh uji pose)
 
