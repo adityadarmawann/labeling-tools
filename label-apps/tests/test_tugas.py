@@ -250,6 +250,41 @@ def test_rute_menolak_menyunting_gambar_orang_lain(klien, lingkungan):
     assert j["ok"] is True, "gambar jatahnya sendiri harus bisa"
 
 
+def test_simpan_merekam_pelabel_dan_waktu(klien, lingkungan):
+    """Setiap penyimpanan anotasi mencatat SIAPA yang menyimpan dan KAPAN, dan
+    grid job membaca jejak itu via scanner.meta_simpan."""
+    import time
+    from app.services import scanner
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    from tests.test_projek import _projek
+    d = _projek(ruang, "jejak", n=2)
+    klien.post(f"/setsrc?path={d}")
+    gambar = sorted(str(p) for p in d.glob("*.jpg"))
+    klien.post("/api/tugas/bagi", json={"pelabel": "anggi", "gambar": gambar})
+
+    t0 = int(time.time())
+    klien.get("/logout")
+    masuk(klien, "anggi", PW_ANGGI)
+    klien.post(f"/setsrc?path={d}")
+    j = klien.post("/api/simpan", json={"path": gambar[0], "shapes": [
+        {"label": "botol", "shape_type": "rectangle",
+         "points": [[2, 2], [30, 30]]}]}).json()
+    assert j["ok"] is True, j
+
+    isi = json.loads(pathlib.Path(gambar[0]).with_suffix(".json").read_text())
+    assert isi["pelabel"] == "anggi"
+    assert isi["disunting"] >= t0
+
+    meta = scanner.meta_simpan({"img": pathlib.Path(gambar[0]),
+                                "ann": pathlib.Path(gambar[0]).with_suffix(".json")})
+    assert meta["pelabel"] == "anggi" and meta["disunting"] >= t0
+    # Gambar yang belum pernah disimpan: pelabel kosong, tapi waktu jatuh ke
+    # mtime berkas kalau ada (di sini belum ada .json -> 0, tak apa).
+    meta2 = scanner.meta_simpan({"img": pathlib.Path(gambar[1])})
+    assert meta2["pelabel"] == ""
+
+
 def test_rute_bagi_hanya_untuk_pemilik(klien, lingkungan):
     import pathlib
 

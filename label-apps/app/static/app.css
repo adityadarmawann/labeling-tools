@@ -402,12 +402,20 @@ main{padding:20px 22px 60px}
    terpotong separuh di bawah tanpa ada yang menyadarinya sampai diukur.
    Dengan token ini, mengubah tinggi jalur label otomatis membawa serta tinggi
    kotaknya. */
-.card{--pad-meta:7px;--h-labs:17px;--h-iss:20px}
+.card{--pad-meta:7px;--h-labs:17px;--h-iss:20px;--h-jejak:14px}
 /* Padding mendatar DIRAPATKAN ke tepi gambar (4px, dari 11px): tanpa kotak
    kartu, keterangan sejajar lurus dengan thumbnail di atasnya. Tinggi TETAP
    dari tokennya -- disiplin sama-tinggi per baris tak berubah. */
-.meta{height:calc(var(--pad-meta) + var(--h-labs) + var(--h-iss));
+.meta{height:calc(var(--pad-meta) + var(--h-labs) + var(--h-iss) + var(--h-jejak));
   padding:var(--pad-meta) 4px 0;overflow:hidden}
+/* Jejak edit: "kapan" lalu "oleh siapa", satu baris kecil, tinggi dicadangkan
+   (--h-jejak) di SETIAP kartu supaya barisnya tetap sama tinggi walau sebagian
+   gambar belum punya jejak. */
+.kartu-jejak{height:var(--h-jejak);margin-top:3px;display:flex;gap:6px;
+  align-items:baseline;font-size:9.5px;color:var(--ink-faint);
+  white-space:nowrap;overflow:hidden}
+.kartu-jejak .kj-wkt{font-variant-numeric:tabular-nums;flex:0 0 auto}
+.kartu-jejak .kj-oleh{overflow:hidden;text-overflow:ellipsis;font-weight:600}
 /* direction:rtl sengaja tidak dipakai: ia memindahkan titik ke depan sehingga
    "000036.jpg" terbaca "jpg.000036". */
 /* SATU baris, ringkas: split (bila ada) + sampai dua nama kelas + pil "+N".
@@ -2230,6 +2238,13 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
 .bg-gambar img{width:100%;height:100%;object-fit:contain;display:block}
 .bg-nama{font-size:10.5px;color:var(--ink-faint);margin-top:4px;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Jejak edit per ubin: "kapan" lalu "oleh siapa", kecil dan satu baris.
+   Hanya muncul kalau gambar memang punya jejak simpan. */
+.jb-jejak{display:flex;gap:6px;align-items:baseline;margin-top:1px;
+  font-size:9.5px;color:var(--ink-faint);white-space:nowrap;overflow:hidden}
+.jb-jejak-wkt{font-variant-numeric:tabular-nums;flex:0 0 auto}
+.jb-jejak-oleh{color:var(--ink-muted,var(--ink-faint));overflow:hidden;
+  text-overflow:ellipsis;font-weight:600}
 /* Yang di luar jatah diredupkan, bukan disembunyikan: melihat sisa yang
    tertinggal itu bagian dari keputusannya. */
 .bg-ubin[data-luar]{opacity:.25}

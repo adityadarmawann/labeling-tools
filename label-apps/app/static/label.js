@@ -2753,6 +2753,40 @@ function pesan(t) { el('pesan').textContent = t; }
  *   baris status, tidak perlu toast yang muncul tiap kali titik digeser.
  *   Kegagalan tetap selalu ditoastkan; itu justru yang harus terlihat.
  */
+// Kepala kanvas: "oleh <pelabel> <tgl jam>". Dipakai setelah Simpan berhasil
+// supaya jejaknya ikut berubah tanpa memuat ulang halaman. Format waktunya
+// menyamai filter `waktusingkat` di server.
+const _BULAN_JEJAK = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
+                      'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+function perbaruiJejak(pelabel, epoch) {
+  const n = el('lab-jejak');
+  if (!n) return;
+  let wkt = '';
+  if (epoch) {
+    const t = new Date(epoch * 1000);
+    const hh = String(t.getHours()).padStart(2, '0');
+    const mm = String(t.getMinutes()).padStart(2, '0');
+    wkt = `${t.getDate()} ${_BULAN_JEJAK[t.getMonth()]} ${hh}:${mm}`;
+  }
+  // Teks diisi lewat node, bukan string, supaya nama pelabel tak bisa jadi HTML.
+  n.textContent = '';
+  if (pelabel) {
+    n.appendChild(document.createTextNode('oleh '));
+    const b = document.createElement('b');
+    b.textContent = pelabel;
+    n.appendChild(b);
+  }
+  if (wkt) {
+    const s = document.createElement('span');
+    s.className = 'mono';
+    s.textContent = (pelabel ? ' ' : '') + wkt;
+    n.appendChild(s);
+  }
+  n.dataset.pelabel = pelabel || '';
+  n.dataset.disunting = epoch || 0;
+  n.hidden = !(pelabel || epoch);
+}
+
 async function simpan(diam = false) {
   clearTimeout(waktuAutosave);
   // Satu pintu untuk seluruh jalur penulisan: tombol Simpan, Ctrl+S, dan
@@ -2790,6 +2824,9 @@ async function simpan(diam = false) {
     S.kotor = false;
     el('btn-simpan').removeAttribute('data-kotor');
     status('Tersimpan');
+    // Jejak "oleh <aku> <waktu>" di kepala kanvas langsung diperbarui: saya baru
+    // saja menyimpan gambar ini, jadi sayalah pelabel terakhirnya.
+    perbaruiJejak(D.aku, Math.floor(Date.now() / 1000));
     const f = D.berkas.find(x => x.path === D.path);
     if (f) { f.n = j.n; f.sev = j.sev; renderBerkas(); }
     perbaruiLatar();

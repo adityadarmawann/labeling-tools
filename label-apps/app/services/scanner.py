@@ -1063,6 +1063,37 @@ def severity(it: dict) -> str:
     return "warn" if it["issues"] else "ok"
 
 
+def meta_simpan(it: dict) -> dict:
+    """{pelabel, disunting} satu gambar: siapa TERAKHIR menyimpan anotasinya dan
+    kapan (epoch detik). Dibaca dari field .json yang ditulis /api/simpan; kalau
+    gambar lama belum punya field itu, `disunting` jatuh ke mtime berkas anotasi
+    dan `pelabel` dibiarkan kosong. "" / 0 kalau benar-benar tak diketahui.
+
+    Agak mahal (baca+parse .json per gambar), jadi dipanggil HANYA untuk ubin
+    yang benar-benar tampil di satu halaman grid, bukan seluruh isi job."""
+    img = it["img"]
+    jp = img.with_suffix(".json")
+    pelabel, disunting = "", 0
+    try:
+        d = json.loads(jp.read_text(encoding="utf-8"))
+        pelabel = str(d.get("pelabel") or "")
+        disunting = int(d.get("disunting") or 0)
+    except (OSError, ValueError, TypeError):
+        pass
+    if not disunting:
+        # Berkas label YOLO ada di labels/*.txt (it["ann"]), .json di sebelah
+        # gambar; mtime salah satunya cukup untuk "kapan terakhir disentuh".
+        for p in (jp, it.get("ann")):
+            if not p:
+                continue
+            try:
+                disunting = int(p.stat().st_mtime)
+                break
+            except OSError:
+                continue
+    return {"pelabel": pelabel, "disunting": disunting}
+
+
 def _scan_yolo(src: Path, names: dict | None = None, kpt: dict | None = None,
                peta: dict | None = None):
     items = []

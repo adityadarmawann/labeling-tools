@@ -64,8 +64,27 @@ def pathmentah(item: dict) -> str:
     return str(item["img"].resolve())
 
 
+_BULAN_SINGKAT = ("", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun",
+                  "Jul", "Agu", "Sep", "Okt", "Nov", "Des")
+
+
+def waktusingkat(epoch) -> str:
+    """Epoch detik -> "28 Okt 14:30" (waktu lokal server). "" kalau 0/kosong,
+    supaya ubin tanpa jejak edit tidak menampilkan label apa pun."""
+    try:
+        e = int(epoch or 0)
+    except (TypeError, ValueError):
+        return ""
+    if e <= 0:
+        return ""
+    import datetime as _dt
+    t = _dt.datetime.fromtimestamp(e)
+    return f"{t.day} {_BULAN_SINGKAT[t.month]} {t.hour:02d}:{t.minute:02d}"
+
+
 templates.env.filters["imgpath"] = imgpath
 templates.env.filters["pathmentah"] = pathmentah
+templates.env.filters["waktusingkat"] = waktusingkat
 # Identitas objek item, dipakai templat grid untuk mencari penugasan gambar itu
 # di peta yang dihitung router. Memakai id() daripada path supaya tidak ada
 # pembentukan string ribuan kali per halaman.

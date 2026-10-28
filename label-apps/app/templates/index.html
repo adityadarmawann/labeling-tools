@@ -567,6 +567,15 @@
       <div class="iss{% if sev == 'stop' %} stop{% endif %}"
            title="{{ it.issues | join(' · ') }}">{{ it.issues | join(' · ') }}</div>
       {%- endif %}
+      {#- Jejak edit: siapa yang terakhir menyimpan anotasi kartu ini & kapan.
+          Kecil, satu baris, hanya muncul kalau ada jejaknya. -#}
+      {%- if it.meta and (it.meta.disunting or it.meta.pelabel) %}
+      <div class="kartu-jejak"
+           title="{% if it.meta.pelabel %}dilabeli {{ it.meta.pelabel }}{% endif %}{% if it.meta.disunting %} pada {{ it.meta.disunting | waktusingkat }}{% endif %}">
+        {%- if it.meta.disunting %}<span class="kj-wkt">{{ it.meta.disunting | waktusingkat }}</span>{% endif -%}
+        {%- if it.meta.pelabel %}<span class="kj-oleh">{{ it.meta.pelabel }}</span>{% endif -%}
+      </div>
+      {%- endif %}
     </div>
     <div class="acts">
       {#- Gambar yang sudah punya bentuk memakai kata "Edit label": dari deretan

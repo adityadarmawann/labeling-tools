@@ -243,6 +243,15 @@
             {{ 'Perbaiki' if x.berlabel else 'Labeli' }}</a>
           <figcaption class="bg-nama" title="{{ x.it.img.name }}">
             {{ x.it.img.name }}</figcaption>
+          {#- Jejak edit: siapa yang terakhir menyimpan anotasi gambar ini dan
+              kapan. Kecil dan ringkas; hanya muncul kalau ada jejaknya. -#}
+          {% if x.meta and (x.meta.disunting or x.meta.pelabel) %}
+          <figcaption class="jb-jejak"
+              title="{% if x.meta.pelabel %}dilabeli {{ x.meta.pelabel }}{% endif %}{% if x.meta.disunting %} pada {{ x.meta.disunting | waktusingkat }}{% endif %}">
+            {%- if x.meta.disunting %}<span class="jb-jejak-wkt">{{ x.meta.disunting | waktusingkat }}</span>{% endif -%}
+            {%- if x.meta.pelabel %}<span class="jb-jejak-oleh">{{ x.meta.pelabel }}</span>{% endif -%}
+          </figcaption>
+          {% endif %}
         </figure>
         {%- endfor %}
       </div>

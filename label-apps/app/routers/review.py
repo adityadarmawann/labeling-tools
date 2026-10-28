@@ -375,6 +375,10 @@ async def index(request: Request, f: str = "all",
     hal = min(max(hal, 1), n_hal)
     mulai = (hal - 1) * per
     halaman = tampil[mulai:mulai + per]
+    # Jejak "diedit <kapan> oleh <siapa>" per kartu. Dibaca HANYA untuk halaman
+    # yang tampil supaya murah pada dataset puluhan ribu gambar.
+    for it in halaman:
+        it["meta"] = scanner.meta_simpan(it)
 
     # Sidebar projek. Hanya untuk dataset yang ada di ruang kerja seseorang:
     # dataset yang dibuka langsung dari path server tidak punya halaman Unggah,

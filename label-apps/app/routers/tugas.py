@@ -476,6 +476,10 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
     hal = min(max(hal, 1), n_hal)
     mulai_i = (hal - 1) * per
     halaman = tampil[mulai_i:mulai_i + per]
+    # "Diedit <kapan> oleh <siapa>" per ubin — dibaca HANYA untuk halaman yang
+    # tampil (bukan seluruh isi job) supaya murah pada projek puluhan ribu.
+    for x in halaman:
+        x["meta"] = scanner.meta_simpan(x["it"])
 
     resp = templates.TemplateResponse(request, "job.html", {
         "sess": sess, "pr": pr, "aktif": "anotasi", "aku": sess.user,

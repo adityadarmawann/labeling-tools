@@ -32,6 +32,15 @@
     <a href="/pilih" class="lab-projek">{{ sess.src.name if sess.src else 'dataset' }}</a>
     <b class="lab-berkas" id="lab-berkas" title="{{ it.img.name }}">{{ it.img.name }}</b>
     <span class="mono lab-ukuran" id="lab-ukuran">{{ it.W }}×{{ it.H }}</span>
+    {#- Siapa yang terakhir melabeli gambar ini & kapan. Disembunyikan kalau
+        belum pernah disimpan; JS memperbaruinya sendiri setiap kali Simpan
+        berhasil (lihat label.js). -#}
+    <span class="lab-jejak" id="lab-jejak"
+          data-pelabel="{{ pelabel_terakhir }}" data-disunting="{{ disunting }}"
+          {% if not pelabel_terakhir and not disunting %}hidden{% endif %}>
+      {%- if pelabel_terakhir %}oleh <b>{{ pelabel_terakhir }}</b>{% endif -%}
+      {% if disunting %} <span class="mono">{{ disunting | waktusingkat }}</span>{% endif %}
+    </span>
   </span>
 
   <span class="lab-urut">
@@ -431,6 +440,7 @@
     "model": sam.default,
     "skeleton": skeleton,
     "jenis_anotasi": jenis_anotasi,
+    "aku": sess.user,
     "boleh_kelola": boleh_kelola} | tojson }}
 </script>
 <!-- Panduan. Dulu seluruh isinya berdesakan sebagai dua baris teks selebar

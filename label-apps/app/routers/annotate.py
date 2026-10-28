@@ -87,7 +87,11 @@ def kelas_resmi(sess: Session) -> list[str]:
 # Field tingkat atas dan per-bentuk yang memang milik kita. Sisanya dianggap
 # titipan AnyLabeling dan harus dikembalikan apa adanya saat menyimpan.
 KUNCI_ATAS = {"version", "flags", "shapes", "imagePath", "imageData",
-              "imageHeight", "imageWidth"}
+              "imageHeight", "imageWidth", "pelabel", "disunting"}
+# `pelabel` + `disunting`: siapa yang terakhir menyimpan anotasi gambar ini dan
+# kapan (epoch detik). Dicatat supaya grid & kanvas bisa menampilkan "diedit
+# <kapan> oleh <siapa>" tanpa menebak dari pemilik job (gambar bisa pindah job,
+# dan pemilik/editor pun bisa menyunting gambar pelabel lain).
 # `description` SENGAJA tidak ada di sini. Ia milik labelme 5.x dan
 # X-AnyLabeling, kanvas kita tidak pernah menyuntingnya, jadi biarkan ia lewat
 # jalur titipan seperti field asing lainnya. Dulu ia terdaftar di sini —
@@ -351,6 +355,10 @@ async def halaman(request: Request, path: str = "",
         "boleh_kelola": boleh_kelola,
         # Format anotasi projek -> alat DEFAULT di labeler (kotak/kerangka/poligon).
         "jenis_anotasi": tdata.get("jenis_anotasi") or "",
+        # Siapa yang TERAKHIR menyimpan anotasi gambar ini & kapan (epoch detik),
+        # ditampilkan kecil di kepala kanvas. Kosong kalau belum pernah disimpan.
+        "pelabel_terakhir": str(mentah.get("pelabel") or ""),
+        "disunting": int(mentah.get("disunting") or 0),
     })
 
 
@@ -604,6 +612,10 @@ async def api_simpan(request: Request, sess: Session = Depends(current_session_a
         "imageData": lama.get("imageData"),
         "imageHeight": it["H"],
         "imageWidth": it["W"],
+        # Siapa yang menyimpan ini & kapan. Pemanggilnya sudah lolos tolak_tulis
+        # di atas, jadi sess.user memang berhak menyunting gambar ini.
+        "pelabel": sess.user,
+        "disunting": int(time.time()),
     }
     if "teks_gambar" in body:
         isi["image_text"] = str(body.get("teks_gambar") or "")

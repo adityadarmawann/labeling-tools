@@ -61,6 +61,12 @@ body.lab {
 .lab-projek:hover { color: var(--aksi); }
 .lab-projek::after { content: "/"; margin-left: 7px; color: var(--line2); }
 .lab-ukuran { color: var(--ink-faint); font-size: 11px; flex: 0 0 auto; }
+/* Jejak "oleh <pelabel> <tgl jam>": kecil, satu baris, tak merebut ruang nama
+   berkas. Disembunyikan (atribut hidden) kalau gambar belum pernah disimpan. */
+.lab-jejak { color: var(--ink-faint); font-size: 11px; flex: 0 0 auto;
+  white-space: nowrap; }
+.lab-jejak b { font-weight: 600; color: var(--ink); }
+.lab-jejak .mono { font-variant-numeric: tabular-nums; }
 .lab-berkas {
   font-size: 13px; font-weight: 600; color: var(--ink);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
