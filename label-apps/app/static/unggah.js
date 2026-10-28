@@ -522,6 +522,36 @@
       if (adaJalan) _ekstrakTimer = setTimeout(pantauEkstrak, 3000);
     }).catch(() => {});
   }
+
+  // Menunggu SEMUA video di `videos` selesai diekstrak, sambil memperbarui kartu
+  // progres `pr` dengan jumlah frame -- jadi prosesnya terlihat di HALAMAN YANG
+  // SAMA seperti saat mengunggah. Kembalikan { n, galat }. Dipakai supaya
+  // unggahan video tetap di sini dan baru lanjut ke pembagian SESUDAH frame jadi,
+  // bukan masuk ke halaman pembagian yang masih kosong.
+  async function tungguEkstrak(pr, videos) {
+    const nama = new Set(videos);
+    for (;;) {
+      let st = {};
+      try {
+        const j = await send('/api/ekstrak/status?ds=' + encodeURIComponent(PROJEK));
+        if (j && j.ok) st = j.status || {};
+      } catch (e) { /* jaringan sesaat; coba lagi putaran berikutnya */ }
+      const mine = [...nama].map((v) => st[v]).filter(Boolean);
+      const jalan = mine.filter((r) => r.keadaan === 'jalan');
+      // Masih ada yang jalan, atau rekaman statusnya belum sempat muncul.
+      if (jalan.length || mine.length < nama.size) {
+        const sudah = jalan.reduce((s, r) => s + (Number(r.sudah) || 0), 0);
+        pr.taktentu('Mengubah video jadi gambar… '
+          + `${sudah.toLocaleString('id-ID')} frame`);
+        await new Promise((r) => setTimeout(r, 1500));
+        continue;
+      }
+      const n = mine.filter((r) => r.keadaan === 'selesai')
+                    .reduce((s, r) => s + (Number(r.n) || 0), 0);
+      const galat = (mine.find((r) => r.keadaan === 'gagal') || {}).galat;
+      return { n, galat };
+    }
+  }
   // Klik ✕ pada baris yang sudah kelar: buang rekamannya di server supaya tak
   // muncul lagi, lalu hilangkan barisnya. Delegasi sekali, bukan per render.
   (function pasangTutupEkstrak() {
@@ -675,12 +705,14 @@
       }
     }
 
-    if (namaBatch || tag.length) {
+    // Menandai gambar baru (nama batch + tag). Dipisah jadi fungsi supaya untuk
+    // unggahan VIDEO bisa dipanggil SESUDAH frame-nya jadi -- kalau dipanggil
+    // sebelum ekstraksi, belum ada satu frame pun untuk diberi nama batch.
+    async function tandai() {
+      if (!(namaBatch || tag.length)) return;
       pr.taktentu('Menandai gambar…');
       try {
         // tanpa_batch: yang baru masuk adalah yang belum punya nama batch.
-        // Isi .zip tidak pernah dilihat peramban, jadi menandainya lewat
-        // daftar nama yang dikirim dari sini akan melewatkan semuanya.
         await send('/api/tag/pasang', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ tanpa_batch: true, batch: namaBatch, tambah: tag }),
@@ -688,59 +720,73 @@
       } catch (e) { toast('Gambar terunggah, tapi tagnya gagal disimpan'); }
     }
 
-    // Berapa gambar berlabel yang otomatis masuk dataset. Dihitung server di
-    // /useupload (sesudah split diratakan, di atas kunci final): nol kalau yang
-    // diunggah bukan dataset jadi (tak ada data.yaml) atau masih mentah.
+    // Menyiapkan tombol langkah berikut sesuai isi akhir unggahan.
+    function siapkanLanjut(n, masuk, sisa) {
+      const ket = $('ug-unggah-ket');
+      const lanjut = $('ug-lanjut');
+      if (masuk > 0 && sisa === 0) {
+        // Semua gambar sudah berlabel (ekspor Roboflow lengkap) -> langsung Versi.
+        lanjut.href = '/versi?ds=' + encodeURIComponent(PROJEK);
+        lanjut.textContent = 'Buat versi →';
+        ket.textContent = `${masuk.toLocaleString('id-ID')} gambar sudah berlabel, `
+          + 'otomatis masuk dataset. Berikutnya: buat Versi lalu latih model.';
+      } else if (masuk > 0) {
+        lanjut.href = '/bagi?ds=' + encodeURIComponent(PROJEK);
+        lanjut.textContent = 'Bagi tugas →';
+        ket.textContent = `${masuk.toLocaleString('id-ID')} gambar berlabel otomatis masuk dataset; `
+          + `${sisa.toLocaleString('id-ID')} gambar belum berlabel, bagi ke pelabel dulu.`;
+      } else {
+        lanjut.href = '/bagi?ds=' + encodeURIComponent(PROJEK);
+        lanjut.textContent = 'Bagi tugas →';
+        ket.textContent = 'Berikutnya: bagi gambarnya ke anggota tim.';
+      }
+      if ((buka.peringatan || []).length) {
+        ket.innerHTML = '<b>Perlu dicek:</b><br>'
+          + buka.peringatan.map((p) => '· ' + p).join('<br>');
+      }
+      lanjut.hidden = false;
+    }
+
+    $('ug-batal').hidden = true;
+    $('ug-coba-lagi').hidden = true;
+
+    // Berapa gambar berlabel yang otomatis masuk dataset (nol untuk unggahan
+    // video: framenya belum ada saat /useupload tadi).
     const totalMasuk = buka.masuk_dataset || 0;
     const nTotal = buka.n || 0;
     const sisaMentah = Math.max(0, nTotal - totalMasuk);
 
-    // Jelas menyebut "selesai" dan jumlahnya: keluhan aslinya justru tidak
-    // tahu unggahannya tuntas atau belum. Video diekstrak DI LATAR, jadi di sini
-    // cukup diberi tahu; jumlah frame menyusul di spanduk status.
-    const ekstra = adaEkstrak
-      ? ' · video sedang diekstrak jadi frame di latar (lihat status di atas)'
-      : '';
-    const pesan = gagal
-      ? `Selesai, ${(berhasil.size).toLocaleString('id-ID')} terkirim, `
-        + `${gagal} gagal · ${nTotal.toLocaleString('id-ID')} gambar di dataset`
-        + ekstra
-      : `Selesai, ${nTotal.toLocaleString('id-ID')} gambar di dataset` + ekstra;
-    pr.selesai(pesan);
-    if (adaEkstrak) pantauEkstrak();        // mulai pantau ekstraksi latar
-    $('ug-batal').hidden = true;
-    $('ug-coba-lagi').hidden = true;
-    $('ug-lanjut').hidden = false;
-
-    const ket = $('ug-unggah-ket');
-    const lanjut = $('ug-lanjut');
-    // Mengarahkan langkah berikut sesuai isi unggahan:
-    //  - semua gambar sudah berlabel (ekspor Roboflow lengkap) -> sudah jadi
-    //    dataset, tak perlu dibagi; berikutnya buat Versi lalu latih.
-    //  - masih ada yang mentah (gambar polos / frame video) -> dibagi dulu ke
-    //    pelabel; yang berlabel sudah aman di dataset.
-    if (totalMasuk > 0 && sisaMentah === 0) {
-      lanjut.href = '/versi?ds=' + encodeURIComponent(PROJEK);
-      lanjut.textContent = 'Buat versi →';
-      ket.textContent = `${totalMasuk.toLocaleString('id-ID')} gambar sudah berlabel, `
-        + 'otomatis masuk dataset. Berikutnya: buat Versi lalu latih model.';
-    } else if (totalMasuk > 0) {
-      lanjut.href = '/bagi?ds=' + encodeURIComponent(PROJEK);
-      lanjut.textContent = 'Bagi tugas →';
-      ket.textContent = `${totalMasuk.toLocaleString('id-ID')} gambar berlabel otomatis masuk dataset; `
-        + `${sisaMentah.toLocaleString('id-ID')} gambar belum berlabel, bagi ke pelabel dulu.`;
+    if (adaEkstrak && nTotal === 0) {
+      // UNGGAHAN VIDEO-SAJA: JANGAN langsung ke halaman pembagian (masih kosong
+      // sampai frame jadi). Tetap di halaman ini, tampilkan progres ekstraksi di
+      // KARTU progres yang sama seperti saat mengunggah, lalu aktifkan "Bagi
+      // tugas" HANYA setelah ekstraksi SELESAI. (Permintaan user: masuk
+      // pembagian SESUDAH ekstraksi, dan progresnya terlihat di halaman ini.)
+      $('ug-lanjut').hidden = true;
+      pantauEkstrak();                       // spanduk status ikut jalan
+      const hasil = await tungguEkstrak(pr, video);
+      if (hasil.n > 0) {
+        await tandai();                      // beri nama batch ke frame hasil
+        pr.selesai(`Ekstraksi selesai · ${hasil.n.toLocaleString('id-ID')} gambar`);
+        siapkanLanjut(hasil.n, 0, hasil.n);  // semua frame mentah -> Bagi tugas
+      } else {
+        pr.gagal(hasil.galat || 'Ekstraksi tidak menghasilkan gambar');
+        $('ug-coba-lagi').hidden = false;
+      }
     } else {
-      lanjut.href = '/bagi?ds=' + encodeURIComponent(PROJEK);
-      lanjut.textContent = 'Bagi tugas →';
-      ket.textContent = 'Selesai. Berikutnya: bagi gambarnya ke anggota tim.';
-    }
-
-    if ((buka.peringatan || []).length) {
-      // Ditahan di layar, bukan ditoast: isinya justru yang menentukan apakah
-      // datasetnya benar, dan toast hilang sebelum sempat dibaca. Diutamakan
-      // di atas arahan langkah karena menyangkut kebenaran dataset.
-      ket.innerHTML = '<b>Perlu dicek:</b><br>'
-        + buka.peringatan.map(p => '· ' + p).join('<br>');
+      // Gambar (atau campur gambar+video): gambar bisa langsung dibagi; kalau ada
+      // video ikut, frame-nya menyusul di latar dan dipantau spanduk.
+      await tandai();
+      const ekstra = adaEkstrak
+        ? ' · video sedang diekstrak jadi frame di latar (lihat status di atas)'
+        : '';
+      const pesan = gagal
+        ? `Selesai, ${(berhasil.size).toLocaleString('id-ID')} terkirim, `
+          + `${gagal} gagal · ${nTotal.toLocaleString('id-ID')} gambar di dataset` + ekstra
+        : `Selesai, ${nTotal.toLocaleString('id-ID')} gambar di dataset` + ekstra;
+      pr.selesai(pesan);
+      if (adaEkstrak) pantauEkstrak();        // mulai pantau ekstraksi latar
+      siapkanLanjut(nTotal, totalMasuk, sisaMentah);
     }
   }
 
