@@ -22,7 +22,7 @@
 
 <main>
 {% include "_sisi.html" %}
-<div class="sisi-isi" id="an-isi" data-ds="{{ pr.ds }}">
+<div class="sisi-isi" id="an-isi" data-ds="{{ pr.ds }}" data-kelola="{{ '1' if boleh_kelola else '' }}">
 
   {# ---------------------------------------------------- ringkasan orang #}
   {% if per_pelabel %}

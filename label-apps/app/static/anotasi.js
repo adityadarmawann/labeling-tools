@@ -9,6 +9,11 @@
 (() => {
   const isi = document.getElementById('an-isi');
   if (!isi) return;
+  // Mengundang/menambah ORANG BARU ke projek hanya hak pemilik (boleh_kelola);
+  // Editor (boleh_bagi saja) tetap bisa memindah tugas antar ANGGOTA yang sudah
+  // ada. Tanpa flag ini dialog menawarkan "jadikan pelabel"/"buat undangan"
+  // yang rutenya pasti ditolak owner-only -- menyesatkan di tengah alur.
+  const KELOLA = isi.dataset.kelola === '1';
 
   // ---- buka/tutup menu
   for (const b of document.querySelectorAll('.an-titik')) {
@@ -173,10 +178,15 @@
     const badge = a.peran
       ? `<span class="tg-badge">${tgEsc(a.peran)}</span>`
       : '<span class="tg-badge tg-badge-luar">bukan anggota</span>';
+    // Bukan anggota + bukan pemilik projek: menambahkannya butuh hak kelola
+    // yang tak dimiliki Editor. Tawarkan penjelasan, bukan tombol yang gagal.
     const tombol = kini
       ? '<span class="halus">Tugas ini sudah di akun tersebut.</span>'
-      : `<button class="wz-tbl wz-tbl-pri" type="button" id="tg-ok">${
-        a.anggota ? 'Tugaskan ke sini' : 'Jadikan pelabel &amp; tugaskan'}</button>`;
+      : (!a.anggota && !KELOLA)
+        ? '<span class="halus">Hanya pemilik projek yang bisa menambahkan orang '
+          + 'baru. Minta pemilik menambahkannya dulu, lalu tugaskan ke sini.</span>'
+        : `<button class="wz-tbl wz-tbl-pri" type="button" id="tg-ok">${
+          a.anggota ? 'Tugaskan ke sini' : 'Jadikan pelabel &amp; tugaskan'}</button>`;
     tgPesan(`<div class="tg-kartu"><div class="tg-nama"><b>${tgEsc(a.nama)}</b> `
       + `<span class="halus">@${tgEsc(a.akun)}</span></div>${badge}</div>`
       + `<div class="tg-aksi">${tombol}</div>`);
@@ -205,6 +215,14 @@
       tgPesan(`<div class="tg-kartu"><div><b>"${tgEsc(q)}"</b> tidak ditemukan.</div></div>`
         + '<p class="halus" style="padding:4px 20px">Itu bukan username terdaftar. '
         + 'Untuk mengundang orang baru, masukkan <b>email</b>-nya.</p>');
+      return;
+    }
+    if (!KELOLA) {
+      // Orang baru = undangan, dan itu hak pemilik projek. Editor diberi tahu,
+      // bukan ditawari tombol undang yang pasti ditolak owner-only.
+      tgPesan(`<div class="tg-kartu"><div>Email <b>${tgEsc(j.email)}</b> belum punya akun.</div></div>`
+        + '<p class="halus" style="padding:4px 20px">Hanya pemilik projek yang bisa '
+        + 'mengundang orang baru. Minta pemilik mengundangnya, lalu tugaskan ke sini.</p>');
       return;
     }
     tgPesan(`<div class="tg-kartu"><div>Email <b>${tgEsc(j.email)}</b> belum punya akun.</div></div>`

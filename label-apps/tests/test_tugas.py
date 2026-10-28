@@ -422,6 +422,41 @@ def test_rute_undangan_untuk_email_yang_sudah_punya_akun(klien, lingkungan):
     assert "/undangan/" in j["tautan"], j
 
 
+def test_undang_email_ulang_ke_anggota_tak_kirim_email_lagi(
+        klien, lingkungan, monkeypatch):
+    """Dedup email: /undang menekan email 'kamu ditambahkan' kalau akun SUDAH
+    anggota. /undang-email (cabang akun-sudah-ada) harus memakai penjagaan yang
+    sama -- memasukkan ulang email anggota lama dulu memicu email duplikat."""
+    from app.routers import tugas as rtugas
+
+    masuk(klien, "paul", PW_PAUL)
+    f = lingkungan["users"]
+    u = json.loads(f.read_text())
+    u["anggi"]["email"] = "anggi@higo.id"
+    f.write_text(json.dumps(u))
+
+    panggil = []
+    async def _catat(settings, request, akun, nama):   # ganti kirim email nyata
+        panggil.append(akun)
+        return True
+    monkeypatch.setattr(rtugas, "_email_ditambahkan", _catat)
+
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    from tests.test_projek import _projek
+    d = _projek(ruang, "undang-dedup", n=2)
+    klien.post(f"/setsrc?path={d}")
+
+    # Pertama: anggi BELUM anggota -> diberi tahu sekali.
+    j = klien.post("/api/tugas/undang-email?email=anggi@higo.id").json()
+    assert j["ok"] and j["sudah_terdaftar"] and j["email_terkirim"] is True, j
+    assert panggil == ["anggi"]
+
+    # Kedua: anggi SUDAH anggota -> cuma perbarui peran/scope, JANGAN kirim ulang.
+    j = klien.post("/api/tugas/undang-email?email=anggi@higo.id").json()
+    assert j["ok"] and j["email_terkirim"] is False, j
+    assert panggil == ["anggi"], "email 'ditambahkan' terkirim ulang ke anggota lama"
+
+
 def test_rute_undangan_dibuka_menjadikan_anggota(klien, aplikasi, lingkungan):
     import pathlib
 

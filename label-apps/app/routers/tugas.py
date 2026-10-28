@@ -861,11 +861,16 @@ async def undang_email(email: str = "", peran: str = "pelabel", akses: str = "",
         # kebetulan belum mengisi email jadi anggota tanpa pernah diundang.
         surel_akun = str(rec.get("email") or "").strip().lower()
         if surel_akun and surel_akun == alamat.lower():
+            # Sama seperti /undang: kalau SUDAH anggota, ini cuma memperbarui
+            # peran/scope -> jangan kirim ulang email "kamu ditambahkan".
+            sudah_anggota = akun in (data.get("anggota") or {})
             r = await asyncio.to_thread(svc.undang, sess.src, sess.user, akun,
                                         peran, akses or None, batch)
             # Akun sudah ada -> bukan tautan, tapi tetap diberi tahu lewat email.
-            terkirim = await _email_ditambahkan(
-                settings, request, akun, sess.src.name if sess.src else "")
+            terkirim = False
+            if not sudah_anggota:
+                terkirim = await _email_ditambahkan(
+                    settings, request, akun, sess.src.name if sess.src else "")
             return {"ok": True, "akun": akun, "sudah_terdaftar": True,
                     "email_terkirim": terkirim, **r}
 
