@@ -206,3 +206,25 @@ def test_hp_video_rusak_tak_mematikan(tmp_path):
     vp.write_bytes(b"bukan video")
     uploads._jalankan_ekstrak_latar(vp, tmp_path, get_settings())   # tak boleh raise
     assert not vp.exists()                                    # tetap dibuang
+
+
+def test_dataset_split_tak_ditawari_qr(klien, lingkungan):
+    """Dataset ber-split/YOLO tak boleh terima foto HP: HP mendarat di akar dan
+    merusak tata letaknya. Hanya projek gambar DATAR yang ditawari QR."""
+    import pathlib
+    import cv2
+    import numpy as np
+    masuk(klien, "paul", PW_PAUL)
+    klien.post("/api/projek/baru?nama=rfexport")
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = ruang / "rfexport"
+    # Struktur split Roboflow: tiap split = YOLO (images/ + labels/) + gambar.
+    for s in ("train", "valid", "test"):
+        (d / s / "images").mkdir(parents=True, exist_ok=True)
+        (d / s / "labels").mkdir(parents=True, exist_ok=True)
+        cv2.imwrite(str(d / s / "images" / "a.jpg"),
+                    np.zeros((20, 20, 3), np.uint8))
+        (d / s / "labels" / "a.txt").write_text("")
+    r = klien.post("/api/unggah/token?ds=rfexport").json()
+    assert r["ok"] is False, r
+    assert "split" in r["error"] or "struktur" in r["error"], r

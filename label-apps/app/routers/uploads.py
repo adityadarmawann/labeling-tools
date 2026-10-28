@@ -408,6 +408,16 @@ async def buat_token_hp(request: Request, ds: str = "",
     if projek.jenis_projek(d) == "video":
         return {"ok": False,
                 "error": "unggah dari HP hanya untuk projek gambar"}
+    # HP selalu mendaratkan berkas di AKAR projek (tak lewat /tambah yang menjaga
+    # tata letak). Jadi dataset ber-split (train/valid/test) atau YOLO
+    # (images/labels) tak boleh menerima foto HP -- itu akan mencampur foto baru
+    # di akar dan merusak strukturnya. Hanya projek datar/kosong yang ditawari,
+    # sama batasnya dengan unggah video desktop (empty-or-flat).
+    if tambah.tata_letak(d) != tambah.TATA_DATAR:
+        return {"ok": False,
+                "error": "projek ini berstruktur dataset (split/YOLO); tambah "
+                         "gambar lewat laptop supaya tata letaknya terjaga. "
+                         "Unggah HP hanya untuk projek gambar datar."}
     token, exp = unggah_token.buat(sess.user, ds)
     url = f"{_basis_publik(request, settings)}/unggah-hp?t={token}"
     return {"ok": True, "url": url, "kedaluwarsa": exp,
