@@ -55,3 +55,31 @@ sedang dipakai produksi basket). Harus dikerjakan dengan uji pose end-to-end
 utuh -> ekspor yolo-pose cocok) supaya jalur kotak tak ikut rusak. Scope: writer
 pose-aware yang mengelompokkan rect+point per group_id, + guard di api_simpan
 (`sess.kpt_sesi()` not None -> jalur pose).
+
+## Sisa temuan audit (LOW / ditunda sengaja)
+
+Sudah diperbaiki sesi ini: ds-fallback sistemik (pulih projek sesudah restart),
+paritas izin tombol (/bagi kelola anggota, tombol job), batch tanpa-nama
+over-insert, cache thumbnail (no-cache), timeout unggah HP/ingest, format versi
+Campuran, jejak pelabel saat navigasi, tag yatim, email penugasan-ulang + dedup
+undang, auto-login daftar, warna bawaan kelas aksi, QR HP hanya projek datar.
+
+Masih TERBUKA (LOW/edge; ditunda supaya tak menambah risiko ke jalur produksi):
+- **Estimasi versi ≠ build** saat Modify Classes mengubah gambar jadi latar
+  (split neg didorong ke train di build, disebar di estimasi). Dampak terbatas:
+  output berlabel "Perkiraan, bukan janji". Perbaiki dengan menjalankan
+  `saring_untuk_split` juga di `versi_estimasi`.
+- **Email training bisa dobel** antar-proses (subprocess + web) pada balapan
+  sempit; flag `surel_terkirim` yang dipersist menutup kasus umum.
+- **Batch training gagal sebagian** meninggalkan training yang sudah diluncurkan;
+  klien tak menghapus antrean -> bisa resubmit ganda.
+- **Build versi in-process** tak pulih dari restart (beda dari training yang
+  subprocess); `_maju` in-memory -> guard "sedang jalan" tak macet permanen.
+- **Popen training tak di-wait** -> zombie PID menumpuk sampai uvicorn keluar
+  (tak ganggu logika; `hidup()` baca zombie sebagai mati).
+- **/api/versi/buat** (endpoint lama) menyimpang dari wizard, tanpa pemanggil UI;
+  pensiunkan atau arahkan ke jalur yang sama.
+- **Video gagal-transien** dipertahankan di akar tanpa UI retry.
+- **Email di-await inline** -> klik Undang/Bagi menunggu SMTP (sampai timeout 20
+  dtk) sebelum toast; tak memblok event loop. Fire-and-forget bila mau.
+- **Keypoint pose ke YOLO .txt** (HIGH) -- lihat bagian khusus di atas.
