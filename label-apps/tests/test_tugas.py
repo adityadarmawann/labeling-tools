@@ -285,6 +285,47 @@ def test_simpan_merekam_pelabel_dan_waktu(klien, lingkungan):
     assert meta2["pelabel"] == ""
 
 
+def test_set_warna_kelas_service(tmp_path):
+    """Warna identitas kelas: hex sah disetel & dinormalkan, hex tak sah/kosong
+    mengembalikan ke bawaan, dan warna pilihan menang atas palet."""
+    from app.services import render as R
+    d = _ds(tmp_path, "warna")
+    r = tugas.set_warna_kelas(d, "botol", "#FF8800", "paul")
+    assert r["kelas_warna"]["botol"] == "#ff8800"       # dinormalkan huruf kecil
+    assert tugas.baca(d)["kelas_warna"]["botol"] == "#ff8800"
+    # render memakai warna pilihan, bukan palet.
+    peta = tugas.baca(d)["kelas_warna"]
+    assert R.warna_hex("botol", peta) == "#ff8800"
+    assert R.warna_hex("kaleng", peta) == R.PALET[R.hash_kelas("kaleng") % len(R.PALET)]
+    # hex tak sah diabaikan (tak mengubah apa pun).
+    tugas.set_warna_kelas(d, "botol", "bukan-hex", "paul")
+    assert tugas.baca(d)["kelas_warna"]["botol"] == "#ff8800"
+    # kosong -> kembali ke bawaan (kelas hilang dari peta).
+    r = tugas.set_warna_kelas(d, "botol", "", "paul")
+    assert "botol" not in r["kelas_warna"]
+    assert "botol" not in tugas.baca(d)["kelas_warna"]
+
+
+def test_rute_warna_kelas(klien, lingkungan):
+    """Rute: pemilik boleh menyetel warna; non-anggota ditolak; peta kembali
+    lengkap dan ternormalkan."""
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    from tests.test_projek import _projek
+    d = _projek(ruang, "warna-rute", n=1)
+    klien.post(f"/setsrc?path={d}")
+    j = klien.post("/api/tugas/warna-kelas",
+                   json={"nama": "botol", "warna": "#12AB34"}).json()
+    assert j["ok"] is True and j["kelas_warna"]["botol"] == "#12ab34", j
+    # Orang luar tak bisa menyentuh warna projek ini.
+    klien.get("/logout")
+    masuk(klien, "anggi", PW_ANGGI)
+    klien.post(f"/setsrc?path={d}")
+    j = klien.post("/api/tugas/warna-kelas",
+                   json={"nama": "botol", "warna": "#000000"}).json()
+    assert j["ok"] is False, j
+
+
 def test_rute_bagi_hanya_untuk_pemilik(klien, lingkungan):
     import pathlib
 

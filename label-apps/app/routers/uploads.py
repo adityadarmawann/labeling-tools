@@ -161,6 +161,9 @@ async def halaman_versi(request: Request, ds: str = "",
         "boleh_kelola": svc_tugas.boleh_kelola(tdata, sess.user),
         # Projek keypoint: tawarkan ekspor YOLO-pose di menu Ekspor.
         "jenis_pose": svc_tugas.skeleton_aktif(tdata),
+        # Warna identitas kelas pilihan projek, supaya daftar kelas di wizard
+        # Versi memakai warna yang sama dengan kanvas & grid.
+        "kelas_warna": tdata.get("kelas_warna") or {},
     })
 
 

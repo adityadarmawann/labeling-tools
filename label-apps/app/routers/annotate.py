@@ -312,6 +312,10 @@ async def halaman(request: Request, path: str = "",
              if sess.src else tugas.kosong())
     skeleton = tdata.get("skeleton") or {}
     boleh_kelola = tugas.boleh_kelola(tdata, sess.user)
+    # Warna kelas pilihan projek + apakah pemakai ini boleh menggantinya
+    # (pemilik atau Editor — warna identitas itu keputusan tingkat projek).
+    kelas_warna = tdata.get("kelas_warna") or {}
+    boleh_warna = tugas.boleh_bagi(tdata, sess.user)
 
     # Berkas anotasi yang tidak bisa dibaca HARUS disebut di layar. Tanpa itu
     # kanvasnya terbuka dengan nol objek dan status "siap" — tidak ada satu pun
@@ -359,6 +363,10 @@ async def halaman(request: Request, path: str = "",
         # ditampilkan kecil di kepala kanvas. Kosong kalau belum pernah disimpan.
         "pelabel_terakhir": str(mentah.get("pelabel") or ""),
         "disunting": int(mentah.get("disunting") or 0),
+        # Warna identitas kelas pilihan projek + hak menggantinya (kanvas
+        # memakai ini untuk swatch + pemilih warna).
+        "kelas_warna": kelas_warna,
+        "boleh_warna": boleh_warna,
     })
 
 

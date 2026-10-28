@@ -17,7 +17,8 @@
 
 <main>
 {% include "_sisi.html" %}
-<div class="sisi-isi" id="vs-isi" data-ds="{{ pr.ds }}">
+<div class="sisi-isi" id="vs-isi" data-ds="{{ pr.ds }}"
+     data-kelas-warna='{{ (kelas_warna or {}) | tojson }}'>
 
   {% if boleh_kelola %}
   <div class="vs-kepala">

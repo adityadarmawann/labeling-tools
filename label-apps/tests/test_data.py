@@ -1890,18 +1890,23 @@ def test_warna_kelas_sama_antara_server_dan_kanvas_dan_tidak_acak(lingkungan):
     `hash()` bawaan Python diacak ulang tiap proses, jadi warna kelas berubah
     setiap server dinyalakan ulang dan tidak pernah cocok dengan kanvas — walau
     komentar di label.js selama ini menyatakan sebaliknya.
+
+    Warna kini diambil dari PALET kontras-tinggi menurut hash nama (bukan rona
+    HSL), dan warna pilihan projek (peta) menang atas palet.
     """
+    import pathlib
+    import re
     import subprocess
     import sys
 
-    from app.services.render import cls_color, hash_kelas, warna_kelas
+    from app.services.render import PALET, cls_color, hash_kelas, warna_hex, warna_kelas
 
     # nilainya tetap, tidak bergantung pada proses
     keluar = subprocess.run(
         [sys.executable, "-c",
          "import sys; sys.path.insert(0, '.');"
          "from app.services.render import warna_kelas; print(warna_kelas('botol'))"],
-        capture_output=True, text=True, cwd=str(__import__("pathlib").Path(__file__).parent.parent))
+        capture_output=True, text=True, cwd=str(pathlib.Path(__file__).parent.parent))
     assert keluar.stdout.strip() == warna_kelas("botol"), keluar.stderr[-300:]
 
     # cocok dengan hashKode di label.js: h = (h*31 + kode) | 0, lalu abs
@@ -1915,8 +1920,24 @@ def test_warna_kelas_sama_antara_server_dan_kanvas_dan_tidak_acak(lingkungan):
 
     for nama in ("botol", "kaleng", "plastic-cup", "kahf_extradry_deodorant_45ml"):
         assert hash_kelas(nama) == js_hash(nama), nama
-    assert warna_kelas("botol") == "hsl(185, 62%, 55%)"
-    assert cls_color("botol") == (69, 200, 211)
+    # Default = PALET[hash % len]; deterministik lintas proses.
+    assert warna_kelas("botol") == PALET[hash_kelas("botol") % len(PALET)]
+    assert warna_kelas("botol") == "#911eb4"
+    n = int("911eb4", 16)
+    assert cls_color("botol") == ((n >> 16) & 255, (n >> 8) & 255, n & 255)
+    # Warna pilihan projek menang atas palet.
+    assert warna_hex("botol", {"botol": "#FF8800"}) == "#ff8800"
+    assert cls_color("botol", {"botol": "#ff8800"}) == (255, 136, 0)
+
+    # PALET harus SAMA PERSIS di tiga tempat (render.py, label.js, versi.js),
+    # kalau tidak satu kelas berwarna beda di kanvas, grid, dan halaman Versi.
+    statik = pathlib.Path(__file__).parent.parent / "app" / "static"
+    for js in ("label.js", "versi.js"):
+        teks = (statik / js).read_text(encoding="utf-8")
+        m = re.search(r"const PALET = \[(.*?)\];", teks, re.S)
+        assert m, f"PALET tak ditemukan di {js}"
+        hexes = re.findall(r"#[0-9a-fA-F]{6}", m.group(1))
+        assert hexes == PALET, f"PALET {js} beda dari render.py"
 
 
 def test_saringan_latar_terpisah_dari_belum_dilabeli(klien, lingkungan):

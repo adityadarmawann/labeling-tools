@@ -6,7 +6,6 @@ kelas yang sama selalu berwarna sama tanpa perlu tabel warna.
 """
 from __future__ import annotations
 
-import colorsys
 import hashlib
 import json
 import os
@@ -29,7 +28,8 @@ OVERLAY_ALPHA = 0.45
 # v3: pose/keypoint digambar seperti Roboflow — rangka tipis berwarna per sisi +
 # titik kecil, bbox instance tak dibanjiri warna.
 # v4: nomor slot titik dicetak di pratinjau besar (/view), bukan di grid.
-RENDER_VERSI = 5
+# v6: palet kelas kontras-tinggi (menggantikan rona HSL) + warna pilihan projek.
+RENDER_VERSI = 6
 
 
 def hash_kelas(nama) -> int:
@@ -49,18 +49,46 @@ def hash_kelas(nama) -> int:
     return abs(h)
 
 
-def warna_kelas(nama) -> str:
+# Palet kelas: warna-warna yang KONTRASNYA besar dan beda jelas satu sama lain,
+# bukan rona-rona HSL yang nyaris serupa seperti rumus lama. Dipilih supaya
+# kelas-kelas bersebelahan di daftar tetap mudah dibedakan di kanvas, thumbnail,
+# chip grid, dan daftar kelas halaman Versi. Nilai yang SAMA PERSIS dicerminkan
+# di PALET pada label.js dan versi.js supaya warna satu kelas identik di mana pun.
+PALET = [
+    "#e6194b", "#3cb44b", "#4363d8", "#f58231", "#911eb4", "#008080",
+    "#f032e6", "#9a6324", "#808000", "#e67e22", "#2980b9", "#c0392b",
+    "#16a085", "#8e44ad", "#d35400", "#27ae60", "#2c3e50", "#e84393",
+    "#00a8cc", "#f1c40f", "#6ab04c", "#eb4d4b", "#686de0", "#30336b",
+]
+
+
+def _norm_hex(v) -> str | None:
+    """'#rrggbb' ternormalkan (huruf kecil, selalu berawalan #), atau None kalau
+    bukan hex 6 digit."""
+    m = re.fullmatch(r"#?([0-9a-fA-F]{6})", str(v or "").strip())
+    return "#" + m.group(1).lower() if m else None
+
+
+def warna_hex(nama, peta: dict | None = None) -> str:
+    """Warna sebuah kelas sebagai '#rrggbb'. UTAMAKAN warna pilihan projek
+    (peta[nama]); kalau tak ada, ambil dari PALET berdasar hash nama supaya
+    kelas yang sama selalu berwarna sama tanpa perlu menyimpan apa pun."""
+    if peta:
+        v = _norm_hex(peta.get(nama))
+        if v:
+            return v
+    return PALET[hash_kelas(nama) % len(PALET)]
+
+
+def warna_kelas(nama, peta: dict | None = None) -> str:
     """Warna kelas sebagai string CSS, sama dengan `warna()` di kanvas."""
-    return f"hsl({hash_kelas(nama) % 997 / 997 * 360:.0f}, 62%, 55%)"
+    return warna_hex(nama, peta)
 
 
-def cls_color(key) -> tuple[int, int, int]:
+def cls_color(key, peta: dict | None = None) -> tuple[int, int, int]:
     """Warna kelas sebagai RGB, untuk menggambar overlay thumbnail."""
-    h = (hash_kelas(key) % 997) / 997.0
-    # HSL 62%/55%, sama dengan yang dipakai kanvas — bukan HSV, supaya
-    # warnanya benar-benar sama dan bukan sekadar bernuansa mirip.
-    r, g, b = colorsys.hls_to_rgb(h, 0.55, 0.62)
-    return int(r * 255), int(g * 255), int(b * 255)
+    n = int(warna_hex(key, peta)[1:], 16)
+    return (n >> 16) & 255, (n >> 8) & 255, n & 255
 
 
 def _hex_bgr(hx) -> tuple[int, int, int] | None:
@@ -95,6 +123,28 @@ def _cari_tugas(img: Path) -> Path | None:
             break
         d = d.parent
     return None
+
+
+def warna_override(item: dict) -> dict:
+    """Warna kelas pilihan projek dari .tugas.json: {nama: '#rrggbb'}. {} kalau
+    tak ada/ bukan projek berberkas. Dibaca saat menggambar thumbnail supaya
+    overlay memakai warna yang sama dengan kanvas & grid."""
+    p = _cari_tugas(item["img"])
+    if not p:
+        return {}
+    try:
+        d = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    kw = d.get("kelas_warna") if isinstance(d, dict) else None
+    if not isinstance(kw, dict):
+        return {}
+    out = {}
+    for k, v in kw.items():
+        h = _norm_hex(v)
+        if h:
+            out[str(k)] = h
+    return out
 
 
 def skeleton_item(item: dict) -> dict | None:
@@ -209,13 +259,15 @@ def render(item: dict, side: int):
     # Projek pose: titik+bbox instance ditangani terpisah (rangka tajam, titik
     # kecil, tanpa banjir warna). Sisanya (poligon/kotak biasa) seperti dulu.
     tpl = skeleton_item(item)
+    # Warna pilihan projek (kalau ada), dibaca sekali per gambar.
+    peta = warna_override(item)
     pose_shapes, pakai_overlay = [], False
     for s in item["shapes"]:
         if tpl is not None and s.get("group_id") is not None \
                 and s["type"] in ("point", "rectangle"):
             pose_shapes.append(s)
             continue
-        col = cls_color(s["label"])[::-1]          # cv2 memakai BGR
+        col = cls_color(s["label"], peta)[::-1]          # cv2 memakai BGR
         pts = np.round(s["pts"] * sc).astype(np.int32)
         # Titik, garis, dan polyline tidak punya bagian dalam: mengisinya
         # menghasilkan bercak yang tidak ada di anotasinya.
@@ -275,8 +327,10 @@ _fp_skel: dict = {}
 
 
 def _skeleton_fp(item: dict) -> str:
-    """'' kalau bukan projek pose; selain itu sidik 8-heksa dari (titik, edge,
-    warna) template — berubah tepat ketika yang digambar _gambar_pose berubah."""
+    """'' kalau bukan projek pose DAN tak ada warna kelas pilihan; selain itu
+    sidik 8-heksa dari (titik, edge, warna) template skeleton DIGABUNG warna
+    kelas pilihan projek — berubah tepat ketika yang digambar berubah, termasuk
+    saat seseorang menukar warna identitas sebuah kelas."""
     p = _cari_tugas(item["img"])
     if not p:
         return ""
@@ -288,9 +342,12 @@ def _skeleton_fp(item: dict) -> str:
     if c and c[0] == mt:
         return c[1]
     tpl = skeleton_item(item)
-    if tpl:
-        bahan = json.dumps([tpl["titik"], tpl["edge"], tpl["warna"]],
-                           sort_keys=True, ensure_ascii=False)
+    kw = warna_override(item)
+    if tpl or kw:
+        bahan = json.dumps(
+            [tpl["titik"] if tpl else None, tpl["edge"] if tpl else None,
+             tpl["warna"] if tpl else None, kw],
+            sort_keys=True, ensure_ascii=False)
         fp = hashlib.sha1(bahan.encode()).hexdigest()[:8]
     else:
         fp = ""
@@ -299,12 +356,13 @@ def _skeleton_fp(item: dict) -> str:
 
 
 def nama_thumb(item: dict, side: int) -> str:
-    """`<kunci path>_<kunci isi>_<sisi>[-<sidik skeleton>].jpg`.
+    """`<kunci path>_<kunci isi>_<sisi>[-<sidik>].jpg`.
 
     Kunci path ditaruh di depan supaya berkas lama sebuah gambar masih bisa
     disapu dengan satu glob saat anotasinya berubah — tanpa itu, tiap suntingan
-    meninggalkan thumbnail yatim yang menumpuk selama server hidup. Sidik
-    skeleton di belakang membuat perubahan rangka ikut membatalkan cache.
+    meninggalkan thumbnail yatim yang menumpuk selama server hidup. Sidik di
+    belakang (rangka + warna kelas pilihan) membuat perubahan keduanya ikut
+    membatalkan cache.
     """
     fp = _skeleton_fp(item)
     extra = ("-" + fp) if fp else ""

@@ -120,7 +120,7 @@
       {%- if hitung %}
       <ul class="lh-kelas">
         {%- for k, n in hitung.items() %}
-        <li style="--c:{{ k | warnakelas }}">
+        <li style="--c:{{ k | warnakelas(warna_peta) }}">
           <span class="petak" aria-hidden="true"></span>
           <span class="nm" title="{{ k }}">{{ k }}</span>
           <span class="n">{{ n }}</span>

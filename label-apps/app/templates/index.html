@@ -256,7 +256,7 @@
             <label class="kelas-baris">
               <input type="checkbox" name="c" value="{{ k }}"
                      {% if k in kelas %}checked{% endif %}><span class="cb"></span>
-              <i style="background:{{ k | warnakelas }}"></i>
+              <i style="background:{{ k | warnakelas(warna_peta) }}"></i>
               <span>{{ k }}</span><b>{{ n }}</b></label>
             {%- else %}
             <span class="menu-catatan">Belum ada kelas terpakai di dataset ini.</span>

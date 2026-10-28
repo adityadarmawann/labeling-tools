@@ -67,6 +67,31 @@ body.lab {
   white-space: nowrap; }
 .lab-jejak b { font-weight: 600; color: var(--ink); }
 .lab-jejak .mono { font-variant-numeric: tabular-nums; }
+
+/* Swatch kelas yang bisa diklik untuk ganti warna (pemilik/Editor). */
+.kelas i.kelas-warna { cursor: pointer; outline: 1px solid rgba(0,0,0,.15);
+  outline-offset: -1px; }
+.kelas i.kelas-warna:hover { outline: 2px solid var(--ink); }
+
+/* Pemilih warna: grid 100+ warna, teratur per kolom warna dasar (terang ->
+   gelap), lalu kolom abu-abu. Popover mengambang; ditutup klik luar / Esc. */
+.warna-pop { position: fixed; z-index: 60; background: var(--kertas, #fff);
+  border: 1px solid var(--garis, #d0d0d0); border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.22); padding: 10px; }
+.warna-pop-judul { font-size: 12px; font-weight: 600; color: var(--ink);
+  margin: 0 2px 8px; }
+.warna-grid { display: flex; gap: 4px; }
+.warna-kolom { display: flex; flex-direction: column; gap: 4px; }
+.warna-sel { width: 18px; height: 18px; border: none; border-radius: 4px;
+  padding: 0; cursor: pointer; outline: 1px solid rgba(0,0,0,.12);
+  outline-offset: -1px; }
+.warna-sel:hover { transform: scale(1.18); }
+.warna-sel[data-on] { outline: 2px solid var(--ink); box-shadow: 0 0 0 2px #fff inset; }
+.warna-pop-kaki { margin-top: 9px; display: flex; justify-content: flex-end; }
+.warna-reset { font-size: 12px; padding: 5px 10px; border-radius: 6px;
+  border: 1px solid var(--garis, #d0d0d0); background: transparent;
+  color: var(--ink); cursor: pointer; }
+.warna-reset:hover { background: var(--sorot, rgba(0,0,0,.05)); }
 .lab-berkas {
   font-size: 13px; font-weight: 600; color: var(--ink);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;

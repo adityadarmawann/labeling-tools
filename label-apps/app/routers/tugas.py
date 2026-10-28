@@ -305,6 +305,29 @@ async def post_kelas_starter(request: Request, ds: str = "",
     return {"ok": True, **r}
 
 
+@router.post("/api/tugas/warna-kelas")
+async def post_warna_kelas(request: Request, ds: str = "",
+                           sess: Session = Depends(current_session_api),
+                           settings: Settings = Depends(get_settings)):
+    """Tetapkan/hapus warna identitas satu kelas. Body: {"nama": "...",
+    "warna": "#rrggbb"} (warna "" / tak sah -> kembali ke warna palet bawaan).
+    Warna identitas itu keputusan tingkat projek, jadi hanya pemilik atau Editor
+    yang boleh mengubahnya; pelabel ikut melihat hasilnya."""
+    d = svc_projek.temukan(settings.uploads_root, sess.user, ds) if ds else sess.src
+    if d is None:
+        return {"ok": False, "error": "projek tidak ada / belum ada yang dibuka"}
+    data = await asyncio.to_thread(svc.baca_projek, d, settings.uploads_root)
+    if not svc.boleh_bagi(data, sess.user):
+        return {"ok": False, "error": "hanya pemilik atau Editor yang bisa "
+                                      "mengubah warna kelas"}
+    body = await bodi_json(request)
+    r = await asyncio.to_thread(svc.set_warna_kelas, d, body.get("nama"),
+                                body.get("warna"), data["pemilik"])
+    if r.get("error"):
+        return {"ok": False, "error": r["error"]}
+    return {"ok": True, **r}
+
+
 @router.get("/api/tugas/aksi")
 async def get_aksi(ds: str = "", sess: Session = Depends(current_session_api),
                    settings: Settings = Depends(get_settings)):
@@ -487,6 +510,8 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
         "n": n_semua, "n_label": n_label, "n_latar": n_latar,
         "n_dataset": n_ds,
         "kelas_hitung": dict(sorted(kelas_hitung.items())),
+        # Warna kelas pilihan projek untuk swatch di menu saringan kelas.
+        "warna_peta": data.get("kelas_warna") or {},
         "persen": round(n_label * 100 / n_semua) if n_semua else 0,
         # Keadaan saringan, supaya tab dan menu kelas tahu yang sedang aktif.
         "saring": saring,

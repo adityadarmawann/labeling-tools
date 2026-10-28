@@ -60,8 +60,24 @@
     for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
     return Math.abs(h);
   }
-  const warnaKelas = (label) =>
-    `hsl(${((hashKode(String(label)) % 997) / 997 * 360).toFixed(0)},62%,55%)`;
+  // Palet SAMA PERSIS dengan PALET di render.py & label.js, dan warna pilihan
+  // projek (data-kelas-warna) diutamakan — supaya satu kelas berwarna identik
+  // di sini, di kanvas, dan di grid.
+  const PALET = [
+    '#e6194b', '#3cb44b', '#4363d8', '#f58231', '#911eb4', '#008080',
+    '#f032e6', '#9a6324', '#808000', '#e67e22', '#2980b9', '#c0392b',
+    '#16a085', '#8e44ad', '#d35400', '#27ae60', '#2c3e50', '#e84393',
+    '#00a8cc', '#f1c40f', '#6ab04c', '#eb4d4b', '#686de0', '#30336b',
+  ];
+  let KELAS_WARNA = {};
+  try { KELAS_WARNA = JSON.parse(isi.dataset.kelasWarna || '{}') || {}; }
+  catch (e) { KELAS_WARNA = {}; }
+  const warnaKelas = (label) => {
+    const s = String(label);
+    const o = KELAS_WARNA[s];
+    if (/^#?[0-9a-fA-F]{6}$/.test(String(o || ''))) return o[0] === '#' ? o : '#' + o;
+    return PALET[hashKode(s) % PALET.length];
+  };
 
   // Satu angka desimal, format Indonesia. Tanpa ini panelnya menulis "1.203"
   // dan "48.7%" berdampingan: titik yang sama berarti ribuan di satu tempat

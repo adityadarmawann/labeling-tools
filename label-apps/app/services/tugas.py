@@ -87,6 +87,11 @@ def kosong(pemilik: str = "") -> dict:
             # perilaku lama (kelas muncul hanya setelah dipakai + extra_labels
             # global). Dipakai set kelas Basket. Lihat set_kelas_awal().
             "kelas_awal": [],
+            # Warna identitas kelas pilihan projek: {nama: "#rrggbb"}. Kosong =
+            # semua kelas pakai warna bawaan dari palet (lihat render.warna_hex).
+            # Dipakai supaya satu kelas tampil dengan warna yang sama & bisa
+            # dipilih di kanvas, grid, thumbnail, dan halaman Versi.
+            "kelas_warna": {},
             "warisan": True}
 
 
@@ -141,6 +146,7 @@ def baca(ds: Path, pemilik: str = "") -> dict:
             # ada di kelas, kelas negatif salah satu kelas yang ada).
             "aksi": _sah_aksi(d.get("aksi")),
             "kelas_awal": _sah_kelas_awal(d.get("kelas_awal")),
+            "kelas_warna": _sah_warna_kelas(d.get("kelas_warna")),
             "warisan": False}
 
 
@@ -1303,6 +1309,7 @@ KELAS_STARTER: dict[str, list[str]] = {
                "player-shot-block", "referee"],
 }
 MAKS_KELAS_AWAL = 100
+MAKS_WARNA_KELAS = 500
 
 
 def _sah_kelas_awal(v) -> list[str]:
@@ -1332,6 +1339,64 @@ def set_kelas_awal(ds: Path, kelas, pemilik: str = "") -> dict:
         _tulis(ds, data)
     log.info("kelas_awal %s -> %d kelas", Path(ds).name, len(bersih))
     return {"kelas_awal": bersih}
+
+
+_RE_HEX = re.compile(r"#?([0-9a-fA-F]{6})")
+
+
+def _norm_hex(v) -> str | None:
+    """'#rrggbb' huruf kecil, atau None kalau bukan hex 6 digit."""
+    m = _RE_HEX.fullmatch(str(v or "").strip())
+    return "#" + m.group(1).lower() if m else None
+
+
+def _sah_warna_kelas(v) -> dict:
+    """{nama: '#rrggbb'}: nama kelas tak-kosong -> hex sah. Entri aneh dibuang,
+    jumlah dibatasi. Apa pun yang bukan dict -> {}."""
+    out: dict[str, str] = {}
+    if not isinstance(v, dict):
+        return out
+    for nama, hx in v.items():
+        n = str(nama).strip()
+        h = _norm_hex(hx)
+        if n and h:
+            out[n] = h
+        if len(out) >= MAKS_WARNA_KELAS:
+            break
+    return out
+
+
+def set_warna_kelas(ds: Path, nama, warna, pemilik: str = "") -> dict:
+    """Tetapkan (atau hapus) warna identitas satu kelas. `warna` hex sah ->
+    disetel; "" / None / hex tak sah -> kelas itu dikembalikan ke warna palet
+    bawaan. Mengembalikan peta warna lengkap setelah perubahan."""
+    n = str(nama or "").strip()
+    if not n:
+        return {"error": "nama kelas kosong"}
+    mentah = str(warna or "").strip()
+    # Kosong = kembalikan ke warna bawaan. Diisi tapi bukan hex sah = DITOLAK,
+    # bukan diam-diam dianggap "kembali ke bawaan" (itu akan menghapus warna
+    # yang sudah ada hanya karena salah ketik).
+    h = _norm_hex(mentah)
+    if mentah and not h:
+        return {"error": "warna harus hex #rrggbb"}
+    with _kunci:
+        data = baca(ds, pemilik)
+        peta = dict(data.get("kelas_warna") or {})
+        if h:
+            if len(peta) >= MAKS_WARNA_KELAS and n not in peta:
+                return {"error": f"maksimal {MAKS_WARNA_KELAS} warna kelas"}
+            if peta.get(n) == h:
+                return _tanpa_perubahan(data, {"kelas_warna": peta})
+            peta[n] = h
+        else:
+            if n not in peta:
+                return _tanpa_perubahan(data, {"kelas_warna": peta})
+            peta.pop(n, None)
+        data["kelas_warna"] = peta
+        _tulis(ds, data)
+    log.info("kelas_warna %s: %s -> %s", Path(ds).name, n, h or "(bawaan)")
+    return {"kelas_warna": peta}
 
 
 def jenis_berlaku(data: dict, items: list | None = None) -> str:

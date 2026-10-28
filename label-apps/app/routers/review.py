@@ -400,6 +400,8 @@ async def index(request: Request, f: str = "all",
         "n_projek": hitung_ds["n_semua"],
         "local": is_local(request),
         "items": halaman,
+        # Warna kelas pilihan projek untuk swatch chip kelas di kartu.
+        "warna_peta": tdata.get("kelas_warna") or {},
         # Apakah ADA gambar bertemuan di halaman ini. Kalau tidak satu pun,
         # baris "temuan" yang biasa dicadangkan di tiap kartu dirapatkan (nol
         # tinggi) -- dataset yang bersih tak perlu menyisakan ruang kosong.
@@ -552,6 +554,8 @@ async def view(request: Request, path: str = "",
         # Menandai gambar itu MENULIS keterangan tentangnya, jadi ia tunduk
         # pada aturan yang sama dengan menyunting labelnya.
         "boleh_tag": not svc_tugas.tolak_tulis(sess.src, sess.user, it["img"]),
+        # Warna kelas pilihan projek untuk daftar kelas di panel kanan.
+        "warna_peta": tugas_data.get("kelas_warna") or {},
     })
 
 

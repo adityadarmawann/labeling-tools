@@ -122,8 +122,55 @@ function hashKode(s) {
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
   return Math.abs(h);
 }
+// Palet kelas, SAMA PERSIS dengan PALET di render.py & versi.js. Warna yang
+// kontrasnya besar dan beda jelas, bukan rona HSL yang nyaris serupa.
+const PALET = [
+  '#e6194b', '#3cb44b', '#4363d8', '#f58231', '#911eb4', '#008080',
+  '#f032e6', '#9a6324', '#808000', '#e67e22', '#2980b9', '#c0392b',
+  '#16a085', '#8e44ad', '#d35400', '#27ae60', '#2c3e50', '#e84393',
+  '#00a8cc', '#f1c40f', '#6ab04c', '#eb4d4b', '#686de0', '#30336b',
+];
+// Grid warna untuk PEMILIH: 100+ warna kontras, teratur per kolom warna dasar
+// (kolom merah, oranye, ..., ungu, lalu abu-abu), tiap kolom bergradasi dari
+// terang ke gelap. Satu sumber (HUE_KOLOM x TINGKAT), dicerminkan konsepnya di
+// versi.js. Nilai disimpan sebagai hex supaya identik di server & kanvas.
+function hslToHex(h, s, l) {
+  s /= 100; l /= 100;
+  const k = n => (n + h / 30) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const f = n => {
+    const c = l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+    return Math.round(255 * c).toString(16).padStart(2, '0');
+  };
+  return `#${f(0)}${f(8)}${f(4)}`;
+}
+const PALET_GRID = (() => {
+  // 15 kolom warna + 1 kolom abu-abu. Hue dipilih supaya kolomnya terbaca
+  // sebagai "merah/oranye/kuning/hijau/..." yang berbeda jelas.
+  const hue = [0, 18, 32, 45, 60, 85, 135, 165, 190, 210, 230, 258, 280, 305, 330];
+  const tingkat = [  // [lightness, saturation] terang -> gelap
+    [78, 70], [66, 72], [55, 72], [46, 70], [38, 68], [30, 64], [22, 58],
+  ];
+  const kolom = hue.map(h => tingkat.map(([l, s]) => hslToHex(h, s, l)));
+  // Kolom abu-abu: dari terang ke gelap, tanpa saturasi.
+  kolom.push(tingkat.map(([l]) => hslToHex(0, 0, l)));
+  return kolom;                       // 16 kolom x 7 = 112 warna
+})();
+
+// Warna identitas kelas pilihan projek (dari server) DIGABUNG suntingan lokal
+// yang belum sempat termuat ulang. Dipakai lebih dulu sebelum palet.
+const KELAS_WARNA = Object.assign({}, D.kelas_warna || {});
+/* Warna sebuah kelas: warna pilihan projek kalau ada, kalau tidak dari palet
+   menurut hash nama. Grup objek ('grup:<id>') tetap pakai rona hash lama —
+   itu pewarnaan instance, bukan identitas kelas. */
 function warna(label, alpha) {
-  const h = (hashKode(String(label)) % 997) / 997 * 360;
+  const s = String(label);
+  if (!s.startsWith('grup:')) {
+    const o = hexKeRgba(KELAS_WARNA[s], alpha);
+    if (o) return o;
+    return hexKeRgba(PALET[hashKode(s) % PALET.length], alpha);
+  }
+  const h = (hashKode(s) % 997) / 997 * 360;
   return `hsla(${h.toFixed(0)},62%,55%,${alpha})`;
 }
 
@@ -2415,10 +2462,17 @@ function renderKelas() {
     if (k === S.label) d.setAttribute('data-on', '');
     const i = document.createElement('i');
     i.style.background = warna(k, 1);
+    // Pemilik/Editor bisa menukar warna identitas kelas: klik swatch -> pemilih
+    // warna. Pelabel biasa hanya melihat (swatch tak bisa diklik).
+    if (D.boleh_warna) {
+      i.classList.add('kelas-warna');
+      i.title = 'Klik untuk mengubah warna kelas ini';
+      i.onclick = (ev) => { ev.stopPropagation(); pilihWarnaKelas(k); };
+    }
     const sp = document.createElement('span');
     sp.textContent = k;
     d.append(i, sp);
-    if (resmi.has(k)) d.title = 'kelas resmi dataset (data.yaml)';
+    if (resmi.has(k) && !i.title) d.title = 'kelas resmi dataset (data.yaml)';
     // Tombol hapus HANYA untuk kelas yang aman dibuang: kelas tambahan
     // (kelas_awal) milik pemilik yang BELUM dipakai satu objek pun dan bukan
     // kelas resmi. Kelas yang dipakai/resmi tak diutak-atik dari sini.
@@ -2435,6 +2489,86 @@ function renderKelas() {
     d.onclick = () => { S.label = (S.label === k) ? '' : k; render(); };
     box.appendChild(d);
   });
+}
+
+/* Pemilih warna kelas: popover grid 100+ warna, teratur per kolom warna dasar.
+   Satu popover dipakai ulang; ditutup saat klik di luar atau Esc. */
+let _popWarna = null;
+function tutupPemilihWarna() {
+  if (_popWarna) { _popWarna.remove(); _popWarna = null; }
+  document.removeEventListener('keydown', _escWarna, true);
+  document.removeEventListener('pointerdown', _luarWarna, true);
+}
+function _escWarna(e) { if (e.key === 'Escape') { e.stopPropagation(); tutupPemilihWarna(); } }
+function _luarWarna(e) { if (_popWarna && !_popWarna.contains(e.target)) tutupPemilihWarna(); }
+
+function pilihWarnaKelas(k) {
+  tutupPemilihWarna();
+  const pop = document.createElement('div');
+  pop.className = 'warna-pop';
+  const judul = document.createElement('div');
+  judul.className = 'warna-pop-judul';
+  judul.textContent = `Warna kelas "${k}"`;
+  pop.appendChild(judul);
+  const grid = document.createElement('div');
+  grid.className = 'warna-grid';
+  const aktif = (KELAS_WARNA[k] || '').toLowerCase();
+  PALET_GRID.forEach(kolom => {
+    const col = document.createElement('div');
+    col.className = 'warna-kolom';
+    kolom.forEach(hex => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'warna-sel';
+      b.style.background = hex;
+      b.title = hex;
+      if (hex.toLowerCase() === aktif) b.setAttribute('data-on', '');
+      b.onclick = () => simpanWarnaKelas(k, hex);
+      col.appendChild(b);
+    });
+    grid.appendChild(col);
+  });
+  pop.appendChild(grid);
+  // Baris aksi: kembalikan ke warna bawaan (palet otomatis).
+  const kaki = document.createElement('div');
+  kaki.className = 'warna-pop-kaki';
+  const reset = document.createElement('button');
+  reset.type = 'button'; reset.className = 'warna-reset';
+  reset.textContent = 'Pakai warna bawaan';
+  reset.onclick = () => simpanWarnaKelas(k, '');
+  kaki.appendChild(reset);
+  pop.appendChild(kaki);
+  document.body.appendChild(pop);
+  // Posisikan dekat panel kelas (kiri bawah) tanpa keluar layar.
+  const box = el('kelas').getBoundingClientRect();
+  const x = Math.min(box.right + 8, window.innerWidth - pop.offsetWidth - 8);
+  const y = Math.min(box.top, window.innerHeight - pop.offsetHeight - 8);
+  pop.style.left = Math.max(8, x) + 'px';
+  pop.style.top = Math.max(8, y) + 'px';
+  _popWarna = pop;
+  document.addEventListener('keydown', _escWarna, true);
+  document.addEventListener('pointerdown', _luarWarna, true);
+}
+
+async function simpanWarnaKelas(k, hex) {
+  try {
+    const r = await fetch('/api/tugas/warna-kelas', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nama: k, warna: hex || '' }),
+    });
+    const j = await r.json();
+    if (!j.ok) { toast(j.error || 'Gagal menyimpan warna'); return; }
+    // Peta dari server adalah kebenaran: kelas yang dikembalikan ke bawaan
+    // hilang dari peta, jadi ganti seluruhnya, bukan sekadar menimpa satu.
+    for (const key of Object.keys(KELAS_WARNA)) delete KELAS_WARNA[key];
+    Object.assign(KELAS_WARNA, j.kelas_warna || {});
+    D.kelas_warna = Object.assign({}, KELAS_WARNA);
+    tutupPemilihWarna();
+    render();                       // kanvas + swatch panel ikut berubah
+    toast(hex ? 'Warna kelas diperbarui' : 'Warna kelas kembali ke bawaan');
+  } catch (e) {
+    toast('Gagal menghubungi server');
+  }
 }
 
 const RINGKAS_JENIS = { rectangle: 'kotak', circle: 'lingkaran',
