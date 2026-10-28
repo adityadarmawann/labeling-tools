@@ -13,6 +13,7 @@
 {% include "_sisi.html" %}
 <div class="sisi-isi bg-isi" id="bg-isi"
      data-ds="{{ pr.ds }}" data-pemilik="{{ pemilik }}"
+     data-kelola="{{ 1 if boleh_kelola else 0 }}"
      {#- Seluruh yang belum ditugaskan, termasuk yang tidak digambar sebagai
          ubin. Slidernya memakai angka ini; tanpa itu ia menjepit ke jumlah
          ubin dan meminta 410 diam-diam berubah jadi 400. -#}

@@ -22,6 +22,14 @@
   if (!isi || !$('bg-tambah-orang')) return;
 
   const PEMILIK = isi.dataset.pemilik || '';
+  // Kelola anggota (undang/atur/keluarkan/batalkan) = HANYA pemilik (boleh_kelola).
+  // Editor boleh membagi tugas (dan melihat daftar anggota untuk memilih
+  // pelabel), tapi bukan mengelola keanggotaan -- rute-rutenya memang
+  // menolaknya. Dulu tombol-tombolnya tetap tampil lalu selalu gagal.
+  const KELOLA = isi.dataset.kelola === '1';
+  if (!KELOLA) {
+    const t = $('bg-tambah-orang'); if (t) t.hidden = true;
+  }
 
   // Keadaan peran/scope yang datang dari /api/tugas/calon, dipakai bersama oleh
   // daftar anggota dan kotak undang/atur.
@@ -124,8 +132,9 @@
     wadah.replaceChildren();
 
     // Undangan yang belum dipakai ditampilkan lebih dulu: pekerjaan yang belum
-    // selesai, dan tautan yang tak bisa dicabut berlaku selamanya.
-    for (const u of (j.undangan || [])) {
+    // selesai, dan tautan yang tak bisa dicabut berlaku selamanya. Hanya untuk
+    // pemilik -- editor tak mengelola undangan (lihat KELOLA).
+    for (const u of (KELOLA ? (j.undangan || []) : [])) {
       const el = document.createElement('div');
       el.className = 'bg-orang-baris bg-menunggu';
       el.innerHTML =
@@ -158,8 +167,9 @@
         + `<span class="halus">${esc(a.email || a.akun)}${badge}</span></span>`
         + '<span class="bg-orang-n"></span>';
 
-      // Anggota non-pemilik: tombol Atur peran + tombol Keluarkan.
-      if (a.anggota && a.akun !== j.pemilik) {
+      // Anggota non-pemilik: tombol Atur peran + tombol Keluarkan. HANYA untuk
+      // pemilik (KELOLA); editor cukup melihat daftarnya untuk memilih pelabel.
+      if (a.anggota && a.akun !== j.pemilik && KELOLA) {
         const atur = document.createElement('button');
         atur.type = 'button'; atur.className = 'bg-atur';
         atur.textContent = 'Atur';
