@@ -184,3 +184,33 @@ def test_fps_sampling_dan_prioritas():
     assert (ekstraksi.target_frame(600, fps=0.5)
             < ekstraksi.target_frame(600, fps=1.0)
             < ekstraksi.target_frame(600, fps=3.0))
+
+
+# --------------------------------------------------- jalur ffmpeg & resolusi
+
+def test_resolusi_penuh_dipertahankan(tmp_path):
+    """Gambar hasil harus SAMA resolusinya dengan video (tak diturunkan). Dulu
+    dekode HDR via OpenCV bisa membuat gambar terlalu terang; jalur ffmpeg
+    mempertahankan resolusi penuh dan warna yang benar."""
+    vp = _video_tajam(tmp_path / "v.mp4", n=60, fps=30.0)   # 320x240, 2 dtk
+    out = tmp_path / "hasil"
+    r = ekstraksi.ekstrak(vp, out, prefix="v", fps=3.0)
+    assert r["ditulis"] >= 1
+    img = cv2.imread(str(out / r["nama"][0]))
+    assert img is not None
+    assert (img.shape[1], img.shape[0]) == (320, 240), "resolusi gambar berubah"
+
+
+def test_hdr_trc_terdeteksi():
+    """color_transfer HDR dikenali supaya tone-map dinyalakan; SDR tidak."""
+    assert "smpte2084" in ekstraksi._HDR_TRC      # HDR10
+    assert "arib-std-b67" in ekstraksi._HDR_TRC   # HLG
+    assert "bt709" not in ekstraksi._HDR_TRC       # SDR biasa
+
+
+def test_ffmpeg_tak_ada_jatuh_ke_opencv(tmp_path, monkeypatch):
+    """Tanpa ffmpeg, ekstraksi tetap jalan lewat jalur OpenCV (cadangan)."""
+    monkeypatch.setattr(ekstraksi, "_ffbin", lambda: None)
+    vp = _video_tajam(tmp_path / "v.mp4", n=60, fps=30.0)
+    r = ekstraksi.ekstrak(vp, tmp_path / "hasil", prefix="v", fps=3.0)
+    assert r["ditulis"] >= 1 and r["nama"]
