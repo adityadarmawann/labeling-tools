@@ -64,11 +64,60 @@ over-insert, cache thumbnail (no-cache), timeout unggah HP/ingest, format versi
 Campuran, jejak pelabel saat navigasi, tag yatim, email penugasan-ulang + dedup
 undang, auto-login daftar, warna bawaan kelas aksi, QR HP hanya projek datar.
 
+Diperbaiki sesi re-audit (putaran ke-2, sesudah audit menyeluruh):
+- **Open-redirect regresi** di cabang auto-login `daftar_langsung` (auth.py):
+  `next` kini dibersihkan sama seperti /login ('//' + skema dibuang).
+- **Unggah video-saja: nama batch + tag mendarat di 0 gambar.** `tandai()`
+  jalan sesudah ekstraksi, tapi `sess.items` dipindai saat projek masih 0
+  frame. `/api/tag/pasang?tanpa_batch` kini `periksa_disk` dulu -> frame hasil
+  ekstraksi ikut terhitung.
+- **`tungguEkstrak` berputar selamanya untuk video unggah-folder.** Status
+  dikunci nama-dasar di server; klien kini menyamakan ke nama-dasar juga.
+- **undang-email**: guard `sudah_anggota` disamakan dengan /undang (tak kirim
+  ulang email "ditambahkan" ke anggota lama).
+- **versi.js**: panel detail tak lagi salah melabeli versi `campuran`/`kerangka`
+  sebagai "Poligon (segmentasi)".
+- **Editor "Tugaskan ulang" ke orang baru**: dialog board kini menyembunyikan
+  jalur undang (owner-only) dari Editor + beri penjelasan, bukan tombol yang
+  pasti ditolak. (anotasi.html `data-kelola`, anotasi.js `KELOLA`.)
+- **`_sesi.json.tmp` nama unik per tulis** (session.py): catat()-saat-pindah
+  membuat tulisan serempak lebih sering; tmp bersama bisa saling menimpa.
+
 Masih TERBUKA (LOW/edge; ditunda supaya tak menambah risiko ke jalur produksi):
+- **Batch training abaikan arsitektur per-item** (latih.py ~191, latih.js ~1527)
+  -- MED, BUTUH PERSETUJUAN sebelum disentuh (jalur luncur training). Desain:
+  arsitektur "sekali untuk SELURUH kiriman". Tapi antrean BOLEH dicampur
+  (tiap item simpan `arsitektur` saat ditambah, selektor bisa berubah sesudah),
+  lalu server pakai arsitektur top-level saat klik Jalankan -> item YOLO bisa
+  jalan sebagai Mask R-CNN diam-diam. Perbaikan aman (client-only): larang
+  menambah item berarsitektur beda ke antrean, dan di Jalankan ambil arsitektur
+  dari kepala antrean (bukan selektor hidup). Tak disentuh sesi ini sesuai
+  permintaan (ada training 521 berjalan; tunggu restu).
+- **"Bagi tugas" pada kartu "Tanpa nama unggahan" over-scope** (tugas.py ~131):
+  `_belum_ditugaskan` memperlakukan batch `""` sebagai "semua batch", padahal
+  Hapus/Masukkan memperlakukannya ketat (hanya tanpa-nama). Query string tak
+  bisa membedakan ""=tanpa-nama vs unset; butuh flag `semua` eksplisit seperti
+  dataset-siap. Dampak: over-scope/kejutan, bukan korupsi.
+- **ffmpeg gagal-keras tak jatuh ke OpenCV** (ekstraksi.py): `_ekstrak_ffmpeg`
+  melempar `EkstrakTolak` pada returncode!=0, dan `ekstrak()` me-reraise
+  EkstrakTolak (hanya galat tak-terduga yang jatuh ke OpenCV) -> video yang
+  ffmpeg tak bisa decode tapi OpenCV bisa malah dihapus. Perbaiki: bedakan
+  "tak terbaca" (hapus) dari "ffmpeg error" (coba OpenCV dulu).
+- **"Coba lagi sisanya" mati** sesudah ekstraksi video-saja gagal (unggah.js):
+  tombol memanggil `kirim(true)` yang menyaring yang sudah di `berhasil` (unggah
+  video SUDAH sukses) -> daftar kosong -> "Semua berkas gagal" menyesatkan;
+  ekstraksi tak pernah dipicu ulang. Perbaiki: untuk video, "coba lagi" memicu
+  ulang `/ekstrak`, bukan unggah ulang.
+- **Thumbnail yatim saat warna kelas berubah** (review.py / warna-kelas): ganti
+  warna mengubah `fp` thumbnail tapi tak `drop_thumbs_for`; thumbnail lama
+  menumpuk di `_bersama/` sampai restart. Disk-only; ETag baru tetap benar.
 - **Estimasi versi ≠ build** saat Modify Classes mengubah gambar jadi latar
   (split neg didorong ke train di build, disebar di estimasi). Dampak terbatas:
   output berlabel "Perkiraan, bukan janji". Perbaiki dengan menjalankan
   `saring_untuk_split` juga di `versi_estimasi`.
+- **Hitung kelas langkah-1 ≠ langkah-6** (buatversi.py ~1762 vs datasets.py
+  ~404): langkah-1 pakai kelas yang PUNYA objek, langkah-6 ikut kelas
+  dideklarasi-tapi-kosong. Preview saja; data.yaml build otoritatif.
 - **Email training bisa dobel** antar-proses (subprocess + web) pada balapan
   sempit; flag `surel_terkirim` yang dipersist menutup kasus umum.
 - **Batch training gagal sebagian** meninggalkan training yang sudah diluncurkan;
