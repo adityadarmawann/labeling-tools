@@ -1194,6 +1194,16 @@
       awas.textContent = 'Semua kelas jadi kotak: polygon diringkas ke kotak '
         + 'pembungkusnya. Semua gambar ikut, tidak ada yang dikembalikan ke '
         + '"Belum ditugaskan".';
+    } else if (fmt === 'campuran') {
+      // Campuran (Mask R-CNN): objek kotak TETAP kotak, polygon jadi mask.
+      // Tidak ada yang diblokir atau dikembalikan -- server memperlakukannya
+      // sebagai jenis tersendiri (versi_mulai: kelas_tak_bisa_poligon hanya
+      // berlaku saat jenis_ds == 'poligon'). Dulu campuran jatuh ke cabang
+      // poligon di bawah, lalu kelas dominan-kotak mengunci tombol Buat.
+      awas.style.color = '#15803d';
+      awas.textContent = 'Campuran: objek kotak tetap kotak, objek polygon jadi '
+        + 'mask (untuk Mask R-CNN). Semua gambar ikut, tidak ada yang '
+        + 'dikembalikan ke "Belum ditugaskan".';
     } else {
       const blok = dipakai.filter((k) => bentukDominan(k) === 'kotak');
       const perbaiki = dipakai.filter((k) => bentukDominan(k) === 'poligon')

@@ -36,3 +36,21 @@ sistem warna TERPISAH untuk kelas aksi klip:
 3. Pastikan warna identik di: grid klip, poster, dan ringkasan versi video.
 4. Cerminkan `PALET` di satu tempat kalau bisa (hindari tiga salinan: sekarang
    ada di `render.py`, `label.js`, `versi.js` — semua HARUS sama persis).
+
+## Simpan keypoint pose ke YOLO .txt (HIGH, butuh uji pose)
+
+Temuan audit: `/api/simpan` menulis label YOLO lewat `scanner.tulis_yolo`, yang
+TIDAK sadar-pose (`dipakai` hanya polygon/rectangle/circle; shape `point`
+dibuang). Untuk projek YOLO-pose, mengedit keypoint di kanvas lalu menyimpan
+membuat `.txt` hanya memuat bbox-nya; keypoint hilang dari label latih & dari
+pembacaan ulang (`_gabung_cadangan` membatalkan merge saat jumlah shape beda).
+
+Projek labelme (.json) TIDAK terpengaruh (save non-YOLO melewati tulis_yolo).
+
+BELUM diperbaiki karena berisiko: menulis format pose `cls cx cy w h (px py v)*K`
+butuh mengubah `tulis_yolo` (jalur inti yang juga dipakai simpan KOTAK yang
+sedang dipakai produksi basket). Harus dikerjakan dengan uji pose end-to-end
+(impor YOLO-pose -> edit keypoint di kanvas -> simpan -> baca ulang -> keypoint
+utuh -> ekspor yolo-pose cocok) supaya jalur kotak tak ikut rusak. Scope: writer
+pose-aware yang mengelompokkan rect+point per group_id, + guard di api_simpan
+(`sess.kpt_sesi()` not None -> jalur pose).
