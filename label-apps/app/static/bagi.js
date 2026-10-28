@@ -106,7 +106,7 @@
         const n = (a.batch_scope || []).length;
         return n ? `Labeler · ${n} batch` : 'Labeler · scope kosong';
       }
-      if (a.akses === 'semua') return 'Labeler · menyeluruh';
+      if (a.akses === 'semua') return 'Labeler · seluruh projek';
       return 'Labeler · jatah papan';      // warisan (akses belum disetel)
     }
     return 'Anggota';
@@ -241,10 +241,11 @@
     $('bg-scope').hidden = !(peran === 'pelabel' && akses === 'spesifik');
     const ket = $('bg-peran-ket');
     ket.textContent = peran === 'editor'
-      ? 'Editor: boleh mengunggah media + melabeli SEMUA. Tak mengelola projek/anggota.'
+      ? 'Editor = anggota SELURUH projek: boleh unggah media + melabeli semua. '
+        + '(Tak mengelola projek/anggota.)'
       : akses === 'spesifik'
-        ? 'Labeler spesifik: hanya melabeli batch yang dicentang.'
-        : 'Labeler menyeluruh: melabeli semua gambar, tak mengunggah.';
+        ? 'Hanya melabeli BATCH yang dicentang — bukan seluruh projek.'
+        : 'Melabeli SEMUA gambar di seluruh projek (tak mengunggah).';
   }
 
   function resetForm() {
@@ -253,8 +254,18 @@
     $('bg-undang-nama').hidden = true;
     $('bg-email').value = '';
     setSeg('bg-peran', 'pelabel');
-    setSeg('bg-akses', 'semua');
-    renderScope([]);
+    // Dibuka dari konteks SATU batch (mis. "Bagi tugas" batch tertentu) -> default
+    // BAGIKAN BATCH ITU SAJA, batch-nya langsung tercentang. Memperbaiki kejutan
+    // "pilih orang untuk 1 batch malah dapat akses SELURUH projek". Tanpa konteks
+    // batch -> default "Seluruh projek" seperti biasa.
+    const batchKonteks = (isi.dataset.batch || '').trim();
+    if (batchKonteks) {
+      setSeg('bg-akses', 'spesifik');
+      renderScope([batchKonteks]);
+    } else {
+      setSeg('bg-akses', 'semua');
+      renderScope([]);
+    }
     $('bg-undang-kirim').textContent = 'Undang';
     $('bg-undang-batal').hidden = true;
     $('bg-undang-jalur').replaceChildren();
