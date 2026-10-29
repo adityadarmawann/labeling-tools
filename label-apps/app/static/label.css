@@ -369,8 +369,11 @@ body.lab {
 /* Alat bernama: ikon di atas, nama di bawah — sama seperti rel panel di kiri,
    supaya keduanya terbaca dengan cara yang sama. */
 .lab-palet .tool {
-  width: 62px; padding: 6px 0 5px;
-  grid-auto-flow: row; gap: 3px; line-height: 1.1;
+  /* Padding & jarak ikon-nama dirapatkan: dulu 6/5 + gap 3 membuat kotak sorot
+     hijau (alat aktif, .tool[data-on]) terasa terlalu besar dan namanya
+     terpaut jauh dari ikonnya. */
+  width: 62px; padding: 4px 0 4px;
+  grid-auto-flow: row; gap: 2px; line-height: 1.1;
 }
 .lab-palet .tool span { display: block; }
 .palet-judul {
