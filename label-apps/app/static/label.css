@@ -346,7 +346,13 @@ body.lab {
   padding: 6px; border-radius: 14px;
   background: var(--panel); border: 1px solid var(--line);
   box-shadow: 0 6px 20px rgba(var(--bayang),.13);
-  max-height: calc(100% - 28px); overflow-y: auto;
+  /* Palet terpusat vertikal. Pil Auto (Bersih/Jadikan objek) duduk di
+     kanan-bawah pada right:14/bottom:14, "sebaris di bawah palet". Dulu
+     max-height cuma menyisakan 28px, jadi palet yang tinggi (pemilik melihat
+     Template KP + seluruh alat manual) memanjang turun MENUTUPI pil itu di
+     layar pendek. Karena palet terpusat, ruang untuk pil (~72px) dicadangkan
+     di KEDUA ujung supaya tepi bawahnya berhenti di atas pil; sisanya digulir. */
+  max-height: calc(100% - 144px); overflow-y: auto;
 }
 .tool {
   min-width: 40px; min-height: 40px;
