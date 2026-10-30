@@ -400,3 +400,40 @@ def test_e2e_unzip_pose_tak_menimpa_skeleton_manual(klien, lingkungan):
 
     sk = tugas.baca(d, "paul")["skeleton"]
     assert sk["titik"] == ["x", "y"] and sk["kelas"] == "lapangan"  # utuh
+
+
+def test_impor_pose_jadi_datar_labelme(klien, lingkungan):
+    """Projek skeleton impor Roboflow -> DATAR labelme (bukan YOLO).
+
+    Dua akibat kalau jadi YOLO: (1) keypoint hilang saat simpan (tulis_yolo
+    cuma simpan bbox), (2) video TAK boleh diunggah (gate kosong/datar). Projek
+    skeleton memang alurnya: unggah video -> ekstrak frame -> labeli keypoint,
+    jadi ia HARUS datar. Konversi label YOLO-pose .txt -> labelme .json utuh."""
+    from tests.test_data import masuk, PW_PAUL
+    from tests.test_projek import _projek
+    from app.services import tambah
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = lingkungan["ruang"]
+    d = _projek(ruang, "court-datar", n=0, label=False)
+
+    klien.put("/upload?ds=court-datar&name=court.zip", content=_zip_pose_kecil())
+    assert klien.post("/unzip?ds=court-datar&name=court.zip").json()["ok"]
+    assert klien.post("/useupload?ds=court-datar").json()["ok"]
+
+    # DATAR, bukan YOLO -> video boleh, keypoint utuh di .json.
+    assert tambah.tata_letak(d) == tambah.TATA_DATAR
+    assert not (d / "images").exists() and not (d / "labels").exists()
+    assert not (d / "data.yaml").exists()
+
+    items, _ = scanner.scan(d)
+    pose = [it for it in items if it["shapes"]]
+    assert pose, "tak ada gambar pose terbaca"
+    it = pose[0]
+    rect = [s for s in it["shapes"] if s["type"] == "rectangle"]
+    poin = [s for s in it["shapes"] if s["type"] == "point"]
+    assert len(rect) == 1 and len(poin) == 4
+    assert {s["label"] for s in poin} == {"1", "2", "3", "4"}
+    assert all(s["group_id"] == rect[0]["group_id"] for s in poin)
+    assert not it.get("yolo"), "projek datar: .json harus jadi sumber kebenaran"
+    assert tugas.skeleton_aktif(tugas.baca(d, "paul"))   # template tetap ada

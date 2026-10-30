@@ -892,6 +892,9 @@ async def impor_dari_server(path: str = "", ds: str = "",
     # data.yaml bertahan di akar setelah ratakan_split, jadi pose masih terbaca.
     _pemilik = projek.pemilik_dari(settings.uploads_root, tujuan)
     await asyncio.to_thread(tugas.buat_skeleton_dari_pose, tujuan, _pemilik)
+    # Projek POSE/skeleton -> DATAR labelme: keypoint utuh di .json + boleh
+    # menerima video. Sama seperti /useupload.
+    await asyncio.to_thread(tambah.impor_pose_ke_datar, tujuan)
     # FILTER otomatis: isi berlabel langsung masuk dataset (dataset jadi lengkap),
     # isi mentah menunggu dilabeli.
     await asyncio.to_thread(tugas.masuk_dataset_berlabel, tujuan, _pemilik)
@@ -1062,6 +1065,10 @@ async def use_upload(ds: str = "", sess: Session = Depends(current_session_api),
     # template di sini juga. Idempoten — kalau /unzip sudah membuatnya, dilewati.
     _pemilik = projek.pemilik_dari(settings.uploads_root, d)
     await asyncio.to_thread(tugas.buat_skeleton_dari_pose, d, _pemilik)
+    # Projek POSE/skeleton impor -> DATAR labelme (sesudah template dibuat):
+    # keypoint hanya utuh di .json (YOLO .txt membuangnya), dan projek datar
+    # boleh menerima VIDEO (ekstrak frame) -- itu alur utama projek skeleton.
+    await asyncio.to_thread(tambah.impor_pose_ke_datar, d)
     # Unggahan (termasuk "dataset jadi" dari Roboflow) TIDAK lagi langsung masuk
     # dataset: ia mendarat sebagai BATCH di papan Anotasi supaya ditinjau/dibagi
     # dulu, lalu dimasukkan ke dataset lewat tombol "Masukkan" saat siap. Dulu

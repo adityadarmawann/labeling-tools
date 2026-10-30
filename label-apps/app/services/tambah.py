@@ -285,6 +285,99 @@ def ratakan_split(d: Path) -> dict:
     return {"diratakan": diratakan, "bentrok": bentrok}
 
 
+def impor_pose_ke_datar(d: Path) -> int:
+    """
+    Projek POSE hasil impor (images/+labels/ YOLO-pose) -> labelme DATAR.
+
+    Projek skeleton HARUS datar, bukan YOLO: di YOLO `tulis_yolo` membuang
+    keypoint saat menyimpan (cuma bbox yang bertahan di .txt latih), DAN video
+    tak boleh diunggah (gate BOLEH_VIDEO = kosong/datar). Jadi tiap label
+    YOLO-pose .txt dikonversi ke labelme .json (1 rectangle + K point
+    ber-`flags.v`, dikelompokkan per instance lewat `group_id`; keypoint absen
+    v0 ditaruh di pusat bbox -- cermin scanner.read_yolo), gambar dipindah ke
+    akar, lalu images/labels/data.yaml dibuang supaya tata jadi DATAR dan .json
+    jadi SUMBER KEBENARAN (keypoint utuh).
+
+    No-op kalau bukan projek pose, atau sudah datar (tak ada images/+labels/).
+    Dipanggil di /useupload SESUDAH ratakan_split + buat_skeleton_dari_pose.
+    -> jumlah gambar dikonversi.
+    """
+    import json as _json
+
+    from PIL import Image
+
+    from .annotations import LABELME_VERSION
+
+    d = Path(d)
+    img_dir, lbl_dir = d / "images", d / "labels"
+    if not img_dir.is_dir() or not lbl_dir.is_dir():
+        return 0
+    kpt = scanner._kpt_dari_projek(d)          # {"K", "titik"} atau None
+    if not kpt:
+        return 0
+    titik = list(kpt.get("titik") or [])
+    names = scanner.baca_nama_kelas(d)         # {idx: nama}
+    n = 0
+    for p in sorted(img_dir.iterdir()):
+        if not (p.is_file() and p.suffix.lower() in IMG_EXT):
+            continue
+        dest = d / p.name
+        if dest.exists():                      # jangan menimpa berkas akar
+            continue
+        try:
+            W, H = Image.open(p).size
+        except Exception:                      # noqa: BLE001 -- gambar rusak
+            continue
+        shapes = []
+        txt = lbl_dir / (p.stem + ".txt")
+        if txt.is_file():
+            for gid, ln in enumerate(txt.read_text(encoding="utf-8",
+                                                   errors="ignore").splitlines()):
+                f = ln.split()
+                if len(f) < 5:
+                    continue
+                try:
+                    c = int(float(f[0]))
+                    cx, cy, w, h = map(float, f[1:5])
+                    kp = list(map(float, f[5:]))
+                except ValueError:
+                    continue
+                x1 = max(0.0, min(float(W), (cx - w / 2) * W))
+                y1 = max(0.0, min(float(H), (cy - h / 2) * H))
+                x2 = max(0.0, min(float(W), (cx + w / 2) * W))
+                y2 = max(0.0, min(float(H), (cy + h / 2) * H))
+                ccx, ccy = cx * W, cy * H
+                shapes.append({"label": names.get(c, str(c)), "text": "",
+                               "points": [[x1, y1], [x2, y2]], "group_id": gid,
+                               "shape_type": "rectangle", "flags": {}})
+                for i in range(len(titik)):
+                    if i * 3 + 2 >= len(kp):
+                        break
+                    px, py = kp[i * 3], kp[i * 3 + 1]
+                    v = int(kp[i * 3 + 2])
+                    x, y = (ccx, ccy) if v == 0 else (px * W, py * H)
+                    shapes.append({"label": str(titik[i]), "text": "",
+                                   "points": [[x, y]], "group_id": gid,
+                                   "shape_type": "point", "flags": {"v": v}})
+        doc = {"image_text": "", "version": LABELME_VERSION, "flags": {},
+               "shapes": shapes, "imagePath": p.name, "imageData": None,
+               "imageHeight": H, "imageWidth": W}
+        jp = d / (p.stem + ".json")
+        tmp = jp.with_name(jp.name + ".tmp")
+        tmp.write_text(_json.dumps(doc, ensure_ascii=False, indent=1),
+                       encoding="utf-8")
+        tmp.replace(jp)
+        p.replace(dest)                        # gambar -> akar
+        n += 1
+    if n:
+        import shutil
+        for sub in ("images", "labels"):
+            shutil.rmtree(d / sub, ignore_errors=True)
+        for f in ("data.yaml", "data.yml", "dataset.yaml"):
+            (d / f).unlink(missing_ok=True)
+    return n
+
+
 def gabung_dataset_ke_projek(zp: Path, d: Path, *, maks_byte: int,
                              maks_entri: int = 200_000) -> dict:
     """
