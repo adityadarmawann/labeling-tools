@@ -432,7 +432,16 @@ async def gambar(path: str = "", sess: Session = Depends(current_session)):
     if not it:
         return Response(status_code=404)
     p: Path = it["img"]
-    return Response(p.read_bytes(),
+    try:
+        isi = p.read_bytes()
+    except OSError:
+        # Frame sempat ADA saat sesi memindai, lalu terhapus/terpindah di tengah
+        # labeling (dibuang ke sampah, re-ekstraksi, dll). Tanpa tangkapan ini
+        # `read_bytes` melempar FileNotFoundError -> 500 "server error" yang
+        # menakutkan tiap kali pindah ke gambar berikutnya. 404 bersih: gambar
+        # itu memang tak ada lagi, navigasi lain tetap jalan.
+        return Response(status_code=404)
+    return Response(isi,
                     media_type=MIME.get(p.suffix.lower(), "application/octet-stream"),
                     headers={"Cache-Control": "private, max-age=300"})
 

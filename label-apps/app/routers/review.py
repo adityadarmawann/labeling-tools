@@ -583,10 +583,17 @@ async def thumb(request: Request, path: str = "", s: int = 320,
         return Response(status_code=304, headers={
             "ETag": etag, "Cache-Control": "private, no-cache"})
 
-    tp = await asyncio.to_thread(render.thumb_path, sess, it, side)
-    if not tp:
+    # Sumbernya bisa terhapus/terpindah di tengah churn (buang ke sampah,
+    # re-ekstraksi) -> pembuatan thumbnail atau pembacaannya gagal. 404 bersih,
+    # bukan 500: satu thumbnail hilang tak boleh menjatuhkan seluruh halaman grid.
+    try:
+        tp = await asyncio.to_thread(render.thumb_path, sess, it, side)
+        if not tp:
+            return Response(status_code=404)
+        isi = tp.read_bytes()
+    except OSError:
         return Response(status_code=404)
-    return Response(tp.read_bytes(), media_type="image/jpeg",
+    return Response(isi, media_type="image/jpeg",
                     headers={"ETag": etag,
                              "Cache-Control": "private, no-cache"})
 

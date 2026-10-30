@@ -95,3 +95,29 @@ def test_nav_beku_jumlah_tetap_saat_item_dilabeli(monkeypatch):
     prev, nxt, pos, _ = annotate._nav(
         sess, a, job="J", saring="sudah", uploads_root=None)
     assert pos[1] == 2                                   # subset live kini [a, cc]
+
+
+def test_gambar_404_kalau_berkas_hilang_di_tengah_jalan(klien, lingkungan):
+    """Frame ADA saat sesi memindai, lalu terhapus/terpindah (dibuang ke sampah,
+    re-ekstraksi) SEBELUM /gambar membacanya. Dulu read_bytes melempar
+    FileNotFoundError -> 500 'server error' tiap pindah ke gambar berikutnya
+    (terlihat di log prod court-badminton saat churn ekstraksi). Harus 404
+    bersih; navigasi lain tetap jalan."""
+    import pathlib
+
+    from tests.test_data import masuk, PW_PAUL
+    from tests.test_projek import _projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = _projek(ruang, "hilang-ditengah", n=2, label=False)
+    klien.post(f"/setsrc?path={d}")
+    g = sorted(d.glob("*.jpg"))
+    path = str(g[0])
+    assert klien.get("/gambar", params={"path": path}).status_code == 200
+    g[0].unlink()                              # terhapus di tengah labeling
+    r = klien.get("/gambar", params={"path": path})
+    assert r.status_code == 404, f"harus 404 bersih, bukan {r.status_code}"
+    # Frame KEDUA yang masih ada tetap terlayani -> satu frame hilang tak
+    # mematikan navigasi.
+    assert klien.get("/gambar", params={"path": str(g[1])}).status_code == 200
