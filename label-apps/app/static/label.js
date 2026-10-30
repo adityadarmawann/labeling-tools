@@ -1101,7 +1101,7 @@ function tikusTurun(ev) {
       if (!S.terpilih.includes(v.i)) pilihBentuk(v.i, false);
       else S.sel = v.i;
       S.selv = v.v;
-      S.seret = { jenis: 'vertex', i: v.i, v: v.v };
+      S.seret = { jenis: 'vertex', i: v.i, v: v.v, pose: tangkapPoseBox(v.i) };
       render();
       return;
     }
@@ -1118,6 +1118,7 @@ function tikusTurun(ev) {
       //    dilepas — AnyLabeling menguji `not moving_shape` untuk hal yang sama,
       //    supaya menyeret objek terpilih tidak ikut melepas pilihannya.
       S.seret = { jenis: 'bentuk', i, x0: gx, y0: gy, klikUlang: sudahTerpilih,
+                  pose: tangkapPoseBox(i),
                   awal: S.terpilih.map(k => ({
                     i: k, pts: S.shapes[k].points.map(p => [p[0], p[1]]) })) };
     }
@@ -1231,6 +1232,7 @@ function tikusGerak(ev) {
         S.shapes[S.seret.i].points[S.seret.v] = [nx, ny];
         S.seret.bergerak = true;
         lepasKpAuto(S.seret.i);
+        if (S.seret.pose) ikatKeypointKeBox(S.seret.pose);   // lebarkan box -> kp menskala
         tandaiKotor();
       }
     } else if (S.seret.jenis === 'bentuk') {
@@ -1249,6 +1251,7 @@ function tikusGerak(ev) {
       if (dx || dy) {
         S.seret.bergerak = true;
         S.seret.awal.forEach(a => lepasKpAuto(a.i));
+        if (S.seret.pose) ikatKeypointKeBox(S.seret.pose);   // pindah box -> kp ikut geser
         tandaiKotor();
       }
     } else {
@@ -3849,6 +3852,44 @@ function perbaruiBbox(gid) {
   else S.shapes.push({ label: skelTpl().kelas || 'objek', shape_type: 'rectangle',
                        points: box, group_id: gid, flags: {}, text: '',
                        titipan: { kp_auto: true } });
+}
+
+/* "Saling mengikat" box <-> keypoint. `perbaruiBbox` sudah menangani arah
+   keypoint -> box (auto-fit). Dua fungsi ini menangani arah SEBALIKNYA: saat
+   bbox instance pose DIPINDAH atau DILEBARKAN, keypoint-nya ikut. Saat seret
+   dimulai, posisi awal kotak + tiap titik direkam (tangkapPoseBox); tiap langkah
+   seret, titik dipetakan ulang PROPORSIONAL dari kotak LAMA ke kotak BARU --
+   geser murni saat dipindah, menskala saat dilebarkan. */
+function tangkapPoseBox(i) {
+  const s = S.shapes[i];
+  if (!(poseProjek() && s && s.shape_type === 'rectangle' && s.group_id != null))
+    return null;
+  const xs = s.points.map(p => p[0]), ys = s.points.map(p => p[1]);
+  const kp = [];
+  S.shapes.forEach((t, k) => {
+    if (t.group_id === s.group_id && t.shape_type === 'point')
+      kp.push({ i: k, p0: [t.points[0][0], t.points[0][1]] });
+  });
+  if (!kp.length) return null;
+  return { gid: s.group_id, kp,
+           box0: [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)] };
+}
+
+function ikatKeypointKeBox(pose) {
+  const rect = S.shapes.find(s => s.group_id === pose.gid
+                                  && s.shape_type === 'rectangle');
+  if (!rect) return;
+  const xs = rect.points.map(p => p[0]), ys = rect.points.map(p => p[1]);
+  const nx0 = Math.min(...xs), ny0 = Math.min(...ys),
+        nx1 = Math.max(...xs), ny1 = Math.max(...ys);
+  const [ox0, oy0, ox1, oy1] = pose.box0;
+  const ow = ox1 - ox0, oh = oy1 - oy0;
+  pose.kp.forEach(k => {
+    const fx = ow ? (k.p0[0] - ox0) / ow : 0.5;
+    const fy = oh ? (k.p0[1] - oy0) / oh : 0.5;
+    S.shapes[k.i].points[0] = [kurungX(nx0 + fx * (nx1 - nx0)),
+                               kurungY(ny0 + fy * (ny1 - ny0))];
+  });
 }
 
 function rapikanBbox() {              // re-fit semua bbox auto ke keypoint-nya
