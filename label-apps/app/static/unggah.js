@@ -32,6 +32,12 @@
   // mentah tak punya tempat di struktur itu. Untuk video, berkasnya SELALU lewat
   // /upload (+ /ekstrak), bukan /tambah yang tak bisa mengekstrak.
   const BOLEH_VIDEO = !BERISI || halaman.dataset.tata === 'datar';
+  // Arsip (.zip ekspor Roboflow) boleh ke projek KOSONG maupun projek gambar
+  // DATAR (labelme) yang sudah berisi: isinya diratakan, label YOLO dikonversi
+  // ke labelme, lalu DISATUKAN di akar sebagai batch (lewat /gabung-zip).
+  // Dataset bersplit/yolo dikecualikan -- membongkar .zip ke struktur itu
+  // menumpahkan isinya di luar train/valid/test.
+  const BOLEH_ARSIP = !BERISI || halaman.dataset.tata === 'datar';
   // Projek VIDEO: "Ambil dari folder di server" mendaftarkan dataset KLIP
   // (train/val folder-per-kelas atau .zip) sebagai VERSI aksi lewat
   // /api/aksi/impor-path, bukan jalur salin-gambar. Hanya admin.
@@ -107,10 +113,11 @@
       if (!UP_EXT.some(e => nama.toLowerCase().endsWith(e)) && !bolehVideo) {
         ditolak++; continue;
       }
-      // Membongkar arsip ke dalam dataset yang sudah terbagi akan menumpahkan
-      // isinya di akar, di luar train/valid/test. Ditolak di sini, bukan
-      // dibiarkan gagal belakangan setelah berkasnya terlanjur naik.
-      if (BERISI && adalahArsip(nama)) { arsipDitolak++; continue; }
+      // Membongkar arsip ke dalam dataset bersplit/yolo akan menumpahkan isinya
+      // di luar train/valid/test. Hanya kasus ITU yang ditolak; projek DATAR
+      // (BOLEH_ARSIP) menerima .zip dan menggabungnya di akar. Ditolak di sini,
+      // bukan dibiarkan gagal belakangan setelah berkasnya terlanjur naik.
+      if (!BOLEH_ARSIP && adalahArsip(nama)) { arsipDitolak++; continue; }
       if (berkas.has(nama)) continue;
       berkas.set(nama, { file: f, nama, gambar: adalahGambar(nama),
                          arsip: adalahArsip(nama), video: adalahVideo(nama) });
@@ -119,7 +126,9 @@
     }
     if (!berkas.size) {
       toast(BERISI
-        ? 'Tidak ada gambar, anotasi, atau data.yaml di pilihan itu'
+        ? (BOLEH_ARSIP
+           ? 'Tidak ada gambar, anotasi, data.yaml, atau .zip di pilihan itu'
+           : 'Tidak ada gambar, anotasi, atau data.yaml di pilihan itu')
         : 'Tidak ada gambar, anotasi, data.yaml, .zip, atau video di pilihan itu');
       return;
     }
@@ -628,10 +637,10 @@
 
     for (const b of semua) {
       if (batal) { pr.gagal(`Dibatalkan setelah ${selesai} berkas`); return; }
-      // Video SELALU lewat /upload (lalu /ekstrak): /tambah tak bisa
-      // mengekstrak. Berkas lain di projek berisi tetap lewat /tambah supaya
-      // tata letaknya terjaga.
-      const url = (BERISI && !b.video)
+      // Video & arsip SELALU lewat /upload (lalu /ekstrak, atau /unzip|
+      // /gabung-zip): /tambah tak bisa mengekstrak/membongkar. Berkas lain di
+      // projek berisi tetap lewat /tambah supaya tata letaknya terjaga.
+      const url = (BERISI && !b.video && !b.arsip)
         ? '/tambah?name=' + encodeURIComponent(b.nama)
         : '/upload?ds=' + encodeURIComponent(PROJEK)
           + '&name=' + encodeURIComponent(b.nama);
@@ -664,14 +673,21 @@
     if (selesai <= gagal) { pr.gagal('Semua berkas gagal terkirim'); return; }
 
     for (const nama of arsip) {
-      // Persentasenya memang tidak diketahui, tetapi bahwa ia masih berjalan
-      // itu diketahui, dan justru itu yang perlu terlihat.
-      pr.taktentu('Membongkar ' + nama + '… (berkas besar perlu waktu)');
+      // Projek KOSONG: /unzip (isi arsip JADI projeknya, tata YOLO). Projek
+      // DATAR yang sudah berisi: /gabung-zip (ratakan + konversi YOLO->labelme +
+      // satukan di akar sebagai batch). Keduanya membongkar di server;
+      // persentasenya tak diketahui, tetapi bahwa ia berjalan perlu terlihat.
+      pr.taktentu((BERISI ? 'Menggabungkan ' : 'Membongkar ') + nama
+        + '… (berkas besar perlu waktu)');
       try {
-        const j = await post('/unzip?ds=' + encodeURIComponent(PROJEK) +
+        const rute = BERISI ? '/gabung-zip' : '/unzip';
+        const j = await post(rute + '?ds=' + encodeURIComponent(PROJEK) +
                              '&name=' + encodeURIComponent(nama));
-        if (!j.ok) { pr.gagal('Gagal membongkar: ' + j.error); return; }
-      } catch (e) { pr.gagal('Gagal menghubungi server saat membongkar'); return; }
+        if (!j.ok) {
+          pr.gagal((BERISI ? 'Gagal menggabung: ' : 'Gagal membongkar: ') + j.error);
+          return;
+        }
+      } catch (e) { pr.gagal('Gagal menghubungi server saat memproses arsip'); return; }
     }
 
     // Video diekstrak jadi frame DI LATAR di server: prosesnya lanjut walau tab

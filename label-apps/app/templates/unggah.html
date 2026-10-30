@@ -230,19 +230,18 @@
             <span><span class="mono">data.yaml</span> &middot; tanpa berkas ini
               kelasnya jadi angka</span>
           </div>
-          {# Projek yang sudah berisi tidak menerima arsip: membongkarnya ke
-             dataset yang sudah berfolder menumpahkan isinya di luar folder
-             itu. Entrinya disembunyikan, bukan dibiarkan lalu ditolak, supaya
-             daftar format ini tidak menjanjikan yang tidak akan diterima. #}
-          {% if not berisi %}
+          {# Arsip & video ditawarkan pada projek KOSONG maupun projek gambar
+             DATAR (labelme) yang sudah berisi: .zip digabung ke akar (label
+             YOLO dikonversi ke labelme), video diekstrak jadi frame di akar.
+             Hanya dataset bersplit/yolo yang dikecualikan -- membongkar/
+             mengekstrak ke struktur train/valid/test menumpahkan isinya.
+             Entrinya disembunyikan di sana, bukan dibiarkan lalu ditolak. #}
+          {% if not berisi or tata == 'datar' %}
           <div class="ug-format-grup">
             <b>Arsip</b>
-            <span><span class="mono">.zip</span> &middot; dibongkar sendiri di
-              server</span>
+            <span><span class="mono">.zip</span> &middot; dibongkar &amp;
+              digabung sendiri di server</span>
           </div>
-          {# Projek image boleh menerima video: diekstrak jadi frame di server,
-             keluarannya tetap gambar. Hanya ditawarkan pada projek kosong,
-             sama seperti arsip. #}
           <div class="ug-format-grup">
             <b>Video</b>
             <span><span class="mono">.mp4 .mov .webm</span> &middot; diekstrak

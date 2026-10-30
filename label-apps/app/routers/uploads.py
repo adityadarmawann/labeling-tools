@@ -641,16 +641,72 @@ async def unzip(ds: str = "", name: str = "",
     # bisa diedit sebagai keypoint. Idempoten & tak menimpa template manual.
     _pemilik = projek.pemilik_dari(settings.uploads_root, d)
     await asyncio.to_thread(tugas.buat_skeleton_dari_pose, d, _pemilik)
-    # Filter otomatis "dataset jadi -> langsung masuk dataset" SENGAJA tidak di
-    # sini: /unzip belum meratakan split, jadi kunci gambar masih bentuk
-    # `train/images/x.jpg`. /useupload yang menyusul MERATAKANNYA jadi
-    # `images/x.jpg` — kunci yang disimpan di sini akan jadi basi. Maka
-    # masuk_dataset_berlabel dijalankan di /useupload (sesudah ratakan_split),
-    # di atas kunci yang final. Projek berisi pun menolak .zip, jadi tiap
-    # unggahan .zip pasti lewat /useupload.
+    # /unzip hanya MEMBONGKAR (projek kosong): split diratakan belakangan di
+    # /useupload, dan unggahan TAK lagi auto-masuk dataset -- ia mendarat sebagai
+    # batch di papan Anotasi untuk ditinjau dulu. Projek DATAR yang sudah berisi
+    # memakai jalur sendiri (/gabung-zip), yang meratakan + mengonversi label ke
+    # labelme + menyatukan di akar.
     return {"ok": True, "n": hasil["ditulis"], "dilewati": hasil["dilewati"],
             "bytes": hasil["bytes"], "contoh_dilewati": hasil["contoh_dilewati"],
             "arsip_dihapus": True}
+
+
+@router.post("/gabung-zip")
+async def gabung_zip(ds: str = "", name: str = "",
+                     sess: Session = Depends(current_session_api),
+                     settings: Settings = Depends(get_settings)):
+    """
+    Gabungkan .zip dataset (ekspor Roboflow bersplit) ke projek DATAR yang SUDAH
+    berisi: ratakan split + konversi label YOLO .txt jadi labelme .json + taruh
+    di akar, menyatu dengan gambar yang sudah ada.
+
+    Kembaran /unzip untuk projek BERISI. /unzip dipakai projek kosong (isinya
+    JADI projeknya, tata YOLO). Di sini gambar baru mendarat sebagai BATCH di
+    papan Anotasi (nama batch diberi lewat /api/tag/pasang sesudah ini), BUKAN
+    langsung masuk dataset -- supaya ditinjau/dibagi dulu.
+    """
+    fn = safe_relpath(name, arsip=True)
+    if not fn or Path(fn).suffix.lower() not in ARSIP_EXT:
+        return {"ok": False, "error": "yang diminta bukan berkas arsip"}
+    d, err = _folder_unggah(sess, settings, ds)
+    if err:
+        return {"ok": False, "error": err}
+    # Hanya projek gambar DATAR (labelme) yang menerima gabung .zip: struktur
+    # split/yolo punya tempat berkasnya sendiri, dan projek video tak terima
+    # gambar. Projek kosong dibiarkan ke /unzip (jadi tata YOLO apa adanya).
+    if projek.jenis_projek(d) == "video":
+        return {"ok": False, "error": "projek video tidak menerima arsip gambar"}
+    if tambah.tata_letak(d) != tambah.TATA_DATAR:
+        return {"ok": False,
+                "error": "hanya projek datar (labelme) yang bisa menerima "
+                         ".zip di dalam projek berisi"}
+    await _mulai_kurasi(d, settings)
+    zp = d / fn
+    if not zp.is_file():
+        return {"ok": False, "error": "arsipnya tidak ada di folder unggahan"}
+
+    try:
+        hasil = await asyncio.to_thread(
+            tambah.gabung_dataset_ke_projek, zp, d,
+            maks_byte=settings.max_zip_bytes * settings.zip_ratio_max,
+            maks_entri=settings.zip_entries_max)
+    except arsip.ArsipTolak as e:
+        return {"ok": False, "error": str(e)[:140]}
+    except OSError as e:
+        return {"ok": False, "error": f"gagal menggabung: {str(e)[:80]}"}
+
+    if not hasil["digabung"]:
+        return {"ok": False,
+                "error": "tidak ada gambar yang bisa dipakai di dalam arsip itu"}
+    # data.yaml pose -> auto-template (idempoten), lalu muat ulang projeknya.
+    _pemilik = projek.pemilik_dari(settings.uploads_root, d)
+    await asyncio.to_thread(tugas.buat_skeleton_dari_pose, d, _pemilik)
+    n = len(await asyncio.to_thread(sess.load, d))
+    peringatan = await asyncio.to_thread(scanner.periksa_kelengkapan, d)
+    return {"ok": True, "n": n, "digabung": hasil["digabung"],
+            "boxes": hasil["boxes"], "kelas": hasil["kelas"],
+            "bentrok": hasil["bentrok"], "peringatan": peringatan,
+            "masuk_dataset": 0}
 
 
 @router.post("/ekstrak")
@@ -1006,9 +1062,10 @@ async def use_upload(ds: str = "", sess: Session = Depends(current_session_api),
     # template di sini juga. Idempoten — kalau /unzip sudah membuatnya, dilewati.
     _pemilik = projek.pemilik_dari(settings.uploads_root, d)
     await asyncio.to_thread(tugas.buat_skeleton_dari_pose, d, _pemilik)
-    # FILTER otomatis (sama seperti /unzip): isi berlabel langsung masuk dataset,
-    # isi mentah menunggu dilabeli. Jadi "Pilih folder" dataset jadi pun terpilah.
-    n_masuk = await asyncio.to_thread(tugas.masuk_dataset_berlabel, d, _pemilik)
+    # Unggahan (termasuk "dataset jadi" dari Roboflow) TIDAK lagi langsung masuk
+    # dataset: ia mendarat sebagai BATCH di papan Anotasi supaya ditinjau/dibagi
+    # dulu, lalu dimasukkan ke dataset lewat tombol "Masukkan" saat siap. Dulu
+    # gambar berlabel auto-masuk dataset -> melewati langkah tinjau itu.
     n = len(await asyncio.to_thread(sess.load, d))
     if not n:
         return {"ok": False, "error": "tidak ada gambar terbaca di unggahan itu"}
@@ -1016,4 +1073,4 @@ async def use_upload(ds: str = "", sess: Session = Depends(current_session_api),
     # tetap bisa dibuka, hanya ada yang perlu diketahui lebih dulu.
     peringatan = await asyncio.to_thread(scanner.periksa_kelengkapan, d)
     return {"ok": True, "dir": str(d), "n": n, "nama": d.name,
-            "peringatan": peringatan, "masuk_dataset": n_masuk}
+            "peringatan": peringatan, "masuk_dataset": 0}

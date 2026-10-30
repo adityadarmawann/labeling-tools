@@ -283,3 +283,99 @@ def ratakan_split(d: Path) -> dict:
         akar.rmdir()
 
     return {"diratakan": diratakan, "bentrok": bentrok}
+
+
+def gabung_dataset_ke_projek(zp: Path, d: Path, *, maks_byte: int,
+                             maks_entri: int = 200_000) -> dict:
+    """
+    Bongkar & GABUNGKAN sebuah .zip dataset (mis. ekspor Roboflow bersplit) ke
+    projek DATAR (labelme) yang SUDAH berisi.
+
+    Kenapa butuh jalur sendiri (bukan /unzip + ratakan_split biasa):
+      1. `split_bersarang` menolak kalau ada gambar lepas di akar (projek datar
+         yang sudah berisi selalu begitu), jadi split-nya tak akan terdeteksi
+         kalau dibongkar langsung ke akar.
+      2. Projek datar MENGABAIKAN label YOLO `.txt` (scanner cuma baca `.json`
+         di sini). Maka label YOLO harus DIKONVERSI jadi labelme `.json`.
+
+    Alurnya: bongkar ke folder STAGING terpisah (akar projek tak mengganggu
+    deteksi split), ratakan di situ, lalu tiap gambar + label-nya dikonversi ke
+    labelme `.json` dan ditaruh di AKAR projek, menyatu dengan yang sudah ada.
+    Kelas dipetakan lewat NAMA (dari data.yaml), jadi menyatu dengan kelas yang
+    sudah ada selama namanya sama. Tidak pernah menimpa berkas (lewat `pasang`).
+    Arsip + folder staging dibuang di akhir.
+
+    -> {"digabung": n, "boxes": m, "kelas": [nama...], "bentrok": [..maks 5..]}
+    """
+    import json as _json
+    import secrets
+    import shutil
+
+    from PIL import Image
+
+    from . import arsip
+    from .annotations import LABELME_VERSION
+
+    d = Path(d)
+    staging = d / f"._impor-zip-{secrets.token_hex(4)}"
+    staging.mkdir(parents=True, exist_ok=True)
+    try:
+        arsip.bongkar(zp, staging, maks_byte=maks_byte, maks_entri=maks_entri)
+        ratakan_split(staging)                       # -> staging/images+labels
+        names = scanner.baca_nama_kelas(staging)     # {idx: nama} dari data.yaml
+        img_dir, lbl_dir = staging / "images", staging / "labels"
+        imgs = sorted(p for p in img_dir.iterdir()
+                      if p.is_file() and p.suffix.lower() in IMG_EXT) \
+            if img_dir.is_dir() else []
+        digabung = boxes = 0
+        bentrok: list[str] = []
+        kelas_pakai: set[str] = set()
+        for p in imgs:
+            try:
+                W, H = Image.open(p).size
+            except Exception:                        # noqa: BLE001 -- gambar rusak
+                continue
+            shapes = []
+            txt = lbl_dir / (p.stem + ".txt")
+            if txt.is_file():
+                for ln in txt.read_text(encoding="utf-8",
+                                        errors="ignore").splitlines():
+                    f = ln.split()
+                    if len(f) != 5:
+                        continue
+                    try:
+                        c = int(float(f[0]))
+                        cx, cy, w, h = map(float, f[1:])
+                    except ValueError:
+                        continue
+                    nama = names.get(c, str(c))
+                    kelas_pakai.add(nama)
+                    x1 = max(0.0, min(float(W), (cx - w / 2) * W))
+                    y1 = max(0.0, min(float(H), (cy - h / 2) * H))
+                    x2 = max(0.0, min(float(W), (cx + w / 2) * W))
+                    y2 = max(0.0, min(float(H), (cy + h / 2) * H))
+                    shapes.append({"label": nama, "text": "",
+                                   "points": [[x1, y1], [x2, y2]],
+                                   "group_id": None, "shape_type": "rectangle",
+                                   "flags": {}})
+            # Gambar -> akar projek (pasang menangani bentrok nama tanpa menimpa).
+            akhir, hasil = pasang(p, d / p.name)
+            if hasil == "sudah-ada" or akhir is None:
+                continue
+            if hasil == "senama" and len(bentrok) < 5:
+                bentrok.append(p.name)
+            doc = {"image_text": "", "version": LABELME_VERSION, "flags": {},
+                   "shapes": shapes, "imagePath": akhir.name, "imageData": None,
+                   "imageHeight": H, "imageWidth": W}
+            jp = akhir.with_suffix(".json")
+            tmp = jp.with_name(jp.name + ".tmp")
+            tmp.write_text(_json.dumps(doc, ensure_ascii=False, indent=1),
+                           encoding="utf-8")
+            tmp.replace(jp)
+            digabung += 1
+            boxes += len(shapes)
+        return {"digabung": digabung, "boxes": boxes,
+                "kelas": sorted(kelas_pakai), "bentrok": bentrok}
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+        zp.unlink(missing_ok=True)

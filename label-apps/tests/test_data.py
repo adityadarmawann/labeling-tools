@@ -455,6 +455,96 @@ def test_unggah_zip_lalu_dibongkar_di_server(klien, lingkungan):
     from app.services import scanner
     items, _ = scanner.scan(d)
     assert sorted({s["label"] for i in items for s in i["shapes"]}) == ["botol", "kaleng"]
+    # Dataset jadi (berlabel) TAK lagi auto-masuk dataset: mendarat sebagai batch.
+    assert r["masuk_dataset"] == 0, r
+    from app.services import tugas as _tg
+    assert not (_tg.baca(d, "anggi").get("dataset") or []), \
+        "unggahan berlabel tak boleh auto-masuk dataset"
+
+
+def test_gabung_zip_roboflow_ke_projek_datar_berisi(klien, lingkungan):
+    """Projek DATAR (labelme) yang SUDAH berisi menerima .zip ekspor Roboflow:
+    split diratakan, label YOLO .txt DIKONVERSI ke labelme .json, gambar
+    disatukan di AKAR, kelas dipetakan lewat nama. TIDAK auto-masuk dataset."""
+    import pathlib
+
+    import cv2
+    import numpy as np
+
+    from tests.test_projek import _projek
+    from app.services import scanner, tugas
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = _projek(ruang, "basket-datar", n=2, label=True)   # 2 gambar labelme "botol"
+    klien.post(f"/setsrc?path={d}")
+    awal = {p.name for p in d.glob("*.jpg")}
+    assert len(awal) == 2
+
+    img = cv2.imencode(".jpg", np.full((40, 60, 3), 120, np.uint8))[1].tobytes()
+    blob = _zip_bytes([
+        ("data.yaml", b"nc: 2\nnames: ['botol','kaleng']\n"),
+        ("train/images/rf-a.jpg", img),
+        ("train/labels/rf-a.txt", b"0 0.5 0.5 0.4 0.4\n1 0.3 0.3 0.1 0.1\n"),
+        ("valid/images/rf-b.jpg", img),
+        ("valid/labels/rf-b.txt", b"1 0.4 0.4 0.2 0.2\n"),
+        ("test/images/rf-c.jpg", img),
+        ("test/labels/rf-c.txt", b"0 0.6 0.6 0.2 0.2\n"),
+    ])
+    assert klien.put("/upload?ds=basket-datar&name=rf.zip", content=blob).json()["ok"]
+    r = klien.post("/gabung-zip?ds=basket-datar&name=rf.zip").json()
+    assert r["ok"], r
+    assert r["digabung"] == 3 and r["boxes"] == 4, r
+    assert sorted(r["kelas"]) == ["botol", "kaleng"], r
+    assert r["masuk_dataset"] == 0
+
+    # Gambar baru di AKAR sebagai labelme .json (bukan train/valid/test / .txt).
+    for nm in ("rf-a", "rf-b", "rf-c"):
+        assert (d / f"{nm}.jpg").exists(), nm
+        doc = json.loads((d / f"{nm}.json").read_text())
+        assert doc["shapes"] and all(s["shape_type"] == "rectangle"
+                                     for s in doc["shapes"])
+        assert all(s["label"] in ("botol", "kaleng") for s in doc["shapes"])
+    assert not (d / "train").exists() and not (d / "valid").exists() \
+        and not (d / "test").exists()
+    assert not list(d.glob("._impor-zip-*")), "folder staging tak dibersihkan"
+    assert not (d / "rf.zip").exists(), "arsip tak dibuang"
+    assert not list(d.glob("*.txt")), "label YOLO .txt tak boleh tertinggal (projek datar)"
+    assert awal <= {p.name for p in d.glob("*.jpg")}, "gambar lama tersentuh"
+
+    # Scanner membaca SEMUA (lama + baru) -> 5 gambar, nama kelas benar.
+    items, _ = scanner.scan(d)
+    assert len(items) == 5
+    labels = {s["label"] for it in items for s in it["shapes"]}
+    assert "botol" in labels and "kaleng" in labels
+
+    # TIDAK masuk dataset (mendarat sebagai batch untuk ditinjau).
+    assert not (tugas.baca(d, "paul").get("dataset") or []), \
+        "gabung .zip tak boleh auto-masuk dataset"
+
+
+def test_gabung_zip_tolak_projek_ber_layout_yolo(klien, lingkungan):
+    """/gabung-zip hanya untuk projek DATAR (labelme). Projek ber-layout YOLO
+    (images/+labels/) ditolak -- menggabung .zip ke sana menumpahkan isinya."""
+    import pathlib
+
+    import cv2
+    import numpy as np
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = ruang / "yolo-proj"
+    (d / "images").mkdir(parents=True)
+    (d / "labels").mkdir(parents=True)
+    cv2.imwrite(str(d / "images" / "a.jpg"), np.zeros((20, 20, 3), np.uint8))
+    (d / "labels" / "a.txt").write_text("0 0.5 0.5 0.2 0.2\n")
+    img = cv2.imencode(".jpg", np.full((40, 60, 3), 90, np.uint8))[1].tobytes()
+    blob = _zip_bytes([("data.yaml", b"nc: 1\nnames: ['x']\n"),
+                       ("train/images/b.jpg", img),
+                       ("train/labels/b.txt", b"0 0.5 0.5 0.2 0.2\n")])
+    klien.put("/upload?ds=yolo-proj&name=z.zip", content=blob)
+    r = klien.post("/gabung-zip?ds=yolo-proj&name=z.zip").json()
+    assert r["ok"] is False and "datar" in r["error"], r
 
 
 def test_zip_slip_ditolak(klien, lingkungan):
