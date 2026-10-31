@@ -68,13 +68,24 @@ def test_bobot_lokal_berkas_dikirim_nama_diunduh(tmp_path):
 
 # ---------------------------------------------------------- skrip remote
 def test_skrip_latih_mandiri_dan_device_gpu():
+    # par NYATA dari UI memuat boolean (cos_lr/rect/plots/...). Dulu di-embed
+    # lewat json.dumps -> true/false/null (JSON), yang di skrip PYTHON jadi
+    # NameError saat baris PAR dieksekusi di remote -> training "hilang" seketika.
+    par = {"epochs": 3, "imgsz": 640, "cos_lr": True, "rect": False, "plots": True}
     s = latih_server._skrip_latih("/r/ds/data.yaml", "yolo11n.pt", "detect",
-                                  {"epochs": 3, "imgsz": 640}, "/r")
+                                  par, "/r")
     assert "from ultralytics import YOLO" in s
     assert "device=0" in s and "task='detect'" in s
-    assert "/r/ds/data.yaml" in s and '"epochs": 3' in s
+    assert "/r/ds/data.yaml" in s
     assert "/run/EXIT" in s                                 # penanda selesai
     assert "import app" not in s and "higolab" not in s.lower()  # MANDIRI
+    # REGRESI inti: baris PAR HARUS Python sah saat DIJALANKAN. ast.parse tak
+    # cukup -- `true` itu nama sah secara sintaks, galatnya baru muncul saat exec.
+    baris_par = next(ln for ln in s.splitlines() if ln.startswith("PAR = "))
+    ns: dict = {}
+    exec(baris_par, ns)                                     # 'true' -> NameError
+    assert ns["PAR"]["cos_lr"] is True and ns["PAR"]["rect"] is False
+    assert ns["PAR"]["epochs"] == 3
 
 
 # ---------------------------------------------------------- kesiapan backend

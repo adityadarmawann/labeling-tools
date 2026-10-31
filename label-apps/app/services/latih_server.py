@@ -17,7 +17,6 @@ repo. Kunci dipakai apa adanya; tak ada password yang disimpan.
 """
 from __future__ import annotations
 
-import json
 import os
 import secrets
 import subprocess
@@ -125,7 +124,10 @@ def _skrip_latih(data_abs: str, bobot: str, tugas: str, par: dict,
     return (
         "import sys, traceback\n"
         "from ultralytics import YOLO\n"
-        f"PAR = {json.dumps(par)}\n"
+        # repr() -> literal PYTHON (True/False/None). json.dumps memancarkan
+        # true/false/null gaya JSON yang di skrip Python jadi NameError di baris
+        # ini -- crash sebelum try/except, tanpa EXIT, hingga run tampak "hilang".
+        f"PAR = {par!r}\n"
         "try:\n"
         f"    YOLO({bobot!r}).train(data={data_abs!r}, task={tugas!r},\n"
         f"        project={run_parent!r}, name='run', exist_ok=True, device=0, **PAR)\n"
