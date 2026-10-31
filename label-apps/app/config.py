@@ -213,6 +213,28 @@ class Settings:
     # tak bisa dipakai menyusun tautan yang ponsel bisa buka. Kosong = jatuh ke
     # request.base_url (benar saat tanpa proxy, mis. dev di localhost).
     basis_publik: str = ""
+    # ---- Backend training REMOTE lewat SSH (offload ke GPU mesin LAIN sendiri) ----
+    # Selain GPU lokal ("PC ini") dan Kaggle, training bisa dijalankan di server
+    # GPU milik sendiri lewat SSH + rsync: dataset versi dikirim ke sana, YOLO
+    # jalan di GPU-nya, bobot ditarik balik. HIGOLAB tetap di mesin INI; yang
+    # pindah hanya EKSEKUSI training. Kredensial TAK di repo -- host + kunci
+    # disetel lewat env runtime (env/prod.env). Kosong = opsi "Server" mati.
+    #   remote_ssh : "user@host" (mis. "clvision@103.182.240.30")
+    #   remote_key : path kunci privat SSH (mis. "~/.ssh/higolab_remote")
+    #   remote_py  : python di remote yang punya ultralytics (bawaan "python3")
+    #   remote_dir : folder kerja di remote (bawaan "~/higolab-train")
+    #   remote_nama: label singkat di UI (mis. "clvision RTX 3060")
+    remote_ssh: str = ""
+    remote_key: str = ""
+    remote_py: str = "python3"
+    remote_dir: str = "~/higolab-train"
+    remote_nama: str = "Server GPU"
+
+    @property
+    def remote_siap(self) -> bool:
+        """Backend server-SSH terkonfigurasi (host + kunci privat ada)."""
+        return bool(self.remote_ssh.strip()) and bool(self.remote_key.strip()) \
+            and Path(self.remote_key).expanduser().is_file()
 
     @property
     def max_upload_bytes(self) -> int:
@@ -296,4 +318,9 @@ def get_settings() -> Settings:
         kaggle_user=_get("KAGGLE_USER"),
         kaggle_token_file=_path("KAGGLE_TOKEN_FILE"),
         basis_publik=_get("BASIS_PUBLIK"),
+        remote_ssh=_get("REMOTE_SSH"),
+        remote_key=_get("REMOTE_KEY"),
+        remote_py=_get("REMOTE_PY") or "python3",
+        remote_dir=_get("REMOTE_DIR") or "~/higolab-train",
+        remote_nama=_get("REMOTE_NAMA") or "Server GPU",
     )

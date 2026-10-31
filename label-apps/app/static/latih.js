@@ -474,7 +474,10 @@
     // memasang rfdetr sendiri). Mask R-CNN LOKAL saja untuk sekarang. Lokal:
     // RF-DETR butuh rfdetr; Mask R-CNN butuh torchvision; YOLO butuh ultralytics.
     let siap, alasan;
-    if (mr && b === 'kaggle') {
+    if (b === 'server' && (rf || mr)) {
+      siap = false; alasan = 'Server GPU lain baru mendukung YOLO; pakai PC ini atau Kaggle.';
+    } else if (b === 'server') { siap = BAHAN.server_siap; alasan = 'server GPU lain belum disetel'; }
+    else if (mr && b === 'kaggle') {
       siap = false; alasan = 'Mask R-CNN hanya tersedia LOKAL untuk sekarang.';
     } else if (b === 'kaggle') { siap = BAHAN.kaggle_siap; alasan = BAHAN.kaggle_alasan; }
     else if (rf) { siap = BAHAN.rfdetr_siap; alasan = BAHAN.rfdetr_alasan; }
@@ -496,7 +499,10 @@
       ket.textContent = b === 'kaggle'
         ? `akun: ${akun} · di luar PC ini, boleh berbarengan dengan training `
           + 'lokal; run panjang disambung otomatis'
-        : 'GPU mesin ini, satu training pada satu waktu';
+        : b === 'server'
+          ? `${BAHAN.server_nama || 'server GPU lain'} · dataset dikirim lewat SSH, `
+            + 'training di GPU-nya, bobot ditarik balik; boleh berbarengan dgn lokal'
+          : 'GPU mesin ini, satu training pada satu waktu';
     }
     gambarAkun();                 // panel kelola akun Kaggle ikut backend
   }
@@ -1656,11 +1662,13 @@
           // Backend Kaggle: buka selektor "Jalankan di" kalau paket kaggle ADA di
           // server (kaggle_mungkin) — BUKAN cuma kalau user sudah punya akun —
           // supaya user bisa MENAMBAH akun pertamanya lewat panel di bawahnya.
-          if (BAHAN.kaggle_mungkin && $('tr-backend-bungkus')) {
+          if ((BAHAN.kaggle_mungkin || BAHAN.server_siap) && $('tr-backend-bungkus')) {
             $('tr-backend-bungkus').hidden = false;
             if ($('tr-backend')) {
+              // Kalau PC ini tak bisa melatih lokal, default ke backend lain yang siap.
               $('tr-backend').value =
-                (BAHAN.siap === false && BAHAN.kaggle_siap) ? 'kaggle' : 'lokal';
+                (BAHAN.siap === false && BAHAN.kaggle_siap) ? 'kaggle'
+                : (BAHAN.siap === false && BAHAN.server_siap) ? 'server' : 'lokal';
               $('tr-backend').onchange = terapkanBackend;
             }
           }

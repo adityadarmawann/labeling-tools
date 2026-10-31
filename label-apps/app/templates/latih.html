@@ -112,7 +112,8 @@
         <label class="tr-label" id="tr-backend-bungkus" hidden>Jalankan di
           <select id="tr-backend">
             <option value="lokal">PC ini, GPU lokal</option>
-            <option value="kaggle">Kaggle, GPU gratis (cadangan)</option>
+            {% if kaggle_siap %}<option value="kaggle">Kaggle, GPU gratis (cadangan)</option>{% endif %}
+            {% if server_siap %}<option value="server">{{ server_nama }} (server lain)</option>{% endif %}
           </select>
           <span class="tr-bantu" id="tr-backend-ket"></span>
         </label>

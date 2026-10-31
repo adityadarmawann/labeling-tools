@@ -71,6 +71,9 @@ async def halaman(request: Request, ds: str = "",
         # Pilihan "Jalankan di: Kaggle" hanya muncul kalau backend terkonfigurasi.
         "kaggle_siap": kaggle_siap,
         "kaggle_akun": svc_kaggle.ringkas_akun_user(settings, sess.user),
+        # Pilihan "Jalankan di: Server GPU lain" hanya kalau host+kunci disetel.
+        "server_siap": svc.siap_server(settings)[0],
+        "server_nama": settings.remote_nama,
         # Panel "Monitor akun (semua user)" hanya untuk admin.
         "admin": _apakah_admin(sess, settings),
     })
@@ -121,6 +124,9 @@ async def bahan(sess: Session = Depends(current_session_api),
             # Paket kaggle ADA di server (walau user belum punya akun) -> tetap
             # tawarkan panel kelola akun supaya bisa menambah akun pertama.
             "kaggle_mungkin": svc_kaggle.paket_ada(),
+            # Backend "Server GPU lain" (offload SSH): siap kalau host+kunci disetel.
+            "server_siap": svc.siap_server(settings)[0],
+            "server_nama": settings.remote_nama,
             # Admin: boleh membuka panel "Monitor akun (semua user)".
             "admin": _apakah_admin(sess, settings),
             # Status tiap akun milik user ini (jam terpakai 7-hari, sisa, habis,
@@ -181,7 +187,7 @@ async def mulai(request: Request,
     # server ini TIDAK perlu ultralytics/GPU lokal; yang diperiksa justru apakah
     # akun Kaggle terkonfigurasi. "lokal" (bawaan) tetap menuntut siap_latih().
     backend = str(body.get("backend") or "lokal").strip().lower()
-    if backend not in ("lokal", "kaggle"):
+    if backend not in ("lokal", "kaggle", "server"):
         backend = "lokal"
     # Preset (resep augmentasi+hyperparameter): "rvm" (SmartBin) / "olahraga"
     # (Basket). Berlaku untuk seluruh kiriman; divalidasi di siapkan().
@@ -192,7 +198,16 @@ async def mulai(request: Request,
     rfdetr_model = str(body.get("rfdetr_model") or "").strip().lower()
     rfdetr_multigpu = bool(body.get("rfdetr_multigpu"))   # saklar T4x2 (Kaggle), default mati
     maskrcnn_model = str(body.get("maskrcnn_model") or "").strip().lower()
-    if backend == "kaggle":
+    if backend == "server":
+        # Offload ke GPU server LAIN lewat SSH. Server ini tak perlu GPU/ultralytics
+        # lokal -- yang diperiksa konfigurasi remote-nya. Hanya YOLO untuk sekarang
+        # (remote punya ultralytics; RF-DETR/Mask R-CNN remote menyusul).
+        if arsitektur != "yolo":
+            return {"ok": False,
+                    "error": "backend Server baru mendukung YOLO; pilih PC ini "
+                             "atau Kaggle untuk RF-DETR / Mask R-CNN"}
+        siap, alasan = svc.siap_server(settings)
+    elif backend == "kaggle":
         # RF-DETR di Kaggle: kernelnya pip-install rfdetr sendiri, jadi server
         # ini TIDAK perlu rfdetr lokal — cukup akun Kaggle user ini terkonfigurasi.
         siap, alasan = svc_kaggle.siap_user(settings, sess.user)

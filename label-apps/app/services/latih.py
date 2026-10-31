@@ -1125,7 +1125,7 @@ def siapkan(ds, *, nama: str, versi_nomor: int, tugas: str, bobot: str,
         # DI MANA dijalankan: "lokal" (GPU mesin ini, jalur latih_jalan) atau
         # "kaggle" (offload ke GPU Kaggle lewat API, jalur latih_kaggle). Bawaan
         # lokal supaya perilaku lama tak berubah sama sekali.
-        "backend": backend if backend in ("lokal", "kaggle") else "lokal",
+        "backend": backend if backend in ("lokal", "kaggle", "server") else "lokal",
         # Preset yang dipakai: "rvm" (PRESET_V14, pakai toggle Bentuk/Warna) atau
         # "olahraga" (basket — warna divariasikan di preset, tanpa toggle).
         "preset": preset,
@@ -1147,6 +1147,21 @@ def siapkan(ds, *, nama: str, versi_nomor: int, tugas: str, bobot: str,
     }
     _tulis(ds, n, isi)
     return isi
+
+
+def siap_server(settings) -> tuple[bool, str]:
+    """Backend 'server' (offload SSH ke GPU mesin lain) siap dipakai?
+
+    Hanya memeriksa KONFIGURASI (host + kunci privat ada) -- murah, aman tiap
+    muat halaman. Koneksi sesungguhnya diverifikasi saat Jalankan; kalau server
+    mati/kunci ditolak, training ditandai 'gagal' dengan pesan jelas, bukan
+    menggantung halaman form."""
+    if not settings.remote_ssh.strip():
+        return False, "server remote belum disetel"
+    if not settings.remote_key.strip() or \
+            not Path(settings.remote_key).expanduser().is_file():
+        return False, "kunci SSH remote tak ditemukan"
+    return True, ""
 
 
 def siap_latih() -> tuple[bool, str]:
@@ -1204,7 +1219,11 @@ def jalankan(ds, nomor: int) -> dict:
     #   backend kaggle -> latih_kaggle (menangani YOLO MAUPUN RF-DETR, pilih
     #            jalur dari field arsitektur). lokal + rfdetr -> latih_rfdetr.
     #            lokal + yolo -> latih_jalan.
-    if isi.get("backend") == "kaggle":
+    if isi.get("backend") == "server":
+        # Offload ke GPU server LAIN lewat SSH (YOLO). GPU-nya di remote, jadi
+        # TIDAK ambil flock lokal -- boleh jalan berbarengan dgn lokal/Kaggle.
+        modul = "app.services.latih_server"
+    elif isi.get("backend") == "kaggle":
         modul = "app.services.latih_kaggle"
     elif isi.get("arsitektur") == "rfdetr":
         modul = "app.services.latih_rfdetr"
@@ -1212,7 +1231,8 @@ def jalankan(ds, nomor: int) -> dict:
         modul = "app.services.latih_maskrcnn"
     else:
         modul = "app.services.latih_jalan"
-    lokal_gpu = modul != "app.services.latih_kaggle"
+    lokal_gpu = modul not in ("app.services.latih_kaggle",
+                              "app.services.latih_server")
     if lokal_gpu:
         # Bebaskan VRAM yang ditahan sesi SAM di proses app SEBELUM training mulai
         # -- di GPU 8 GB, sesi sam2:small (~4 GB) yang residen bisa membuat
