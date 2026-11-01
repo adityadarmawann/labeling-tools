@@ -981,3 +981,78 @@ def gabung(root: Path, sumber: str, tujuan: str, *, kunci: str = "",
     return {"sumber": a.name, "tujuan": b.name,
             "ditambah": hasil["berkas"], "sudah_ada": hasil["sudah_ada"],
             "dilewati": hasil["dilewati"], "bentrok": hasil.get("bentrok", [])}
+
+
+def salin_gambar_ke_projek(tujuan: Path, gambar, batch: str = "", *,
+                           kunci: str = "", batal=None) -> dict:
+    """
+    Salin DAFTAR gambar (GAMBAR SAJA, tanpa anotasi) ke projek `tujuan`.
+
+    Dipakai "Kirim gambar ke projek lain" dari papan Anotasi: gambar satu job
+    (atau batch) disalin ke projek lain milik sendiri untuk dianotasi di sana.
+    Berbeda dari gabung() yang menyalin SELURUH projek -- ini subset, dan hanya
+    berkas gambarnya; label court/keypoint tak relevan di projek tujuan yang
+    jenisnya lain, jadi sengaja tidak ikut.
+
+    Mendarat mengikuti tata letak tujuan (Penempat), tak pernah menimpa, dan
+    ditandai `batch` supaya muncul sebagai satu kartu di "Belum ditugaskan"
+    tujuan. Sumbernya tidak disentuh. Kemajuan lewat /api/impor/kemajuan.
+    """
+    from . import impor, tambah, tag
+    from ..config import IMG_EXT
+
+    tujuan = Path(tujuan)
+    if not tujuan.is_dir():
+        raise Tolak("projek tujuan tidak ada")
+    gambar = [Path(g) for g in gambar
+              if Path(g).is_file() and Path(g).suffix.lower() in IMG_EXT]
+    if not gambar:
+        raise Tolak("tidak ada gambar yang bisa disalin")
+
+    total_byte = sum(g.stat().st_size for g in gambar)
+    sisa = shutil.disk_usage(tujuan).free
+    if sisa - total_byte < impor.SISA_MIN_BYTE:
+        raise Tolak(f"perlu {total_byte / 1073741824:.1f} GB sementara sisa disk "
+                    f"{sisa / 1073741824:.1f} GB, terlalu mepet")
+
+    penempat = tambah.Penempat(tujuan)
+    impor.catat_maju(kunci, tahap="salin", berkas=0, bytes=0,
+                     total=len(gambar), total_bytes=total_byte)
+    disalin = sudah_ada = dilewati = 0
+    byte = 0
+    kunci_baru: list[str] = []
+    for g in gambar:
+        if batal and batal():
+            raise Tolak("dibatalkan")
+        dest = penempat.tujuan(g.name)
+        if dest is None:
+            dilewati += 1
+            continue
+        # Salin ke nama sementara lalu serahkan ke tambah.pasang: proses yang
+        # terputus tak meninggalkan gambar setengah jadi, dan tak ada yang ditimpa.
+        tmp = dest.with_suffix(dest.suffix + ".part")
+        try:
+            shutil.copy2(g, tmp)
+            akhir, hasil = tambah.pasang(tmp, dest)
+        except OSError:
+            tmp.unlink(missing_ok=True)
+            dilewati += 1
+            continue
+        if hasil == "sudah-ada":
+            sudah_ada += 1
+            continue
+        penempat.catat(g.name, akhir)
+        kunci_baru.append(tag.kunci_gambar(tujuan, akhir))
+        disalin += 1
+        byte += akhir.stat().st_size
+        if disalin % impor.LAPOR_TIAP == 0:
+            impor.catat_maju(kunci, berkas=disalin, bytes=byte)
+
+    impor.catat_maju(kunci, tahap="pindai", berkas=disalin, bytes=byte)
+    if kunci_baru and batch:
+        tag.pasang(tujuan, kunci_baru, batch=batch)
+    lupakan_survei(tujuan)
+    log.info("kirim gambar -> %r: %s disalin, %s sudah-ada, %s dilewati (batch %r)",
+             tujuan.name, f"{disalin:,}", f"{sudah_ada:,}", f"{dilewati:,}", batch)
+    return {"tujuan": tujuan.name, "batch": batch, "disalin": disalin,
+            "sudah_ada": sudah_ada, "dilewati": dilewati}

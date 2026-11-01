@@ -1280,6 +1280,77 @@ async def hapus_batch(request: Request,
             "dilindungi": lindungi_lain + lindungi_ds}
 
 
+@router.post("/api/tugas/kirim-ke-projek")
+async def kirim_ke_projek(request: Request,
+                          sess: Session = Depends(current_session_api),
+                          settings: Settings = Depends(get_settings)):
+    """
+    Salin GAMBAR satu job ke projek LAIN milik sendiri (gambar saja, tanpa
+    anotasi). Sumber tak berubah; gambar mendarat di "Belum ditugaskan" tujuan,
+    ditandai batch senama judul job supaya jadi satu kartu di sana.
+
+    Mengelola media = pemilik atau Editor (boleh_unggah), dan harus boleh_unggah
+    juga di projek TUJUAN. Kemajuan dilaporkan lewat /api/impor/kemajuan.
+    """
+    body = await bodi_json(request)
+    # Tahan banting terhadap restart (sama seperti hapus-batch): `ds` membuka
+    # ulang projek sumber kalau sesi kehilangannya sesudah deploy.
+    ds = str(body.get("ds") or "")
+    if ds:
+        d0 = svc_projek.temukan(settings.uploads_root, sess.user, ds)
+        if d0 is not None and str(sess.src or "") != str(d0):
+            await asyncio.to_thread(sess.load, d0)
+    data, galat = _siap(sess)
+    if galat:
+        return {"ok": False, "error": galat}
+    if not svc.boleh_unggah(data, sess.user):
+        return {"ok": False, "error": "hanya pemilik atau Editor yang bisa "
+                                      "mengirim gambar ke projek lain"}
+
+    job_id = str(body.get("job") or "")
+    job = (data.get("tugas") or {}).get(job_id)
+    if not job:
+        return {"ok": False, "error": "job tidak ditemukan"}
+
+    tujuan_nama = svc_projek.bersihkan_nama(str(body.get("tujuan") or ""))
+    if not tujuan_nama:
+        return {"ok": False, "error": "projek tujuan belum dipilih"}
+    d_tujuan = svc_projek.temukan(settings.uploads_root, sess.user, tujuan_nama)
+    if d_tujuan is None or not d_tujuan.is_dir():
+        return {"ok": False, "error": f"projek tujuan '{tujuan_nama}' tidak ada"}
+    if str(d_tujuan) == str(sess.src):
+        return {"ok": False, "error": "projek sumber dan tujuan sama"}
+    tdata = await asyncio.to_thread(svc.baca_projek, d_tujuan,
+                                    settings.uploads_root)
+    if not svc.boleh_unggah(tdata, sess.user):
+        return {"ok": False, "error": "kamu tak punya hak unggah di projek tujuan"}
+
+    # Kunci job -> berkas nyata lewat peta sesi sumber.
+    with sess.lock:
+        items = list(sess.items)
+    peta = {svc_tag.kunci_gambar(sess.src, it["img"]): it["img"] for it in items}
+    gambar = [peta[k] for k in (job.get("gambar") or []) if k in peta]
+    if not gambar:
+        return {"ok": False,
+                "error": "job ini tak punya gambar yang masih ada untuk disalin"}
+
+    batch_nama = (job.get("judul") or "").strip() or f"dari-{sess.src.name}"
+    # Projek tujuan tunduk aturan dataset dulu (sama dgn gabung): gambar dari
+    # projek lain itu baru -- belum ditugaskan, belum diperiksa, belum masuk dataset.
+    await asyncio.to_thread(svc.mulai_kurasi, d_tujuan,
+                            svc_projek.pemilik_dari(settings.uploads_root, d_tujuan))
+    try:
+        hasil = await asyncio.to_thread(
+            svc_projek.salin_gambar_ke_projek, d_tujuan, gambar, batch_nama,
+            kunci=sess.user)
+    except svc_projek.Tolak as e:
+        return {"ok": False, "error": str(e)}
+
+    if sess.src and str(sess.src) == str(d_tujuan):
+        await asyncio.to_thread(sess.reload)   # tujuan kebetulan sedang dibuka
+    return {"ok": True, **hasil}
+
+
 @router.post("/api/tugas/dataset")
 async def ke_dataset(request: Request,
                      sess: Session = Depends(current_session_api)):

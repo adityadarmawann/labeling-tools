@@ -136,7 +136,38 @@
         return kirim('/api/tugas/bubarkan?id=' + encodeURIComponent(id),
                      'Tugas dibubarkan');
       }
+
+      if (b.dataset.aksi === 'kirim') {
+        return kirimKeProjek(id, b.dataset.judul || '');
+      }
     };
+  }
+
+  // ---- kirim gambar satu job ke projek lain milik sendiri (GAMBAR SAJA, disalin).
+  // Sumbernya tak berubah; gambar mendarat di "Belum ditugaskan" tujuan sbg batch
+  // senama judul job, siap dianotasi di sana.
+  async function kirimKeProjek(id, judul) {
+    const dsNama = isi.dataset.ds || '';
+    const d = await send('/api/projek/daftar');
+    const lain = ((d && d.projek) || [])
+      .map((x) => x.nama).filter((nm) => nm && nm !== dsNama);
+    if (!lain.length) { toast('Belum ada projek lain untuk dikirimi'); return; }
+    const tujuan = prompt(
+      `Kirim (salin) gambar job "${judul}" ke projek mana?\n\n`
+      + `Pilihan: ${lain.join(', ')}\n\n`
+      + 'GAMBAR SAJA yang disalin (tanpa anotasi). Job ini di sini tidak berubah.',
+      lain[0]);
+    if (tujuan === null) return;
+    const t = (tujuan || '').trim();
+    if (!lain.includes(t)) { toast(`Projek "${t}" tak ada di daftar projekmu`); return; }
+    toast('Menyalin gambar ke ' + t + '…');
+    const j = await send('/api/tugas/kirim-ke-projek', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ job: id, tujuan: t, ds: dsNama }),
+    });
+    if (!j || !j.ok) { toast((j && j.error) || 'gagal mengirim'); return; }
+    toast(`${j.disalin} gambar disalin ke ${j.tujuan}`
+          + (j.sudah_ada ? ` · ${j.sudah_ada} sudah ada di sana` : ''));
   }
 
   // ---- dialog "Tugaskan ulang": periksa username/email lalu tugaskan/undang --
