@@ -114,6 +114,32 @@ def test_config_remote_dari_env(monkeypatch):
 
 
 # ---------------------------------------------------------- dispatch
+def test_hidup_mengenali_proses_latih_server():
+    # REGRESI: latih_server dulu LUPA di whitelist hidup() -> orkestrator clvision
+    # yang HIDUP terbaca mati -> status() tandai "hilang" -> UI "Terputus" walau
+    # training jalan 99% di remote. hidup() cocokkan substring modul di cmdline.
+    import subprocess
+    import sys
+    import time
+
+    p = subprocess.Popen([sys.executable, "-c", "import time;time.sleep(10)",
+                          "app.services.latih_server"])
+    try:
+        time.sleep(0.4)
+        assert latih.hidup(p.pid) is True          # worker sah -> hidup
+    finally:
+        p.terminate(); p.wait(timeout=5)
+    # Proses lain (pid hidup tapi bukan worker training) tetap False.
+    q = subprocess.Popen([sys.executable, "-c", "import time;time.sleep(10)",
+                          "app.services.bukan_worker"])
+    try:
+        time.sleep(0.4)
+        assert latih.hidup(q.pid) is False
+    finally:
+        q.terminate(); q.wait(timeout=5)
+    assert latih.hidup(0) is False and latih.hidup("x") is False
+
+
 def test_siapkan_terima_backend_server(tmp_path, monkeypatch):
     # siapkan membekukan backend "server" (bukan dibanting ke "lokal").
     import app.services.latih as L

@@ -809,16 +809,19 @@ def hidup(pid) -> bool:
     # selamanya.
     try:
         cmd = Path(f"/proc/{pid}/cmdline").read_bytes().decode("utf8", "replace")
-        # Worker sah: latih_jalan (YOLO lokal), latih_kaggle (offload), latih_rfdetr.
+        # Worker sah: latih_jalan (YOLO lokal), latih_kaggle (offload Kaggle),
+        # latih_server (offload SSH ke GPU mesin lain), latih_rfdetr, latih_maskrcnn.
         # Dicocokkan ke JALUR MODUL bertitik ("app.services.latih_jalan"), bukan
         # sekadar "latih_jalan", karena itulah yang benar-benar ada di cmdline
         # (dijalankan `-m app.services.<modul>`). Cocok longgar "latih_jalan"
         # ikut terpicu oleh proses lain yang kebetulan memuat substring itu —
         # mis. pytest yang menyebut tests/test_latih_rfdetr.py di argv-nya —
         # sehingga proses mati bisa salah terlihat "hidup" saat PID dipakai ulang.
+        # latih_server WAJIB di sini: tanpa itu training clvision yang HIDUP
+        # terbaca mati -> status() salah menandainya "hilang" -> UI "Terputus".
         return any(f"app.services.{w}" in cmd for w in
-                   ("latih_jalan", "latih_kaggle", "latih_rfdetr",
-                    "latih_maskrcnn"))
+                   ("latih_jalan", "latih_kaggle", "latih_server",
+                    "latih_rfdetr", "latih_maskrcnn"))
     except OSError:
         return True
 
