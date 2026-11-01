@@ -102,3 +102,52 @@ def test_qa_pose_pipeline(klien, lingkungan):
     assert len(list((dirv / "train" / "labels").glob("*.txt"))) >= 2
     assert len(list((dirv / "valid" / "labels").glob("*.txt"))) == 1
     assert ring["jenis"] == "kerangka" and ring["keypoint"] == 3
+
+
+def test_projek_kerangka_lewat_route_abaikan_format_kotak(klien, lingkungan):
+    """REGRESI (court-basketball): projek kerangka yang JUGA memuat kotak (court
+    keypoint + kotak nomor jersey) dulu terbangun jadi DETEKSI lewat route, karena
+    pemilih format per-versi default ke "kotak" -> semua keypoint hilang, lalu
+    training pose gagal "No kpt_shape". Kini versi_mulai memaksa jenis kerangka
+    untuk projek kerangka: data.yaml pose walau resep.format='kotak'."""
+    import time
+    from tests.test_data import masuk, PW_PAUL
+    from tests.test_projek import _projek as buat_projek
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = buat_projek(ruang, "pose-campur", n=2, label=False)
+    klien.post(f"/setsrc?path={d}")
+    assert klien.post("/api/tugas/skeleton?ds=pose-campur", json={"skeleton": {
+        "kelas": "court", "titik": ["a", "b", "c"],
+        "edge": [[0, 1], [0, 2]], "flip_idx": [0, 2, 1]}}).json()["ok"]
+
+    # Tiap gambar: keypoint court (grup 0) + satu kotak "nomor" (grup 1) yang
+    # meniru nomor jersey. Build deteksi akan menjadikan "nomor" sebuah KELAS
+    # dan court cuma satu kotak; build pose membuang "nomor" dan menahan keypoint.
+    for ip in sorted(str(q) for q in d.glob("*.jpg")):
+        klien.post("/api/simpan", json={"path": ip, "shapes": [
+            _pt("a", 10, 10, 2, 0), _pt("b", 6, 7, 2, 0), _pt("c", 14, 7, 2, 0),
+            _rect("court", 4, 5, 16, 12, 0), _rect("nomor", 40, 40, 50, 50, 1),
+        ]})
+
+    # resep.format='kotak' DISENGAJA -> harus diabaikan untuk projek kerangka.
+    r = klien.post("/api/versi/mulai?split=50,50,0",
+                   json={"resep": {"format": "kotak"}}).json()
+    assert r.get("ok"), r
+    for _ in range(600):
+        k = klien.get("/api/versi/kemajuan").json()
+        if k.get("selesai") or k.get("galat") or k.get("batal"):
+            break
+        time.sleep(0.1)
+    assert k.get("selesai"), k
+    vyaml = (buatversi.dir_versi(d, r["nomor"]) / "data.yaml").read_text()
+    assert "kpt_shape: [3, 3]" in vyaml            # POSE (bukan deteksi)
+    assert "names: ['court']" in vyaml             # "nomor" jatuh, tak jadi kelas
+    for lp in (buatversi.dir_versi(d, r["nomor"]) / "train" / "labels").glob("*.txt"):
+        for ln in lp.read_text().splitlines():
+            if ln.strip():
+                assert len(ln.split()) == 5 + 3 * 3, ln   # tiap baris K=3 keypoint
+    # estimasi menandai projek kerangka -> wizard sembunyikan pemilih format.
+    assert klien.post("/api/versi/estimasi?split=50,50,0",
+                      json={"resep": {}}).json().get("kerangka") is True

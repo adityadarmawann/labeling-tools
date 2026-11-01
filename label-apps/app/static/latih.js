@@ -247,14 +247,27 @@
       + (v.jenis ? ` · ${esc(v.jenis)}` : '');
 
     // Bentuk anotasi versinya menentukan tugas yang masuk akal.
-    if (v.jenis && v.jenis.toLowerCase().includes('kotak')) {
+    const jenis = (v.jenis || '').toLowerCase();
+    if (jenis.includes('kerangka')) {
+      // Versi kerangka = keypoint/pose: HARUS dilatih pose, bukan deteksi.
+      // Tanpa ini tugas menyangkut di default (mis. segmentasi) dan data.yaml
+      // pose tak cocok -> Ultralytics gagal "No kpt_shape".
+      $('tr-tugas').value = 'pose';
+      $('tr-tugas-ket').textContent =
+        'Versi kerangka (keypoint): dilatih sebagai pose, bobot awal pose.';
+    } else if (jenis.includes('kotak')) {
       $('tr-tugas').value = 'detect';
       $('tr-tugas-ket').textContent =
         'Versi ini beranotasi kotak, jadi segmentasi tidak bisa dilatih darinya.';
+    } else if (jenis.includes('poligon')) {
+      $('tr-tugas').value = 'segment';
+      $('tr-tugas-ket').textContent = '';
     } else {
       $('tr-tugas-ket').textContent = '';
     }
-    // Bobot awal ikut tugasnya (versi kotak -> yolo26n.pt, bukan nyangkut -seg).
+    // Bobot awal ikut tugasnya (kotak -> yolo26n.pt, kerangka -> bobot pose;
+    // kalau yolo26n-pose belum terunduh, bobotBawaanUntuk jatuh ke pose lain
+    // yang ADA di server, mis. yolov8s-pose.pt).
     pakaiBobotBawaan($('tr-tugas').value);
     terapkanFilterPose();          // tugas bisa berubah -> saring arsitektur
 

@@ -400,8 +400,14 @@ async def versi_estimasi(request: Request, split: str = "", belah: str = "",
     kelas_final = await asyncio.to_thread(_kelas_final)
 
     kosong = shutil.disk_usage(sess.src).free
+    _td = await asyncio.to_thread(tugas.baca_projek, sess.src,
+                                  settings.uploads_root)
     return {"ok": True, **e, "berencana": bool(rencana),
             "kelas_final": kelas_final,
+            # Projek kerangka -> versi pose: wizard sembunyikan pemilih format
+            # kotak/poligon (tak berlaku), dan build dipaksa kerangka di
+            # versi_mulai. Satu sumber kebenaran: jenis_anotasi projek.
+            "kerangka": _td.get("jenis_anotasi") == "kerangka",
             "dibuang_saring": dibuang_saring,
             "rasio_pesan": export.periksa_rasio(rasio),
             "nomor_berikut": await asyncio.to_thread(versi.nomor_berikut, sess.src),
@@ -516,11 +522,19 @@ async def versi_mulai(request: Request, split: str = "", catatan: str = "",
     # di sini supaya pekerjaan latar tidak perlu membaca berkas tugas lagi.
     _td = await asyncio.to_thread(tugas.baca_projek, sess.src,
                                   settings.uploads_root)
-    _fmt = str(resep.get("format") or "").strip().lower()
-    # "campuran" = format khusus Mask R-CNN (poligon produk + kotak logo dalam
-    # satu versi). Bukan jenis anotasi projek, jadi diterima terpisah di sini.
-    jenis_ds = (_fmt if _fmt in tugas.JENIS_ANOTASI or _fmt == "campuran"
-                else tugas.jenis_berlaku(_td, items))
+    if _td.get("jenis_anotasi") == "kerangka":
+        # Projek kerangka (keypoint/pose) SELALU dibangun sebagai pose: yang
+        # menentukan template skeleton projek, bukan pemilih format per-versi.
+        # kotak/poligon tak berlaku untuk pose dan diam-diam membuang keypoint
+        # (court jadi satu kotak, 33 titik hilang). Build-nya lewat _bangun_pose
+        # (kpt_shape+flip_idx+label pose). Lihat buatversi.Pekerjaan.pose.
+        jenis_ds = "kerangka"
+    else:
+        _fmt = str(resep.get("format") or "").strip().lower()
+        # "campuran" = format khusus Mask R-CNN (poligon produk + kotak logo dalam
+        # satu versi). Bukan jenis anotasi projek, jadi diterima terpisah di sini.
+        jenis_ds = (_fmt if _fmt in tugas.JENIS_ANOTASI or _fmt == "campuran"
+                    else tugas.jenis_berlaku(_td, items))
     # Guard "tolak campuran": versi segmentasi tak boleh memuat kelas yang
     # didominasi kotak (mis. logo) -- kotak tidak bisa jadi mask. Ditolak di sini
     # dengan menyebut kelasnya, bukan diam-diam memulangkan semua gambarnya.

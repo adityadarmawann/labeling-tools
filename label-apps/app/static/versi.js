@@ -1162,7 +1162,17 @@
     if (!box) return;
     const daftar = (sumber && sumber.daftar_kelas) || [];
     const total = (sumber && sumber.bentuk_total) || { kotak: 0, poligon: 0, lain: 0 };
-    if ((total.kotak || 0) + (total.poligon || 0) === 0) { box.hidden = true; return; }
+    // Projek kerangka (pose): pemilih kotak/poligon tak berlaku -- versinya SELALU
+    // pose (server memaksanya). Sembunyikan blok supaya default "kotak" tak diam-
+    // diam membangun versi deteksi yang membuang keypoint. Projek pose bisa tetap
+    // punya kotak (mis. court-basketball: keypoint court + kotak nomor jersey),
+    // jadi syarat "tak ada kotak/poligon" saja tidak cukup.
+    if ((sumber && sumber.kerangka)
+        || (total.kotak || 0) + (total.poligon || 0) === 0) {
+      box.hidden = true;
+      resep.format = '';
+      return;
+    }
     box.hidden = false;
     const peta = ((resep.pra.ubah_kelas || {}).peta) || {};
     const dipakai = daftar.filter((k) => peta[k.i] !== null);   // null = jadi latar
