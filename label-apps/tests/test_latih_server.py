@@ -140,6 +140,30 @@ def test_hidup_mengenali_proses_latih_server():
     assert latih.hidup(0) is False and latih.hidup("x") is False
 
 
+def test_status_offload_pid_mati_bukan_selesai_palsu(tmp_path, monkeypatch):
+    # REGRESI: backend offload (server/kaggle) menarik best.pt PARSIAL tiap poll.
+    # Dulu status() lihat best.pt ada + pid mati -> "selesai" PALSU walau remote
+    # putus di tengah / proses dibaca mati. Kini offload -> "hilang"; hanya lokal
+    # yang boleh menyimpulkan selesai dari best.pt.
+    from app.services import latih as L
+    monkeypatch.setattr(L, "beritahu_hasil", lambda *a, **k: None, raising=False)
+
+    def _mk(backend):
+        ds = tmp_path / backend
+        (L.dir_latih(ds, 1) / "weights").mkdir(parents=True)
+        (L.dir_latih(ds, 1) / "weights" / "best.pt").write_bytes(b"x")
+        L.perbarui(ds, 1, versi=1, backend=backend,
+                   keadaan="jalan", pid=999_999_999, par={"epochs": 1})
+        return ds
+
+    L.status(_mk("server"), 1)
+    assert L.baca(tmp_path / "server", 1)["keadaan"] == "hilang"
+    L.status(_mk("kaggle"), 1)
+    assert L.baca(tmp_path / "kaggle", 1)["keadaan"] == "hilang"
+    L.status(_mk("lokal"), 1)                       # lokal: best.pt = tuntas
+    assert L.baca(tmp_path / "lokal", 1)["keadaan"] == "selesai"
+
+
 def test_siapkan_terima_backend_server(tmp_path, monkeypatch):
     # siapkan membekukan backend "server" (bukan dibanting ke "lokal").
     import app.services.latih as L

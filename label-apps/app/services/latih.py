@@ -904,9 +904,15 @@ def status(ds, nomor: int) -> dict:
     d = dir_latih(ds, nomor)
     keadaan = isi.get("keadaan") or "antre"
     if keadaan in BERJALAN and not hidup(isi.get("pid")):
-        # Prosesnya lenyap. Kalau bobotnya terlanjur ada, ia sempat selesai
-        # dan yang gagal cuma pencatatan status terakhirnya.
-        keadaan = "selesai" if (d / "weights" / "best.pt").exists() else "hilang"
+        # Prosesnya lenyap. best.pt sbg bukti "selesai" HANYA sah utk backend
+        # lokal: di sana best.pt baru muncul saat training tuntas. Backend offload
+        # (kaggle/server) menarik best.pt PARSIAL tiap poll, jadi keberadaannya
+        # BUKAN bukti selesai -- "selesai" yang sah cuma yang ditulis orkestrator
+        # sendiri (dgn detik_total). pid mati + record masih "berjalan" di offload
+        # = orkestrator putus di tengah -> "hilang", JANGAN "selesai" palsu.
+        offload = isi.get("backend") in ("kaggle", "server")
+        selesai_wajar = (not offload) and (d / "weights" / "best.pt").exists()
+        keadaan = "selesai" if selesai_wajar else "hilang"
         isi = perbarui(ds, nomor, keadaan=keadaan,
                        selesai_pada=isi.get("selesai_pada")
                        or datetime.now().strftime("%Y-%m-%d %H:%M"))
