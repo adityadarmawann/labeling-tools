@@ -21,6 +21,7 @@ import os
 import secrets
 import subprocess
 import sys
+import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
@@ -139,6 +140,118 @@ def _skrip_latih(data_abs: str, bobot: str, tugas: str, par: dict,
     )
 
 
+# --------------------------------------------------------- remote RF-DETR
+# Badan skrip RF-DETR MANDIRI (tanpa HIGOLAB) -- statis; konfigurasi per-run
+# disuntik lewat baris `CFG_JSON = '...'` di atasnya oleh _skrip_rfdetr. Raw
+# string: `\n` tetap dua karakter, jadi string literal di skrip remote benar.
+# Mencerminkan latih_rfdetr lokal: callback PTL menulis results.csv tiap epoch
+# + menyalin checkpoint terbaik -> poll menarik kemajuan LIVE & bobot walau
+# training berhenti di tengah. Keluaran disusun seperti jalur YOLO
+# ({run}/results.csv + {run}/weights/best.pt + {run}/EXIT) supaya poller sama.
+_RFDETR_BODY = r'''
+import sys, time, glob, os, shutil, traceback, json
+import rfdetr
+CFG = json.loads(CFG_JSON)
+RUN = CFG["run"]; OUT = RUN + "/out"
+os.makedirs(RUN + "/weights", exist_ok=True); os.makedirs(OUT, exist_ok=True)
+
+def _best():
+    for pat in ("checkpoint_best_total.pth", "checkpoint_best_ema.pth",
+                "checkpoint_best_regular.pth", "*best*.pth", "*.pth"):
+        g = sorted(glob.glob(OUT + "/**/" + pat, recursive=True), key=len)
+        if g:
+            return g[0]
+    return None
+
+def _sync(rows):
+    try:
+        with open(RUN + "/results.csv", "w") as f:
+            f.write("epoch,time,metrics/mAP50-95(B)\n")
+            for e, d, mp in rows:
+                f.write("%d,%s,%s\n" % (e, round(d, 1), "" if mp is None else mp))
+    except OSError:
+        pass
+    b = _best()
+    if b:
+        try:
+            shutil.copy2(b, RUN + "/weights/best.pt")
+        except OSError:
+            pass
+
+import pytorch_lightning as pl
+from pytorch_lightning.callbacks import Callback
+
+class _P(Callback):
+    def on_fit_start(self, t, m):
+        self._t0 = time.time(); self._rows = []
+    def on_train_epoch_end(self, t, m):
+        ep = int(t.current_epoch) + 1
+        det = time.time() - getattr(self, "_t0", time.time())
+        mp = None
+        for k, v in (t.callback_metrics or {}).items():
+            if "map" in str(k).lower():
+                try:
+                    mp = float(v)
+                except Exception:
+                    pass
+        self._rows = getattr(self, "_rows", [])
+        self._rows.append((ep, det, mp))
+        _sync(self._rows)
+
+_oi = pl.Trainer.__init__
+def _ni(self, *a, **k):
+    cb = list(k.get("callbacks") or []); cb.append(_P()); k["callbacks"] = cb
+    return _oi(self, *a, **k)
+pl.Trainer.__init__ = _ni
+
+code = 0
+try:
+    Model = getattr(rfdetr, CFG["cls"])
+    m = Model(resolution=int(CFG["res"]))
+    m.train(dataset_dir=CFG["coco"], output_dir=OUT, **CFG["par"])
+    b = _best()
+    if b:
+        shutil.copy2(b, RUN + "/weights/best.pt")
+    last = (sorted(glob.glob(OUT + "/**/checkpoint.pth", recursive=True))
+            or sorted(glob.glob(OUT + "/**/*last*.pth", recursive=True)))
+    if last:
+        shutil.copy2(last[0], RUN + "/weights/last.pt")
+    if not os.path.exists(RUN + "/results.csv"):
+        _sync([(CFG["par"]["epochs"], 0.0, None)])
+except Exception:
+    traceback.print_exc(); code = 1
+open(RUN + "/EXIT", "w").write(str(code))
+sys.exit(code)
+'''
+
+
+def _skrip_rfdetr(coco_abs: str, model: str, par: dict, run_parent: str) -> str:
+    """Skrip RF-DETR MANDIRI untuk remote. Konfigurasi (kelas model, resolusi
+    dijepit kelipatan 56, path COCO + run, hiperparameter) disuntik sebagai JSON;
+    badannya statis (_RFDETR_BODY)."""
+    import json as _json
+
+    kelas = {"nano": "RFDETRNano", "small": "RFDETRSmall",
+             "medium": "RFDETRMedium", "large": "RFDETRLarge"}
+    res = max(56, int(round(float(par.get("resolution") or 560) / 56.0)) * 56)
+    cfg = {
+        "cls": kelas.get(model, "RFDETRNano"),
+        "res": res,
+        "coco": coco_abs,
+        "run": run_parent + "/run",
+        "par": {
+            "epochs": int(par.get("epochs") or 100),
+            "batch_size": int(par.get("batch_size") or 4),
+            "grad_accum_steps": int(par.get("grad_accum_steps") or 4),
+            "lr": float(par.get("lr") or 1e-4),
+            "lr_encoder": float(par.get("lr_encoder") or 1.5e-4),
+            "warmup_epochs": float(par.get("warmup_epochs") or 0.0),
+            "early_stopping": bool(par.get("early_stopping") or False),
+        },
+    }
+    return "CFG_JSON = " + repr(_json.dumps(cfg)) + "\n" + _RFDETR_BODY
+
+
 # --------------------------------------------------------------- main
 def main() -> int:
     ds, nomor = Path(sys.argv[1]), int(sys.argv[2])
@@ -172,30 +285,49 @@ def main() -> int:
         _ssh_ok(key, host, f"mkdir -p {rroot}/run {rdir}")
         ds_abs = f"{home}/{rroot[2:]}/ds" if rroot.startswith("~/") else f"{rroot}/ds"
 
-        # Kirim dataset versi (train/valid/test + data.yaml) -> remote.
-        print(f"  kirim dataset {ds_dir.name} -> {host}:{rroot}/ds/ …", flush=True)
-        r = _rsync(key, str(ds_dir) + "/", f"{host}:{rroot}/ds/")
-        if r.returncode != 0:
-            raise RuntimeError(f"rsync dataset gagal: {r.stderr[:200]}")
-
-        # Bobot awal: berkas lokal dikirim; nama pra-latih diunduh remote sendiri.
-        bl = _bobot_lokal(isi["bobot"])
-        if bl is not None:
-            _rsync(key, str(bl), f"{host}:{rroot}/bobot.pt")
-            bobot_remote = f"{ds_abs.rsplit('/',1)[0]}/bobot.pt"
-        else:
-            bobot_remote = isi["bobot"]
-
-        # data.yaml bersih (path absolut) + skrip training, lalu LUNCURKAN.
-        par = dict(isi.get("par") or {})
-        if isi["tugas"] == "pose":
-            par = _sesuaikan_par_pose(par, lokal_yaml)
-        _tulis_remote(key, host, f"{rroot}/ds/data.yaml",
-                      _data_yaml_remote(lokal_yaml, ds_abs))
+        arsitektur = (isi.get("arsitektur") or "yolo").strip().lower()
         run_parent = ds_abs.rsplit("/", 1)[0]       # = <home>/<rroot>
-        _tulis_remote(key, host, f"{rroot}/train.py",
-                      _skrip_latih(f"{ds_abs}/data.yaml", bobot_remote,
-                                   isi["tugas"], par, run_parent))
+
+        if arsitektur == "rfdetr":
+            # RF-DETR: dataset dikirim dalam FORMAT COCO (bukan YOLO), dan skrip
+            # memakai interpreter remote KHUSUS rfdetr (venv terpisah di remote,
+            # supaya torch/deps-nya tak mengusik env YOLO/ultralytics remote).
+            from . import ekspor_coco
+            py = (st.remote_py_rfdetr or "").strip() or py
+            print(f"  ekspor versi {ds_dir.name} ke COCO lalu kirim "
+                  f"-> {host}:{rroot}/ds/ …", flush=True)
+            with tempfile.TemporaryDirectory() as tmp:
+                coco_lokal = Path(tmp) / "coco"
+                ekspor_coco.versi_ke_coco(ds_dir, coco_lokal)
+                r = _rsync(key, str(coco_lokal) + "/", f"{host}:{rroot}/ds/")
+                if r.returncode != 0:
+                    raise RuntimeError(f"rsync COCO gagal: {r.stderr[:200]}")
+            _tulis_remote(key, host, f"{rroot}/train.py",
+                          _skrip_rfdetr(ds_abs, isi.get("rfdetr_model") or "nano",
+                                        dict(isi.get("par") or {}), run_parent))
+        else:
+            # YOLO: kirim pohon versi + data.yaml bersih + bobot, skrip ultralytics.
+            print(f"  kirim dataset {ds_dir.name} -> {host}:{rroot}/ds/ …",
+                  flush=True)
+            r = _rsync(key, str(ds_dir) + "/", f"{host}:{rroot}/ds/")
+            if r.returncode != 0:
+                raise RuntimeError(f"rsync dataset gagal: {r.stderr[:200]}")
+            # Bobot awal: berkas lokal dikirim; nama pra-latih diunduh remote sendiri.
+            bl = _bobot_lokal(isi["bobot"])
+            if bl is not None:
+                _rsync(key, str(bl), f"{host}:{rroot}/bobot.pt")
+                bobot_remote = f"{run_parent}/bobot.pt"
+            else:
+                bobot_remote = isi["bobot"]
+            par = dict(isi.get("par") or {})
+            if isi["tugas"] == "pose":
+                par = _sesuaikan_par_pose(par, lokal_yaml)
+            _tulis_remote(key, host, f"{rroot}/ds/data.yaml",
+                          _data_yaml_remote(lokal_yaml, ds_abs))
+            _tulis_remote(key, host, f"{rroot}/train.py",
+                          _skrip_latih(f"{ds_abs}/data.yaml", bobot_remote,
+                                       isi["tugas"], par, run_parent))
+
         # flock menahan selama training -> satu training per GPU remote (serial).
         luncur = (f"cd {rroot} && (flock -w 5 {rdir}/.gpu.lock "
                   f"{py} train.py > train.log 2>&1 &) ; echo LAUNCHED")

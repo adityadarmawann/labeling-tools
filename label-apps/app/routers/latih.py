@@ -73,6 +73,8 @@ async def halaman(request: Request, ds: str = "",
         "kaggle_akun": svc_kaggle.ringkas_akun_user(settings, sess.user),
         # Pilihan "Jalankan di: Server GPU lain" hanya kalau host+kunci disetel.
         "server_siap": svc.siap_server(settings)[0],
+        # Server boleh RF-DETR kalau env rfdetr remote (remote_py_rfdetr) disetel.
+        "server_rfdetr_siap": svc.siap_server_rfdetr(settings)[0],
         "server_nama": settings.remote_nama,
         # Panel "Monitor akun (semua user)" hanya untuk admin.
         "admin": _apakah_admin(sess, settings),
@@ -126,6 +128,8 @@ async def bahan(sess: Session = Depends(current_session_api),
             "kaggle_mungkin": svc_kaggle.paket_ada(),
             # Backend "Server GPU lain" (offload SSH): siap kalau host+kunci disetel.
             "server_siap": svc.siap_server(settings)[0],
+            # Server boleh RF-DETR kalau env rfdetr remote (remote_py_rfdetr) disetel.
+            "server_rfdetr_siap": svc.siap_server_rfdetr(settings)[0],
             "server_nama": settings.remote_nama,
             # Admin: boleh membuka panel "Monitor akun (semua user)".
             "admin": _apakah_admin(sess, settings),
@@ -199,14 +203,17 @@ async def mulai(request: Request,
     rfdetr_multigpu = bool(body.get("rfdetr_multigpu"))   # saklar T4x2 (Kaggle), default mati
     maskrcnn_model = str(body.get("maskrcnn_model") or "").strip().lower()
     if backend == "server":
-        # Offload ke GPU server LAIN lewat SSH. Server ini tak perlu GPU/ultralytics
-        # lokal -- yang diperiksa konfigurasi remote-nya. Hanya YOLO untuk sekarang
-        # (remote punya ultralytics; RF-DETR/Mask R-CNN remote menyusul).
-        if arsitektur != "yolo":
+        # Offload ke GPU server LAIN lewat SSH. Server ini tak perlu GPU lokal --
+        # yang diperiksa konfigurasi remote. Remote melayani YOLO, dan RF-DETR
+        # kalau env rfdetr-nya disetel (remote_py_rfdetr). Mask R-CNN remote belum.
+        if arsitektur == "maskrcnn":
             return {"ok": False,
-                    "error": "backend Server baru mendukung YOLO; pilih PC ini "
-                             "atau Kaggle untuk RF-DETR / Mask R-CNN"}
-        siap, alasan = svc.siap_server(settings)
+                    "error": "backend Server mendukung YOLO dan RF-DETR; pilih "
+                             "PC ini untuk Mask R-CNN"}
+        if arsitektur == "rfdetr":
+            siap, alasan = svc.siap_server_rfdetr(settings)
+        else:
+            siap, alasan = svc.siap_server(settings)
     elif backend == "kaggle":
         # RF-DETR di Kaggle: kernelnya pip-install rfdetr sendiri, jadi server
         # ini TIDAK perlu rfdetr lokal — cukup akun Kaggle user ini terkonfigurasi.

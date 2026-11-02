@@ -222,11 +222,14 @@ class Settings:
     #   remote_ssh : "user@host" (mis. "clvision@103.182.240.30")
     #   remote_key : path kunci privat SSH (mis. "~/.ssh/higolab_remote")
     #   remote_py  : python di remote yang punya ultralytics (bawaan "python3")
+    #   remote_py_rfdetr: python di remote (venv terpisah) yang punya rfdetr[train].
+    #                     Kosong = server HANYA melayani YOLO; RF-DETR tak ditawarkan.
     #   remote_dir : folder kerja di remote (bawaan "~/higolab-train")
     #   remote_nama: label singkat di UI (mis. "clvision RTX 3060")
     remote_ssh: str = ""
     remote_key: str = ""
     remote_py: str = "python3"
+    remote_py_rfdetr: str = ""
     remote_dir: str = "~/higolab-train"
     remote_nama: str = "Server GPU"
 
@@ -321,6 +324,7 @@ def get_settings() -> Settings:
         remote_ssh=_get("REMOTE_SSH"),
         remote_key=_get("REMOTE_KEY"),
         remote_py=_get("REMOTE_PY") or "python3",
+        remote_py_rfdetr=_get("REMOTE_PY_RFDETR"),
         remote_dir=_get("REMOTE_DIR") or "~/higolab-train",
         remote_nama=_get("REMOTE_NAMA") or "Server GPU",
     )

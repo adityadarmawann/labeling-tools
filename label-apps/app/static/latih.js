@@ -487,8 +487,12 @@
     // memasang rfdetr sendiri). Mask R-CNN LOKAL saja untuk sekarang. Lokal:
     // RF-DETR butuh rfdetr; Mask R-CNN butuh torchvision; YOLO butuh ultralytics.
     let siap, alasan;
-    if (b === 'server' && (rf || mr)) {
-      siap = false; alasan = 'Server GPU lain baru mendukung YOLO; pakai PC ini atau Kaggle.';
+    if (b === 'server' && mr) {
+      siap = false; alasan = 'Server GPU lain mendukung YOLO dan RF-DETR; Mask R-CNN pakai PC ini.';
+    } else if (b === 'server' && rf) {
+      // RF-DETR di server butuh env rfdetr terpisah di remote (remote_py_rfdetr).
+      siap = BAHAN.server_rfdetr_siap;
+      alasan = BAHAN.server_rfdetr_siap ? '' : 'Server ini belum punya env RF-DETR; pakai PC ini atau Kaggle.';
     } else if (b === 'server') { siap = BAHAN.server_siap; alasan = 'server GPU lain belum disetel'; }
     else if (mr && b === 'kaggle') {
       siap = false; alasan = 'Mask R-CNN hanya tersedia LOKAL untuk sekarang.';
@@ -1708,12 +1712,13 @@
           // — dan bawaannya tetap YOLO, jadi tampilan lama tak berubah sedikit
           // pun bila RF-DETR tidak tersedia. Mengganti arsitektur menukar
           // seluruh bentuk form (lihat terapkanArsitektur).
-          if ((BAHAN.rfdetr_siap || BAHAN.maskrcnn_siap || BAHAN.kaggle_siap)
+          if ((BAHAN.rfdetr_siap || BAHAN.maskrcnn_siap || BAHAN.kaggle_siap
+               || BAHAN.server_rfdetr_siap)
               && $('tr-arsitektur-bungkus')) {
             $('tr-arsitektur-bungkus').hidden = false;
             // Sembunyikan opsi arsitektur yang tak tersedia di server ini.
             const opR = $('tr-arsitektur') && $('tr-arsitektur').querySelector('option[value="rfdetr"]');
-            if (opR && !BAHAN.rfdetr_siap && !BAHAN.kaggle_siap) opR.hidden = true;
+            if (opR && !BAHAN.rfdetr_siap && !BAHAN.kaggle_siap && !BAHAN.server_rfdetr_siap) opR.hidden = true;
             const opM = $('tr-arsitektur') && $('tr-arsitektur').querySelector('option[value="maskrcnn"]');
             if (opM && !BAHAN.maskrcnn_siap) opM.hidden = true;
             if ($('tr-arsitektur')) {

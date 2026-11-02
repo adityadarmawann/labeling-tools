@@ -88,7 +88,65 @@ def test_skrip_latih_mandiri_dan_device_gpu():
     assert ns["PAR"]["epochs"] == 3
 
 
+# ---------------------------------------------------------- skrip RF-DETR
+def test_skrip_rfdetr_mandiri_valid_dan_cfg():
+    s = latih_server._skrip_rfdetr(
+        "/r/L9/ds", "medium",
+        {"epochs": 2, "batch_size": 2, "resolution": 600, "lr": 1e-4,
+         "early_stopping": True},
+        "/home/clvision/higolab-train/L9-abc")
+    # Skrip HARUS Python sah (MANDIRI, tanpa HIGOLAB).
+    compile(s, "<rfdetr>", "exec")
+    assert "import rfdetr" in s and "RFDETRMedium" in s and "m.train(" in s
+    assert "import app" not in s                     # MANDIRI: tak impor HIGOLAB
+    # Konfigurasi disuntik sebagai JSON -> parse & cek nilai yang menentukan.
+    baris = next(ln for ln in s.splitlines() if ln.startswith("CFG_JSON = "))
+    ns: dict = {}
+    exec(baris, ns)
+    import json
+    cfg = json.loads(ns["CFG_JSON"])
+    assert cfg["cls"] == "RFDETRMedium"
+    assert cfg["res"] == 616                        # 600 -> kelipatan 56 terdekat
+    assert cfg["coco"] == "/r/L9/ds" and cfg["run"].endswith("/run")
+    assert cfg["par"]["epochs"] == 2 and cfg["par"]["batch_size"] == 2
+    assert cfg["par"]["early_stopping"] is True
+    # Keluaran tersusun seperti jalur YOLO supaya poller sama.
+    assert '"/weights/best.pt"' in s and '"/EXIT"' in s and "results.csv" in s
+
+
+def test_skrip_rfdetr_model_tak_dikenal_jatuh_ke_nano():
+    s = latih_server._skrip_rfdetr("/r/ds", "ngawur", {}, "/r/L1")
+    assert "RFDETRNano" in s
+
+
 # ---------------------------------------------------------- kesiapan backend
+def test_siap_server_rfdetr_butuh_env_rfdetr(tmp_path):
+    key = tmp_path / "k"
+    key.write_text("PRIVKEY")
+    # Host+kunci OK tapi remote_py_rfdetr kosong -> server HANYA YOLO.
+    ok, alasan = latih.siap_server_rfdetr(
+        SimpleNamespace(remote_ssh="u@h", remote_key=str(key), remote_py_rfdetr=""))
+    assert ok is False and "RF-DETR" in alasan
+    # Diisi -> siap.
+    ok, _ = latih.siap_server_rfdetr(SimpleNamespace(
+        remote_ssh="u@h", remote_key=str(key), remote_py_rfdetr="~/higolab-rfdetr/bin/python"))
+    assert ok is True
+    # Host belum disetel -> tetap tidak siap walau py diisi.
+    ok, _ = latih.siap_server_rfdetr(SimpleNamespace(
+        remote_ssh="", remote_key=str(key), remote_py_rfdetr="x"))
+    assert ok is False
+
+
+def test_config_remote_py_rfdetr_dari_env(monkeypatch):
+    from app import config
+    config.get_settings.cache_clear()
+    monkeypatch.setenv("LABELAPP_REMOTE_PY_RFDETR", "~/higolab-rfdetr/bin/python")
+    try:
+        assert config.get_settings().remote_py_rfdetr == "~/higolab-rfdetr/bin/python"
+    finally:
+        config.get_settings.cache_clear()
+
+
 def test_siap_server_butuh_host_dan_kunci(tmp_path):
     key = tmp_path / "k"
     key.write_text("PRIVKEY")

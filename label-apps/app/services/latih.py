@@ -1173,6 +1173,19 @@ def siap_server(settings) -> tuple[bool, str]:
     return True, ""
 
 
+def siap_server_rfdetr(settings) -> tuple[bool, str]:
+    """Backend 'server' siap melatih RF-DETR? Sama dengan siap_server PLUS
+    interpreter rfdetr khusus di remote (remote_py_rfdetr) sudah disetel. Kosong
+    = remote cuma punya env YOLO, jadi RF-DETR tak ditawarkan untuk server dan UI
+    tetap mengarahkan RF-DETR ke PC ini / Kaggle."""
+    ok, alasan = siap_server(settings)
+    if not ok:
+        return False, alasan
+    if not (settings.remote_py_rfdetr or "").strip():
+        return False, "remote belum punya env RF-DETR (remote_py_rfdetr kosong)"
+    return True, ""
+
+
 def siap_latih() -> tuple[bool, str]:
     """Server ini bisa menjalankan training atau tidak, beserta alasannya.
 
