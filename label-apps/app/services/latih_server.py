@@ -57,6 +57,23 @@ def _ssh_ok(key: str, host: str, cmd: str, timeout: int = 90) -> str:
     return r.stdout.strip()
 
 
+def _ssh_cek(key: str, host: str, cmd: str, timeout: int = 40) -> tuple[bool, str]:
+    """SSH untuk POLLING: (koneksi_sukses, stdout). TAK PERNAH melempar.
+
+    Gangguan jaringan transien (timeout/putus) selama training berjam-jam TIDAK
+    boleh dibaca sebagai 'proses remote mati' -- satu kedipan SSH dulu membuat
+    poll menyimpulkan mati, membatalkan training yang sebenarnya jalan, lalu
+    menghapus run dir-nya. Di sini kegagalan koneksi dikembalikan sebagai
+    (False, "") supaya pemanggil bisa membedakannya dari 'proses benar-benar
+    tak ada' (True, "0")."""
+    try:
+        r = subprocess.run(["ssh", *_ssh_opts(key), host, cmd],
+                           capture_output=True, text=True, timeout=timeout)
+    except Exception:                                # TimeoutExpired, OSError, dll
+        return False, ""
+    return r.returncode == 0, r.stdout.strip()
+
+
 def _rsync(key: str, src: str, dst: str, timeout: int = 7200) -> subprocess.CompletedProcess:
     e = "ssh " + " ".join(_ssh_opts(key))
     return subprocess.run(["rsync", "-az", "--partial", "-e", e, src, dst],
@@ -334,8 +351,16 @@ def main() -> int:
         _ssh_ok(key, host, luncur, timeout=60)
         print(f"  training berjalan di {st.remote_nama} (poll tiap {POLL}s) …", flush=True)
 
-        # Poll: tarik hasil + deteksi selesai (berkas EXIT) / mati.
+        # Poll: tarik hasil + deteksi selesai (berkas EXIT) / mati. TAHAN gangguan
+        # SSH transien: selama run berjam-jam (ratusan-ribuan poll) satu kedipan
+        # jaringan TAK boleh dibaca 'proses mati' lalu membatalkan + menghapus
+        # training yang sebenarnya masih jalan. 'Mati' hanya disimpulkan kalau SSH
+        # SUKSES dan pgrep benar-benar menjawab 0. Kegagalan koneksi beruntun
+        # (host benar-benar tak terjangkau) baru menyerah setelah MAKS_SSH_GAGAL.
         ep_lama = -1
+        exit_s = ""
+        ssh_gagal = 0
+        MAKS_SSH_GAGAL = 15            # ~beberapa menit tak terjangkau baru menyerah
         while True:
             time.sleep(POLL)
             _rsync(key, f"{host}:{rroot}/run/results.csv", str(dl / "results.csv"))
@@ -344,15 +369,25 @@ def main() -> int:
             if n != ep_lama:
                 ep_lama = n
                 print(f"  epoch {n}  · {int(time.time()-t0)//60}m", flush=True)
-            exit_s = _ssh(key, host, f"cat {rroot}/run/EXIT 2>/dev/null", timeout=40).stdout.strip()
-            if exit_s != "":
+            ok, out = _ssh_cek(key, host, f"cat {rroot}/run/EXIT 2>/dev/null")
+            if ok and out != "":
+                exit_s = out                      # skrip remote menulis kode selesai
                 break
-            hidup = _ssh(key, host, f"pgrep -f '{rroot}/train.py' >/dev/null && echo 1 || echo 0",
-                         timeout=40).stdout.strip()
-            if hidup != "1":
-                # proses hilang tanpa menulis EXIT (mis. OOM/kill) -> gagal.
-                exit_s = "1"
-                break
+            ok2, hidup = (False, "")
+            if ok:                                # EXIT belum ada -> cek proses
+                ok2, hidup = _ssh_cek(
+                    key, host, f"pgrep -f '{rroot}/train.py' >/dev/null && echo 1 || echo 0")
+            if ok and ok2:
+                ssh_gagal = 0                     # koneksi sehat, jawaban tegas
+                if hidup != "1":
+                    exit_s = "1"                  # proses hilang tanpa EXIT (OOM/kill)
+                    break
+            else:
+                ssh_gagal += 1                    # koneksi/perintah gagal: TRANSIEN
+                if ssh_gagal >= MAKS_SSH_GAGAL:
+                    raise RuntimeError(
+                        f"remote {host} tak terjangkau {ssh_gagal}x berturut; "
+                        "training mungkin MASIH berjalan di sana, tak dibatalkan paksa")
 
         # Tarik hasil final.
         _rsync(key, f"{host}:{rroot}/run/results.csv", str(dl / "results.csv"))
@@ -364,11 +399,13 @@ def main() -> int:
             print(f"  SELESAI · bobot: {best}", flush=True)
             rc = 0
         else:
-            ekor = _ssh(key, host, f"tail -n 25 {rroot}/train.log 2>/dev/null",
-                        timeout=40).stdout.strip()
+            _ok, ekor = _ssh_cek(key, host, f"tail -n 25 {rroot}/train.log 2>/dev/null")
+            pesan = (ekor[-240:] if ekor.strip() else
+                     "log remote tak terbaca (kemungkinan koneksi putus / proses "
+                     "dihentikan di tengah). Bobot terakhir yang sempat ditarik tetap ada.")
             latih.perbarui(ds, nomor, keadaan="gagal",
-                           galat=("training remote gagal. " + ekor[-240:]))
-            print("  GAGAL di remote:\n" + ekor, flush=True)
+                           galat=("training remote gagal. " + pesan))
+            print("  GAGAL di remote:\n" + (ekor or "(log kosong)"), flush=True)
             rc = 1
     except Exception as e:                           # noqa: BLE001
         import traceback

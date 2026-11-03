@@ -147,6 +147,28 @@ def test_config_remote_py_rfdetr_dari_env(monkeypatch):
         config.get_settings.cache_clear()
 
 
+def test_ssh_cek_tak_melempar_dan_bedakan_gagal_vs_mati(monkeypatch):
+    # REGRESI: gangguan SSH transien selama training berjam-jam TAK boleh dibaca
+    # 'proses mati'. _ssh_cek -> (koneksi_sukses, out); hanya (True, "0") yang
+    # boleh disimpulkan MATI. Kegagalan koneksi -> (False, "") (transien).
+    import subprocess as sp
+    # (a) timeout/putus -> (False, "") TANPA melempar
+    monkeypatch.setattr(sp, "run",
+                        lambda *a, **k: (_ for _ in ()).throw(sp.TimeoutExpired("ssh", 1)))
+    assert latih_server._ssh_cek("k", "u@h", "pgrep x") == (False, "")
+    # (b) SSH gagal (returncode 255) -> (False, ...) -> jangan disimpulkan mati
+    monkeypatch.setattr(sp, "run",
+                        lambda *a, **k: sp.CompletedProcess(a, 255, "", "ssh: connect timeout"))
+    ok, _ = latih_server._ssh_cek("k", "u@h", "pgrep x")
+    assert ok is False
+    # (c) SSH sukses + pgrep '0' -> (True, "0"): BARU boleh disimpulkan mati
+    monkeypatch.setattr(sp, "run", lambda *a, **k: sp.CompletedProcess(a, 0, "0\n", ""))
+    assert latih_server._ssh_cek("k", "u@h", "pgrep x") == (True, "0")
+    # (d) SSH sukses + '1' -> hidup
+    monkeypatch.setattr(sp, "run", lambda *a, **k: sp.CompletedProcess(a, 0, "1\n", ""))
+    assert latih_server._ssh_cek("k", "u@h", "pgrep x") == (True, "1")
+
+
 def test_siap_server_butuh_host_dan_kunci(tmp_path):
     key = tmp_path / "k"
     key.write_text("PRIVKEY")
