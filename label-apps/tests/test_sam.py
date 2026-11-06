@@ -169,11 +169,11 @@ def test_paksaan_osam_tidak_menyentuh_mobilesam(monkeypatch):
         f"MobileSAM ikut terseret ke {sam.provider}")
 
 
-def test_osam_routing_kecil_gpu_besar_dan_sesak_cpu(monkeypatch):
-    """Routing per-model osam: model kecil (sam2:small, efficientsam) boleh GPU
-    saat ada ruang; SAM 3 / YOLO-World (tak muat 8 GB) TETAP CPU; dan saat VRAM
-    sesak (training/pembuatan versi memakai GPU) semua jatuh ke CPU — supaya
-    fungsi utama tak kehilangan memori dan tak OOM."""
+def test_osam_routing_per_model_dan_sesak_cpu(monkeypatch):
+    """Routing per-model osam berdasar VRAM bebas: sam2/efficientsam/YOLO-World
+    boleh GPU saat ada ~4,7 GB bebas; SAM 3 (puncak ~6,8 GB) hanya saat GPU
+    nyaris kosong (~7,2 GB bebas); dan saat VRAM sesak (training/pembuatan versi
+    memakai GPU) semua jatuh ke CPU supaya fungsi utama tak OOM."""
     import sys
     import types
 
@@ -189,16 +189,20 @@ def test_osam_routing_kecil_gpu_besar_dan_sesak_cpu(monkeypatch):
     monkeypatch.setattr(olah_gpu, "MODE", "gpu", raising=False)
     fake = types.SimpleNamespace(cuda=types.SimpleNamespace(
         is_available=lambda: True,
-        mem_get_info=lambda: (6_000_000_000, 8_000_000_000)))
+        mem_get_info=lambda: (6_000_000_000, 8_000_000_000)))   # 6 GB bebas
     monkeypatch.setitem(sys.modules, "torch", fake)
 
     assert al._boleh_gpu_osam("sam2:small") is True
     assert al._boleh_gpu_osam("efficientsam:10m") is True
-    assert al._boleh_gpu_osam("sam3:latest") is False        # 3,4 GB, tak muat
-    assert al._boleh_gpu_osam("yoloworld:latest") is False
+    assert al._boleh_gpu_osam("yoloworld:latest") is True     # kini GPU (~1,85 GB)
+    assert al._boleh_gpu_osam("sam3:latest") is False         # butuh ~7,2 GB, cuma 6
+
+    fake.cuda.mem_get_info = lambda: (7_500_000_000, 8_000_000_000)  # nyaris kosong
+    assert al._boleh_gpu_osam("sam3:latest") is True          # SAM 3 pun naik GPU
 
     fake.cuda.mem_get_info = lambda: (1_000_000_000, 8_000_000_000)   # GPU sesak
     assert al._boleh_gpu_osam("sam2:small") is False          # -> CPU, tak rebutan
+    assert al._boleh_gpu_osam("yoloworld:latest") is False
 
     monkeypatch.setattr(olah_gpu, "MODE", "cpu", raising=False)
     assert al._boleh_gpu_osam("sam2:small") is False          # olah=cpu -> CPU

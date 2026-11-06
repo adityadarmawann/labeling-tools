@@ -65,6 +65,28 @@ def test_tandai_latih_tak_pernah_tulis_pid_init(monkeypatch):
     _bersihkan()
 
 
+def test_osam_gpu_eligible_dan_hybrid_sam3():
+    # Diukur di stack sekarang: sam2, YOLO-World, DAN SAM 3 semua boleh GPU.
+    for m in ("sam2:small", "yoloworld:latest", "sam3:latest"):
+        assert m in autolabel.OSAM_GPU_KECIL
+    # SAM 3 memuncak ~6,8 GB -> butuh VRAM bebas lebih besar dari default.
+    assert autolabel.OSAM_GPU_BEBAS["sam3:latest"] > autolabel.OSAM_GPU_MIN_BEBAS
+
+    class _B:
+        def __init__(self, u):
+            self.url = u
+    # Hybrid SAM 3: hanya image_encoder di GPU; language_encoder + decoder CPU.
+    assert autolabel._blob_boleh_gpu("sam3:latest",
+                                     _B("https://x/sam3_image_encoder.onnx")) is True
+    assert autolabel._blob_boleh_gpu("sam3:latest",
+                                     _B("https://x/sam3_language_encoder.onnx")) is False
+    assert autolabel._blob_boleh_gpu("sam3:latest",
+                                     _B("https://x/sam3_decoder.onnx")) is False
+    # Model non-SAM3: semua sesinya boleh GPU.
+    assert autolabel._blob_boleh_gpu("yoloworld:latest",
+                                     _B("https://x/yoloworld.onnx")) is True
+
+
 def test_bebaskan_gpu_melepas_sesi_mobilesam():
     _bersihkan()
     # Pura-pura ada sesi MobileSAM residen; bebaskan harus melepasnya.
