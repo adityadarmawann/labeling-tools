@@ -41,6 +41,30 @@ def test_penanda_roundtrip_dan_basi():
     _bersihkan()
 
 
+def test_penanda_pid_init_dianggap_basi():
+    # Marker ber-pid 1 (init) pernah terjadi: training menulisnya lalu mati di
+    # reboot. init SELALU hidup, jadi tanpa penjagaan latih_aktif macet True
+    # selamanya (SAM dipaksa CPU, auto-label terblokir). pid <= 1 harus basi.
+    import json
+    _bersihkan()
+    gpu_sinyal._MARKER.write_text(json.dumps({"pid": 1}))
+    assert gpu_sinyal.latih_aktif() is False
+    assert not gpu_sinyal._MARKER.exists()          # basi -> ikut dibersihkan
+    gpu_sinyal._MARKER.write_text(json.dumps({"pid": 0}))
+    assert gpu_sinyal.latih_aktif() is False
+    _bersihkan()
+
+
+def test_tandai_latih_tak_pernah_tulis_pid_init(monkeypatch):
+    # Walau dipaksa pid=1, yang tertulis adalah pid proses sendiri (bukan 1).
+    import json
+    _bersihkan()
+    gpu_sinyal.tandai_latih(1)
+    d = json.loads(gpu_sinyal._MARKER.read_text())
+    assert d["pid"] == os.getpid() and d["pid"] > 1
+    _bersihkan()
+
+
 def test_bebaskan_gpu_melepas_sesi_mobilesam():
     _bersihkan()
     # Pura-pura ada sesi MobileSAM residen; bebaskan harus melepasnya.
