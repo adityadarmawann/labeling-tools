@@ -427,6 +427,45 @@
     if (mulai) mulai.disabled = false;
   }
 
+  // Tiap centang sumber -> blok konfigurasinya (redup saat tak dicentang).
+  const AZ_KO = { 'az-s-terlatih': 'az-terlatih',
+                  'az-s-eksternal': 'az-ko-eksternal',
+                  'az-s-zeroshot': 'az-ko-zeroshot' };
+  function azToggle(cbId) {
+    azEl(AZ_KO[cbId]).classList.toggle('mati', !azEl(cbId).checked);
+  }
+
+  function azIsiInfo(j, resetCek) {
+    azEl('az-model').innerHTML = (j.teks || []).map((m) => {
+      const unduh = m.terunduh ? '' : ' — unduh ~' + (m.unduh_mb || '?') + ' MB sekali';
+      const bentuk = m.bentuk === 'polygon' ? 'poligon' : 'kotak';
+      return '<option value="' + azEsc(m.model) + '"'
+        + (m.model === j.model_bawaan ? ' selected' : '') + '>'
+        + azEsc(m.nama || m.model) + ' (' + bentuk + ')' + azEsc(unduh) + '</option>';
+    }).join('');
+    const ter = j.terlatih || [];
+    azEl('az-terlatih').innerHTML = ter.length
+      ? ter.map((m) => '<option value="' + m.nomor + '">Latihan L' + m.nomor
+          + (m.versi != null ? ' (v' + m.versi + ')' : '') + ' — '
+          + ((m.kelas || []).length) + ' kelas</option>').join('')
+      : '<option value="">(belum ada model terlatih)</option>';
+    const ext = j.eksternal || [];
+    azEl('az-eksternal').innerHTML = ext.length
+      ? ext.map((m) => '<option value="' + azEsc(m.nama) + '">' + azEsc(m.nama)
+          + (m.task ? ' (' + azEsc(m.task) + ')' : '') + '</option>').join('')
+      : '<option value="">(belum ada model diunggah)</option>';
+    if (!azEl('az-prompt').value) {
+      azEl('az-prompt').value = (j.prompt_bawaan || []).join(', ');
+    }
+    if (resetCek) {
+      // Bawaan masuk akal: zero-shot nyala; model terlatih nyala kalau ada.
+      azEl('az-s-zeroshot').checked = true;
+      azEl('az-s-terlatih').checked = ter.length > 0;
+      azEl('az-s-eksternal').checked = false;
+      for (const id of Object.keys(AZ_KO)) azToggle(id);
+    }
+  }
+
   async function bukaAutolabel(scope) {
     if (!azDlg) return;
     azScope = scope;          // {tid} atau {batch}
@@ -434,26 +473,16 @@
     azDlg.hidden = false;
     azEl('az-maju').innerHTML = '';
     azEl('az-batal').hidden = true;
+    azEl('az-unggah-status').textContent = '';
     const mulai = azEl('az-mulai');
     mulai.disabled = true; mulai.textContent = 'Memuat…';
-    const sel = azEl('az-model'); sel.innerHTML = '';
     const j = await send('/api/autolabel/info');
     if (!j || !j.ok) {
       azEl('az-maju').innerHTML = '<p class="bad" style="padding:12px 16px">'
         + azEsc((j && j.error) || 'gagal memuat') + '</p>';
       mulai.textContent = 'Mulai'; return;
     }
-    sel.innerHTML = (j.teks || []).map((m) => {
-      const unduh = m.terunduh ? '' : ' — unduh ~' + (m.unduh_mb || '?') + ' MB sekali';
-      const bentuk = m.bentuk === 'polygon' ? 'poligon' : 'kotak';
-      return '<option value="' + azEsc(m.model) + '"'
-        + (m.model === j.model_bawaan ? ' selected' : '') + '>'
-        + azEsc(m.nama || m.model) + ' (' + bentuk + ')' + azEsc(unduh) + '</option>';
-    }).join('');
-    // Prompt bawaan = nama kelas projek; pengguna bisa menambah/mengubah.
-    if (!azEl('az-prompt').value) {
-      azEl('az-prompt').value = (j.prompt_bawaan || []).join(', ');
-    }
+    azIsiInfo(j, true);
     if (j.training_aktif) {
       azEl('az-maju').innerHTML = '<p class="bad" style="padding:12px 16px">'
         + 'Training sedang berjalan di server ini, jadi auto-label dinonaktifkan '
@@ -494,16 +523,54 @@
   }
 
   if (azDlg) {
+    // Centang sumber -> redupkan/terangkan konfigurasinya.
+    for (const id of Object.keys(AZ_KO)) {
+      azEl(id).addEventListener('change', () => azToggle(id));
+    }
+
+    // Unggah .pt: PUT berkas, lalu segarkan daftar model diunggah + pilih.
+    azEl('az-file').addEventListener('change', async () => {
+      const f = azEl('az-file').files[0];
+      if (!f) return;
+      const st = azEl('az-unggah-status');
+      st.textContent = 'Mengunggah ' + f.name + '…';
+      try {
+        const r = await fetch('/api/autolabel/model-unggah?nama='
+                              + encodeURIComponent(f.name), { method: 'PUT', body: f });
+        const j = await r.json();
+        if (!j || !j.ok) { st.textContent = 'Gagal: ' + ((j && j.error) || ''); return; }
+        st.textContent = 'Terunggah: ' + j.nama;
+        const info = await send('/api/autolabel/info');
+        if (info && info.ok) {
+          azIsiInfo(info, false);
+          azEl('az-s-eksternal').checked = true; azToggle('az-s-eksternal');
+          azEl('az-eksternal').value = j.nama;
+        }
+      } catch (e) { st.textContent = 'Gagal unggah'; }
+      azEl('az-file').value = '';
+    });
+
     azEl('az-mulai').addEventListener('click', async () => {
-      const model = azEl('az-model').value;
-      const prompt = azEl('az-prompt').value.trim();
-      if (!prompt) { toast('Ketik nama objek yang dicari dulu'); return; }
+      const sumber = [];
+      if (azEl('az-s-terlatih').checked && azEl('az-terlatih').value) {
+        sumber.push({ jenis: 'terlatih',
+                      nomor: parseInt(azEl('az-terlatih').value, 10) });
+      }
+      if (azEl('az-s-eksternal').checked && azEl('az-eksternal').value) {
+        sumber.push({ jenis: 'eksternal', nama: azEl('az-eksternal').value });
+      }
+      if (azEl('az-s-zeroshot').checked) {
+        const prompt = azEl('az-prompt').value.trim();
+        if (!prompt) { toast('Isi objek zero-shot, atau matikan sumbernya'); return; }
+        sumber.push({ jenis: 'zeroshot', model: azEl('az-model').value,
+                      prompt, conf: parseFloat(azEl('az-conf').value || '0.1') });
+      }
+      if (!sumber.length) { toast('Pilih minimal satu sumber'); return; }
       const batas = parseInt(azEl('az-batas').value || '1000', 10);
-      const conf = parseFloat(azEl('az-conf').value || '0.1');
       azEl('az-mulai').disabled = true;
       const j = await send('/api/autolabel/mulai', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...azScope, model, prompt, batas, conf }),
+        body: JSON.stringify({ ...azScope, sumber, batas }),
       });
       if (!j || !j.ok) {
         azEl('az-maju').innerHTML = '<p class="bad" style="padding:12px 16px">'

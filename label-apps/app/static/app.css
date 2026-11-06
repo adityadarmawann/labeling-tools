@@ -2371,6 +2371,13 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
    langsung terbaca sebagai jalur AI. Reset tampilan bawaan <button>. */
 button.an-mulai.an-autolabel{background:none;border:0;cursor:pointer;
   font-family:inherit;color:var(--warn)}
+/* Pilih sumber auto-label gabungan: tiap sumber = centang + konfigurasinya yang
+   masuk ke dalam, redup saat sumbernya tak dicentang. */
+.az-sumber{display:flex;flex-direction:column;gap:4px;margin:4px 0 10px}
+.az-src{font-weight:600;display:flex;align-items:center;gap:7px;margin-top:8px}
+.az-src-ko{margin:0 0 2px 22px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.az-src-ko.mati{opacity:.4;pointer-events:none}
+.az-unggah{cursor:pointer;font-size:12px}
 .an-buang{flex:0 0 auto;background:transparent;border:0;cursor:pointer;
   color:var(--ink-faint);font-size:15px;line-height:1;padding:2px 4px}
 .an-buang:hover{color:var(--stop)}

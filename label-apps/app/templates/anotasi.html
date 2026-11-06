@@ -440,22 +440,42 @@
   <div class="dlg-tirai" data-az-tutup></div>
   <div class="dlg-kotak" role="dialog" aria-modal="true" aria-labelledby="az-judul">
     <div class="op-dlg-atas">
-      <h3 id="az-judul">Auto-label tanpa latih</h3>
-      <p class="halus">Sebut nama objek yang dicari; model teks memindai gambar
-        yang BELUM teranotasi di tugas ini, tanpa perlu melatih model dulu.
-        Hasilnya tinggal kamu verifikasi; gambar yang sudah dilabeli atau
-        ditandai latar tidak disentuh.</p>
-      <label class="halus" for="az-prompt">Nama objek yang dicari (pisahkan dengan koma)</label>
-      <input class="chip" id="az-prompt" type="text"
-             placeholder="mis. shuttlecock, raket, pemain"
-             style="display:block;width:28rem;max-width:90%">
-      <label class="halus" for="az-model" style="margin-top:10px;display:block">Model</label>
-      <select class="chip" id="az-model"></select>
+      <h3 id="az-judul">Auto-label</h3>
+      <p class="halus">Pilih satu atau beberapa sumber. Hasilnya DIGABUNG dan
+        ditandai "perlu dicek"; di mana satu sumber lemah, yang lain menutup.
+        Gambar yang sudah dilabeli atau ditandai latar tidak disentuh.</p>
+
+      <div class="az-sumber">
+        <label class="az-src"><input type="checkbox" id="az-s-terlatih">
+          Model terlatih projek</label>
+        <select class="chip az-src-ko" id="az-terlatih" disabled></select>
+
+        <label class="az-src"><input type="checkbox" id="az-s-eksternal">
+          Model .pt yang diunggah</label>
+        <div class="az-src-ko" id="az-ko-eksternal">
+          <select class="chip" id="az-eksternal" disabled></select>
+          <label class="an-mulai an-autolabel az-unggah" id="az-unggah-tbl">
+            + Unggah .pt
+            <input type="file" id="az-file" accept=".pt" hidden></label>
+          <span class="halus" id="az-unggah-status"></span>
+        </div>
+
+        <label class="az-src"><input type="checkbox" id="az-s-zeroshot">
+          Zero-shot (tanpa latih)</label>
+        <div class="az-src-ko" id="az-ko-zeroshot">
+          <input class="chip" id="az-prompt" type="text"
+                 placeholder="mis. bottle, can, carton"
+                 style="display:block;width:26rem;max-width:90%">
+          <label class="halus" for="az-model" style="margin-top:6px;display:block">Model teks</label>
+          <select class="chip" id="az-model"></select>
+        </div>
+      </div>
+
       <div class="pl-baris">
         <span><label class="halus" for="az-batas">Jumlah maks</label>
           <input class="chip" id="az-batas" type="number" value="1000"
                  min="1" max="100000"></span>
-        <span><label class="halus" for="az-conf">Ambang keyakinan</label>
+        <span><label class="halus" for="az-conf">Ambang zero-shot</label>
           <input class="chip" id="az-conf" type="number" value="0.1"
                  min="0.01" max="0.99" step="0.05"></span>
       </div>
