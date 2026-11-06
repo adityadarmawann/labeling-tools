@@ -89,6 +89,13 @@ _KUNCI = threading.Lock()
 _cache: OrderedDict[tuple, tuple] = OrderedDict()
 _sesi_mobilesam = None
 
+# GroundingDINO (transformers): detektor open-vocabulary teks->kotak. Recall
+# tinggi (menangkap yang YOLO-World/SAM 3 lewatkan); hanya kotak, jadi SAM bisa
+# merapikannya jadi mask terpisah ("Grounded-SAM"). Dimuat sekali, di-cache.
+_GDINO_ID = "IDEA-Research/grounding-dino-tiny"
+_KUNCI_GD = threading.Lock()
+_gdino = None                 # (processor, model, device) atau None
+
 
 def dir_model() -> Path:
     """Folder berisi berkas .onnx MobileSAM."""
@@ -506,8 +513,12 @@ def bebaskan_gpu() -> bool:
     efek. Sesinya dimuat ULANG otomatis pada klik SAM berikutnya -- dan selama
     training berjalan, muatan ulang itu jatuh ke CPU (lihat _boleh_gpu_osam dan
     MobileSam.__init__), jadi VRAM tetap milik training."""
-    global _sesi_mobilesam
+    global _sesi_mobilesam, _gdino
     lepas = False
+    with _KUNCI_GD:                  # lepas GroundingDINO juga (menahan ~2 GB)
+        if _gdino is not None:
+            _gdino = None
+            lepas = True
     with _KUNCI:                     # jangan lepas sesi di tengah inferensi
         if _sesi_mobilesam is not None:
             _sesi_mobilesam = None
@@ -628,12 +639,96 @@ def dari_teks(img: Path, teks: list[str], model: str = "yoloworld:latest",
     return out
 
 
+# ---------------------------------------------------------------- GroundingDINO
+
+def _boleh_gpu_gdino() -> bool:
+    """GPU untuk GroundingDINO (~2 GB) kalau olah=gpu, CUDA ada, tak ada training,
+    dan VRAM bebas cukup. Selain itu CPU (lambat tapi jalan)."""
+    if olah_gpu.MODE != "gpu" or gpu_sinyal.latih_aktif():
+        return False
+    try:
+        import torch
+        if not torch.cuda.is_available():
+            return False
+        bebas, _ = torch.cuda.mem_get_info()
+        return bebas >= 3_000_000_000
+    except Exception:                # noqa: BLE001
+        return False
+
+
+def _muat_gdino():
+    """Muat GroundingDINO sekali (cache). Dipanggil DI DALAM _KUNCI_GD."""
+    global _gdino
+    dev = "cuda" if _boleh_gpu_gdino() else "cpu"
+    if _gdino is not None and _gdino[2] == dev:
+        return _gdino
+    from transformers import AutoProcessor, GroundingDinoForObjectDetection
+    proc = AutoProcessor.from_pretrained(_GDINO_ID)
+    model = GroundingDinoForObjectDetection.from_pretrained(_GDINO_ID).to(dev).eval()
+    _gdino = (proc, model, dev)
+    return _gdino
+
+
+def gdino_tersedia() -> bool:
+    """transformers punya GroundingDINO (paket terpasang) -> bisa ditawarkan."""
+    try:
+        import transformers          # noqa: F401
+        from transformers import GroundingDinoForObjectDetection  # noqa: F401
+        return True
+    except Exception:                # noqa: BLE001
+        return False
+
+
+def dari_groundingdino(img: Path, teks: list[str], ambang: float = 0.25,
+                       teks_ambang: float = 0.2, maks: int = 100) -> list[Temuan]:
+    """Open-vocabulary teks -> KOTAK via GroundingDINO. teks huruf kecil dipisah
+    '. ' (format GroundingDINO). Kotak saja; untuk projek segmentasi, pemanggil
+    merapikan tiap kotak jadi mask lewat dari_kotak (SAM)."""
+    teks = [str(t).strip().lower() for t in teks if str(t).strip()]
+    if not teks:
+        raise TidakAdaObjek("belum ada nama objek yang dicari")
+    bgr = cv2.imread(str(img))
+    if bgr is None:
+        raise TidakAdaObjek("gambar tidak bisa dibaca")
+    H, W = bgr.shape[:2]
+    rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+    prompt = ". ".join(teks) + "."
+    import torch
+    with _KUNCI_GD:
+        proc, model, dev = _muat_gdino()
+        inp = proc(images=rgb, text=prompt, return_tensors="pt").to(dev)
+        with torch.no_grad():
+            keluar = model(**inp)
+        try:
+            res = proc.post_process_grounded_object_detection(
+                keluar, inp["input_ids"], box_threshold=float(ambang),
+                text_threshold=float(teks_ambang), target_sizes=[(H, W)])[0]
+        except TypeError:            # tanda tangan transformers lebih baru
+            res = proc.post_process_grounded_object_detection(
+                keluar, threshold=float(ambang), text_threshold=float(teks_ambang),
+                target_sizes=[(H, W)])[0]
+    boxes = res["boxes"].cpu().numpy()
+    skor = res["scores"].cpu().numpy()
+    labs = res.get("text_labels") or res.get("labels") or [""] * len(boxes)
+    out: list[Temuan] = []
+    for (x1, y1, x2, y2), s, l in list(zip(boxes, skor, labs))[:int(maks)]:
+        x1, y1, x2, y2 = float(x1), float(y1), float(x2), float(y2)
+        out.append(Temuan(label=str(l).strip() or teks[0],
+                          points=[[x1, y1], [x2, y2]],
+                          bbox=(int(x1), int(y1), int(x2), int(y2)),
+                          skor=float(s), shape_type="rectangle"))
+    if not out:
+        raise TidakAdaObjek("GroundingDINO tak menemukan objek")
+    return out
+
+
 def info() -> dict:
     """Keadaan mesin, untuk ditampilkan di antarmuka."""
     d = dir_model()
     ada = bool(list(d.glob("*encoder*.onnx")) and list(d.glob("*decoder*.onnx")))
     return {"default": MODEL_DEFAULT, "tersedia": sorted(MODEL_DIIZINKAN),
             "mobilesam_siap": ada, "dir_model": str(d),
+            "groundingdino_siap": gdino_tersedia(),
             "provider": _sesi_mobilesam.provider if _sesi_mobilesam else None,
             # Model teks dilaporkan terpisah beserta ukuran unduhannya dan
             # apakah bobotnya sudah ada, supaya antarmuka bisa mengatakan

@@ -169,6 +169,15 @@ def test_paksaan_osam_tidak_menyentuh_mobilesam(monkeypatch):
         f"MobileSAM ikut terseret ke {sam.provider}")
 
 
+def test_gdino_tersedia_dan_prompt_kosong():
+    from pathlib import Path
+    from app.services import autolabel as al
+    assert isinstance(al.gdino_tersedia(), bool)       # tak crash walau paket tak ada
+    # Prompt kosong ditolak SEBELUM model dimuat (tak butuh GPU/transformers).
+    with pytest.raises(al.TidakAdaObjek):
+        al.dari_groundingdino(Path("x.jpg"), [])
+
+
 def test_osam_routing_per_model_dan_sesak_cpu(monkeypatch):
     """Routing per-model osam berdasar VRAM bebas: sam2/efficientsam/YOLO-World
     boleh GPU saat ada ~4,7 GB bebas; SAM 3 (puncak ~6,8 GB) hanya saat GPU
