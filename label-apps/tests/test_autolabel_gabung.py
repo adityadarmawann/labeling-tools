@@ -162,3 +162,60 @@ def test_jalankan_batch_scope(tmp_path, monkeypatch):
 def test_pt_eksternal_slug():
     p = ag.pt_eksternal(".", "My Model!.pt")
     assert p.name == "My-Model.pt" and ag.DIR_EKSTERNAL in str(p)
+
+
+# ---- rute (langkah 4) -------------------------------------------------------
+def test_rute_info_sumber(klien, lingkungan):
+    from conftest import masuk, PW_PAUL
+    masuk(klien, "paul", PW_PAUL)
+    d = buat_dataset(lingkungan["ruang"] / "info", 2, 0)
+    klien.post(f"/setsrc?path={d}")
+    j = klien.get("/api/autolabel/info").json()
+    assert j["ok"] is True
+    for k in ("teks", "terlatih", "eksternal", "claude_aktif"):
+        assert k in j
+    assert j["terlatih"] == [] and j["eksternal"] == []       # belum ada model
+
+
+def test_rute_mulai_sumber_ensemble(klien, lingkungan, monkeypatch):
+    from conftest import masuk, PW_PAUL
+    from app.services import gpu_sinyal
+    masuk(klien, "paul", PW_PAUL)
+    d = buat_dataset(lingkungan["ruang"] / "ens", 2, 0)
+    klien.post(f"/setsrc?path={d}")
+    monkeypatch.setattr(gpu_sinyal, "latih_aktif", lambda: False)
+    tangkap = {}
+
+    def fake(ds, up, akun, batas, sumber, tid=None, batch=None, iou_ambang=0.6, batal=None):
+        tangkap["sumber"] = sumber
+        return {"total": 0, "diproses": 0, "objek": 0, "dilewati": 0}
+    monkeypatch.setattr(ag, "jalankan", fake)
+
+    r = klien.post("/api/autolabel/mulai", json={
+        "batch": "", "sumber": [
+            {"jenis": "zeroshot", "model": "yoloworld:latest", "prompt": "botol"},
+            {"jenis": "terlatih", "nomor": 1}]})
+    j = r.json()
+    assert j["ok"] is True and j["sumber"] == 2
+
+
+def test_rute_model_unggah(klien, lingkungan, monkeypatch):
+    from conftest import masuk, PW_PAUL
+    masuk(klien, "paul", PW_PAUL)
+    d = buat_dataset(lingkungan["ruang"] / "up", 1, 0)
+    klien.post(f"/setsrc?path={d}")
+    monkeypatch.setattr(tugas, "boleh_unggah", lambda data, akun: True)
+    r = klien.put("/api/autolabel/model-unggah?nama=best%20model.pt", content=b"PKfake-weights")
+    j = r.json()
+    assert j["ok"] is True and j["nama"] == "best-model"
+    assert ag.pt_eksternal(d, "best model.pt").exists()
+
+
+def test_rute_model_unggah_gerbang(klien, lingkungan, monkeypatch):
+    from conftest import masuk, PW_PAUL
+    masuk(klien, "paul", PW_PAUL)
+    d = buat_dataset(lingkungan["ruang"] / "up2", 1, 0)
+    klien.post(f"/setsrc?path={d}")
+    monkeypatch.setattr(tugas, "boleh_unggah", lambda data, akun: False)
+    r = klien.put("/api/autolabel/model-unggah?nama=x.pt", content=b"x")
+    assert r.json()["ok"] is False
