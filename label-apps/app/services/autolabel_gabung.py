@@ -13,9 +13,16 @@ job + adapter sumber ada di langkah berikutnya.
 """
 from __future__ import annotations
 
+import os
+import re
+import threading
 from dataclasses import dataclass, field
+from pathlib import Path
 
-from . import scanner
+from . import autolabel, gpu_sinyal, prelabel, scanner, tugas
+from . import autolabel_zero
+from .autolabel_zero import (Dibatalkan, TrainingSedangJalan, bersihkan_maju,
+                             catat_maju, kemajuan)
 
 # Urutan prioritas sumber saat dua sumber menemukan objek yang SAMA: label
 # diambil dari sumber paling tepercaya untuk KELAS. Model terlatih projek tahu
@@ -117,3 +124,179 @@ def ke_bentuk(deteksi: list[Deteksi], jenis: str, W: int, H: int) -> list[dict]:
                                    [_kurung(x2, W), _kurung(y2, H)]],
                         "group_id": None, "shape_type": "rectangle", "flags": {}})
     return out
+
+
+# ============================== LANGKAH 2 ==================================
+# Adapter sumber (gambar -> list[Deteksi]) + orkestrator job.
+
+# Satu job serentak secara bawaan (berbagi beban GPU dengan training/versi).
+SERENTAK = max(1, int(os.environ.get("LABELAPP_GABUNG_SERENTAK") or 1))
+_giliran = threading.Semaphore(SERENTAK)
+
+# Model .pt yang diunggah dari luar disimpan di .latih/_eksternal/ (awalan "_"
+# menjaganya di luar glob L* run terlatih). Lister + endpoint unggah menyusul.
+DIR_EKSTERNAL = "_eksternal"
+
+
+def _slug_pt(nama: str) -> str:
+    s = str(nama or "").strip()
+    if s.lower().endswith(".pt"):
+        s = s[:-3]
+    s = re.sub(r"[^A-Za-z0-9_.-]+", "-", s).strip("-.")
+    return s or "model"
+
+
+def pt_eksternal(ds: Path, nama: str) -> Path:
+    """Path .pt eksternal milik satu projek dari namanya (slug ketat)."""
+    return Path(ds) / prelabel.latih.FOLDER / DIR_EKSTERNAL / (_slug_pt(nama) + ".pt")
+
+
+def _shape_ke_deteksi(s: dict, sumber: str, skor: float) -> Deteksi | None:
+    pts = s.get("points") or []
+    st = s.get("shape_type")
+    if st == "rectangle" and len(pts) >= 2:
+        (x1, y1), (x2, y2) = pts[0], pts[1]
+        x1, x2 = sorted((float(x1), float(x2)))
+        y1, y2 = sorted((float(y1), float(y2)))
+        return Deteksi(bbox=(x1, y1, x2, y2), label=str(s.get("label")),
+                       skor=skor, sumber=sumber)
+    if st == "polygon" and len(pts) >= 3:
+        xs = [p[0] for p in pts]
+        ys = [p[1] for p in pts]
+        return Deteksi(bbox=(min(xs), min(ys), max(xs), max(ys)),
+                       pts=[[float(x), float(y)] for x, y in pts],
+                       label=str(s.get("label")), skor=skor, sumber=sumber)
+    return None
+
+
+def sumber_model(model, it: dict, conf: float, kelas: list, sumber: str) -> list[Deteksi]:
+    """Model ultralytics (terlatih projek / .pt eksternal) -> Deteksi. Reuse
+    jalur prediksi prelabel supaya kotak/mask ditangani sama."""
+    out: list[Deteksi] = []
+    for s in prelabel._prediksi_satu(model, it, conf, kelas):
+        d = _shape_ke_deteksi(s, sumber, 0.0)
+        if d is not None:
+            out.append(d)
+    return out
+
+
+def sumber_zeroshot(img: Path, model: str, prompt: list, conf: float) -> list[Deteksi]:
+    """Zero-shot teks (SAM3 -> poligon, YOLO-World -> kotak) -> Deteksi."""
+    try:
+        temuan = autolabel.dari_teks(img, prompt, model=model, ambang=float(conf))
+    except autolabel.TidakAdaObjek:
+        return []
+    out: list[Deteksi] = []
+    for t in temuan:
+        pts = t.points if t.shape_type == "polygon" else None
+        out.append(Deteksi(bbox=tuple(float(v) for v in t.bbox), pts=pts,
+                           label=str(t.label), skor=float(t.skor), sumber="zeroshot"))
+    return out
+
+
+def _siapkan_model_sumber(ds: Path, sumber: list) -> list[tuple]:
+    """Muat model untuk sumber terlatih/eksternal SEKALI (sebelum loop gambar).
+    Kembalikan list (nama_sumber, model, kelas, conf). Sumber yang bobotnya tak
+    ada dilewati diam-diam (tetap jalan dengan sumber lain)."""
+    out = []
+    for sc in sumber:
+        j = sc.get("jenis")
+        if j == "terlatih":
+            pt = prelabel.latih.bobot_training(ds, int(sc["nomor"]), "best")
+            if not pt or not Path(pt).exists():
+                continue
+            st = prelabel.latih.status(ds, int(sc["nomor"])) or {}
+            out.append(("terlatih", prelabel._muat_model(pt),
+                        list(st.get("kelas") or []), float(sc.get("conf", 0.25))))
+        elif j == "eksternal":
+            pt = pt_eksternal(ds, sc.get("nama", ""))
+            if not pt.exists():
+                continue
+            out.append(("eksternal", prelabel._muat_model(pt), [],
+                        float(sc.get("conf", 0.25))))
+    return out
+
+
+def jalankan(ds: Path, uploads_root: Path, akun: str, batas: int, sumber: list,
+             *, tid: str | None = None, batch: str | None = None,
+             iou_ambang: float = IOU_BAWAAN, batal=None) -> dict:
+    """Auto-label GABUNGAN: jalankan semua sumber terpilih per gambar BELUM
+    teranotasi (lingkup job `tid` atau batch `batch`), gabung hasilnya, tulis
+    (ditandai perlu_dicek). Melempar TrainingSedangJalan saat training aktif,
+    Dibatalkan saat diminta, ValueError kalau tak ada sumber / projek pose."""
+    kunci = akun
+    sumber = list(sumber or [])
+    if not sumber:
+        raise ValueError("belum ada sumber auto-label dipilih")
+
+    catat_maju(kunci, jalan=True, persen=0.0, fase_nama="Menunggu giliran",
+               diproses=0, objek=0, dilewati=0, total=0)
+    if gpu_sinyal.latih_aktif():
+        raise TrainingSedangJalan(
+            "training sedang berjalan di server ini; auto-label dinonaktifkan "
+            "sampai selesai. Anotasi manual tetap bisa.")
+
+    with _giliran:
+        if gpu_sinyal.latih_aktif():
+            raise TrainingSedangJalan("training keburu mulai; auto-label dibatalkan.")
+        catat_maju(kunci, fase_nama="Menyiapkan model")
+        items, names = scanner.scan(ds)
+        data = tugas.baca_projek(ds, uploads_root)
+        jenis = tugas.jenis_berlaku(data, items)
+        if jenis == "kerangka":
+            raise ValueError("projek kerangka (pose) belum didukung auto-label "
+                             "gabungan; pakai 'Pre-label dengan AI'.")
+
+        if batch is not None:
+            target = autolabel_zero._gambar_belum_batch(items, ds, batch)
+        else:
+            target = tugas.gambar_konteks_job(items, data, ds, tid, saring="belum")
+            if target is None:
+                raise FileNotFoundError("tugas tak dikenal")
+        if batas and batas > 0:
+            target = target[:int(batas)]
+
+        model_src = _siapkan_model_sumber(ds, sumber)
+        zs = [sc for sc in sumber if sc.get("jenis") == "zeroshot"]
+        if not model_src and not zs:
+            raise ValueError("tak ada sumber yang siap (model/bobot tak ditemukan)")
+
+        total = len(target)
+        catat_maju(kunci, total=total, fase_nama="Memprediksi")
+        diproses = objek = dilewati = 0
+        for i, it in enumerate(target):
+            if batal and batal():
+                raise Dibatalkan()
+            if gpu_sinyal.latih_aktif():
+                raise TrainingSedangJalan(
+                    "training mulai di tengah proses; auto-label dihentikan. "
+                    "Gambar yang sudah terisi tetap ada.")
+            if tugas.tolak_tulis(ds, akun, it["img"]):
+                dilewati += 1
+            else:
+                dets: list[Deteksi] = []
+                for nm, m, kelas, cf in model_src:
+                    try:
+                        dets += sumber_model(m, it, cf, kelas, nm)
+                    except Exception:            # noqa: BLE001 -- 1 sumber/1 gambar gagal
+                        pass
+                for sc in zs:
+                    try:
+                        dets += sumber_zeroshot(it["img"], sc.get("model"),
+                                                sc.get("prompt") or [],
+                                                float(sc.get("conf", 0.1)))
+                    except Exception:            # noqa: BLE001
+                        pass
+                bentuk = ke_bentuk(gabung(dets, iou_ambang), jenis, it["W"], it["H"])
+                if bentuk:
+                    names = prelabel.tulis_prediksi(it, ds, names, bentuk)
+                    objek += len(bentuk)
+                    diproses += 1
+                else:
+                    dilewati += 1
+            catat_maju(kunci,
+                       persen=round((i + 1) / max(total, 1) * 100, 1),
+                       diproses=diproses, objek=objek, dilewati=dilewati)
+
+    return {"total": total, "diproses": diproses, "objek": objek,
+            "dilewati": dilewati}
