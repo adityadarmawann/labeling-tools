@@ -84,6 +84,26 @@ def prompt_default(ds: Path) -> list[str]:
     return [str(v).strip() for v in names.values() if str(v).strip()]
 
 
+def _gambar_belum_batch(items: list, ds: Path, batch: str) -> list:
+    """Gambar BELUM teranotasi (severity 'stop') milik satu unggahan/batch.
+
+    Batch gambar disimpan di .tag.json (lihat services/tag.py), bukan di item
+    scanner, jadi dicocokkan lewat kunci gambar. batch '' = unggahan tanpa nama.
+    Hak tulis per gambar tetap dijaga pemanggil (tugas.tolak_tulis)."""
+    from . import tag as _tag
+    tdata = _tag.baca(ds)
+    batch = str(batch or "")
+    out = []
+    for it in items:
+        if scanner.severity(it) != "stop":
+            continue
+        k = _tag.kunci_gambar(ds, it["img"])
+        if str(_tag.untuk(tdata, k).get("batch") or "") == batch:
+            out.append(it)
+    out.sort(key=lambda x: x["img"].name)
+    return out
+
+
 def _bentuk_dari_temuan(temuan: list) -> list[dict]:
     """Daftar autolabel.Temuan -> daftar bentuk labelme (kotak/poligon)."""
     out: list[dict] = []
@@ -101,9 +121,13 @@ def _bentuk_dari_temuan(temuan: list) -> list[dict]:
 # ------------------------------------------------------------------ job
 def jalankan(ds: Path, uploads_root: Path, tid: str, akun: str,
              batas: int, conf: float, model: str, prompt: list[str],
-             batal=None) -> dict:
-    """Auto-label zero-shot semua gambar BELUM teranotasi di satu task (maks
-    `batas`).
+             batal=None, batch: str | None = None) -> dict:
+    """Auto-label zero-shot gambar BELUM teranotasi (maks `batas`).
+
+    Lingkup: satu JOB (`tid`) ATAU satu BATCH/unggahan (`batch`, mis. dari kartu
+    'Belum ditugaskan'). Tepat satu dari keduanya dipakai -- `batch` is not None
+    menang. Batch memakai _gambar_belum_batch (tak perlu bagi tugas dulu); job
+    memakai tugas.gambar_konteks_job.
 
     `batal` callable -> True untuk berhenti. Melempar Dibatalkan kalau diminta,
     TrainingSedangJalan kalau training lokal aktif, ValueError kalau prompt/
@@ -138,9 +162,12 @@ def jalankan(ds: Path, uploads_root: Path, tid: str, akun: str,
         # setelah permintaan balik, keadaan gambar bisa sudah berubah.
         items, names = scanner.scan(ds)
         data = tugas.baca_projek(ds, uploads_root)
-        target = tugas.gambar_konteks_job(items, data, ds, tid, saring="belum")
-        if target is None:
-            raise FileNotFoundError("tugas tak dikenal")
+        if batch is not None:
+            target = _gambar_belum_batch(items, ds, batch)
+        else:
+            target = tugas.gambar_konteks_job(items, data, ds, tid, saring="belum")
+            if target is None:
+                raise FileNotFoundError("tugas tak dikenal")
         if batas and batas > 0:
             target = target[:int(batas)]
         total = len(target)

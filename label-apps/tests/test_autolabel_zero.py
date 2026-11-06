@@ -112,6 +112,34 @@ def test_jalankan_batas(tmp_path, monkeypatch):
     assert hasil["total"] == 2 and hasil["diproses"] == 2
 
 
+def test_jalankan_tandai_perlu_dicek(tmp_path, monkeypatch):
+    d, tid = _siapkan(tmp_path, monkeypatch, 2, 0, _temuan_kotak)
+    autolabel_zero.jalankan(d, tmp_path, tid, "darma", 1000, 0.1,
+                            "yoloworld:latest", ["botol"])
+    for ip in d.glob("*.jpg"):
+        j = json.loads(ip.with_suffix(".json").read_text())
+        assert j.get("perlu_dicek") is True          # hasil AI -> perlu dicek
+
+
+def test_jalankan_batch_scope(tmp_path, monkeypatch):
+    # buat_dataset tak memberi tag batch -> semua gambar batch "" (tanpa nama).
+    d, tid = _siapkan(tmp_path, monkeypatch, 3, 0, _temuan_kotak)
+    hasil = autolabel_zero.jalankan(d, tmp_path, "", "darma", 1000, 0.1,
+                                    "yoloworld:latest", ["botol"], batch="")
+    assert hasil["total"] == 3 and hasil["diproses"] == 3
+    # Batch scope tak butuh job: semua gambar "belum" di batch terisi.
+    for ip in d.glob("*.jpg"):
+        assert ip.with_suffix(".json").exists()
+
+
+def test_gambar_belum_batch_hanya_yang_belum(tmp_path, monkeypatch):
+    from app.services import scanner
+    d, tid = _siapkan(tmp_path, monkeypatch, 3, 1, _temuan_kotak)  # 1 sudah berlabel
+    items, _ = scanner.scan(d)
+    belum = autolabel_zero._gambar_belum_batch(items, d, "")
+    assert len(belum) == 2                           # yang berlabel tak ikut
+
+
 def test_jalankan_ditolak_saat_training(tmp_path, monkeypatch):
     d, tid = _siapkan(tmp_path, monkeypatch, 3, 0, _temuan_kotak, latih_aktif=True)
     with pytest.raises(autolabel_zero.TrainingSedangJalan):
@@ -150,6 +178,27 @@ def test_rute_kemajuan_dan_info(klien, lingkungan, monkeypatch):
     assert j["ok"] is True
     assert isinstance(j["teks"], list) and j["teks"]      # ada katalog model teks
     assert j["model_bawaan"] in ("yoloworld:latest", "sam3:latest")
+
+
+def test_rute_mulai_terima_batch(klien, lingkungan, monkeypatch):
+    # Lingkup batch diterima tanpa tid; jalankan di-cegat supaya tak memuat model.
+    from conftest import masuk
+    from app.services import gpu_sinyal
+    masuk(klien, "paul", PW_PAUL)
+    d = lingkungan["ruang"] / "batchrt"
+    buat_dataset(d, 2, 0)
+    klien.post(f"/setsrc?path={d}")
+    monkeypatch.setattr(gpu_sinyal, "latih_aktif", lambda: False)
+    tangkap = {}
+
+    def fake(ds, up, tid, akun, batas, conf, model, prompt, batal=None, batch=None):
+        tangkap["tid"] = tid
+        tangkap["batch"] = batch
+        return {"total": 0, "diproses": 0, "objek": 0, "dilewati": 0}
+    monkeypatch.setattr(autolabel_zero, "jalankan", fake)
+
+    r = klien.post("/api/autolabel/mulai", json={"batch": "", "prompt": "botol"})
+    assert r.json()["ok"] is True                # batch diterima tanpa tid
 
 
 def test_rute_mulai_ditolak_saat_training(klien, lingkungan, monkeypatch):

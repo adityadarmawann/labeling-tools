@@ -104,6 +104,7 @@
       {%- set tahap = '' -%}
       {%- if dsf == 'di' %}{% set tahap = 'dataset' %}
       {%- elif saring == 'belum' %}{% set tahap = 'perlu' %}
+      {%- elif saring == 'dicek' %}{% set tahap = 'dicek' %}
       {%- elif saring == 'sudah' and dsf == 'belum' %}{% set tahap = 'siap' %}
       {%- elif saring == 'semua' and dsf == 'semua' %}{% set tahap = 'semua' %}
       {%- endif -%}
@@ -118,6 +119,12 @@
            title="Sudah dilabeli, tinggal dimasukkan ke dataset">Siap ke dataset <b>{{ n_label_belum_ds }}</b></a>
         <a class="seg-opt"{% if tahap == 'dataset' %} data-on aria-current="true"{% endif %}
            href="{{ jt(s='semua', dd='di') }}#jb-kisi">Di dataset <b>{{ n_dataset }}</b></a>
+        {#- Hasil auto-label yang belum diverifikasi manusia. Tanpa angka: tahu
+            jumlahnya butuh baca tiap .json, mahal di job besar; lencana per ubin
+            (di bawah) sudah menandai mana saja. -#}
+        <a class="seg-opt"{% if tahap == 'dicek' %} data-on aria-current="true"{% endif %}
+           href="{{ jt(s='dicek', dd='semua') }}#jb-kisi"
+           title="Hasil auto-label yang belum diverifikasi manusia">Perlu dicek</a>
       </div>
 
         {#- Saringan kelas: form GET, bukan centang yang menyembunyikan di
@@ -231,6 +238,11 @@
             <span class="jb-cap jb-cap-bg" title="ditandai latar, tidak berisi objek">latar</span>
             {% elif x.di_dataset %}
             <span class="jb-cap jb-cap-ds" title="sudah di dataset">dataset</span>
+            {% elif x.meta and x.meta.perlu_dicek %}
+            {#- Hasil auto-label (AI), belum diverifikasi manusia. Didahulukan
+                atas "anotasi" biasa supaya yang perlu dicek terlihat sekilas;
+                hilang begitu gambar ini disimpan manual. -#}
+            <span class="jb-cap jb-cap-dicek" title="hasil auto-label, perlu diverifikasi">perlu dicek</span>
             {% elif x.berlabel %}
             <span class="jb-cap jb-cap-ok" title="sudah dianotasi">anotasi</span>
             {% endif %}

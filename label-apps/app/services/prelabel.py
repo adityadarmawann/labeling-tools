@@ -161,6 +161,9 @@ def tulis_prediksi(it: dict, src: Path, names: dict, bentuk: list[dict]) -> dict
         "imageData": lama.get("imageData"),
         "imageHeight": it["H"],
         "imageWidth": it["W"],
+        # Hasil prediksi AI -> tandai "perlu dicek" supaya pelabel tahu ini
+        # belum diverifikasi manusia. Dibersihkan saat /api/simpan manual.
+        "perlu_dicek": True,
     }
     annotations.tulis_aman(jp, json.dumps(isi, ensure_ascii=False, indent=2))
 
@@ -267,6 +270,7 @@ def tulis_prediksi_pose(it: dict, bentuk: list[dict]) -> None:
         "imageData": lama.get("imageData"),
         "imageHeight": it["H"],
         "imageWidth": it["W"],
+        "perlu_dicek": True,          # hasil pose AI -> perlu diverifikasi manusia
     }
     annotations.tulis_aman(jp, json.dumps(isi, ensure_ascii=False, indent=2))
 

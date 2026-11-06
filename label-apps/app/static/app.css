@@ -2366,6 +2366,11 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
 .an-mulai{align-self:flex-start;margin-top:2px;font-size:12px;
   color:var(--aksi);text-decoration:none;font-weight:600}
 .an-mulai:hover{text-decoration:underline}
+/* Auto-label sebagai tombol link beraksen amber (sama keluarga dengan lencana
+   "perlu dicek"), supaya beda dari aksi teal "Lihat isinya"/"Bagi tugas" dan
+   langsung terbaca sebagai jalur AI. Reset tampilan bawaan <button>. */
+button.an-mulai.an-autolabel{background:none;border:0;cursor:pointer;
+  font-family:inherit;color:var(--warn)}
 .an-buang{flex:0 0 auto;background:transparent;border:0;cursor:pointer;
   color:var(--ink-faint);font-size:15px;line-height:1;padding:2px 4px}
 .an-buang:hover{color:var(--stop)}
@@ -2497,6 +2502,9 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
   margin-bottom:10px}
 .jb-cap-ds{background:var(--aksi)}
 .jb-cap-bg{background:var(--latar)}
+/* Hasil auto-label yang belum diverifikasi manusia: amber (peringatan lembut),
+   beda dari hijau "anotasi" yang sudah dikonfirmasi. */
+.jb-cap-dicek{background:var(--warn)}
 
 @media (max-width:1000px){
   .jb-tata{flex-direction:column}

@@ -112,7 +112,7 @@
       }
 
       if (b.dataset.aksi === 'autolabel') {
-        return bukaAutolabel(id);
+        return bukaAutolabel({ tid: id });
       }
 
       if (b.dataset.aksi === 'catatan') {
@@ -412,7 +412,7 @@
 
   // ---- Auto-label tanpa latih (zero-shot YOLO-World / SAM 3) --------------
   const azDlg = document.getElementById('az-dlg');
-  let azTid = '';
+  let azScope = null;       // {tid: id} untuk satu job, atau {batch: nama} sebatch
   let azTimer = null;
   const azEl = (id) => document.getElementById(id);
   const azEsc = (s) => String(s).replace(/[&<>"]/g,
@@ -427,9 +427,9 @@
     if (mulai) mulai.disabled = false;
   }
 
-  async function bukaAutolabel(id) {
+  async function bukaAutolabel(scope) {
     if (!azDlg) return;
-    azTid = id;
+    azScope = scope;          // {tid} atau {batch}
     azHenti();
     azDlg.hidden = false;
     azEl('az-maju').innerHTML = '';
@@ -503,7 +503,7 @@
       azEl('az-mulai').disabled = true;
       const j = await send('/api/autolabel/mulai', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tid: azTid, model, prompt, batas, conf }),
+        body: JSON.stringify({ ...azScope, model, prompt, batas, conf }),
       });
       if (!j || !j.ok) {
         azEl('az-maju').innerHTML = '<p class="bad" style="padding:12px 16px">'
@@ -523,6 +523,14 @@
     document.addEventListener('keydown', (ev) => {
       if (ev.key === 'Escape' && !azDlg.hidden) azTutup();
     });
+    // Tombol terlihat: di kartu job (per job) dan kartu batch (sebatch, tak
+    // perlu bagi tugas dulu). data-autolabel-batch boleh "" (unggahan tanpa nama).
+    for (const b of document.querySelectorAll('[data-autolabel-job]')) {
+      b.addEventListener('click', () => bukaAutolabel({ tid: b.dataset.autolabelJob }));
+    }
+    for (const b of document.querySelectorAll('[data-autolabel-batch]')) {
+      b.addEventListener('click', () => bukaAutolabel({ batch: b.dataset.autolabelBatch }));
+    }
   }
 })();
 

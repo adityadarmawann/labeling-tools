@@ -87,7 +87,11 @@ def kelas_resmi(sess: Session) -> list[str]:
 # Field tingkat atas dan per-bentuk yang memang milik kita. Sisanya dianggap
 # titipan AnyLabeling dan harus dikembalikan apa adanya saat menyimpan.
 KUNCI_ATAS = {"version", "flags", "shapes", "imagePath", "imageData",
-              "imageHeight", "imageWidth", "pelabel", "disunting"}
+              "imageHeight", "imageWidth", "pelabel", "disunting", "perlu_dicek"}
+# `perlu_dicek`: ditulis auto-label (prelabel/autolabel_zero) = "hasil AI, belum
+# diverifikasi". Masuk KUNCI_ATAS supaya saat manusia MENYIMPAN gambar ini, field
+# itu TIDAK dikembalikan (isi dibangun ulang tanpa menyetelnya) -> otomatis
+# bersih: menyimpan manual = sudah diverifikasi.
 # `pelabel` + `disunting`: siapa yang terakhir menyimpan anotasi gambar ini dan
 # kapan (epoch detik). Dicatat supaya grid & kanvas bisa menampilkan "diedit
 # <kapan> oleh <siapa>" tanpa menebak dari pemilik job (gambar bisa pindah job,

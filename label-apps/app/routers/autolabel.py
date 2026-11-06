@@ -55,9 +55,16 @@ async def mulai(request: Request,
                 "error": "training sedang berjalan di server ini; auto-label "
                          "dinonaktifkan sampai selesai. Anotasi manual tetap bisa."}
     body = await bodi_json(request)
-    tid = str(body.get("tid") or "").strip()
-    if not tid:
-        return {"ok": False, "error": "tugas tak disebut"}
+    # Lingkup: satu BATCH/unggahan ("batch", boleh "" = tanpa nama) ATAU satu
+    # JOB ("tid"). Kehadiran kunci "batch" menandakan lingkup batch.
+    if "batch" in body:
+        batch = str(body.get("batch") or "")
+        tid = ""
+    else:
+        batch = None
+        tid = str(body.get("tid") or "").strip()
+        if not tid:
+            return {"ok": False, "error": "tugas tak disebut"}
 
     jenis = await asyncio.to_thread(scanner.jenis_projek, sess.src)
     model = str(body.get("model") or "").strip() or autolabel_zero.pilih_model(jenis)
@@ -100,7 +107,7 @@ async def mulai(request: Request,
         try:
             hasil = autolabel_zero.jalankan(
                 ds, uploads, tid, akun, batas, conf, model, prompt,
-                batal=lambda: _batal.get(akun, False))
+                batal=lambda: _batal.get(akun, False), batch=batch)
             autolabel_zero.catat_maju(akun, jalan=False, selesai=True, **hasil)
         except autolabel_zero.Dibatalkan:
             autolabel_zero.catat_maju(akun, jalan=False, dibatalkan=True)

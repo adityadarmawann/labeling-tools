@@ -473,13 +473,20 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
             kelas_hitung[k2] = kelas_hitung.get(k2, 0) + 1
 
     # -- saringan, DI SERVER (dulu di job.js) --------------------------------
-    saring = saring_q if saring_q in ("semua", "belum", "sudah") else "semua"
+    saring = (saring_q if saring_q in ("semua", "belum", "sudah", "dicek")
+              else "semua")
     # Latar termasuk "sudah dianotasi": menandai gambar tanpa objek adalah
     # keputusan yang sudah diambil, bukan pekerjaan yang belum dikerjakan.
     if saring == "belum":
         tampil = [x for x in isi if not x["berlabel"]]
     elif saring == "sudah":
         tampil = [x for x in isi if x["berlabel"]]
+    elif saring == "dicek":
+        # Hasil auto-label yang BELUM diverifikasi manusia. Baca .json HANYA
+        # saat tab ini dibuka (tab lain tak terkena biayanya), dan hanya untuk
+        # gambar berlabel (short-circuit).
+        tampil = [x for x in isi
+                  if x["berlabel"] and scanner.perlu_dicek(x["it"])]
     else:
         tampil = list(isi)
     # Saringan status dataset — terpisah dari status anotasi. Pada projek besar

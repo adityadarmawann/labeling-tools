@@ -164,6 +164,13 @@
         <button class="an-siap" type="button" data-siap="{{ b.batch }}">
           Masukkan {{ b.siap }} yang sudah dianotasi</button>
         {% endif %}
+        {#- Auto-label SEBATCH: isi anotasi otomatis untuk semua gambar unggahan
+            ini sekaligus, tanpa perlu bagi tugas dulu. Hasilnya ditandai "perlu
+            dicek" lalu tinggal diverifikasi. -#}
+        <button class="an-mulai an-autolabel" type="button"
+                data-autolabel-batch="{{ b.batch }}"
+                title="Isi anotasi otomatis untuk semua gambar unggahan ini, lalu tinggal diverifikasi">
+          Auto-label semua &rarr;</button>
         <a class="an-mulai" href="/bagi?ds={{ pr.ds | urlquote }}{% if b.batch %}&batch={{ b.batch | urlquote }}{% endif %}">
           Bagi tugas &rarr;</a>
         {% endif %}
@@ -208,8 +215,6 @@
                 Lihat isinya</a>
               <button class="menu-aksi" type="button" data-aksi="prelabel"
                       data-id="{{ k.id }}">Pre-label dengan AI&hellip;</button>
-              <button class="menu-aksi" type="button" data-aksi="autolabel"
-                      data-id="{{ k.id }}">Auto-label tanpa latih&hellip;</button>
               <button class="menu-aksi" type="button" data-aksi="pelabel"
                       data-id="{{ k.id }}">Tugaskan ulang&hellip;</button>
               <button class="menu-aksi" type="button" data-aksi="catatan"
@@ -242,6 +247,12 @@
         {%- endif %}
         {% if k.catatan %}
         <p class="an-catatan">{{ k.catatan }}</p>
+        {% endif %}
+        {% if boleh_bagi %}
+        <button class="an-mulai an-autolabel" type="button"
+                data-autolabel-job="{{ k.id }}"
+                title="Isi anotasi otomatis untuk gambar yang belum di tugas ini, lalu tinggal diverifikasi">
+          Auto-label &rarr;</button>
         {% endif %}
         <a class="an-mulai" href="/tugas/{{ k.id }}?ds={{ pr.ds | urlquote }}">
           Lihat isinya &rarr;</a>
@@ -319,8 +330,6 @@
                 Lihat isinya</a>
               <button class="menu-aksi" type="button" data-aksi="prelabel"
                       data-id="{{ k.id }}">Pre-label dengan AI&hellip;</button>
-              <button class="menu-aksi" type="button" data-aksi="autolabel"
-                      data-id="{{ k.id }}">Auto-label tanpa latih&hellip;</button>
               <button class="menu-aksi" type="button" data-aksi="pelabel"
                       data-id="{{ k.id }}">Tugaskan ulang&hellip;</button>
               <button class="menu-aksi" type="button" data-aksi="catatan"
@@ -345,6 +354,12 @@
           <span><b>{{ k.di_dataset }}</b> gambar masuk dataset</span>
           <b class="an-persen">{{ k.persen }}%</b>
         </div>
+        {% if boleh_bagi %}
+        <button class="an-mulai an-autolabel" type="button"
+                data-autolabel-job="{{ k.id }}"
+                title="Isi anotasi otomatis untuk gambar yang belum di tugas ini, lalu tinggal diverifikasi">
+          Auto-label &rarr;</button>
+        {% endif %}
         <a class="an-mulai" href="/tugas/{{ k.id }}?ds={{ pr.ds | urlquote }}">
           Lihat isinya &rarr;</a>
       </article>

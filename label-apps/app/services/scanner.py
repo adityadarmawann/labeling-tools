@@ -1073,11 +1073,15 @@ def meta_simpan(it: dict) -> dict:
     yang benar-benar tampil di satu halaman grid, bukan seluruh isi job."""
     img = it["img"]
     jp = img.with_suffix(".json")
-    pelabel, disunting = "", 0
+    pelabel, disunting, perlu_dicek = "", 0, False
     try:
         d = json.loads(jp.read_text(encoding="utf-8"))
         pelabel = str(d.get("pelabel") or "")
         disunting = int(d.get("disunting") or 0)
+        # Ditulis auto-label (prelabel/autolabel_zero), dibersihkan saat manusia
+        # menyimpan (lihat KUNCI_ATAS di annotate.py). True = hasil AI, belum
+        # diverifikasi manusia.
+        perlu_dicek = bool(d.get("perlu_dicek"))
     except (OSError, ValueError, TypeError):
         pass
     if not disunting:
@@ -1091,7 +1095,20 @@ def meta_simpan(it: dict) -> dict:
                 break
             except OSError:
                 continue
-    return {"pelabel": pelabel, "disunting": disunting}
+    return {"pelabel": pelabel, "disunting": disunting,
+            "perlu_dicek": perlu_dicek}
+
+
+def perlu_dicek(it: dict) -> bool:
+    """True kalau anotasi gambar ini hasil auto-label yang BELUM diverifikasi
+    manusia (field top-level 'perlu_dicek' di .json, ditulis prelabel/
+    autolabel_zero, dibersihkan /api/simpan). Membaca .json, jadi dipakai hanya
+    saat filter 'perlu dicek' aktif atau per ubin yang tampil."""
+    try:
+        d = json.loads(it["img"].with_suffix(".json").read_text(encoding="utf-8"))
+        return bool(d.get("perlu_dicek"))
+    except (OSError, ValueError, TypeError):
+        return False
 
 
 def _scan_yolo(src: Path, names: dict | None = None, kpt: dict | None = None,
