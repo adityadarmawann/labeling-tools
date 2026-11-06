@@ -698,7 +698,7 @@ async def api_simpan(request: Request, sess: Session = Depends(current_session_a
                 it["shapes"] = sh
                 it["issues"] = scanner.inspect(sh, it["W"], it["H"], True)
             else:
-                sh, W, H = scanner.read_json(jp)
+                sh, W, H, _ = scanner.read_json(jp)
                 it["shapes"] = sh
                 it["issues"] = scanner.inspect(sh, W or it["W"], H or it["H"], True)
         except Exception:

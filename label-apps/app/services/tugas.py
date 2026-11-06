@@ -670,9 +670,9 @@ def gambar_konteks_job(items: list[dict], data: dict, ds: Path, tid: str, *,
         if saring == "sudah" and not berlabel:
             continue
         # "dicek" = sudah ADA anotasi tapi hasil auto-label yang belum
-        # diverifikasi manusia. Baca .json hanya untuk gambar berlabel saat tab
-        # ini aktif (short-circuit `not berlabel` menghindari baca sia-sia).
-        if saring == "dicek" and (not berlabel or not scanner.perlu_dicek(it)):
+        # diverifikasi manusia. `perlu_dicek` sudah ada di item dari scan (gratis,
+        # ikut cache) -> tak perlu baca .json lagi di sini.
+        if saring == "dicek" and (not berlabel or not it.get("perlu_dicek")):
             continue
         if dsf == "di" and not sudah_dimasukkan(data, k):
             continue

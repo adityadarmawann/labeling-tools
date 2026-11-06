@@ -447,6 +447,9 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
             # satu contoh negatif.
             "berlabel": sev != "stop",
             "latar": sev == "bg",
+            # Hasil auto-label yang belum diverifikasi manusia. Dari item scan
+            # (gratis, ikut cache) -> badge + tab + hitungan tanpa baca .json lagi.
+            "perlu_dicek": (sev != "stop") and bool(it.get("perlu_dicek")),
             "kelas": sorted({str(s["label"]) for s in it["shapes"]}),
             "di_dataset": svc.sudah_dimasukkan(data, k),
         })
@@ -459,6 +462,7 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
     n_label = sum(1 for x in isi if x["berlabel"])
     n_latar = sum(1 for x in isi if x["latar"])
     n_ds = sum(1 for x in isi if x["di_dataset"])
+    n_dicek = sum(1 for x in isi if x["perlu_dicek"])
     # Tahap alur kerja "sudah dilabeli, belum di dataset": gambar yang
     # pekerjaannya selesai tapi belum dikumpulkan. Dihitung langsung, bukan
     # n_label - n_ds: tidak semua yang di dataset harus berlabel, jadi selisih
@@ -482,11 +486,10 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
     elif saring == "sudah":
         tampil = [x for x in isi if x["berlabel"]]
     elif saring == "dicek":
-        # Hasil auto-label yang BELUM diverifikasi manusia. Baca .json HANYA
-        # saat tab ini dibuka (tab lain tak terkena biayanya), dan hanya untuk
-        # gambar berlabel (short-circuit).
-        tampil = [x for x in isi
-                  if x["berlabel"] and scanner.perlu_dicek(x["it"])]
+        # Hasil auto-label yang BELUM diverifikasi manusia (field item dari scan,
+        # gratis). "berlabel" sudah tercakup di perlu_dicek, tetapi dibiarkan
+        # eksplisit agar niatnya jelas.
+        tampil = [x for x in isi if x["perlu_dicek"]]
     else:
         tampil = list(isi)
     # Saringan status dataset — terpisah dari status anotasi. Pada projek besar
@@ -527,7 +530,7 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
         "sess": sess, "pr": pr, "aktif": "anotasi", "aku": sess.user,
         "tid": tid, "job": job, "isi": halaman,
         "n": n_semua, "n_label": n_label, "n_latar": n_latar,
-        "n_dataset": n_ds,
+        "n_dataset": n_ds, "n_dicek": n_dicek,
         "kelas_hitung": dict(sorted(kelas_hitung.items())),
         # Warna kelas pilihan projek untuk swatch di menu saringan kelas.
         "warna_peta": data.get("kelas_warna") or {},

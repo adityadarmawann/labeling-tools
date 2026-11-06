@@ -119,12 +119,14 @@
            title="Sudah dilabeli, tinggal dimasukkan ke dataset">Siap ke dataset <b>{{ n_label_belum_ds }}</b></a>
         <a class="seg-opt"{% if tahap == 'dataset' %} data-on aria-current="true"{% endif %}
            href="{{ jt(s='semua', dd='di') }}#jb-kisi">Di dataset <b>{{ n_dataset }}</b></a>
-        {#- Hasil auto-label yang belum diverifikasi manusia. Tanpa angka: tahu
-            jumlahnya butuh baca tiap .json, mahal di job besar; lencana per ubin
-            (di bawah) sudah menandai mana saja. -#}
+        {#- Hasil auto-label yang belum diverifikasi manusia. Muncul hanya kalau
+            ada (atau sedang dibuka), supaya tak menuh-menuhi job tanpa AI.
+            n_dicek dihitung dari field item perlu_dicek (gratis, ikut cache). -#}
+        {% if n_dicek or tahap == 'dicek' %}
         <a class="seg-opt"{% if tahap == 'dicek' %} data-on aria-current="true"{% endif %}
            href="{{ jt(s='dicek', dd='semua') }}#jb-kisi"
-           title="Hasil auto-label yang belum diverifikasi manusia">Perlu dicek</a>
+           title="Hasil auto-label yang belum diverifikasi manusia">Perlu dicek <b>{{ n_dicek }}</b></a>
+        {% endif %}
       </div>
 
         {#- Saringan kelas: form GET, bukan centang yang menyembunyikan di
@@ -238,7 +240,7 @@
             <span class="jb-cap jb-cap-bg" title="ditandai latar, tidak berisi objek">latar</span>
             {% elif x.di_dataset %}
             <span class="jb-cap jb-cap-ds" title="sudah di dataset">dataset</span>
-            {% elif x.meta and x.meta.perlu_dicek %}
+            {% elif x.perlu_dicek %}
             {#- Hasil auto-label (AI), belum diverifikasi manusia. Didahulukan
                 atas "anotasi" biasa supaya yang perlu dicek terlihat sekilas;
                 hilang begitu gambar ini disimpan manual. -#}

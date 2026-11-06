@@ -447,7 +447,7 @@ class Session:
                 it["shapes"] = sh
                 it["issues"] = scanner.inspect(sh, it["W"], it["H"], True)
             else:
-                sh, W, H = scanner.read_json(it["img"].with_suffix(".json"))
+                sh, W, H, _ = scanner.read_json(it["img"].with_suffix(".json"))
                 it["shapes"] = sh
                 it["issues"] = scanner.inspect(sh, W or it["W"], H or it["H"], True)
         except Exception:

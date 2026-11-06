@@ -976,7 +976,7 @@ def test_enam_tipe_bentuk_dibaca_pemindai(lingkungan):
     from app.services import scanner
 
     d, ip = _tulis_enam_bentuk(lingkungan)
-    sh, W, H = scanner.read_json(ip.with_suffix(".json"))
+    sh, W, H, _ = scanner.read_json(ip.with_suffix(".json"))
     assert [s["type"] for s in sh] == [
         "rectangle", "point", "line", "circle", "linestrip", "polygon"]
     # `pts` siap gambar: rectangle jadi 4 sudut, circle jadi poligon.
@@ -1038,7 +1038,7 @@ def test_bentuk_tanpa_luas_tidak_dinilai_sebagai_mask_kecil(lingkungan):
     from app.services import scanner
 
     d, ip = _tulis_enam_bentuk(lingkungan)
-    sh, W, H = scanner.read_json(ip.with_suffix(".json"))
+    sh, W, H, _ = scanner.read_json(ip.with_suffix(".json"))
     temuan = scanner.inspect(sh, W, H, has_ann=True)
     # `point` luasnya nol; kalau ikut dinilai, tiap titik akan selalu dilaporkan
     # sebagai "mask sangat kecil" dan temuan itu jadi kebisingan belaka.
