@@ -211,6 +211,50 @@ def test_rute_model_unggah(klien, lingkungan, monkeypatch):
     assert ag.pt_eksternal(d, "best model.pt").exists()
 
 
+def test_sumber_groundingdino_refine(monkeypatch):
+    monkeypatch.setattr(autolabel, "dari_groundingdino",
+        lambda img, prompt, ambang=0.25: [autolabel.Temuan(
+            "can", [[1, 1], [9, 9]], (1, 1, 9, 9), 0.8, "rectangle")])
+    # tanpa refine -> kotak (pts None)
+    d = ag.sumber_groundingdino("x.jpg", ["can"], 0.25, False)
+    assert len(d) == 1 and d[0].pts is None and d[0].sumber == "groundingdino"
+
+    # dengan refine (projek seg) -> SAM beri poligon
+    class _U:
+        points = [[1, 1], [9, 1], [9, 9], [1, 9]]
+    monkeypatch.setattr(autolabel, "dari_kotak",
+                        lambda img, x1, y1, x2, y2, model="sam2:small": _U())
+    d2 = ag.sumber_groundingdino("x.jpg", ["can"], 0.25, True)
+    assert d2[0].pts is not None and len(d2[0].pts) == 4
+
+
+def test_jalankan_gdino_sumber(tmp_path, monkeypatch):
+    monkeypatch.setattr(autolabel, "dari_groundingdino",
+        lambda img, prompt, ambang=0.25: [autolabel.Temuan(
+            "can", [[10, 10], [50, 50]], (10, 10, 50, 50), 0.8, "rectangle")])
+    d, tid = _siapkan(tmp_path, monkeypatch, 1)       # jenis kotak -> tanpa refine
+    hasil = ag.jalankan(d, tmp_path, "darma", 1000,
+                        [{"jenis": "groundingdino", "prompt": ["can"]}], tid=tid)
+    assert hasil["diproses"] == 1 and hasil["objek"] == 1
+
+
+def test_rute_gdino_gate(klien, lingkungan, monkeypatch):
+    from conftest import masuk, PW_PAUL
+    from app.services import gpu_sinyal
+    masuk(klien, "paul", PW_PAUL)
+    d = buat_dataset(lingkungan["ruang"] / "gd", 2, 0)
+    klien.post(f"/setsrc?path={d}")
+    monkeypatch.setattr(gpu_sinyal, "latih_aktif", lambda: False)
+    monkeypatch.setattr(autolabel, "gdino_tersedia", lambda: True)
+    monkeypatch.setattr(ag, "jalankan",
+                        lambda *a, **k: {"total": 0, "diproses": 0, "objek": 0, "dilewati": 0})
+    # Hanya sumber GDINO: kalau router MENERIMANYA, sumber tak kosong -> ok.
+    # (Kalau GDINO tak tersedia/ditolak, "tidak ada sumber yang sah" -> ok False.)
+    r = klien.post("/api/autolabel/mulai", json={
+        "batch": "", "sumber": [{"jenis": "groundingdino", "prompt": "can"}]})
+    assert r.json()["ok"] is True
+
+
 def test_rute_model_unggah_gerbang(klien, lingkungan, monkeypatch):
     from conftest import masuk, PW_PAUL
     masuk(klien, "paul", PW_PAUL)

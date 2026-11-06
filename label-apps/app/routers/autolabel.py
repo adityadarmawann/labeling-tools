@@ -68,6 +68,7 @@ async def info(sess: Session = Depends(current_session_api),
             "prompt_bawaan": prompt,
             "terlatih": terlatih,
             "eksternal": eksternal,
+            "groundingdino_siap": inf.get("groundingdino_siap", False),
             "claude_aktif": False,          # diisi di Fase B (claude_vis.aktif)
             "training_aktif": gpu_sinyal.latih_aktif()}
 
@@ -156,6 +157,12 @@ async def mulai(request: Request,
                     continue
                 sumber.append({"jenis": "zeroshot", "model": m, "prompt": pr,
                                "conf": _conf(sc.get("conf"), 0.1)})
+            elif j == "groundingdino" and autolabel.gdino_tersedia():
+                pr = _parse_prompt(sc.get("prompt")) or prompt_bawaan
+                if not pr:
+                    continue
+                sumber.append({"jenis": "groundingdino", "prompt": pr,
+                               "conf": _conf(sc.get("conf"), 0.25)})
         if not sumber:
             return {"ok": False, "error": "tidak ada sumber yang sah dipilih"}
         iou = min(max(_conf(body.get("iou"), 0.6), 0.3), 0.95)

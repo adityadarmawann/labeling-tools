@@ -194,6 +194,29 @@ def sumber_zeroshot(img: Path, model: str, prompt: list, conf: float) -> list[De
     return out
 
 
+def sumber_groundingdino(img: Path, prompt: list, conf: float,
+                         refine_sam: bool, model_sam: str = "sam2:small") -> list[Deteksi]:
+    """GroundingDINO (open-vocab, recall tinggi) -> KOTAK; untuk projek segmentasi
+    tiap kotak dirapikan jadi mask lewat SAM (dari_kotak) = "Grounded-SAM"."""
+    try:
+        temuan = autolabel.dari_groundingdino(img, prompt, ambang=float(conf))
+    except autolabel.TidakAdaObjek:
+        return []
+    out: list[Deteksi] = []
+    for t in temuan:
+        x1, y1, x2, y2 = t.bbox
+        pts = None
+        if refine_sam:
+            try:
+                pts = autolabel.dari_kotak(img, x1, y1, x2, y2, model=model_sam).points
+            except autolabel.TidakAdaObjek:
+                pts = None
+        out.append(Deteksi(bbox=(float(x1), float(y1), float(x2), float(y2)),
+                           pts=pts, label=str(t.label), skor=float(t.skor),
+                           sumber="groundingdino"))
+    return out
+
+
 def _siapkan_model_sumber(ds: Path, sumber: list) -> list[tuple]:
     """Muat model untuk sumber terlatih/eksternal SEKALI (sebelum loop gambar).
     Kembalikan list (nama_sumber, model, kelas, conf). Sumber yang bobotnya tak
@@ -258,8 +281,10 @@ def jalankan(ds: Path, uploads_root: Path, akun: str, batas: int, sumber: list,
 
         model_src = _siapkan_model_sumber(ds, sumber)
         zs = [sc for sc in sumber if sc.get("jenis") == "zeroshot"]
-        if not model_src and not zs:
+        gd = [sc for sc in sumber if sc.get("jenis") == "groundingdino"]
+        if not model_src and not zs and not gd:
             raise ValueError("tak ada sumber yang siap (model/bobot tak ditemukan)")
+        refine = jenis == "poligon"      # projek seg: kotak GDINO -> mask via SAM
 
         total = len(target)
         catat_maju(kunci, total=total, fase_nama="Memprediksi")
@@ -285,6 +310,12 @@ def jalankan(ds: Path, uploads_root: Path, akun: str, batas: int, sumber: list,
                         dets += sumber_zeroshot(it["img"], sc.get("model"),
                                                 sc.get("prompt") or [],
                                                 float(sc.get("conf", 0.1)))
+                    except Exception:            # noqa: BLE001
+                        pass
+                for sc in gd:
+                    try:
+                        dets += sumber_groundingdino(it["img"], sc.get("prompt") or [],
+                                                     float(sc.get("conf", 0.25)), refine)
                     except Exception:            # noqa: BLE001
                         pass
                 bentuk = ke_bentuk(gabung(dets, iou_ambang), jenis, it["W"], it["H"])

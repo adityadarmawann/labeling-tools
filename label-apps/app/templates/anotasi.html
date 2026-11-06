@@ -469,6 +469,14 @@
           <label class="halus" for="az-model" style="margin-top:6px;display:block">Model teks</label>
           <select class="chip" id="az-model"></select>
         </div>
+
+        <label class="az-src" id="az-src-gdino-lbl" hidden>
+          <input type="checkbox" id="az-s-gdino"> GroundingDINO + SAM (recall tinggi)</label>
+        <div class="az-src-ko" id="az-ko-gdino" hidden>
+          <span class="halus">Pakai nama objek yang sama dengan Zero-shot di atas.
+            Menangkap lebih banyak objek lalu SAM merapikannya jadi mask; biayanya
+            lebih banyak kotak ekstra yang perlu dihapus saat verifikasi.</span>
+        </div>
       </div>
 
       <div class="pl-baris">

@@ -430,7 +430,8 @@
   // Tiap centang sumber -> blok konfigurasinya (redup saat tak dicentang).
   const AZ_KO = { 'az-s-terlatih': 'az-terlatih',
                   'az-s-eksternal': 'az-ko-eksternal',
-                  'az-s-zeroshot': 'az-ko-zeroshot' };
+                  'az-s-zeroshot': 'az-ko-zeroshot',
+                  'az-s-gdino': 'az-ko-gdino' };
   function azToggle(cbId) {
     azEl(AZ_KO[cbId]).classList.toggle('mati', !azEl(cbId).checked);
   }
@@ -457,11 +458,16 @@
     if (!azEl('az-prompt').value) {
       azEl('az-prompt').value = (j.prompt_bawaan || []).join(', ');
     }
+    // GroundingDINO hanya ditawarkan kalau paketnya ada (server GPU).
+    const gd = !!j.groundingdino_siap;
+    azEl('az-src-gdino-lbl').hidden = !gd;
+    azEl('az-ko-gdino').hidden = !gd;
     if (resetCek) {
       // Bawaan masuk akal: zero-shot nyala; model terlatih nyala kalau ada.
       azEl('az-s-zeroshot').checked = true;
       azEl('az-s-terlatih').checked = ter.length > 0;
       azEl('az-s-eksternal').checked = false;
+      azEl('az-s-gdino').checked = false;      // opt-in (lebih noisy)
       for (const id of Object.keys(AZ_KO)) azToggle(id);
     }
   }
@@ -564,6 +570,11 @@
         if (!prompt) { toast('Isi objek zero-shot, atau matikan sumbernya'); return; }
         sumber.push({ jenis: 'zeroshot', model: azEl('az-model').value,
                       prompt, conf: parseFloat(azEl('az-conf').value || '0.1') });
+      }
+      if (azEl('az-s-gdino').checked) {
+        // GroundingDINO pakai nama objek yang sama (az-prompt); kosong -> kelas projek.
+        sumber.push({ jenis: 'groundingdino', prompt: azEl('az-prompt').value.trim(),
+                      conf: parseFloat(azEl('az-conf').value || '0.25') });
       }
       if (!sumber.length) { toast('Pilih minimal satu sumber'); return; }
       const batas = parseInt(azEl('az-batas').value || '1000', 10);
