@@ -111,6 +111,10 @@
         return bukaPrelabel(id);
       }
 
+      if (b.dataset.aksi === 'autolabel') {
+        return bukaAutolabel(id);
+      }
+
       if (b.dataset.aksi === 'catatan') {
         const el = kartu.querySelector('.an-catatan');
         const v = prompt('Catatan untuk pelabelnya:', el ? el.textContent.trim() : '');
@@ -403,6 +407,121 @@
     }
     document.addEventListener('keydown', (ev) => {
       if (ev.key === 'Escape' && !plDlg.hidden) plTutup();
+    });
+  }
+
+  // ---- Auto-label tanpa latih (zero-shot YOLO-World / SAM 3) --------------
+  const azDlg = document.getElementById('az-dlg');
+  let azTid = '';
+  let azTimer = null;
+  const azEl = (id) => document.getElementById(id);
+  const azEsc = (s) => String(s).replace(/[&<>"]/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  function azHenti() { if (azTimer) { clearInterval(azTimer); azTimer = null; } }
+  function azTutup() { azHenti(); if (azDlg) azDlg.hidden = true; }
+  function azSelesai() {
+    azHenti();
+    azEl('az-batal').hidden = true;
+    const mulai = azEl('az-mulai');
+    if (mulai) mulai.disabled = false;
+  }
+
+  async function bukaAutolabel(id) {
+    if (!azDlg) return;
+    azTid = id;
+    azHenti();
+    azDlg.hidden = false;
+    azEl('az-maju').innerHTML = '';
+    azEl('az-batal').hidden = true;
+    const mulai = azEl('az-mulai');
+    mulai.disabled = true; mulai.textContent = 'Memuat…';
+    const sel = azEl('az-model'); sel.innerHTML = '';
+    const j = await send('/api/autolabel/info');
+    if (!j || !j.ok) {
+      azEl('az-maju').innerHTML = '<p class="bad" style="padding:12px 16px">'
+        + azEsc((j && j.error) || 'gagal memuat') + '</p>';
+      mulai.textContent = 'Mulai'; return;
+    }
+    sel.innerHTML = (j.teks || []).map((m) => {
+      const unduh = m.terunduh ? '' : ' — unduh ~' + (m.unduh_mb || '?') + ' MB sekali';
+      const bentuk = m.bentuk === 'polygon' ? 'poligon' : 'kotak';
+      return '<option value="' + azEsc(m.model) + '"'
+        + (m.model === j.model_bawaan ? ' selected' : '') + '>'
+        + azEsc(m.nama || m.model) + ' (' + bentuk + ')' + azEsc(unduh) + '</option>';
+    }).join('');
+    // Prompt bawaan = nama kelas projek; pengguna bisa menambah/mengubah.
+    if (!azEl('az-prompt').value) {
+      azEl('az-prompt').value = (j.prompt_bawaan || []).join(', ');
+    }
+    if (j.training_aktif) {
+      azEl('az-maju').innerHTML = '<p class="bad" style="padding:12px 16px">'
+        + 'Training sedang berjalan di server ini, jadi auto-label dinonaktifkan '
+        + 'sampai selesai. Anotasi manual (gambar kotak sendiri) tetap bisa.</p>';
+      mulai.textContent = 'Mulai'; mulai.disabled = true; return;
+    }
+    mulai.textContent = 'Mulai'; mulai.disabled = false;
+  }
+
+  function azPantau() {
+    azHenti();
+    const box = azEl('az-maju');
+    azTimer = setInterval(async () => {
+      const j = await send('/api/autolabel/kemajuan');
+      const m = (j && j.maju) || {};
+      if (m.galat) {
+        box.innerHTML = '<p class="bad" style="padding:12px 16px">'
+          + azEsc(m.galat) + '</p>'; azSelesai(); return;
+      }
+      if (m.dibatalkan) {
+        box.innerHTML = '<p class="halus" style="padding:12px 16px">Dibatalkan.</p>';
+        azSelesai(); return;
+      }
+      if (m.selesai) {
+        box.innerHTML = '<div style="padding:12px 16px"><p><b>Selesai.</b> '
+          + (m.diproses || 0) + ' gambar diisi, ' + (m.objek || 0) + ' objek, '
+          + (m.dilewati || 0) + ' dilewati.</p>'
+          + '<button class="wz-tbl wz-tbl-pri" type="button" onclick="location.reload()">'
+          + 'Muat ulang untuk melihat</button></div>';
+        azSelesai(); return;
+      }
+      const pct = m.persen || 0;
+      box.innerHTML = '<div style="padding:12px 16px"><p class="halus">'
+        + azEsc(m.fase_nama || 'Memproses') + ' — ' + pct + '%'
+        + (m.total ? (' (' + (m.diproses || 0) + '/' + m.total + ')') : '')
+        + '</p><div class="pl-bar"><i style="width:' + pct + '%"></i></div></div>';
+    }, 1000);
+  }
+
+  if (azDlg) {
+    azEl('az-mulai').addEventListener('click', async () => {
+      const model = azEl('az-model').value;
+      const prompt = azEl('az-prompt').value.trim();
+      if (!prompt) { toast('Ketik nama objek yang dicari dulu'); return; }
+      const batas = parseInt(azEl('az-batas').value || '1000', 10);
+      const conf = parseFloat(azEl('az-conf').value || '0.1');
+      azEl('az-mulai').disabled = true;
+      const j = await send('/api/autolabel/mulai', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tid: azTid, model, prompt, batas, conf }),
+      });
+      if (!j || !j.ok) {
+        azEl('az-maju').innerHTML = '<p class="bad" style="padding:12px 16px">'
+          + azEsc((j && j.error) || 'gagal memulai') + '</p>';
+        azEl('az-mulai').disabled = false; return;
+      }
+      azEl('az-batal').hidden = false;
+      azPantau();
+    });
+    azEl('az-batal').addEventListener('click', async () => {
+      await send('/api/autolabel/batal', { method: 'POST' });
+      toast('Membatalkan…');
+    });
+    for (const x of azDlg.querySelectorAll('[data-az-tutup]')) {
+      x.addEventListener('click', azTutup);
+    }
+    document.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Escape' && !azDlg.hidden) azTutup();
     });
   }
 })();

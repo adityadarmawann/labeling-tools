@@ -178,6 +178,99 @@ def tulis_prediksi(it: dict, src: Path, names: dict, bentuk: list[dict]) -> dict
     return names
 
 
+# ------------------------------------------------------------------ pose
+# Projek kerangka (pose) itu DATAR labelme, bukan YOLO: cukup menulis .json
+# dengan bentuk point + rectangle bergabung lewat group_id. Ekspor YOLO-pose
+# (cls cx cy w h + K*(px py v)) terjadi belakangan saat versi dibuat
+# (export.baris_yolo_pose), bukan per gambar. Karena itu tulis_prediksi_pose
+# TIDAK pernah menyentuh scanner.tulis_yolo (yang membuang bentuk point) dan
+# TIDAK mendaftarkan nama keypoint sebagai kelas projek.
+
+def _shapes_pose_dari_hasil(r, titik: list, kelas_rect: str,
+                            W: int, H: int) -> list[dict]:
+    """Satu hasil ultralytics pose -> bentuk labelme: per instance, satu
+    rectangle + K point (bergabung lewat group_id). Keypoint diberi nama dari
+    template `titik` (urutannya = urutan latih model). Visibilitas dari
+    keyakinan keypoint: >=0,5 terlihat (2), >=0,1 terhalang (1), selain itu
+    absen (0). Instance tanpa satu pun keypoint terlihat dilewati."""
+    def kurung(x, batas):
+        return min(max(float(x), 0.0), float(batas))
+
+    kps = getattr(r, "keypoints", None)
+    if kps is None or getattr(kps, "xy", None) is None:
+        return []
+    xy = kps.xy.tolist()                              # N x K x 2
+    conf = kps.conf.tolist() if getattr(kps, "conf", None) is not None else None
+    boxes = getattr(r, "boxes", None)
+    xyxy = (boxes.xyxy.tolist()
+            if (boxes is not None and getattr(boxes, "xyxy", None) is not None)
+            else None)
+    K = len(titik)
+    out: list[dict] = []
+    for n, inst in enumerate(xy):
+        kp_shapes = []
+        for i in range(min(K, len(inst))):
+            x, y = inst[i][0], inst[i][1]
+            c = conf[n][i] if (conf is not None and n < len(conf)) else 1.0
+            v = 2 if c >= 0.5 else (1 if c >= 0.1 else 0)
+            kp_shapes.append({"label": str(titik[i]), "text": "",
+                              "points": [[kurung(x, W), kurung(y, H)]],
+                              "group_id": n, "shape_type": "point",
+                              "flags": {"v": v}})
+        if not any(s["flags"]["v"] >= 1 for s in kp_shapes):
+            continue                                  # tak ada titik terlihat
+        if xyxy is not None and n < len(xyxy):
+            x1, y1, x2, y2 = xyxy[n]
+        else:
+            vis = [s["points"][0] for s in kp_shapes if s["flags"]["v"] >= 1]
+            xs = [p[0] for p in vis]
+            ys = [p[1] for p in vis]
+            x1, y1, x2, y2 = min(xs), min(ys), max(xs), max(ys)
+        out.append({"label": str(kelas_rect or "objek"), "text": "",
+                    "points": [[kurung(x1, W), kurung(y1, H)],
+                               [kurung(x2, W), kurung(y2, H)]],
+                    "group_id": n, "shape_type": "rectangle", "flags": {}})
+        out += kp_shapes
+    return out
+
+
+def _prediksi_pose(model, it: dict, conf: float, titik: list,
+                   kelas_rect: str) -> list[dict]:
+    dev = 0 if olah_gpu.MODE == "gpu" else "cpu"
+    try:
+        hasil = model(str(it["img"]), conf=float(conf), verbose=False, device=dev)
+    except Exception:
+        hasil = model(str(it["img"]), conf=float(conf), verbose=False, device="cpu")
+    out: list[dict] = []
+    for r in hasil:
+        out += _shapes_pose_dari_hasil(r, titik, kelas_rect, it["W"], it["H"])
+    return out
+
+
+def tulis_prediksi_pose(it: dict, bentuk: list[dict]) -> None:
+    """Tulis bentuk pose untuk SATU gambar: HANYA labelme .json (projek pose
+    datar, tak ada YOLO .txt per gambar). Format sama dengan /api/simpan."""
+    import json
+
+    jp: Path = it["img"].with_suffix(".json")
+    lama = {}
+    if jp.exists():
+        try:
+            lama = json.loads(jp.read_text(encoding="utf-8")) or {}
+        except Exception:
+            lama = {}
+    isi = {
+        "version": lama.get("version") or annotations.LABELME_VERSION,
+        "flags": lama.get("flags") or {},
+        "shapes": bentuk,
+        "imagePath": it["img"].name,
+        "imageData": lama.get("imageData"),
+        "imageHeight": it["H"],
+        "imageWidth": it["W"],
+    }
+    annotations.tulis_aman(jp, json.dumps(isi, ensure_ascii=False, indent=2))
+
+
 # ------------------------------------------------------------------ daftar model
 def model_terlatih(ds: Path) -> list[dict]:
     """Training run YOLO yang punya best.pt -> bisa dipakai memprediksi. RF-DETR
@@ -218,6 +311,12 @@ def jalankan(ds: Path, uploads_root: Path, tid: str, nomor: int, akun: str,
         # lain setelah permintaan balik, dan keadaan gambar bisa sudah berubah.
         items, names = scanner.scan(ds)
         data = tugas.baca_projek(ds, uploads_root)
+        # Projek kerangka (pose): model memberi keypoint, bukan kotak/mask.
+        # Keluaran ditulis sebagai bentuk point + rectangle (datar labelme).
+        pose = tugas.skeleton_aktif(data)
+        _sk = data.get("skeleton") or {}
+        pose_titik = list(_sk.get("titik") or [])
+        pose_kelas = _sk.get("kelas") or "objek"
         target = tugas.gambar_konteks_job(items, data, ds, tid, saring="belum")
         if target is None:
             raise FileNotFoundError("tugas tak dikenal")
@@ -236,12 +335,22 @@ def jalankan(ds: Path, uploads_root: Path, tid: str, nomor: int, akun: str,
                 dilewati += 1
             else:
                 try:
-                    bentuk = _prediksi_satu(model, it, conf, kelas)
+                    if pose:
+                        bentuk = _prediksi_pose(model, it, conf, pose_titik,
+                                                pose_kelas)
+                    else:
+                        bentuk = _prediksi_satu(model, it, conf, kelas)
                 except Exception:
                     bentuk = []
                 if bentuk:
-                    names = tulis_prediksi(it, ds, names, bentuk)
-                    objek += len(bentuk)
+                    if pose:
+                        tulis_prediksi_pose(it, bentuk)
+                        # Hitung instance (rectangle), bukan tiap titik.
+                        objek += sum(1 for s in bentuk
+                                     if s["shape_type"] == "rectangle")
+                    else:
+                        names = tulis_prediksi(it, ds, names, bentuk)
+                        objek += len(bentuk)
                     diproses += 1
                 else:
                     # Tak ada deteksi -> biarkan "belum", JANGAN tandai latar.

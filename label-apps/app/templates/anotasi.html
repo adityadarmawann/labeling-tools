@@ -208,6 +208,8 @@
                 Lihat isinya</a>
               <button class="menu-aksi" type="button" data-aksi="prelabel"
                       data-id="{{ k.id }}">Pre-label dengan AI&hellip;</button>
+              <button class="menu-aksi" type="button" data-aksi="autolabel"
+                      data-id="{{ k.id }}">Auto-label tanpa latih&hellip;</button>
               <button class="menu-aksi" type="button" data-aksi="pelabel"
                       data-id="{{ k.id }}">Tugaskan ulang&hellip;</button>
               <button class="menu-aksi" type="button" data-aksi="catatan"
@@ -317,6 +319,8 @@
                 Lihat isinya</a>
               <button class="menu-aksi" type="button" data-aksi="prelabel"
                       data-id="{{ k.id }}">Pre-label dengan AI&hellip;</button>
+              <button class="menu-aksi" type="button" data-aksi="autolabel"
+                      data-id="{{ k.id }}">Auto-label tanpa latih&hellip;</button>
               <button class="menu-aksi" type="button" data-aksi="pelabel"
                       data-id="{{ k.id }}">Tugaskan ulang&hellip;</button>
               <button class="menu-aksi" type="button" data-aksi="catatan"
@@ -410,6 +414,43 @@
       <span class="spacer"></span>
       <button class="wz-tbl wz-tbl-sek" type="button" data-pl-tutup>Tutup</button>
       <button class="wz-tbl wz-tbl-pri" type="button" id="pl-mulai">Mulai</button>
+    </div>
+  </div>
+</div>
+
+{#- Dialog "Auto-label tanpa latih": model teks zero-shot (YOLO-World untuk
+    kotak, SAM 3 untuk poligon) memprediksi gambar BELUM teranotasi dari nama
+    kelas, tanpa perlu melatih model dulu. Diisi anotasi.js. -#}
+<div class="dlg" id="az-dlg" hidden>
+  <div class="dlg-tirai" data-az-tutup></div>
+  <div class="dlg-kotak" role="dialog" aria-modal="true" aria-labelledby="az-judul">
+    <div class="op-dlg-atas">
+      <h3 id="az-judul">Auto-label tanpa latih</h3>
+      <p class="halus">Sebut nama objek yang dicari; model teks memindai gambar
+        yang BELUM teranotasi di tugas ini, tanpa perlu melatih model dulu.
+        Hasilnya tinggal kamu verifikasi; gambar yang sudah dilabeli atau
+        ditandai latar tidak disentuh.</p>
+      <label class="halus" for="az-prompt">Nama objek yang dicari (pisahkan dengan koma)</label>
+      <input class="chip" id="az-prompt" type="text"
+             placeholder="mis. shuttlecock, raket, pemain"
+             style="display:block;width:28rem;max-width:90%">
+      <label class="halus" for="az-model" style="margin-top:10px;display:block">Model</label>
+      <select class="chip" id="az-model"></select>
+      <div class="pl-baris">
+        <span><label class="halus" for="az-batas">Jumlah maks</label>
+          <input class="chip" id="az-batas" type="number" value="1000"
+                 min="1" max="100000"></span>
+        <span><label class="halus" for="az-conf">Ambang keyakinan</label>
+          <input class="chip" id="az-conf" type="number" value="0.1"
+                 min="0.01" max="0.99" step="0.05"></span>
+      </div>
+    </div>
+    <div class="op-gulung" id="az-maju"></div>
+    <div class="op-dlg-bawah">
+      <button class="wz-tbl wz-tbl-sek" type="button" id="az-batal" hidden>Batalkan</button>
+      <span class="spacer"></span>
+      <button class="wz-tbl wz-tbl-sek" type="button" data-az-tutup>Tutup</button>
+      <button class="wz-tbl wz-tbl-pri" type="button" id="az-mulai">Mulai</button>
     </div>
   </div>
 </div>
