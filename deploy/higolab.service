@@ -1,0 +1,77 @@
+# systemd service HIGOLAB (Labeling Tools) PRODUKSI.
+#
+# Tujuan: app FastAPI dinyalakan OTOMATIS tiap mesin boot, tanpa perlu ada orang
+# yang login. Sebelum ini app dijalankan manual (tmux / ./start.sh prod), jadi
+# tiap mesin reboot nginx kehilangan upstream 127.0.0.1:8142 -> 502 Bad Gateway
+# sampai ada yang menyalakannya lagi. Unit ini menutup celah itu.
+#
+# Yang dijalankan tetap ./start.sh prod apa adanya (memuat env/prod.env +
+# env/rahasia.env, memilih venv .venv-gpu, lalu exec python run.py). Jadi tak ada
+# perilaku baru: cuma siapa yang menyalakan (systemd, bukan tangan).
+#
+# nginx TIDAK disentuh unit ini. nginx tetap memegang 8042 + annotate.higo.id:443
+# dan mem-proxy ke 127.0.0.1:8142.
+#
+# ---------------------------------------------------------------------------
+# PASANG (butuh sudo -- kamu jalankan sendiri; Claude tak menyentuh systemd):
+#
+#   # 1. Hentikan instance manual yang mungkin masih jalan (punya user paul,
+#   #    tak perlu sudo). Kalau tak ada, perintah ini aman saja.
+#   pkill -f 'run.py --host 127.0.0.1 --port 8142' || true
+#
+#   # 2. Pasang unit + aktifkan supaya ikut boot, sekaligus nyalakan sekarang.
+#   sudo cp /home/paul/computer-vision/smartbin/rvm/labeling-tools-dev/deploy/higolab.service \
+#           /etc/systemd/system/higolab.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now higolab
+#
+# CEK:
+#   systemctl status higolab            # harus active (running)
+#   curl -sI http://127.0.0.1:8142/login   # HTTP 200
+#   curl -skI --resolve annotate.higo.id:443:127.0.0.1 https://annotate.higo.id/login  # 200
+#
+# KELOLA SEHARI-HARI:
+#   sudo systemctl restart higolab      # nyalakan ulang (mis. sesudah deploy)
+#   sudo systemctl stop higolab         # matikan
+#   journalctl -u higolab -f            # log langsung (juga tetap ke logs/prod.log)
+#
+# CATATAN DEPLOY: deploy.sh milik user dan tidak diubah. Sesudah ./deploy.sh
+# selesai menyalin kode, jalankan `sudo systemctl restart higolab` supaya app
+# memakai kode baru (menggantikan restart manual yang dulu).
+# ---------------------------------------------------------------------------
+
+[Unit]
+Description=HIGOLAB Labeling Tools (produksi, FastAPI 127.0.0.1:8142)
+Documentation=file:///home/paul/computer-vision/smartbin/rvm/labeling-tools/label-apps/start.sh
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=paul
+Group=paul
+WorkingDirectory=/home/paul/computer-vision/smartbin/rvm/labeling-tools/label-apps
+
+# start.sh prod self-contained: muat env, pilih venv, exec python run.py.
+# /bin/bash dipakai eksplisit karena start.sh butuh bash (set -o pipefail,
+# process substitution), bukan /bin/sh.
+ExecStart=/bin/bash start.sh prod
+
+# Log ke berkas yang sama yang dibaca tim selama ini (bukan cuma journald).
+# 'append:' didukung sejak systemd 240 (mesin ini 249).
+StandardOutput=append:/home/paul/computer-vision/smartbin/rvm/labeling-tools/label-apps/logs/prod.log
+StandardError=append:/home/paul/computer-vision/smartbin/rvm/labeling-tools/label-apps/logs/prod.log
+
+# Kalau app mati sendiri (crash), hidupkan lagi; reboot tetap ditangani [Install].
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=120
+
+# KillMode=process: hanya proses utama (run.py) yang dihentikan saat stop/restart.
+# Training yang di-spawn app memakai start_new_session (process group sendiri)
+# supaya independen; dengan 'process' job latih yang sedang jalan TIDAK ikut
+# terbunuh saat app di-restart (mis. sesudah deploy).
+KillMode=process
+
+[Install]
+WantedBy=multi-user.target
