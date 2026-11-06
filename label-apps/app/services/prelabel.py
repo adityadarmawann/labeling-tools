@@ -291,6 +291,28 @@ def model_terlatih(ds: Path) -> list[dict]:
     return out
 
 
+def model_eksternal(ds: Path) -> list[dict]:
+    """Model .pt yang DIUNGGAH dari luar (disimpan di .latih/_eksternal/), untuk
+    dipilih sebagai sumber auto-label gabungan. Tiap .pt dimuat sekali (di-cache)
+    untuk membaca kelas + task; yang gagal dimuat ditandai, tidak menjatuhkan
+    daftar. CATATAN KEAMANAN: memuat .pt menjalankan unpickle -- hanya unggah
+    model tepercaya milik tim sendiri (gerbang unggah = pemilik/Editor)."""
+    d = latih._dir(ds) / "_eksternal"
+    out = []
+    for pt in sorted(d.glob("*.pt")) if d.is_dir() else []:
+        info = {"nama": pt.stem, "kelas": [], "task": ""}
+        try:
+            m = _muat_model(pt)
+            names = getattr(m, "names", None) or {}
+            info["kelas"] = [str(v) for v in (names.values() if isinstance(names, dict)
+                                              else names)]
+            info["task"] = str(getattr(m, "task", "") or "")
+        except Exception:                    # noqa: BLE001 -- berkas rusak/bukan ultralytics
+            info["task"] = "gagal-dimuat"
+        out.append(info)
+    return out
+
+
 # ------------------------------------------------------------------ job
 def jalankan(ds: Path, uploads_root: Path, tid: str, nomor: int, akun: str,
              batas: int, conf: float, batal=None) -> dict:
