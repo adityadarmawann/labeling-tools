@@ -930,7 +930,8 @@ function jadwalkanAutosave() {
 const NAMA_MODE = { 'p+': '+Point', 'p-': '−Point', rect: '+Rect',
                     kotak: 'Rectangle manual', poly: 'Poligon manual',
                     circle: 'Circle', line: 'Line', linestrip: 'LineStrip',
-                    point: 'Point', pose: 'Keypoint', edit: 'Sunting' };
+                    point: 'Point', pose: 'Keypoint', edit: 'Sunting',
+                    geser: 'Geser' };
 // Mode menggambar -> tipe bentuk yang dihasilkannya.
 const JENIS_DARI_MODE = { poly: 'polygon', kotak: 'rectangle', circle: 'circle',
                           line: 'line', linestrip: 'linestrip', point: 'point' };
@@ -943,7 +944,10 @@ const NAMA_JENIS = { polygon: 'Poligon', rectangle: 'Rectangle', circle: 'Circle
 function setMode(m) {
   S.mode = m;
   S.draft = null;
-  if (m !== 'edit') {
+  // 'geser' cuma memindahkan sudut pandang. Membuang pilihan di sini membuat
+  // orang kehilangan objek yang sedang dikerjakan hanya karena menggeser
+  // gambar untuk melihat sisi lainnya.
+  if (m !== 'edit' && m !== 'geser') {
     S.hover = null; S.sisi = null; S.selv = -1;
     S.sel = -1; S.terpilih = [];
     petunjuk(null);
@@ -1057,7 +1061,7 @@ let geser = null, spasi = false;
 function tikusTurun(ev) {
   const gx = keGambarX(ev.offsetX), gy = keGambarY(ev.offsetY);
 
-  if (ev.button === 1 || spasi) {
+  if (ev.button === 1 || spasi || S.mode === 'geser') {
     geser = { x: ev.offsetX, y: ev.offsetY, px: S.panx, py: S.pany };
     wrap.setAttribute('data-geser', '');
     return;
@@ -2218,6 +2222,7 @@ window.addEventListener('keydown', ev => {
   else if (k === 'r') setMode('kotak');          // rectangle manual, seperti AnyLabeling
   else if (k === 'p') setMode('poly');
   else if (k === 'v') setMode('edit');
+  else if (k === 'h') setMode('geser');
   else if (k === 'g') grupTerpilih();
   else if (k === 'u') lepasGrupTerpilih();
   else if (k === 'f') finishObject();
