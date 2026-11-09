@@ -212,3 +212,31 @@ def test_rute_mulai_ditolak_saat_training(klien, lingkungan, monkeypatch):
     r = klien.post("/api/autolabel/mulai", json={"tid": "t1"})
     j = r.json()
     assert j["ok"] is False and j.get("training") is True
+
+
+def test_jalankan_pose_ditolak(tmp_path, monkeypatch):
+    """Projek kerangka (pose) ditolak, SAMA seperti jalur gabungan.
+
+    Tanpa penjaga ini zero-shot menulis poligon/kotak lewat tulis_prediksi ke
+    dataset keypoint: bentuk yang tak pernah bisa jadi anotasi pose dan harus
+    dihapus satu per satu belakangan. Jalur gabungan sudah menjaganya sejak
+    awal; yang ini tertinggal, jadi dua pintu ke fitur yang sama berperilaku
+    berbeda pada projek yang sama.
+    """
+    d, tid = _siapkan(tmp_path, monkeypatch, 2, 0, _temuan_kotak)
+    monkeypatch.setattr(tugas, "jenis_berlaku", lambda data, items: "kerangka")
+    with pytest.raises(ValueError, match="kerangka"):
+        autolabel_zero.jalankan(d, tmp_path, tid, "darma", 1000, 0.1,
+                                "yoloworld:latest", ["botol"])
+    # Tak satu pun anotasi ditulis sebelum menolak.
+    assert not [p for p in d.glob("*.json") if not p.name.startswith(".")]
+
+
+def test_pilih_model_kerangka_bukan_sam3():
+    """Kode dan docstring-nya dulu berbeda: docstring menjanjikan
+    'poligon/kerangka -> SAM 3', kodenya hanya memeriksa 'poligon'. Yang
+    dikunci di sini perilakunya, bukan kalimat docstring-nya."""
+    assert autolabel_zero.pilih_model("poligon") == "sam3:latest"
+    assert autolabel_zero.pilih_model("kerangka") == "yoloworld:latest"
+    assert autolabel_zero.pilih_model("kotak") == "yoloworld:latest"
+    assert autolabel_zero.pilih_model("") == "yoloworld:latest"

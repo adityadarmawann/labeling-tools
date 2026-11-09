@@ -72,9 +72,15 @@ class TrainingSedangJalan(RuntimeError):
 def pilih_model(jenis: str) -> str:
     """Pilih model teks bawaan dari jenis anotasi projek.
 
-    poligon/kerangka -> SAM 3 (teks->poligon); selain itu (kotak atau belum
-    diatur) -> YOLO-World (teks->kotak). Pengguna bisa menimpa dari antarmuka."""
-    return "sam3:latest" if str(jenis or "").strip().lower() == "poligon" else "yoloworld:latest"
+    poligon -> SAM 3 (teks->poligon); selain itu (kotak atau belum diatur) ->
+    YOLO-World (teks->kotak). Pengguna bisa menimpa dari antarmuka.
+
+    'kerangka' TIDAK disebut di sini: projek pose ditolak jalur zero-shot
+    (lihat jalankan), jadi menawarkan model teks untuknya hanya menyesatkan.
+    Dulu docstring menjanjikan 'poligon/kerangka -> SAM 3' padahal kodenya
+    hanya memeriksa 'poligon'."""
+    return ("sam3:latest" if str(jenis or "").strip().lower() == "poligon"
+            else "yoloworld:latest")
 
 
 def prompt_default(ds: Path) -> list[str]:
@@ -85,23 +91,10 @@ def prompt_default(ds: Path) -> list[str]:
 
 
 def _gambar_belum_batch(items: list, ds: Path, batch: str) -> list:
-    """Gambar BELUM teranotasi (severity 'stop') milik satu unggahan/batch.
-
-    Batch gambar disimpan di .tag.json (lihat services/tag.py), bukan di item
-    scanner, jadi dicocokkan lewat kunci gambar. batch '' = unggahan tanpa nama.
-    Hak tulis per gambar tetap dijaga pemanggil (tugas.tolak_tulis)."""
-    from . import tag as _tag
-    tdata = _tag.baca(ds)
-    batch = str(batch or "")
-    out = []
-    for it in items:
-        if scanner.severity(it) != "stop":
-            continue
-        k = _tag.kunci_gambar(ds, it["img"])
-        if str(_tag.untuk(tdata, k).get("batch") or "") == batch:
-            out.append(it)
-    out.sort(key=lambda x: x["img"].name)
-    return out
+    """Pemilih lingkup batch. Badannya pindah ke tugas.gambar_belum_batch supaya
+    jalur pre-label (pose) bisa memakai aturan yang sama; nama ini dipertahankan
+    karena sudah dipakai pemanggil lain."""
+    return tugas.gambar_belum_batch(items, ds, batch)
 
 
 def _bentuk_dari_temuan(temuan: list) -> list[dict]:
@@ -162,6 +155,14 @@ def jalankan(ds: Path, uploads_root: Path, tid: str, akun: str,
         # setelah permintaan balik, keadaan gambar bisa sudah berubah.
         items, names = scanner.scan(ds)
         data = tugas.baca_projek(ds, uploads_root)
+        # Projek kerangka (pose) ditolak, sama seperti jalur gabungan. Tanpa
+        # penjaga ini zero-shot menulis poligon/kotak lewat tulis_prediksi ke
+        # dataset keypoint -- bentuk yang tak pernah bisa jadi anotasi pose dan
+        # harus dihapus satu per satu belakangan.
+        if tugas.jenis_berlaku(data, items) == "kerangka":
+            raise ValueError(
+                "projek kerangka (pose) tidak bisa auto-label zero-shot; "
+                "pakai 'Pre-label dengan AI' dengan model pose terlatih.")
         if batch is not None:
             target = _gambar_belum_batch(items, ds, batch)
         else:

@@ -315,11 +315,18 @@ def model_eksternal(ds: Path) -> list[dict]:
 
 # ------------------------------------------------------------------ job
 def jalankan(ds: Path, uploads_root: Path, tid: str, nomor: int, akun: str,
-             batas: int, conf: float, batal=None) -> dict:
-    """Pre-label semua gambar BELUM teranotasi di satu task (maks `batas`).
+             batas: int, conf: float, batal=None,
+             batch: str | None = None) -> dict:
+    """Pre-label gambar BELUM teranotasi dengan model terlatih (maks `batas`).
+
+    Lingkup: satu JOB (`tid`) ATAU satu BATCH/unggahan (`batch`), persis seperti
+    autolabel_zero dan autolabel_gabung. Tepat satu dipakai, `batch is not None`
+    menang. Lingkup batch penting khusus di sini: jalur inilah SATU-SATUNYA yang
+    bisa projek kerangka (pose), jadi tanpa dia projek pose tak punya jalan
+    auto-label sebatch sama sekali.
 
     `batal` callable -> True untuk berhenti. Melempar Dibatalkan kalau diminta,
-    FileNotFoundError kalau modelnya tak ada."""
+    FileNotFoundError kalau modelnya tak ada atau tasknya tak dikenal."""
     kunci = akun
     catat_maju(kunci, jalan=True, persen=0.0, fase_nama="Menunggu giliran",
                diproses=0, objek=0, dilewati=0, total=0)
@@ -343,9 +350,13 @@ def jalankan(ds: Path, uploads_root: Path, tid: str, nomor: int, akun: str,
         _sk = data.get("skeleton") or {}
         pose_titik = list(_sk.get("titik") or [])
         pose_kelas = _sk.get("kelas") or "objek"
-        target = tugas.gambar_konteks_job(items, data, ds, tid, saring="belum")
-        if target is None:
-            raise FileNotFoundError("tugas tak dikenal")
+        if batch is not None:
+            target = tugas.gambar_belum_batch(items, ds, batch)
+        else:
+            target = tugas.gambar_konteks_job(items, data, ds, tid,
+                                              saring="belum")
+            if target is None:
+                raise FileNotFoundError("tugas tak dikenal")
         if batas and batas > 0:
             target = target[:int(batas)]
         total = len(target)

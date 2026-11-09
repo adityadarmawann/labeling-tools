@@ -687,6 +687,34 @@ def gambar_konteks_job(items: list[dict], data: dict, ds: Path, tid: str, *,
     return keluar
 
 
+def gambar_belum_batch(items: list, ds: Path, batch: str) -> list:
+    """Gambar BELUM teranotasi (severity 'stop') milik satu unggahan/batch.
+
+    Sepasang dengan gambar_konteks_job: keduanya pemilih LINGKUP, dan tinggal
+    di modul yang sama supaya setiap jalur auto-label (zero-shot, gabungan,
+    pre-label model terlatih) memakai aturan yang sama persis. Sebelumnya ia
+    privat di autolabel_zero, sehingga jalur pre-label -- satu-satunya yang
+    bisa projek pose -- tak punya cara memakai lingkup batch sama sekali.
+
+    Batch gambar disimpan di .tag.json (lihat services/tag.py), bukan di item
+    scanner, jadi dicocokkan lewat kunci gambar. batch '' = unggahan tanpa nama.
+    Hak tulis per gambar tetap dijaga pemanggil (tolak_tulis).
+    """
+    from . import scanner
+    from . import tag as _tag
+    tdata = _tag.baca(ds)
+    batch = str(batch or "")
+    out = []
+    for it in items:
+        if scanner.severity(it) != "stop":
+            continue
+        k = _tag.kunci_gambar(ds, it["img"])
+        if str(_tag.untuk(tdata, k).get("batch") or "") == batch:
+            out.append(it)
+    out.sort(key=lambda x: x["img"].name)
+    return out
+
+
 JENIS_ANOTASI = ("poligon", "kotak", "kerangka")
 
 # Batas jumlah keypoint satu template — jauh di atas kebutuhan nyata (COCO

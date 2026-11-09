@@ -129,3 +129,39 @@ def test_jalankan_pose_tanpa_deteksi_tak_jadi_latar(tmp_path, monkeypatch):
     hasil = prelabel.jalankan(d, tmp_path, tid, 1, "darma", 1000, 0.25)
     assert hasil["diproses"] == 0 and hasil["dilewati"] == 2
     assert not [p for p in d.glob("*.json") if not p.name.startswith(".")]
+
+
+# ----------------------------------------------- lingkup BATCH (bukan job)
+def test_jalankan_pose_lingkup_batch(tmp_path, monkeypatch):
+    """Projek pose HARUS bisa auto-label sebatch.
+
+    Jalur pre-label ini satu-satunya yang mengerti keypoint: jalur zero-shot
+    dan gabungan menolak projek kerangka. Sebelum ini ia hanya menerima `tid`,
+    jadi projek pose tidak punya cara apa pun menjalankan auto-label untuk satu
+    unggahan penuh -- harus dibagi jadi job dulu.
+    """
+    d, _tid = _siapkan(tmp_path, monkeypatch, 3, _model_pose)
+    hasil = prelabel.jalankan(d, tmp_path, "", 1, "darma", 1000, 0.25, batch="")
+    assert hasil["total"] == 3 and hasil["diproses"] == 3
+    assert hasil["objek"] == 3
+    for ip in d.glob("*.jpg"):
+        sh = json.loads(ip.with_suffix(".json").read_text())["shapes"]
+        assert len([s for s in sh if s["shape_type"] == "rectangle"]) == 1
+        assert len([s for s in sh if s["shape_type"] == "point"]) == 3
+
+
+def test_jalankan_batch_tak_butuh_tugas_dikenal(tmp_path, monkeypatch):
+    """Lingkup batch tidak lewat daftar tugas sama sekali: tid yang tak dikenal
+    tak boleh menggagalkannya."""
+    d, _tid = _siapkan(tmp_path, monkeypatch, 2, _model_pose)
+    hasil = prelabel.jalankan(d, tmp_path, "tid-ngawur", 1, "darma", 1000, 0.25,
+                              batch="")
+    assert hasil["total"] == 2 and hasil["diproses"] == 2
+
+
+def test_jalankan_job_tak_dikenal_tetap_galat(tmp_path, monkeypatch):
+    """Tanpa `batch`, perilaku lama dipertahankan."""
+    import pytest
+    d, _tid = _siapkan(tmp_path, monkeypatch, 1, _model_pose)
+    with pytest.raises(FileNotFoundError):
+        prelabel.jalankan(d, tmp_path, "tid-ngawur", 1, "darma", 1000, 0.25)

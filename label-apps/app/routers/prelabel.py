@@ -41,9 +41,17 @@ async def mulai(request: Request,
     if sess.src is None:
         return {"ok": False, "error": "belum ada projek terbuka"}
     body = await bodi_json(request)
-    tid = str(body.get("tid") or "").strip()
-    if not tid:
-        return {"ok": False, "error": "tugas tak disebut"}
+    # Lingkup: BATCH ("batch", boleh "") atau JOB ("tid") -- bentuk bodi yang
+    # SAMA dengan /api/autolabel/mulai, supaya antarmuka memanggil keduanya
+    # dengan cara yang sama dan tidak ada jalur yang diam-diam cuma job.
+    if "batch" in body:
+        batch = str(body.get("batch") or "")
+        tid = ""
+    else:
+        batch = None
+        tid = str(body.get("tid") or "").strip()
+        if not tid:
+            return {"ok": False, "error": "tugas tak disebut"}
     try:
         nomor = int(body.get("nomor"))
     except (TypeError, ValueError):
@@ -69,11 +77,12 @@ async def mulai(request: Request,
     def kerja():
         try:
             hasil = prelabel.jalankan(ds, uploads, tid, nomor, akun, batas, conf,
-                                      batal=lambda: _batal.get(akun, False))
+                                      batal=lambda: _batal.get(akun, False),
+                                      batch=batch)
             prelabel.catat_maju(akun, jalan=False, selesai=True, **hasil)
         except prelabel.Dibatalkan:
             prelabel.catat_maju(akun, jalan=False, dibatalkan=True)
-        except FileNotFoundError as e:
+        except (ValueError, FileNotFoundError) as e:
             prelabel.catat_maju(akun, jalan=False, galat=str(e)[:200])
         except Exception as e:                       # pragma: no cover
             prelabel.catat_maju(akun, jalan=False, galat=str(e)[:200])

@@ -175,3 +175,30 @@ def test_rute_mulai_tanpa_model_ditolak(klien, lingkungan):
     r = klien.post("/api/prelabel/mulai", json={"tid": "t1"})
     assert r.json()["ok"] is False
     assert "model" in r.json()["error"].lower()
+
+
+def test_rute_mulai_terima_batch(klien, lingkungan):
+    """Bodi lingkup rute pre-label dibuat SAMA dengan /api/autolabel/mulai:
+    `batch` (boleh "") atau `tid`. Tanpa ini, satu-satunya jalur yang bisa
+    projek pose tak punya pintu sebatch."""
+    from conftest import masuk
+    masuk(klien, "paul", PW_PAUL)
+    d = lingkungan["ruang"] / "mini-batch"
+    buat_dataset(d, 2, 0)
+    klien.post(f"/setsrc?path={d}")
+    # 'batch' hadir -> tid TIDAK lagi wajib; yang menolak nanti modelnya.
+    r = klien.post("/api/prelabel/mulai", json={"batch": "", "nomor": 1})
+    j = r.json()
+    assert j["ok"] is True or "model" in str(j.get("error", "")).lower()
+    assert "tugas tak disebut" not in str(j.get("error", ""))
+
+
+def test_rute_mulai_tanpa_lingkup_ditolak(klien, lingkungan):
+    from conftest import masuk
+    masuk(klien, "paul", PW_PAUL)
+    d = lingkungan["ruang"] / "mini-nolingkup"
+    buat_dataset(d, 1, 0)
+    klien.post(f"/setsrc?path={d}")
+    r = klien.post("/api/prelabel/mulai", json={"nomor": 1})
+    assert r.json()["ok"] is False
+    assert "tugas" in r.json()["error"].lower()
