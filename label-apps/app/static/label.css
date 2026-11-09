@@ -326,6 +326,10 @@ body.lab {
    menggambar dan dua jari mencubit-zoom. */
 .lab-canvas canvas { display: block; cursor: crosshair; touch-action: none; }
 .lab-canvas[data-mode="edit"] canvas { cursor: default; }
+/* Mode Geser: telapak terbuka, lalu mengepal selama ditarik. Aturan
+   [data-geser] sengaja TETAP di bawah supaya kepalan menang saat keduanya
+   menempel bersamaan. */
+.lab-canvas[data-mode="geser"] canvas { cursor: grab; }
 .lab-canvas[data-geser] canvas { cursor: grabbing; }
 
 .lab-busy {
