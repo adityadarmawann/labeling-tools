@@ -47,6 +47,8 @@ memperingatkan kalau keduanya tidak cocok. Lihat periksa_warna().
 """
 from __future__ import annotations
 
+import contextlib
+import fcntl
 import json
 import os
 import re
@@ -589,20 +591,82 @@ def baca(ds, nomor: int) -> dict | None:
         return None
 
 
-def _tulis(ds, nomor: int, isi: dict) -> None:
-    p = berkas_latih(ds, nomor)
+# ------------------------------------------------------------------ rekam
+# Record training ditulis dari DUA proses: server web dan subprocess training
+# yang terlepas (`python -m app.services.latih_*`). threading.Lock hanya menjaga
+# antar-thread di satu proses, jadi tulisannya harus diamankan di tingkat BERKAS.
+# Helper di bawah ini generik (berbasis path) supaya latih.py dan latih_aksi.py
+# memakai implementasi yang SAMA -- dulu keduanya punya salinan sendiri dan
+# bug yang sama harus diperbaiki dua kali.
+
+def tulis_rekam(p: Path, isi: dict) -> None:
+    """Tulis record secara atomik. Nama sementara UNIK PER PROSES: dengan nama
+    tmp yang sama, dua proses menulis ke berkas yang sama lalu os.replace
+    menerbitkan isi campur-aduk -> record rusak (pernah terjadi: satu record
+    tinggal 60 byte)."""
     p.parent.mkdir(parents=True, exist_ok=True)
-    tmp = p.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(isi, indent=1))
-    os.replace(tmp, p)
+    tmp = p.with_suffix(p.suffix + f".{os.getpid()}.tmp")
+    try:
+        tmp.write_text(json.dumps(isi, indent=1))
+        os.replace(tmp, p)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+@contextlib.contextmanager
+def kunci_rekam(p: Path):
+    """Kunci ANTAR-PROSES untuk baca-ubah-tulis satu record."""
+    lp = p.with_suffix(".lock")
+    try:
+        lp.parent.mkdir(parents=True, exist_ok=True)
+        f = open(lp, "a+")
+    except OSError:                      # tak bisa mengunci -> jalan apa adanya
+        yield
+        return
+    try:
+        fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+        yield
+    finally:
+        try:
+            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+        finally:
+            f.close()
+
+
+def perbarui_rekam(p: Path, nilai: dict, label: str = "") -> dict:
+    """Perbarui record yang SUDAH ADA. TIDAK PERNAH membuat record baru.
+
+    Dulu `baca() or {}` membuat record muncul kembali dari ketiadaan: training
+    yang sudah DIHAPUS pengguna hidup lagi sebagai "hantu" begitu subprocess
+    yatimnya menulis status terakhir -- tampil di halaman sebagai "gagal" tanpa
+    direktori, tanpa backend, tanpa apa pun. Record yang berkasnya tak ada
+    berarti sengaja dihapus: pembaruannya dibuang."""
+    with kunci_rekam(p):
+        if not p.exists():
+            log.info("rekam %s sudah dihapus, pembaruan diabaikan (%s)",
+                     label or p.name, ", ".join(sorted(nilai)))
+            return {}
+        try:
+            isi = json.loads(p.read_text())
+        except (OSError, ValueError):     # ADA tapi rusak -> selamatkan, jangan diam
+            rusak = p.with_suffix(".json.rusak")
+            with contextlib.suppress(OSError):
+                shutil.copy2(p, rusak)
+            log.error("rekam %s rusak, salinan disimpan di %s",
+                      label or p.name, rusak.name)
+            isi = {}
+        isi.update(nilai)
+        tulis_rekam(p, isi)
+        return isi
+
+
+def _tulis(ds, nomor: int, isi: dict) -> None:
+    tulis_rekam(berkas_latih(ds, nomor), isi)
 
 
 def perbarui(ds, nomor: int, **nilai) -> dict:
     with _kunci:
-        isi = baca(ds, nomor) or {}
-        isi.update(nilai)
-        _tulis(ds, nomor, isi)
-        return isi
+        return perbarui_rekam(berkas_latih(ds, nomor), nilai, f"L{nomor}")
 
 
 # ============================================================

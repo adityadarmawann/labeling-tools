@@ -232,6 +232,8 @@ def test_status_offload_pid_mati_bukan_selesai_palsu(tmp_path, monkeypatch):
         ds = tmp_path / backend
         (L.dir_latih(ds, 1) / "weights").mkdir(parents=True)
         (L.dir_latih(ds, 1) / "weights" / "best.pt").write_bytes(b"x")
+        # perbarui() TAK PERNAH membuat record (anti-hantu), jadi disemai dulu.
+        L._tulis(ds, 1, {"nomor": 1})
         L.perbarui(ds, 1, versi=1, backend=backend,
                    keadaan="jalan", pid=999_999_999, par={"epochs": 1})
         return ds
