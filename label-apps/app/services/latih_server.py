@@ -269,6 +269,17 @@ def _skrip_rfdetr(coco_abs: str, model: str, par: dict, run_parent: str) -> str:
     return "CFG_JSON = " + repr(_json.dumps(cfg)) + "\n" + _RFDETR_BODY
 
 
+def _ekor_log_remote(dl: Path, baris: int = 25) -> str:
+    """Ekor salinan LOKAL log remote (.latih/L<n>/remote.log). Salinan ini
+    ditarik tiap poll, jadi sebab kegagalan tetap terbaca walau remote sudah
+    tak terjangkau dan foldernya sudah hilang."""
+    p = dl / "remote.log"
+    try:
+        return "\n".join(p.read_text(errors="replace").splitlines()[-baris:])
+    except OSError:
+        return ""
+
+
 # --------------------------------------------------------------- main
 def main() -> int:
     ds, nomor = Path(sys.argv[1]), int(sys.argv[2])
@@ -294,6 +305,10 @@ def main() -> int:
     run_id = f"L{nomor}-{secrets.token_hex(3)}"
     rroot = f"{rdir}/{run_id}"
     t0 = time.time()
+    # Run dir remote HANYA boleh dihapus kalau kita TAHU training di sana sudah
+    # berhenti. Kalau kita menyerah karena host tak terjangkau, training bisa
+    # MASIH berjalan -- menghapus foldernya saat itu justru membunuhnya.
+    bersihkan_remote = True
     latih.perbarui(ds, nomor, keadaan="jalan", mulai_pada=_sekarang(), pid=os.getpid())
     print(f"  backend: SERVER ({st.remote_nama}) via {host}", flush=True)
     try:
@@ -360,11 +375,20 @@ def main() -> int:
         ep_lama = -1
         exit_s = ""
         ssh_gagal = 0
-        MAKS_SSH_GAGAL = 15            # ~beberapa menit tak terjangkau baru menyerah
+        # 30 x POLL(20s) = ~10 menit. Menyerah kini TIDAK merusak apa pun
+        # (run dir remote dibiarkan), jadi toleransinya boleh longgar.
+        MAKS_SSH_GAGAL = 30
         while True:
             time.sleep(POLL)
             _rsync(key, f"{host}:{rroot}/run/results.csv", str(dl / "results.csv"))
             _rsync(key, f"{host}:{rroot}/run/weights/", str(dl / "weights") + "/")
+            # Log remote ditarik TIAP POLL, bukan cuma saat gagal. Dulu log cuma
+            # dibaca lewat `ssh tail` SESUDAH gagal -- padahal saat gagal itulah
+            # SSH paling mungkin mati, dan sesudahnya folder remote dihapus,
+            # jadi diagnosisnya hilang selamanya. Dengan salinan lokal ini,
+            # sebab kegagalan SELALU tersimpan (termasuk pesan flock "GPU remote
+            # sedang dipakai" yang ikut masuk train.log).
+            _rsync(key, f"{host}:{rroot}/train.log", str(dl / "remote.log"))
             n = int((latih.baca_hasil_csv(dl) or {}).get("epoch") or 0)
             if n != ep_lama:
                 ep_lama = n
@@ -385,9 +409,15 @@ def main() -> int:
             else:
                 ssh_gagal += 1                    # koneksi/perintah gagal: TRANSIEN
                 if ssh_gagal >= MAKS_SSH_GAGAL:
+                    # Training di remote kemungkinan MASIH hidup -> jangan sentuh
+                    # foldernya (dulu `finally` menghapusnya begitu jaringan pulih,
+                    # membunuh training yang sebenarnya masih berjalan).
+                    bersihkan_remote = False
                     raise RuntimeError(
-                        f"remote {host} tak terjangkau {ssh_gagal}x berturut; "
-                        "training mungkin MASIH berjalan di sana, tak dibatalkan paksa")
+                        f"remote {host} tak terjangkau {ssh_gagal}x berturut "
+                        f"(~{ssh_gagal * POLL // 60} menit). Training mungkin MASIH "
+                        f"berjalan di sana dan TIDAK dibatalkan; folder {rroot} "
+                        "sengaja dibiarkan utuh.")
 
         # Tarik hasil final.
         _rsync(key, f"{host}:{rroot}/run/results.csv", str(dl / "results.csv"))
@@ -399,13 +429,26 @@ def main() -> int:
             print(f"  SELESAI · bobot: {best}", flush=True)
             rc = 0
         else:
-            _ok, ekor = _ssh_cek(key, host, f"tail -n 25 {rroot}/train.log 2>/dev/null")
-            pesan = (ekor[-240:] if ekor.strip() else
-                     "log remote tak terbaca (kemungkinan koneksi putus / proses "
-                     "dihentikan di tengah). Bobot terakhir yang sempat ditarik tetap ada.")
+            # Sebab kegagalan dibaca dari SALINAN LOKAL log remote (ditarik tiap
+            # poll) -- selalu ada, bahkan saat SSH sudah mati. ssh tail hanya
+            # dipakai sebagai pelengkap kalau salinan lokalnya kosong.
+            ekor = _ekor_log_remote(dl)
+            if not ekor:
+                _ok, ekor = _ssh_cek(key, host, f"tail -n 25 {rroot}/train.log 2>/dev/null")
+            ep = int((latih.baca_hasil_csv(dl) or {}).get("epoch") or 0)
+            punya = (dl / "weights" / "best.pt").is_file()
+            # Jujur soal apa yang SEBENARNYA terjadi: berapa epoch sempat jalan
+            # dan apakah bobotnya ada. "gagal" tanpa keterangan membuat orang
+            # mengira kerjanya hilang padahal bobotnya ada di folder.
+            konteks = f"berhenti setelah {ep} epoch" if ep else "berhenti sebelum epoch pertama"
+            if punya:
+                konteks += "; bobot terakhir (best.pt) TERSIMPAN dan bisa dipakai"
+            pesan = (ekor.strip()[-240:] if ekor.strip() else
+                     "log remote kosong/tak terbaca")
             latih.perbarui(ds, nomor, keadaan="gagal",
-                           galat=("training remote gagal. " + pesan))
-            print("  GAGAL di remote:\n" + (ekor or "(log kosong)"), flush=True)
+                           galat=f"training remote gagal, {konteks}. {pesan}")
+            print(f"  GAGAL di remote ({konteks}):\n" + (ekor or "(log kosong)"),
+                  flush=True)
             rc = 1
     except Exception as e:                           # noqa: BLE001
         import traceback
@@ -413,10 +456,14 @@ def main() -> int:
         latih.perbarui(ds, nomor, keadaan="gagal", galat=str(e)[:260])
         rc = 1
     finally:
-        try:
-            _ssh(key, host, f"rm -rf {rroot}", timeout=60)   # bersihkan remote
-        except Exception:                            # noqa: BLE001
-            pass
+        if bersihkan_remote:
+            try:
+                _ssh(key, host, f"rm -rf {rroot}", timeout=60)   # bersihkan remote
+            except Exception:                        # noqa: BLE001
+                pass
+        else:
+            print(f"  folder remote {rroot} DIBIARKAN (training mungkin masih "
+                  "berjalan di sana)", flush=True)
     return rc
 
 

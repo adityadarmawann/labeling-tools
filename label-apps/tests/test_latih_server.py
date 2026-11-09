@@ -257,3 +257,56 @@ def test_siapkan_terima_backend_server(tmp_path, monkeypatch):
     isi = L.siapkan(d, nama="t", versi_nomor=1, tugas="detect", bobot="yolo11n.pt",
                     par={"epochs": 1}, oleh="paul", backend="server", arsitektur="yolo")
     assert isi["backend"] == "server"
+
+
+# ============================================================
+# DIAGNOSIS: LOG REMOTE & PEMBERSIHAN YANG AMAN
+# ============================================================
+# Kegagalan nyata di prod (basket L5, court-badminton L3): training berjalan
+# berjam-jam di clvision lalu ditandai "gagal" dengan pesan KOSONG. Sebabnya
+# log remote hanya dibaca lewat `ssh tail` SESUDAH gagal -- justru saat SSH
+# paling mungkin mati -- dan folder remote langsung dihapus sesudahnya, jadi
+# diagnosisnya hilang selamanya.
+
+def test_ekor_log_remote_baca_salinan_lokal(tmp_path):
+    dl = tmp_path / "L1"
+    dl.mkdir()
+    (dl / "remote.log").write_text("baris1\nbaris2\ntraceback: CUDA out of memory\n")
+    ekor = latih_server._ekor_log_remote(dl)
+    assert "CUDA out of memory" in ekor
+    # Tak ada salinan -> string kosong, bukan meledak.
+    assert latih_server._ekor_log_remote(tmp_path / "kosong") == ""
+
+
+def test_ekor_log_menyatukan_log_lokal_dan_remote(tmp_path):
+    from app.services import latih as L
+    d = L._dir(tmp_path)
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "L1.log").write_text("  epoch 3  · 12m\n")
+    dl = L.dir_latih(tmp_path, 1)
+    dl.mkdir(parents=True, exist_ok=True)
+    (dl / "remote.log").write_text("ultralytics: RuntimeError CUDA OOM\n")
+    out = L.ekor_log(tmp_path, 1)
+    assert "epoch 3" in out                      # log orkestrator
+    assert "CUDA OOM" in out                     # keluaran asli dari remote
+    assert "mesin remote" in out                 # ada pemisah yang jelas
+
+
+def test_poll_tarik_log_remote_tiap_putaran():
+    """train.log remote ditarik di dalam loop poll, bukan hanya saat gagal."""
+    src = (latih_server.__file__)
+    isi = open(src).read()
+    blok = isi[isi.index("while True:"):isi.index("# Tarik hasil final.")]
+    assert "train.log" in blok, "log remote tak ditarik selama poll"
+    assert "remote.log" in blok
+
+
+def test_menyerah_karena_tak_terjangkau_tak_menghapus_folder_remote():
+    """Saat poller menyerah (host tak terjangkau), training bisa MASIH jalan di
+    remote -- foldernya tak boleh dihapus."""
+    isi = open(latih_server.__file__).read()
+    assert "bersihkan_remote = False" in isi
+    i_raise = isi.index("{ssh_gagal}x berturut")      # pesan menyerah
+    i_flag = isi.rindex("bersihkan_remote = False", 0, i_raise)
+    assert i_raise - i_flag < 500, "flag tak diset tepat sebelum menyerah"
+    assert "if bersihkan_remote:" in isi, "finally tak menghormati flag"

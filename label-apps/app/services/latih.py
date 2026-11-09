@@ -1452,14 +1452,28 @@ def gambar_hasil(ds, nomor: int) -> list[dict]:
     return keluar
 
 
-def ekor_log(ds, nomor: int, baris: int = 40) -> str:
-    p = _dir(ds) / f"L{nomor}.log"
-    if not p.exists():
-        return ""
+def _ekor(p: Path, baris: int) -> str:
     try:
         return "\n".join(p.read_text(errors="replace").splitlines()[-baris:])
     except OSError:
         return ""
+
+
+def ekor_log(ds, nomor: int, baris: int = 40) -> str:
+    """Ekor log satu training untuk panel Rincian.
+
+    Untuk backend SERVER (offload SSH), log yang benar-benar menjelaskan
+    training ada di MESIN REMOTE. latih_server menariknya tiap poll ke
+    L<n>/remote.log, dan di sini keduanya disatukan: log orkestrator (kemajuan
+    epoch, kirim dataset) lalu keluaran asli dari remote. Tanpa ini panel
+    Rincian hanya menampilkan "epoch N" dan sebab kegagalan tak pernah terlihat.
+    """
+    lokal = _ekor(_dir(ds) / f"L{nomor}.log", baris)
+    jauh = _ekor(dir_latih(ds, nomor) / "remote.log", baris)
+    if not jauh:
+        return lokal
+    kepala = "----- keluaran dari mesin remote -----"
+    return (lokal + "\n\n" + kepala + "\n" + jauh) if lokal else (kepala + "\n" + jauh)
 
 
 # ============================================================
