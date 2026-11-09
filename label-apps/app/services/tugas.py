@@ -674,6 +674,12 @@ def gambar_konteks_job(items: list[dict], data: dict, ds: Path, tid: str, *,
         # ikut cache) -> tak perlu baca .json lagi di sini.
         if saring == "dicek" and (not berlabel or not it.get("perlu_dicek")):
             continue
+        # "verif" = sudah ada anotasi DAN sudah dilewati manusia. Dulu tak ada
+        # saringan ini sama sekali: "sudah" mencampur hasil AI mentah dengan
+        # yang benar-benar sudah diperiksa orang, sehingga tidak ada satu pun
+        # cara melihat berapa yang betul-betul selesai diverifikasi.
+        if saring == "verif" and (not berlabel or it.get("perlu_dicek")):
+            continue
         if dsf == "di" and not sudah_dimasukkan(data, k):
             continue
         if dsf == "belum" and sudah_dimasukkan(data, k):
@@ -1928,6 +1934,7 @@ URUT_PAPAN = {
 
 def papan(data: dict, berlabel: set[str], semua: set[str],
           batch_dari: dict[str, str] | None = None,
+          dicek: set[str] | None = None,
           urut: str = "terbaru", sumber_impor: str = "") -> dict:
     """
     Bahan untuk papan Anotasi: tiga kolom.
@@ -2012,13 +2019,23 @@ def papan(data: dict, berlabel: set[str], semua: set[str],
     # menghitung dengan aturan sendiri akan menawarkan "masukkan 2" lalu
     # rutenya menjawab tidak ada apa-apa untuk dimasukkan.
     siap_kelompok: dict[str, int] = {}
+    # Berapa di antaranya hasil auto-label yang BELUM diperiksa manusia.
+    # Tanpa angka ini, menjalankan "Auto-label semua" pada sebuah unggahan
+    # tidak meninggalkan jejak apa pun di kartunya: tak ada yang menunjukkan
+    # ada pekerjaan verifikasi yang menunggu, dan tak ada jalan menuju
+    # gambar-gambarnya kecuali membaginya jadi job lebih dulu.
+    dk = dicek or set()
+    dicek_kelompok: dict[str, int] = {}
     for k in belum:
         b = bd.get(k) or ""
         kelompok[b] = kelompok.get(b, 0) + 1
         if k in berlabel and not sudah_dimasukkan(data, k):
             siap_kelompok[b] = siap_kelompok.get(b, 0) + 1
+        if k in dk:
+            dicek_kelompok[b] = dicek_kelompok.get(b, 0) + 1
     belum_batch = sorted(
-        ({"batch": nama, "n": n, "siap": siap_kelompok.get(nama, 0)}
+        ({"batch": nama, "n": n, "siap": siap_kelompok.get(nama, 0),
+          "dicek": dicek_kelompok.get(nama, 0)}
          for nama, n in kelompok.items()),
         key=lambda x: (x["batch"] == "", -x["n"], x["batch"]))
 

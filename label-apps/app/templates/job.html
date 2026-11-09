@@ -105,6 +105,7 @@
       {%- if dsf == 'di' %}{% set tahap = 'dataset' %}
       {%- elif saring == 'belum' %}{% set tahap = 'perlu' %}
       {%- elif saring == 'dicek' %}{% set tahap = 'dicek' %}
+      {%- elif saring == 'verif' %}{% set tahap = 'verif' %}
       {%- elif saring == 'sudah' and dsf == 'belum' %}{% set tahap = 'siap' %}
       {%- elif saring == 'semua' and dsf == 'semua' %}{% set tahap = 'semua' %}
       {%- endif -%}
@@ -122,10 +123,25 @@
         {#- Hasil auto-label yang belum diverifikasi manusia. Muncul hanya kalau
             ada (atau sedang dibuka), supaya tak menuh-menuhi job tanpa AI.
             n_dicek dihitung dari field item perlu_dicek (gratis, ikut cache). -#}
-        {% if n_dicek or tahap == 'dicek' %}
+        {#- Sepasang: "Belum diverifikasi" dan "Terverifikasi".
+
+            Namanya BUKAN lagi "Perlu dicek". Kata itu sudah dipakai halaman
+            Dataset untuk arti yang lain sama sekali -- gambar yang anotasinya
+            BERMASALAH menurut pemindai (severity "warn") -- dan dua arti yang
+            memakai kata yang sama persis di aplikasi yang sama membuat orang
+            mengira keduanya menghitung hal yang sama.
+
+            Pasangannya muncul bersama: tanpa "Terverifikasi", "sudah dilabeli"
+            mencampur hasil AI mentah dengan yang benar-benar sudah diperiksa
+            orang, dan tak ada satu pun angka yang menunjukkan kemajuan
+            verifikasi. -#}
+        {% if n_dicek or tahap in ('dicek', 'verif') %}
         <a class="seg-opt"{% if tahap == 'dicek' %} data-on aria-current="true"{% endif %}
            href="{{ jt(s='dicek', dd='semua') }}#jb-kisi"
-           title="Hasil auto-label yang belum diverifikasi manusia">Perlu dicek <b>{{ n_dicek }}</b></a>
+           title="Hasil auto-label yang belum diperiksa manusia">Belum diverifikasi <b>{{ n_dicek }}</b></a>
+        <a class="seg-opt"{% if tahap == 'verif' %} data-on aria-current="true"{% endif %}
+           href="{{ jt(s='verif', dd='semua') }}#jb-kisi"
+           title="Sudah dilabeli dan sudah diperiksa manusia">Terverifikasi <b>{{ n_verif }}</b></a>
         {% endif %}
       </div>
 
@@ -244,7 +260,7 @@
             {#- Hasil auto-label (AI), belum diverifikasi manusia. Didahulukan
                 atas "anotasi" biasa supaya yang perlu dicek terlihat sekilas;
                 hilang begitu gambar ini disimpan manual. -#}
-            <span class="jb-cap jb-cap-dicek" title="hasil auto-label, perlu diverifikasi">perlu dicek</span>
+            <span class="jb-cap jb-cap-dicek" title="hasil auto-label, belum diperiksa manusia">belum diverifikasi</span>
             {% elif x.berlabel %}
             <span class="jb-cap jb-cap-ok" title="sudah dianotasi">anotasi</span>
             {% endif %}

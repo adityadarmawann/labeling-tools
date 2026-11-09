@@ -161,6 +161,22 @@
     {%- set _ = keadaan.append(("sudah", "Sudah dilabeli", n_sudah, "ok",
           "Semua yang sudah dikerjakan, termasuk yang ditandai latar dan "
           "yang perlu dicek.")) %}
+    {#- Sepasang keadaan verifikasi hasil auto-label. Muncul hanya kalau projek
+        ini memang pernah di-auto-label (atau sedang dibuka), supaya menu
+        keadaan tak bertambah panjang di projek yang tidak memakainya.
+
+        Namanya memakai kata "verifikasi", BUKAN "perlu dicek": kata itu sudah
+        dipakai beberapa baris di atas untuk arti yang lain sama sekali --
+        anotasi yang BENTUKNYA mencurigakan menurut pemindai. Dua arti dengan
+        satu kata membuat orang mengira keduanya menghitung hal yang sama. -#}
+    {%- if n_dicek or flt in ('dicek', 'verif') %}
+    {%- set _ = keadaan.append(("dicek", "Belum diverifikasi", n_dicek, "warn",
+          "Hasil auto-label yang belum diperiksa manusia. Menyimpan gambarnya "
+          "secara manual menandainya sudah diverifikasi.")) %}
+    {%- set _ = keadaan.append(("verif", "Terverifikasi", n_verif, "ok",
+          "Sudah dilabeli DAN sudah dilewati manusia. Termasuk yang memang "
+          "dilabeli manual sejak awal.")) %}
+    {%- endif %}
     {%- set _ = keadaan.append(("unlab", "Belum dilabeli", n_stop, "stop",
           "Belum disentuh sama sekali: tidak punya objek dan belum "
           "ditandai latar.")) %}

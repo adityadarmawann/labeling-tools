@@ -188,6 +188,11 @@ async def halaman_papan(request: Request, ds: str = "", urut: str = "terbaru",
     # yang datasetnya banyak latar tampak macet.
     berlabel = {kunci_dari[id(it)] for it in items
                 if scanner.severity(it) != "stop"}
+    # Hasil auto-label yang belum diperiksa manusia, per gambar. Dari field
+    # item pemindai (ikut cache, jadi gratis) -> kartu batch bisa menyebut
+    # berapa yang menunggu verifikasi tanpa membaca satu .json pun lagi.
+    dicek = {kunci_dari[id(it)] for it in items
+             if scanner.severity(it) != "stop" and it.get("perlu_dicek")}
 
     # Nama unggahan tiap gambar, dipakai mengelompokkan kolom pertama.
     tdata_tag = svc_tag.baca(d)
@@ -202,7 +207,8 @@ async def halaman_papan(request: Request, ds: str = "", urut: str = "terbaru",
     # Nama sumber dataset (data.yaml ekspor Roboflow) buat menamai kartu kolom
     # Dataset — unggahan dataset jadi yang auto-masuk tampil sebagai kartu.
     sumber_impor = scanner.nama_sumber_dataset(d)
-    papan = svc.papan(data, berlabel, semua, batch_dari, urut, sumber_impor)
+    papan = svc.papan(data, berlabel, semua, batch_dari, dicek, urut,
+                      sumber_impor)
     return templates.TemplateResponse(request, "anotasi.html", {
         "sess": sess, "pr": pr, "aktif": "anotasi",
         "boleh_kelola": svc.boleh_kelola(data, sess.user),
@@ -463,6 +469,7 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
     n_latar = sum(1 for x in isi if x["latar"])
     n_ds = sum(1 for x in isi if x["di_dataset"])
     n_dicek = sum(1 for x in isi if x["perlu_dicek"])
+    n_verif = sum(1 for x in isi if x["berlabel"] and not x["perlu_dicek"])
     # Tahap alur kerja "sudah dilabeli, belum di dataset": gambar yang
     # pekerjaannya selesai tapi belum dikumpulkan. Dihitung langsung, bukan
     # n_label - n_ds: tidak semua yang di dataset harus berlabel, jadi selisih
@@ -477,8 +484,8 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
             kelas_hitung[k2] = kelas_hitung.get(k2, 0) + 1
 
     # -- saringan, DI SERVER (dulu di job.js) --------------------------------
-    saring = (saring_q if saring_q in ("semua", "belum", "sudah", "dicek")
-              else "semua")
+    saring = (saring_q if saring_q in ("semua", "belum", "sudah", "dicek",
+                                       "verif") else "semua")
     # Latar termasuk "sudah dianotasi": menandai gambar tanpa objek adalah
     # keputusan yang sudah diambil, bukan pekerjaan yang belum dikerjakan.
     if saring == "belum":
@@ -490,6 +497,11 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
         # gratis). "berlabel" sudah tercakup di perlu_dicek, tetapi dibiarkan
         # eksplisit agar niatnya jelas.
         tampil = [x for x in isi if x["perlu_dicek"]]
+    elif saring == "verif":
+        # Sudah dilabeli DAN sudah dilewati manusia. Pasangan dari "dicek":
+        # tanpa dia, "sudah" mencampur hasil AI mentah dengan yang benar-benar
+        # selesai diperiksa, dan tidak ada cara melihat kemajuan verifikasi.
+        tampil = [x for x in isi if x["berlabel"] and not x["perlu_dicek"]]
     else:
         tampil = list(isi)
     # Saringan status dataset — terpisah dari status anotasi. Pada projek besar
@@ -530,7 +542,7 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
         "sess": sess, "pr": pr, "aktif": "anotasi", "aku": sess.user,
         "tid": tid, "job": job, "isi": halaman,
         "n": n_semua, "n_label": n_label, "n_latar": n_latar,
-        "n_dataset": n_ds, "n_dicek": n_dicek,
+        "n_dataset": n_ds, "n_dicek": n_dicek, "n_verif": n_verif,
         "kelas_hitung": dict(sorted(kelas_hitung.items())),
         # Warna kelas pilihan projek untuk swatch di menu saringan kelas.
         "warna_peta": data.get("kelas_warna") or {},

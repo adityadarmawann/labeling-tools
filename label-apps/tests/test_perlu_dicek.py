@@ -80,10 +80,73 @@ def test_grid_filter_dicek(klien, lingkungan):
     r = klien.get(f"/tugas/{tid}", params={"ds": d.name, "saring": "dicek"})
     assert r.status_code == 200
     html = r.text
-    assert "Perlu dicek" in html                 # tab tersedia
-    assert ips[0].name in html                   # yang perlu dicek tampil
+    # Namanya "Belum diverifikasi", BUKAN "Perlu dicek": kata itu sudah dipakai
+    # halaman Dataset untuk arti lain sama sekali (anotasi bermasalah menurut
+    # pemindai), dan dua arti yang memakai kata yang sama persis membuat orang
+    # mengira keduanya menghitung hal yang sama.
+    assert "Belum diverifikasi" in html          # tab tersedia
+    assert "Terverifikasi" in html               # pasangannya ikut muncul
+    assert ips[0].name in html                   # yang belum diverifikasi tampil
     assert ips[1].name not in html               # terverifikasi -> terfilter
     assert ips[2].name not in html               # belum -> terfilter
+
+
+def test_grid_filter_terverifikasi(klien, lingkungan):
+    """Pasangan dari "dicek": sudah dilabeli DAN sudah dilewati manusia.
+
+    Tanpa saringan ini, "sudah dilabeli" mencampur hasil AI mentah dengan yang
+    benar-benar selesai diperiksa, dan tidak ada satu pun angka yang menunjukkan
+    kemajuan verifikasi.
+    """
+    import pathlib
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = buat_dataset(ruang / "grid-verif", 4, 0)
+    klien.post(f"/setsrc?path={d}")
+    ips = sorted(d.glob("*.jpg"))
+    tid = klien.post("/api/tugas/bagi",
+                     json={"pelabel": "paul",
+                           "gambar": [str(p) for p in ips]}).json()["id"]
+    # ips[0] SENGAJA tidak dipakai menguji: gambar pertama projek jadi poster
+    # di bilah sisi, jadi namanya selalu ada di halaman apa pun saringannya.
+    _tulis_json(ips[1], False)      # sudah diverifikasi manusia
+    _tulis_json(ips[2], True)       # hasil auto-label, belum diverifikasi
+    # ips[3] tetap belum dilabeli
+
+    def kisi(saring: str) -> str:
+        """HANYA kisi gambar job-nya. Bilah sisi menampilkan sampul projek,
+        dan namanya ikut muncul di halaman apa pun saringannya -- memeriksa
+        seluruh HTML membuat tesnya mengukur hal lain."""
+        h = klien.get(f"/tugas/{tid}", params={"ds": d.name,
+                                               "saring": saring}).text
+        assert 'id="jb-kisi"' in h
+        return h.split('id="jb-kisi"', 1)[1]
+
+    k = kisi("verif")
+    assert ips[1].name in k                      # hanya yang terverifikasi
+    assert ips[2].name not in k
+    assert ips[3].name not in k
+
+    # dan pasangannya menyaring kebalikannya
+    k2 = kisi("dicek")
+    assert ips[2].name in k2
+    assert ips[1].name not in k2 and ips[3].name not in k2
+
+
+def test_saring_tak_dikenal_jatuh_ke_semua(klien, lingkungan):
+    import pathlib
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = buat_dataset(ruang / "grid-ngawur", 2, 0)
+    klien.post(f"/setsrc?path={d}")
+    ips = sorted(d.glob("*.jpg"))
+    tid = klien.post("/api/tugas/bagi",
+                     json={"pelabel": "paul",
+                           "gambar": [str(p) for p in ips]}).json()["id"]
+    html = klien.get(f"/tugas/{tid}",
+                     params={"ds": d.name, "saring": "ngawur"}).text
+    for ip in ips:
+        assert ip.name in html
 
 
 def test_simpan_manual_membersihkan_perlu_dicek(klien, lingkungan):

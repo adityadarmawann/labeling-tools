@@ -171,6 +171,17 @@
                 data-autolabel-batch="{{ b.batch }}"
                 title="Isi anotasi otomatis untuk semua gambar unggahan ini, lalu tinggal diverifikasi">
           Auto-label semua &rarr;</button>
+        {#- Jalan menuju verifikasinya. Tanpa tautan ini, menjalankan auto-label
+            sebatch tidak meninggalkan jejak apa pun di kartunya: tidak ada yang
+            menyebut ada pekerjaan verifikasi yang menunggu, dan gambarnya tak
+            bisa ditinjau sama sekali kecuali dibagi jadi job lebih dulu.
+            Kisi Dataset sudah bisa menyaring per unggahan (bt) dan per keadaan
+            (f), jadi dua saringan yang sudah ada itu yang dipakai. -#}
+        {% if b.dicek %}
+        <a class="an-mulai an-verif" href="/?f=dicek&amp;bt={{ b.batch | urlquote }}"
+           title="Periksa hasil auto-label unggahan ini satu per satu">
+          Verifikasi {{ b.dicek }} hasil AI &rarr;</a>
+        {% endif %}
         <a class="an-mulai" href="/bagi?ds={{ pr.ds | urlquote }}{% if b.batch %}&batch={{ b.batch | urlquote }}{% endif %}">
           Bagi tugas &rarr;</a>
         {% endif %}

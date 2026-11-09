@@ -144,6 +144,21 @@ def _filter(items: list[dict], flt: str, kelas, tanpa=(), mode="atau", *,
         # sendirian mengecualikannya membuat satu projek menyebut dua angka
         # "sudah dikerjakan" yang berbeda di dua halaman.
         items = [i for i in items if scanner.severity(i) != "stop"]
+    elif flt == "dicek":
+        # Hasil auto-label yang BELUM diperiksa manusia. Sengaja memakai kata
+        # "verifikasi", bukan "perlu dicek": kata itu sudah dipakai halaman ini
+        # sendiri untuk severity "warn" (anotasi yang BENTUKNYA mencurigakan),
+        # dan dua arti yang memakai satu kata membuat orang mengira keduanya
+        # menghitung hal yang sama.
+        items = [i for i in items
+                 if i.get("perlu_dicek") and scanner.severity(i) != "stop"]
+    elif flt == "verif":
+        # Pasangannya: sudah dilabeli DAN sudah dilewati manusia. Tanpa ini,
+        # "Sudah dilabeli" mencampur hasil AI mentah dengan yang benar-benar
+        # selesai diperiksa, dan tak ada angka yang menunjukkan kemajuan
+        # verifikasi.
+        items = [i for i in items
+                 if scanner.severity(i) != "stop" and not i.get("perlu_dicek")]
     elif flt == "unlab":
         # severity 'stop', bukan sekadar "tanpa objek": gambar yang sudah
         # ditandai latar memang tanpa objek tapi sudah selesai diperiksa, dan
@@ -439,6 +454,12 @@ async def index(request: Request, f: str = "all",
         "n_warn": sum(1 for s in sev if s == "warn"),
         "n_stop": sum(1 for s in sev if s == "stop"),
         "n_bg": sum(1 for s in sev if s == "bg"),
+        # Hasil auto-label yang belum/sudah diperiksa manusia. Dihitung dari
+        # field item perlu_dicek (ikut cache pindai, jadi gratis).
+        "n_dicek": sum(1 for i in items
+                       if i.get("perlu_dicek") and scanner.severity(i) != "stop"),
+        "n_verif": sum(1 for i in items
+                       if scanner.severity(i) != "stop" and not i.get("perlu_dicek")),
         "n_sudah": sum(1 for s in sev if s in ("ok", "warn", "bg")),
         "n_obj": sum(len(i["shapes"]) for i in items),
         # Penugasan: siapa pemilik tiap gambar, dan berapa jatahku. Kosong di
