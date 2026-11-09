@@ -310,3 +310,21 @@ def test_menyerah_karena_tak_terjangkau_tak_menghapus_folder_remote():
     i_flag = isi.rindex("bersihkan_remote = False", 0, i_raise)
     assert i_raise - i_flag < 500, "flag tak diset tepat sebelum menyerah"
     assert "if bersihkan_remote:" in isi, "finally tak menghormati flag"
+
+
+def test_identitas_run_remote_dicatat_dan_diteruskan(tmp_path):
+    """Tanpa catatan ini, begitu poller menyerah tak ada jejak DI MANA training
+    berada -- padahal folder remote sengaja dibiarkan utuh."""
+    isi = open(latih_server.__file__).read()
+    # Dicatat saat training diluncurkan ...
+    i_jalan = isi.index('keadaan="jalan"')
+    assert "remote_run" in isi[i_jalan:i_jalan + 400], "remote_run tak dicatat saat mulai"
+    # ... dan dikosongkan saat selesai bersih (tak ada yang menggantung).
+    i_selesai = isi.index('keadaan="selesai"')
+    assert "remote_run=None" in isi[i_selesai:i_selesai + 300]
+
+    # status() meneruskannya ke UI.
+    latih._tulis(tmp_path, 1, {"nomor": 1, "backend": "server", "keadaan": "gagal",
+                               "remote_run": {"host": "h", "dir": "~/x/L1-ab"}})
+    st = latih.status(tmp_path, 1)
+    assert st["remote_run"]["dir"] == "~/x/L1-ab"

@@ -1048,6 +1048,11 @@ def status(ds, nomor: int) -> dict:
         "rfdetr_model": isi.get("rfdetr_model") or "",
         "rfdetr_multigpu": bool(isi.get("rfdetr_multigpu")),
         "rfdetr": isi.get("rfdetr") or {},
+        # Identitas run di mesin remote (backend "server"). Diisi selama
+        # training dan dikosongkan saat selesai bersih; kalau MASIH terisi pada
+        # training yang gagal/terputus, artinya folder di remote sengaja
+        # dibiarkan utuh -- hasilnya masih bisa diambil dari sana.
+        "remote_run": isi.get("remote_run") or {},
         "maskrcnn_model": isi.get("maskrcnn_model") or "",
         "maskrcnn": isi.get("maskrcnn") or {},
         "kaggle": isi.get("kaggle") or {},
