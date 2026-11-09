@@ -328,3 +328,56 @@ def test_identitas_run_remote_dicatat_dan_diteruskan(tmp_path):
                                "remote_run": {"host": "h", "dir": "~/x/L1-ab"}})
     st = latih.status(tmp_path, 1)
     assert st["remote_run"]["dir"] == "~/x/L1-ab"
+
+
+# --------------------------------------------------- liveness & EXIT remote
+def test_cek_hidup_tak_memakai_pgrep():
+    """REGRESI (terbukti di clvision): `pgrep -f '<rroot>/train.py'` ikut
+    mencocokkan shell yang MENJALANKAN pgrep itu sendiri -- cmdline-nya memuat
+    polanya -- sehingga jawabannya SELALU "1". Proses remote yang sudah mati
+    tetap dianggap hidup, dan poller menunggu EXIT yang tak akan pernah ada.
+    Penggantinya memeriksa PID yang ditulis wrapper dengan `kill -0`."""
+    c = latih_server._perintah_hidup("~/higolab-train/L9-abc")
+    assert "pgrep" not in c
+    assert "run/PID" in c and "kill -0" in c
+    # tiga jawaban tegas yang dibedakan poller
+    assert "echo belum" in c and "echo 1" in c and "echo 0" in c
+
+
+def test_wrapper_selalu_menulis_exit():
+    """EXIT dulu hanya ditulis dari dalam try/except skrip Python, jadi flock
+    habis waktu, gagal import, dan SIGKILL/OOM tidak menghasilkan EXIT sama
+    sekali. Wrapper shell menulisnya dari `$?` -> selalu ada."""
+    s = latih_server._skrip_jalan("/r", "/r/.gpu.lock", "python3")
+    assert "echo $$ > run/PID" in s
+    assert "mkdir -p run" in s                      # EXIT butuh foldernya ada
+    assert 'echo "$rc" > run/EXIT' in s
+    # urutan: EXIT ditulis SESUDAH rc diambil, bukan di dalam cabang mana pun
+    assert s.index("rc=$?") < s.index('echo "$rc" > run/EXIT')
+
+
+def test_wrapper_mengantre_bukan_mati_dalam_5_detik():
+    """`flock -w 5` membuat training KEDUA ke server mati dalam 5 detik. Kini
+    menunggu lama (mengantre) dan kalau benar-benar menyerah memakai kode khas
+    supaya sebabnya bisa dilaporkan, tidak tertukar dengan galat Python 1."""
+    assert latih_server.TUNGGU_LOCK >= 3600
+    s = latih_server._skrip_jalan("/r", "/r/.gpu.lock", "python3")
+    assert f"flock -w {latih_server.TUNGGU_LOCK} -E {latih_server.EXIT_LOCK}" in s
+    assert latih_server.EXIT_LOCK != "1"
+
+
+def test_kode_keluar_khas_tak_bertabrakan():
+    kode = {latih_server.EXIT_LOCK, latih_server.EXIT_CD,
+            latih_server.EXIT_TAKLUNCUR}
+    assert len(kode) == 3
+    assert "0" not in kode and "1" not in kode      # jangan tertukar python
+
+
+def test_lama_tak_bilang_nol_jam():
+    assert latih_server._lama(6 * 3600) == "6 jam"
+    assert latih_server._lama(3) == "3 detik"
+
+
+def test_batas_jam_ada():
+    """Tanpa batas jam dinding, run bisa menggantung "jalan" selamanya."""
+    assert latih_server.BATAS_JAM >= 24

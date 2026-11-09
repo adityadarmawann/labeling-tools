@@ -30,6 +30,23 @@ from . import buatversi, latih
 from ..config import get_settings
 
 POLL = 20          # detik antar-pengambilan hasil dari remote
+# GPU remote dipegang flock selama training. Dulu `-w 5`: training KEDUA mati
+# dalam 5 detik, bukan mengantre. Kini menunggu lama supaya giliran kedua jalan
+# sendiri sesudah yang pertama kelar.
+TUNGGU_LOCK = 6 * 3600
+# Batas jam dinding satu run. Tanpa ini sebuah run bisa menggantung "jalan"
+# selamanya kalau remote berhenti tanpa jejak.
+BATAS_JAM = 72
+# Kode keluar khas wrapper remote (dipisah dari kode keluar Python 0/1).
+EXIT_LOCK = "99"   # flock habis waktu: GPU remote dipakai training lain
+EXIT_CD = "97"     # folder run remote tak bisa dibuka
+EXIT_TAKLUNCUR = "98"  # proses tak pernah muncul (dipakai poller, bukan remote)
+
+
+def _lama(detik: int) -> str:
+    """Durasi untuk pesan manusia: jam kalau >= 1 jam, selainnya detik. Mencegah
+    pesan "menunggu 0 jam" kalau TUNGGU_LOCK dikecilkan (mis. saat uji)."""
+    return f"{detik // 3600} jam" if detik >= 3600 else f"{detik} detik"
 CONNECT_TIMEOUT = 25
 
 
@@ -155,6 +172,45 @@ def _skrip_latih(data_abs: str, bobot: str, tugas: str, par: dict,
         f"open({run_parent!r} + '/run/EXIT','w').write(str(code))\n"
         "sys.exit(code)\n"
     )
+
+
+def _skrip_jalan(rroot: str, lock: str, py: str) -> str:
+    """Pembungkus shell yang MENJAMIN berkas EXIT selalu tertulis.
+
+    Dulu EXIT hanya ditulis dari dalam try/except skrip Python, jadi tiga
+    kegagalan paling sering TIDAK menghasilkan EXIT sama sekali: flock habis
+    waktu (python tak pernah jalan), gagal import di baris pertama, dan
+    SIGKILL/OOM. Poller lalu menunggu EXIT yang tak akan pernah ada.
+
+    Wrapper ini juga mencatat PID-nya sendiri ($$) supaya poller bisa memeriksa
+    `kill -0` -- pengganti `pgrep -f` yang keliru ikut mencocokkan shell
+    pemeriksanya sendiri sehingga SELALU menjawab "hidup".
+    """
+    return (
+        "#!/bin/sh\n"
+        f"cd {rroot} || exit {EXIT_CD}\n"
+        "mkdir -p run\n"
+        "echo $$ > run/PID\n"
+        f"flock -w {TUNGGU_LOCK} -E {EXIT_LOCK} {lock} {py} train.py"
+        " > train.log 2>&1\n"
+        "rc=$?\n"
+        f'if [ "$rc" = {EXIT_LOCK} ]; then\n'
+        '  echo "GPU di mesin remote dipakai training lain; sudah menunggu'
+        f' {_lama(TUNGGU_LOCK)} lalu menyerah." >> train.log\n'
+        "fi\n"
+        'echo "$rc" > run/EXIT\n'
+    )
+
+
+# Liveness remote: baca PID yang ditulis wrapper lalu `kill -0`. TIDAK memakai
+# pgrep -- polanya memuat path run sehingga shell yang menjalankan pgrep itu
+# sendiri ikut cocok dan jawabannya selalu "hidup" (terbukti di clvision:
+# proses sudah dibunuh, pgrep tetap menjawab 1).
+def _perintah_hidup(rroot: str) -> str:
+    return (f'p=$(cat {rroot}/run/PID 2>/dev/null); '
+            'if [ -z "$p" ]; then echo belum; '
+            'elif kill -0 "$p" 2>/dev/null; then echo 1; '
+            'else echo 0; fi')
 
 
 # --------------------------------------------------------- remote RF-DETR
@@ -367,8 +423,12 @@ def main() -> int:
                                        isi["tugas"], par, run_parent))
 
         # flock menahan selama training -> satu training per GPU remote (serial).
-        luncur = (f"cd {rroot} && (flock -w 5 {rdir}/.gpu.lock "
-                  f"{py} train.py > train.log 2>&1 &) ; echo LAUNCHED")
+        # Dijalankan lewat wrapper jalan.sh supaya EXIT dan PID selalu ada.
+        _tulis_remote(key, host, f"{rroot}/jalan.sh",
+                      _skrip_jalan(rroot, f"{rdir}/.gpu.lock", py))
+        luncur = (f"cd {rroot} && mkdir -p run && "
+                  "(setsid sh jalan.sh >/dev/null 2>&1 </dev/null &) "
+                  "; echo LAUNCHED")
         _ssh_ok(key, host, luncur, timeout=60)
         print(f"  training berjalan di {st.remote_nama} (poll tiap {POLL}s) …", flush=True)
 
@@ -376,7 +436,7 @@ def main() -> int:
         # SSH transien: selama run berjam-jam (ratusan-ribuan poll) satu kedipan
         # jaringan TAK boleh dibaca 'proses mati' lalu membatalkan + menghapus
         # training yang sebenarnya masih jalan. 'Mati' hanya disimpulkan kalau SSH
-        # SUKSES dan pgrep benar-benar menjawab 0. Kegagalan koneksi beruntun
+        # SUKSES dan cek PID (kill -0) benar-benar menjawab 0. Kegagalan koneksi beruntun
         # (host benar-benar tak terjangkau) baru menyerah setelah MAKS_SSH_GAGAL.
         ep_lama = -1
         exit_s = ""
@@ -384,6 +444,11 @@ def main() -> int:
         # 30 x POLL(20s) = ~10 menit. Menyerah kini TIDAK merusak apa pun
         # (run dir remote dibiarkan), jadi toleransinya boleh longgar.
         MAKS_SSH_GAGAL = 30
+        # Wrapper menulis run/PID dalam sekejap; 6 poll (~2 menit) adalah
+        # kelonggaran jauh di atas cukup. Sesudah itu, PID yang tetap tak ada
+        # berarti peluncuran remote memang gagal -- bukan ditunggu selamanya.
+        MAKS_BELUM_PID = 6
+        belum_pid = 0
         while True:
             time.sleep(POLL)
             _rsync(key, f"{host}:{rroot}/run/results.csv", str(dl / "results.csv"))
@@ -403,13 +468,22 @@ def main() -> int:
             if ok and out != "":
                 exit_s = out                      # skrip remote menulis kode selesai
                 break
+            if time.time() - t0 > BATAS_JAM * 3600:
+                bersihkan_remote = False
+                raise RuntimeError(
+                    f"run melewati batas {BATAS_JAM} jam tanpa selesai. Folder "
+                    f"{rroot} dibiarkan utuh supaya bobotnya bisa diambil.")
             ok2, hidup = (False, "")
             if ok:                                # EXIT belum ada -> cek proses
-                ok2, hidup = _ssh_cek(
-                    key, host, f"pgrep -f '{rroot}/train.py' >/dev/null && echo 1 || echo 0")
+                ok2, hidup = _ssh_cek(key, host, _perintah_hidup(rroot))
             if ok and ok2:
                 ssh_gagal = 0                     # koneksi sehat, jawaban tegas
-                if hidup != "1":
+                if hidup == "belum":              # wrapper belum menulis PID
+                    belum_pid += 1
+                    if belum_pid >= MAKS_BELUM_PID:
+                        exit_s = EXIT_TAKLUNCUR
+                        break
+                elif hidup != "1":
                     exit_s = "1"                  # proses hilang tanpa EXIT (OOM/kill)
                     break
             else:
@@ -451,6 +525,18 @@ def main() -> int:
                 konteks += "; bobot terakhir (best.pt) TERSIMPAN dan bisa dipakai"
             pesan = (ekor.strip()[-240:] if ekor.strip() else
                      "log remote kosong/tak terbaca")
+            # Kode keluar khas dari wrapper remote diterjemahkan jadi sebab yang
+            # bisa ditindaklanjuti, bukan "training remote gagal" tanpa isi.
+            if exit_s == EXIT_LOCK:
+                konteks = (f"GPU di {st.remote_nama} dipakai training lain selama "
+                           f"lebih dari {_lama(TUNGGU_LOCK)}")
+                pesan = "jalankan ulang setelah training di mesin itu selesai"
+            elif exit_s == EXIT_TAKLUNCUR:
+                konteks = "proses training tak pernah muncul di mesin remote"
+                pesan = ("peluncuran gagal, cek python/ultralytics di "
+                         f"{st.remote_nama}. " + pesan)
+            elif exit_s == EXIT_CD:
+                konteks = f"folder kerja {rroot} tak bisa dibuka di remote"
             latih.perbarui(ds, nomor, keadaan="gagal",
                            galat=f"training remote gagal, {konteks}. {pesan}")
             print(f"  GAGAL di remote ({konteks}):\n" + (ekor or "(log kosong)"),
