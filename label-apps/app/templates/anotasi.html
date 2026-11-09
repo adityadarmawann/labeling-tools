@@ -497,6 +497,22 @@
         <span><label class="halus" for="az-conf">Ambang zero-shot</label>
           <input class="chip" id="az-conf" type="number" value="0.1"
                  min="0.01" max="0.99" step="0.05"></span>
+        {#- Ambang model .pt dipisah dari ambang zero-shot. Keduanya memakai
+            skala yang sama tetapi watak yang jauh berbeda: model terlatih
+            projek yakin pada kelasnya sendiri (0,25 wajar), zero-shot jauh
+            lebih ragu (0,1). Dulu keduanya memakai satu kotak, dan nilai
+            model terlatih tak pernah dikirim sama sekali sehingga selalu
+            terkunci di 0,25 apa pun yang diketik. -#}
+        <span><label class="halus" for="az-conf-model">Ambang model .pt</label>
+          <input class="chip" id="az-conf-model" type="number" value="0.25"
+                 min="0.01" max="0.99" step="0.05"></span>
+        {#- Ambang penggabungan: dua deteksi yang tumpang tindih lebih dari ini
+            dianggap OBJEK YANG SAMA. Terlalu rendah, dua objek berdampingan
+            dilebur jadi satu; terlalu tinggi, objek yang sama dari dua sumber
+            jadi dua kotak bertumpuk yang harus dihapus satu per satu. -#}
+        <span><label class="halus" for="az-iou">Ambang gabung (IoU)</label>
+          <input class="chip" id="az-iou" type="number" value="0.6"
+                 min="0.3" max="0.95" step="0.05"></span>
       </div>
     </div>
     <div class="op-gulung" id="az-maju"></div>

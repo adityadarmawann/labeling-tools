@@ -172,7 +172,11 @@ def test_rute_info_sumber(klien, lingkungan):
     klien.post(f"/setsrc?path={d}")
     j = klien.get("/api/autolabel/info").json()
     assert j["ok"] is True
-    for k in ("teks", "terlatih", "eksternal", "claude_aktif"):
+    # `claude_aktif` sengaja TIDAK ada: tak pernah dibaca antarmuka mana pun,
+    # jadi satu-satunya gunanya membuat pembaca mengira ada jalur Claude yang
+    # bisa dinyalakan.
+    assert "claude_aktif" not in j
+    for k in ("teks", "terlatih", "eksternal"):
         assert k in j
     assert j["terlatih"] == [] and j["eksternal"] == []       # belum ada model
 
@@ -335,3 +339,52 @@ def test_sumber_model_membawa_skor(monkeypatch):
     it = {"img": __import__("pathlib").Path("x.jpg"), "W": 100, "H": 100}
     dets = ag.sumber_model(object(), it, 0.25, ["kaleng"], "L1")
     assert [round(d.skor, 2) for d in dets] == [0.88, 0.31]
+
+
+def test_rute_mulai_memakai_conf_dan_iou_yang_dikirim(tmp_path, monkeypatch, klien, lingkungan):
+    """Ambang model .pt dan ambang gabung benar-benar sampai ke orkestrator.
+
+    Dulu antarmuka tidak mengirim `conf` untuk sumber model sama sekali, jadi
+    nilainya selalu jatuh ke 0,25 bawaan server apa pun yang diketik, dan tidak
+    ada kontrol IoU sama sekali.
+    """
+    from conftest import buat_dataset, masuk
+    from tests.test_data import PW_PAUL
+    from app.services import autolabel_gabung
+
+    dicatat = {}
+
+    def palsu(ds, uploads, akun, batas, sumber, *, tid=None, batch=None,
+              iou_ambang=0.6, batal=None):
+        dicatat["sumber"] = sumber
+        dicatat["iou"] = iou_ambang
+        return {"total": 0, "diproses": 0, "objek": 0, "dilewati": 0,
+                "kosong": 0, "ditolak": 0}
+
+    monkeypatch.setattr(autolabel_gabung, "jalankan", palsu)
+    masuk(klien, "paul", PW_PAUL)
+    d = buat_dataset(lingkungan["ruang"] / "confiou", 1, 0)
+    klien.post(f"/setsrc?path={d}")
+    r = klien.post("/api/autolabel/mulai", json={
+        "batch": "", "iou": 0.85,
+        "sumber": [{"jenis": "terlatih", "nomor": 1, "conf": 0.42}]})
+    assert r.json()["ok"] is True
+    import time
+    for _ in range(50):
+        if dicatat:
+            break
+        time.sleep(0.05)
+    assert dicatat["iou"] == 0.85
+    assert dicatat["sumber"][0]["conf"] == 0.42
+
+
+def test_antarmuka_mengirim_conf_model_dan_iou():
+    """Kontrolnya ada DAN nilainya ikut dikirim, bukan cuma tampil."""
+    import pathlib as _p
+    akar = _p.Path(__file__).resolve().parents[1]
+    html = (akar / "app" / "templates" / "anotasi.html").read_text()
+    js = (akar / "app" / "static" / "anotasi.js").read_text()
+    assert 'id="az-conf-model"' in html and 'id="az-iou"' in html
+    assert "az-conf-model" in js and "az-iou" in js
+    assert "conf: confModel" in js
+    assert "sumber, batas, iou" in js

@@ -92,13 +92,6 @@ def prompt_default(ds: Path) -> list[str]:
     return [str(v).strip() for v in names.values() if str(v).strip()]
 
 
-def _gambar_belum_batch(items: list, ds: Path, batch: str) -> list:
-    """Pemilih lingkup batch. Badannya pindah ke tugas.gambar_belum_batch supaya
-    jalur pre-label (pose) bisa memakai aturan yang sama; nama ini dipertahankan
-    karena sudah dipakai pemanggil lain."""
-    return tugas.gambar_belum_batch(items, ds, batch)
-
-
 def _bentuk_dari_temuan(temuan: list) -> list[dict]:
     """Daftar autolabel.Temuan -> daftar bentuk labelme (kotak/poligon)."""
     out: list[dict] = []
@@ -121,8 +114,8 @@ def jalankan(ds: Path, uploads_root: Path, tid: str, akun: str,
 
     Lingkup: satu JOB (`tid`) ATAU satu BATCH/unggahan (`batch`, mis. dari kartu
     'Belum ditugaskan'). Tepat satu dari keduanya dipakai -- `batch` is not None
-    menang. Batch memakai _gambar_belum_batch (tak perlu bagi tugas dulu); job
-    memakai tugas.gambar_konteks_job.
+    menang. Batch memakai tugas.gambar_belum_batch (tak perlu bagi tugas
+    dulu); job memakai tugas.gambar_konteks_job.
 
     `batal` callable -> True untuk berhenti. Melempar Dibatalkan kalau diminta,
     TrainingSedangJalan kalau training lokal aktif, ValueError kalau prompt/
@@ -166,7 +159,7 @@ def jalankan(ds: Path, uploads_root: Path, tid: str, akun: str,
                 "projek kerangka (pose) tidak bisa auto-label zero-shot; "
                 "pakai 'Pre-label dengan AI' dengan model pose terlatih.")
         if batch is not None:
-            target = _gambar_belum_batch(items, ds, batch)
+            target = tugas.gambar_belum_batch(items, ds, batch)
         else:
             target = tugas.gambar_konteks_job(items, data, ds, tid, saring="belum")
             if target is None:

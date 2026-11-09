@@ -70,7 +70,10 @@ async def info(sess: Session = Depends(current_session_api),
             "terlatih": terlatih,
             "eksternal": eksternal,
             "groundingdino_siap": inf.get("groundingdino_siap", False),
-            "claude_aktif": False,          # diisi di Fase B (claude_vis.aktif)
+            # `claude_aktif` DIBUANG, bukan dibiarkan False. Ia tak pernah
+            # dibaca antarmuka mana pun, jadi satu-satunya gunanya adalah
+            # membuat pembaca mengira ada jalur Claude yang bisa dinyalakan.
+            # Kalau Fase B jadi dikerjakan, menambahkannya kembali sepele.
             "training_aktif": gpu_sinyal.latih_aktif()}
 
 

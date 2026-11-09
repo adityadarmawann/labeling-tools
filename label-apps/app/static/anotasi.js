@@ -575,12 +575,18 @@
 
     azEl('az-mulai').addEventListener('click', async () => {
       const sumber = [];
+      // Ambang model .pt TERPISAH dari ambang zero-shot, dan benar-benar
+      // dikirim: dulu kedua sumber model tidak mengirim conf sama sekali,
+      // jadi nilainya selalu jatuh ke 0,25 bawaan server apa pun isinya.
+      const confModel = parseFloat(azEl('az-conf-model').value || '0.25');
       if (azEl('az-s-terlatih').checked && azEl('az-terlatih').value) {
         sumber.push({ jenis: 'terlatih',
-                      nomor: parseInt(azEl('az-terlatih').value, 10) });
+                      nomor: parseInt(azEl('az-terlatih').value, 10),
+                      conf: confModel });
       }
       if (azEl('az-s-eksternal').checked && azEl('az-eksternal').value) {
-        sumber.push({ jenis: 'eksternal', nama: azEl('az-eksternal').value });
+        sumber.push({ jenis: 'eksternal', nama: azEl('az-eksternal').value,
+                      conf: confModel });
       }
       if (azEl('az-s-zeroshot').checked) {
         const prompt = azEl('az-prompt').value.trim();
@@ -595,10 +601,11 @@
       }
       if (!sumber.length) { toast('Pilih minimal satu sumber'); return; }
       const batas = parseInt(azEl('az-batas').value || '1000', 10);
+      const iou = parseFloat(azEl('az-iou').value || '0.6');
       azEl('az-mulai').disabled = true;
       const j = await send('/api/autolabel/mulai', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...azScope, sumber, batas }),
+        body: JSON.stringify({ ...azScope, sumber, batas, iou }),
       });
       if (!j || !j.ok) {
         azEl('az-maju').innerHTML = '<p class="bad" style="padding:12px 16px">'

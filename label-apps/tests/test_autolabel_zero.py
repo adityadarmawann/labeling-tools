@@ -136,7 +136,7 @@ def test_gambar_belum_batch_hanya_yang_belum(tmp_path, monkeypatch):
     from app.services import scanner
     d, tid = _siapkan(tmp_path, monkeypatch, 3, 1, _temuan_kotak)  # 1 sudah berlabel
     items, _ = scanner.scan(d)
-    belum = autolabel_zero._gambar_belum_batch(items, d, "")
+    belum = tugas.gambar_belum_batch(items, d, "")
     assert len(belum) == 2                           # yang berlabel tak ikut
 
 

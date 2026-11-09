@@ -21,7 +21,6 @@ from pathlib import Path
 
 from ..log import catat
 from . import ai_antre, autolabel, gpu_sinyal, prelabel, scanner, tugas
-from . import autolabel_zero
 from .autolabel_zero import (Dibatalkan, TrainingSedangJalan, bersihkan_maju,
                              catat_maju, kemajuan)
 
@@ -289,7 +288,7 @@ def jalankan(ds: Path, uploads_root: Path, akun: str, batas: int, sumber: list,
                              "gabungan; pakai 'Pre-label dengan AI'.")
 
         if batch is not None:
-            target = autolabel_zero._gambar_belum_batch(items, ds, batch)
+            target = tugas.gambar_belum_batch(items, ds, batch)
         else:
             target = tugas.gambar_konteks_job(items, data, ds, tid, saring="belum")
             if target is None:
