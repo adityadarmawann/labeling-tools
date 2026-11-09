@@ -289,6 +289,159 @@ def render(item: dict, side: int):
     return out
 
 
+def _tpl_sepadan(tpl: dict | None, K: int) -> dict:
+    """Template skeleton yang indeksnya DIJAMIN sepadan dengan K label versi.
+
+    Template projek bisa saja sudah diubah SESUDAH versinya dibangun. Memakai
+    yang sekarang apa adanya akan memberi nama dan warna slot yang salah, dan
+    menarik edge antara dua titik yang bukan pasangannya. Kalau panjangnya tak
+    cocok, titik tetap digambar tetapi tanpa rangka — lebih baik kurang
+    daripada menyesatkan.
+    """
+    if tpl and len(tpl.get("titik") or []) == K:
+        return tpl
+    return {"titik": [f"kp{i}" for i in range(K)], "edge": [], "warna": []}
+
+
+def _tabrak(a, b) -> bool:
+    return not (a[2] <= b[0] or b[2] <= a[0] or a[3] <= b[1] or b[3] <= a[1])
+
+
+def _tag_kelas(im, x: int, y: int, teks: str, col, fs: float,
+               dipakai: list | None = None) -> None:
+    """Nama kelas sebagai tag berisi warna kelasnya, ditempel di sudut bentuk.
+
+    Bentuk berwarna saja belum menjawab "ini kelas apa" — warna harus dihafal
+    dulu, dan pada versi berisi lima kelas itu tidak realistis. Tagnya diberi
+    latar PENUH (bukan teks telanjang) supaya terbaca di atas foto seterang
+    atau segelap apa pun, dan warna hurufnya mengikuti kecerahan latarnya.
+    """
+    teks = (teks or "")[:24]
+    if not teks:
+        return
+    tb = max(1, int(round(fs * 2)))
+    (tw, th), dasar = cv2.getTextSize(teks, cv2.FONT_HERSHEY_SIMPLEX, fs, tb)
+    pad = max(2, int(round(fs * 4)))
+    H, W = im.shape[:2]
+    # Di atas bentuknya kalau muat; kalau mepet tepi atas, digeser ke dalam.
+    ty = y - pad if y - th - 2 * pad >= 0 else y + th + pad
+    x0 = min(max(0, x), max(0, W - tw - 2 * pad))
+    lebar = tw + 2 * pad
+    tinggi = th + pad + dasar
+
+    # Objek berdekatan menaruh tagnya di tempat yang hampir sama, dan dua nama
+    # yang bertindih jadi tak terbaca keduanya. Tag yang bentrok digeser turun
+    # selangkah demi selangkah; kalau tetap tak dapat tempat, ia TIDAK digambar
+    # -- lebih baik satu nama hilang daripada dua nama jadi bubur.
+    if dipakai is not None:
+        for _ in range(6):
+            kotak = (x0, max(0, ty - th - pad), x0 + lebar, ty + dasar)
+            if not any(_tabrak(kotak, q) for q in dipakai):
+                break
+            ty += tinggi + 2
+        else:
+            return
+        if ty + dasar > H:
+            return
+        dipakai.append((x0, max(0, ty - th - pad), x0 + lebar, ty + dasar))
+
+    y0 = max(0, ty - th - pad)
+    y1 = min(H, ty + dasar)
+    cv2.rectangle(im, (x0, y0), (min(W, x0 + tw + 2 * pad), y1), col, -1)
+    # Huruf gelap di atas warna terang, terang di atas warna gelap (BT.601).
+    b, g, r = col
+    terang = (0.299 * r + 0.587 * g + 0.114 * b) > 150
+    cv2.putText(im, teks, (x0 + pad, ty - max(1, dasar // 2)),
+                cv2.FONT_HERSHEY_SIMPLEX, fs,
+                (20, 20, 20) if terang else (255, 255, 255), tb, cv2.LINE_AA)
+
+
+def gambar_versi(p: Path, side: int, bentuk: list[dict], nama_kelas: list[str]):
+    """Satu gambar HASIL VERSI dengan anotasinya digambar di atasnya.
+
+    Beda dari render(): sumbernya label YOLO milik versi (ternormalkan, kelas
+    berupa indeks), bukan .json ruang kerja — dan gambar hasil versi memang
+    sengaja tidak pernah masuk sess.items, jadi tidak bisa lewat jalur
+    thumbnail biasa. Konvensi gambarnya dibuat SAMA dengan render() supaya
+    pratinjau versi dan grid anotasi terlihat satu bahasa: poligon berisi
+    tembus pandang + garis tepi, rangka pose tipis dengan titik kecil.
+
+    Diperkecil DULU baru digambar, sama alasannya seperti di render(): garis
+    yang digambar pada gambar 4000px lalu diperkecil akan menyusut jadi tak
+    terlihat.
+    """
+    im = cv2.imread(str(p))
+    if im is None:
+        return None
+    h, w = im.shape[:2]
+    f = side / max(h, w)
+    if f < 1:
+        im = cv2.resize(im, (max(1, int(w * f)), max(1, int(h * f))),
+                        interpolation=cv2.INTER_AREA)
+    oh, ow = im.shape[:2]
+    tebal = max(2, min(4, round(min(ow, oh) / 180)))
+    peta = warna_override({"img": p})
+    tpl = skeleton_item({"img": p})
+
+    # Skala huruf tag: naik bersama ukuran gambar tapi tak pernah turun di
+    # bawah yang masih terbaca di ubin grid.
+    fs = max(0.38, min(0.9, side / 900))
+    ov = im.copy()
+    pakai_overlay = False
+    pose_shapes: list = []
+    tag: list = []                                     # (x, y, nama, warna)
+    K = 0
+    for g, b in enumerate(bentuk):
+        c = b.get("kelas", 0)
+        nama = nama_kelas[c] if 0 <= c < len(nama_kelas) else str(c)
+        col = cls_color(nama, peta)[::-1]              # cv2 memakai BGR
+        poli = b.get("poli") or []
+        pts = np.array([[round(poli[i] * ow), round(poli[i + 1] * oh)]
+                        for i in range(0, len(poli) - 1, 2)], dtype=np.int32)
+        if b.get("jenis") == "pose":
+            # Bbox instance digambar TIPIS dan tanpa isian: pada pose satu
+            # objek sering selebar seluruh gambar (lapangan), jadi isian penuh
+            # cuma membanjiri fotonya dan menutupi titik-titiknya sendiri.
+            if len(pts) >= 3:
+                cv2.polylines(im, [pts], True, col, max(1, tebal - 1),
+                              cv2.LINE_AA)
+                tag.append((int(pts[:, 0].min()), int(pts[:, 1].min()),
+                            nama, col))
+            kp = b.get("kp") or []
+            K = max(K, len(kp))
+            for idx, (x, y, v) in enumerate(kp):
+                if v < 1:                              # absen: tak ada titiknya
+                    continue
+                pose_shapes.append({
+                    "type": "point", "group_id": g, "_idx": idx,
+                    "pts": np.array([[x * ow, y * oh]], dtype=np.float32),
+                    "flags": {"v": int(v)}})
+            continue
+        if len(pts) < 3:
+            continue
+        cv2.fillPoly(ov, [pts], col)
+        cv2.polylines(im, [pts], True, col, tebal, cv2.LINE_AA)
+        tag.append((int(pts[:, 0].min()), int(pts[:, 1].min()), nama, col))
+        pakai_overlay = True
+
+    out = cv2.addWeighted(ov, OVERLAY_ALPHA, im, 1 - OVERLAY_ALPHA, 0) \
+        if pakai_overlay else im
+    # Rangka digambar SESUDAH blend supaya garis & titiknya tetap tajam, persis
+    # urutan yang dipakai render().
+    if pose_shapes:
+        t = _tpl_sepadan(tpl, K)
+        for s_ in pose_shapes:                         # label menyusul template
+            s_["label"] = t["titik"][s_["_idx"]] if s_["_idx"] < len(t["titik"]) \
+                else str(s_["_idx"])
+        _gambar_pose(out, pose_shapes, t, 1.0, side)
+    # Tag digambar PALING AKHIR supaya tidak diredam alpha overlay dan tidak
+    # tertimpa rangka pose: namanya harus selalu terbaca utuh.
+    dipakai: list = []
+    for x, y, nama, col in tag:
+        _tag_kelas(out, x, y, nama, col, fs, dipakai)
+    return out
+
+
 # Thumbnail dipakai BERSAMA semua akun, tidak lagi satu salinan per akun.
 #
 # Pikselnya memang sama untuk siapa pun — ia diturunkan dari gambar, anotasi,

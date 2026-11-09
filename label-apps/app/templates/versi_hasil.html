@@ -60,6 +60,16 @@
       </label>
     </div>
 
+    {#- Tampilkan label: BUKAN filter, jadi tidak ikut disubmit ke server.
+        Ia cuma menukar sumber gambar tiap kartu, supaya menyalakannya tidak
+        memuat ulang halaman dan tidak menghapus filter yang sedang dipakai. -#}
+    <div class="vh-fgrup vh-flabelcek">
+      <label class="vh-cek">
+        <input type="checkbox" id="vh-label" checked>
+        Tampilkan label
+      </label>
+    </div>
+
     {% if sp_set or c_set or neg_dipilih %}
     <a class="vh-bersih" href="/versi/hasil?nomor={{ nomor }}&per={{ per }}">Bersihkan</a>
     {% endif %}
@@ -73,10 +83,11 @@
   </div>
 
   {% if items %}
-  <div class="vh-grid">
+  <div class="vh-grid" id="vh-grid">
     {% for it in items %}
     <figure class="vh-kartu">
       <img loading="lazy"
+           data-src="/versi/gambar?nomor={{ nomor }}&amp;nama={{ it.nama|urlencode }}"
            src="/versi/gambar?nomor={{ nomor }}&amp;nama={{ it.nama|urlencode }}&amp;s=320"
            alt="{{ it.nama }}">
       <figcaption>
@@ -123,6 +134,43 @@
     if (h) h.value = 1;               // filter berubah -> mulai dari halaman 1
     f.submit();
   }
+  /*
+   * Tampilkan label. Gambar hasil versi digambari anotasinya DI SERVER
+   * (/versi/gambar?label=1), bukan dilapisi di peramban: kartunya memakai
+   * object-fit yang memotong gambar, jadi lapisan sisi-peramban harus
+   * menirukan potongan itu per gambar supaya tidak meleset.
+   *
+   * Saat label menyala kartunya beralih ke 'contain'. Dengan 'cover' sebagian
+   * gambar terpotong, dan anotasi yang jatuh di bagian terpotong itu hilang
+   * tanpa tanda -- justru hal yang ingin diperiksa orang di halaman ini.
+   */
+  (function () {
+    var cek = document.getElementById('vh-label');
+    var grid = document.getElementById('vh-grid');
+    if (!cek || !grid) return;
+    var KUNCI = 'vh-label';
+    try {
+      var simpan = localStorage.getItem(KUNCI);
+      if (simpan !== null) cek.checked = simpan === '1';
+    } catch (e) { /* penyimpanan ditolak peramban: pakai bawaan saja */ }
+
+    function terap() {
+      var on = cek.checked;
+      grid.classList.toggle('vh-berlabel', on);
+      var gbr = grid.querySelectorAll('img[data-src]');
+      for (var i = 0; i < gbr.length; i++) {
+        var dasar = gbr[i].getAttribute('data-src');
+        // Lebih besar saat berlabel: nama kelas digambar DI dalam gambar, dan
+        // pada 320 px hurufnya mulai pecah begitu kartunya ditampilkan penuh.
+        var baru = on ? dasar + '&s=480&label=1' : dasar + '&s=320';
+        if (gbr[i].getAttribute('src') !== baru) gbr[i].setAttribute('src', baru);
+      }
+      try { localStorage.setItem(KUNCI, on ? '1' : '0'); } catch (e) { /* abaikan */ }
+    }
+    cek.onchange = terap;
+    terap();
+  })();
+
   // Pemilih jumlah per halaman.
   (function () {
     var sel = document.getElementById('vh-per');
@@ -166,6 +214,7 @@
     grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
   .vh-kartu{margin:0;background:var(--panel);border-radius:10px;
     overflow:hidden;border:1px solid var(--line)}
+  .vh-grid.vh-berlabel .vh-kartu img{object-fit:contain;background:rgba(0,0,0,.2)}
   .vh-kartu img{display:block;width:100%;aspect-ratio:1/1;object-fit:cover;
     background:var(--sunk)}
   .vh-kartu figcaption{display:flex;flex-wrap:wrap;gap:4px;align-items:center;

@@ -98,6 +98,56 @@ def baca_label(p: Path) -> list[tuple[int, list[float]]]:
     return out
 
 
+def baca_bentuk(p: Path, K: int = 0) -> list[dict]:
+    """Berkas .txt YOLO -> daftar bentuk ternormalkan, SADAR POSE.
+
+    baca_label() sengaja dibiarkan apa adanya: ia memasok seluruh jalur
+    pembangun versi dan kontraknya (kelas, poligon) dipakai di belasan tempat.
+    Yang dibutuhkan pratinjau adalah bentuk ASLINYA — kotak tetap kotak,
+    poligon tetap poligon, dan baris pose dipecah jadi kotak + titik +
+    visibilitas, bukan diratakan jadi poligon.
+
+    Satu baris pose panjangnya 1 + 4 + 3K. Tanpa K, sisanya bernilai ganjil
+    dan baca_label() membuangnya diam-diam — itu sebabnya SELURUH gambar versi
+    pose terbaca "negatif" di halaman Hasil, lengkap dengan hitungan kelas nol.
+    K diambil dari kpt_shape di data.yaml versinya, jadi tak ada tebakan.
+
+    [{"kelas": int, "jenis": "kotak"|"poligon"|"pose",
+      "poli": [x1,y1,x2,y2,...],        # sudut, searah, ternormalkan 0..1
+      "kp":   [[x, y, v], ...]}]        # hanya untuk pose; v 0/1/2
+    """
+    if not p.exists():
+        return []
+    out: list[dict] = []
+    for baris in p.read_text(encoding="utf-8", errors="ignore").splitlines():
+        bagian = baris.split()
+        if len(bagian) < 5:
+            continue
+        try:
+            c = int(float(bagian[0]))
+            nilai = [float(x) for x in bagian[1:]]
+        except ValueError:
+            continue
+
+        def kotak(v):
+            cx, cy, bw, bh = v
+            x1, y1, x2, y2 = cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2
+            return [x1, y1, x2, y1, x2, y2, x1, y2]
+
+        if K > 0 and len(nilai) == 4 + 3 * K:
+            kp = [nilai[4 + i * 3: 7 + i * 3] for i in range(K)]
+            out.append({"kelas": c, "jenis": "pose", "poli": kotak(nilai[:4]),
+                        "kp": [[a, b, int(v)] for a, b, v in kp]})
+            continue
+        if len(nilai) == 4:
+            out.append({"kelas": c, "jenis": "kotak", "poli": kotak(nilai),
+                        "kp": []})
+            continue
+        if len(nilai) >= 6 and len(nilai) % 2 == 0:
+            out.append({"kelas": c, "jenis": "poligon", "poli": nilai, "kp": []})
+    return out
+
+
 def tulis_label(p: Path, label: list[tuple[int, list[float]]], segmentasi: bool) -> None:
     """
     Tulis .txt YOLO. Berkas TETAP DIBUAT walau labelnya kosong — berkas kosong

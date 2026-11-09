@@ -614,13 +614,19 @@ async def versi_isi(nomor: int = 0,
 
 @router.get("/versi/gambar")
 async def versi_gambar(nomor: int = 0, nama: str = "", s: int = 200,
+                       label: int = 0,
                        sess: Session = Depends(current_session)):
     """
-    Satu gambar hasil versi, diperkecil.
+    Satu gambar hasil versi, diperkecil. `label=1` menggambar anotasinya.
 
     Tidak lewat /thumb: rute itu melayani `sess.items`, dan berkas hasil versi
     memang SENGAJA tidak ada di sana — kalau ada, satu versi yang dibuat akan
     terbaca sebagai puluhan ribu gambar baru di projeknya sendiri.
+
+    Anotasinya digambar DI SERVER, bukan dilapiskan di peramban. Kartunya
+    memakai object-fit yang memotong gambar, jadi lapisan sisi-peramban harus
+    menirukan potongan itu per gambar supaya tidak meleset; dibakar ke
+    thumbnailnya, posisinya pasti benar apa pun gaya kartunya.
     """
     if sess.src is None:
         return Response(status_code=404)
@@ -630,10 +636,21 @@ async def versi_gambar(nomor: int = 0, nama: str = "", s: int = 200,
 
     def kecilkan():
         import cv2
+        sisi = min(max(s, 64), 640)
+        if label:
+            from ..services import olah, render
+            lp = p.parent.parent / "labels" / f"{p.stem}.txt"
+            bentuk = olah.baca_bentuk(lp, buatversi.kpt_versi(sess.src, nomor))
+            if bentuk:
+                im = render.gambar_versi(p, sisi, bentuk,
+                                         buatversi.kelas_versi(sess.src, nomor))
+                if im is not None:
+                    ok, buf = cv2.imencode(".jpg", im,
+                                           [int(cv2.IMWRITE_JPEG_QUALITY), 82])
+                    return buf.tobytes() if ok else None
         im = cv2.imread(str(p))
         if im is None:
             return None
-        sisi = min(max(s, 64), 640)
         h, w = im.shape[:2]
         f = sisi / max(h, w)
         if f < 1:
