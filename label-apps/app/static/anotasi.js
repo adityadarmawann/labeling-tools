@@ -343,6 +343,23 @@
     mulai.textContent = 'Mulai'; mulai.disabled = false;
   }
 
+  /*
+   * Rincian "dilewati". Satu angka gabungan tak memberi petunjuk apa-apa:
+   * gambar yang modelnya memang tak menemukan apa pun berarti ganti
+   * prompt/model, sedangkan gambar yang tak boleh ditulis berarti minta akses.
+   * Dua tindakan yang sama sekali berbeda, dan dulu dilaporkan dengan kalimat
+   * yang sama persis.
+   */
+  function rincianLewat(m) {
+    const n = m.dilewati || 0;
+    if (!n) return '';
+    const bagian = [];
+    if (m.kosong) bagian.push(m.kosong + ' tanpa objek ditemukan');
+    if (m.ditolak) bagian.push(m.ditolak + ' tanpa izin tulis');
+    return ', ' + n + ' dilewati'
+      + (bagian.length ? ' (' + bagian.join(', ') + ')' : '');
+  }
+
   function plPantau() {
     plHenti();
     const box = plEl('pl-maju');
@@ -359,8 +376,8 @@
       }
       if (m.selesai) {
         box.innerHTML = '<div style="padding:12px 16px"><p><b>Selesai.</b> '
-          + (m.diproses || 0) + ' gambar diisi, ' + (m.objek || 0) + ' objek, '
-          + (m.dilewati || 0) + ' dilewati.</p>'
+          + (m.diproses || 0) + ' gambar diisi, ' + (m.objek || 0) + ' objek'
+          + rincianLewat(m) + '.</p>'
           + '<button class="wz-tbl wz-tbl-pri" type="button" onclick="location.reload()">'
           + 'Muat ulang untuk melihat</button></div>';
         plSelesai(); return;
@@ -514,8 +531,8 @@
       }
       if (m.selesai) {
         box.innerHTML = '<div style="padding:12px 16px"><p><b>Selesai.</b> '
-          + (m.diproses || 0) + ' gambar diisi, ' + (m.objek || 0) + ' objek, '
-          + (m.dilewati || 0) + ' dilewati.</p>'
+          + (m.diproses || 0) + ' gambar diisi, ' + (m.objek || 0) + ' objek'
+          + rincianLewat(m) + '.</p>'
           + '<button class="wz-tbl wz-tbl-pri" type="button" onclick="location.reload()">'
           + 'Muat ulang untuk melihat</button></div>';
         azSelesai(); return;

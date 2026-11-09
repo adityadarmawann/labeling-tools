@@ -176,7 +176,7 @@ def jalankan(ds: Path, uploads_root: Path, tid: str, akun: str,
         total = len(target)
         catat_maju(kunci, total=total, fase_nama="Memprediksi")
 
-        diproses = objek = dilewati = 0
+        diproses = objek = ditolak = kosong = 0
         for i, it in enumerate(target):
             if batal and batal():
                 raise Dibatalkan()
@@ -186,7 +186,7 @@ def jalankan(ds: Path, uploads_root: Path, tid: str, akun: str,
                     "training mulai di tengah proses; auto-label dihentikan. "
                     "Gambar yang sudah terisi tetap ada.")
             if tugas.tolak_tulis(ds, akun, it["img"]):
-                dilewati += 1
+                ditolak += 1
             else:
                 try:
                     temuan = autolabel.dari_teks(
@@ -201,10 +201,18 @@ def jalankan(ds: Path, uploads_root: Path, tid: str, akun: str,
                     objek += len(bentuk)
                     diproses += 1
                 else:
-                    dilewati += 1
+                    kosong += 1
             catat_maju(kunci,
                        persen=round((i + 1) / max(total, 1) * 100, 1),
-                       diproses=diproses, objek=objek, dilewati=dilewati)
+                       diproses=diproses, objek=objek,
+                       dilewati=ditolak + kosong, kosong=kosong,
+                       ditolak=ditolak)
 
+    # Dua sebab yang SANGAT berbeda, dulu dihitung di ember yang
+    # sama: "dilewati 8" tak memberi petunjuk apakah modelnya memang
+    # tak menemukan apa-apa atau orangnya tidak berhak menulis ke
+    # gambar-gambar itu. Yang pertama berarti ganti prompt/model, yang
+    # kedua berarti minta akses. `dilewati` dipertahankan sebagai
+    # jumlah keduanya supaya pembaca lama tetap benar.
     return {"total": total, "diproses": diproses, "objek": objek,
-            "dilewati": dilewati}
+            "dilewati": ditolak + kosong, "kosong": kosong, "ditolak": ditolak}

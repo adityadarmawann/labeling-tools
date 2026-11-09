@@ -387,14 +387,14 @@ def jalankan(ds: Path, uploads_root: Path, tid: str, nomor: int, akun: str,
         total = len(target)
         catat_maju(kunci, total=total, fase_nama="Memprediksi")
 
-        diproses = objek = dilewati = 0
+        diproses = objek = ditolak = kosong = 0
         for i, it in enumerate(target):
             if batal and batal():
                 raise Dibatalkan()
             # Hak tulis dihormati: labeler yang hanya berhak atas batch tertentu
             # tak boleh menulis ke gambar di luar jatahnya.
             if tugas.tolak_tulis(ds, akun, it["img"]):
-                dilewati += 1
+                ditolak += 1
             else:
                 try:
                     if pose:
@@ -416,10 +416,18 @@ def jalankan(ds: Path, uploads_root: Path, tid: str, nomor: int, akun: str,
                     diproses += 1
                 else:
                     # Tak ada deteksi -> biarkan "belum", JANGAN tandai latar.
-                    dilewati += 1
+                    kosong += 1
             catat_maju(kunci,
                        persen=round((i + 1) / max(total, 1) * 100, 1),
-                       diproses=diproses, objek=objek, dilewati=dilewati)
+                       diproses=diproses, objek=objek,
+                       dilewati=ditolak + kosong, kosong=kosong,
+                       ditolak=ditolak)
 
+    # Dua sebab yang SANGAT berbeda, dulu dihitung di ember yang
+    # sama: "dilewati 8" tak memberi petunjuk apakah modelnya memang
+    # tak menemukan apa-apa atau orangnya tidak berhak menulis ke
+    # gambar-gambar itu. Yang pertama berarti ganti prompt/model, yang
+    # kedua berarti minta akses. `dilewati` dipertahankan sebagai
+    # jumlah keduanya supaya pembaca lama tetap benar.
     return {"total": total, "diproses": diproses, "objek": objek,
-            "dilewati": dilewati}
+            "dilewati": ditolak + kosong, "kosong": kosong, "ditolak": ditolak}
