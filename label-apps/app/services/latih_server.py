@@ -309,7 +309,13 @@ def main() -> int:
     # berhenti. Kalau kita menyerah karena host tak terjangkau, training bisa
     # MASIH berjalan -- menghapus foldernya saat itu justru membunuhnya.
     bersihkan_remote = True
-    latih.perbarui(ds, nomor, keadaan="jalan", mulai_pada=_sekarang(), pid=os.getpid())
+    # Identitas run di REMOTE ikut dicatat. Tanpa ini, begitu poller lokal
+    # menyerah (jaringan putus) tak ada satu pun catatan di mana training itu
+    # berada -- padahal ia bisa MASIH berjalan di sana. Dengan ini folder remote
+    # bisa diperiksa/disambung lagi, dan pesan gagal bisa menyebut lokasinya.
+    latih.perbarui(ds, nomor, keadaan="jalan", mulai_pada=_sekarang(), pid=os.getpid(),
+                   remote_run={"host": host, "dir": rroot, "run_id": run_id,
+                               "mulai": _sekarang()})
     print(f"  backend: SERVER ({st.remote_nama}) via {host}", flush=True)
     try:
         # Praperiksa koneksi + ruang kerja remote.
@@ -416,8 +422,8 @@ def main() -> int:
                     raise RuntimeError(
                         f"remote {host} tak terjangkau {ssh_gagal}x berturut "
                         f"(~{ssh_gagal * POLL // 60} menit). Training mungkin MASIH "
-                        f"berjalan di sana dan TIDAK dibatalkan; folder {rroot} "
-                        "sengaja dibiarkan utuh.")
+                        f"berjalan di sana dan TIDAK dibatalkan. Folder {rroot} "
+                        "sengaja dibiarkan utuh supaya hasilnya bisa diambil lagi.")
 
         # Tarik hasil final.
         _rsync(key, f"{host}:{rroot}/run/results.csv", str(dl / "results.csv"))
@@ -425,7 +431,7 @@ def main() -> int:
         best = dl / "weights" / "best.pt"
         if exit_s == "0" and best.is_file():
             latih.perbarui(ds, nomor, keadaan="selesai", selesai_pada=_sekarang(),
-                           detik_total=round(time.time() - t0, 1))
+                           detik_total=round(time.time() - t0, 1), remote_run=None)
             print(f"  SELESAI · bobot: {best}", flush=True)
             rc = 0
         else:
