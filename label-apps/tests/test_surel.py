@@ -140,6 +140,7 @@ def _siapkan_record(tmp_path, monkeypatch, keadaan="gagal", **extra):
     rec = dict(keadaan=keadaan, nama="ff-v1", oleh="darma", catatan="",
                galat="CUDA out of memory" if keadaan in ("gagal", "hilang") else "")
     rec.update(extra)
+    latih._tulis(tmp_path, 1, {"nomor": 1})   # perbarui() tak membuat record
     latih.perbarui(tmp_path, 1, **rec)
     st = _s(users_file=str(tmp_path / "users.json"),
             basis_publik="https://h.test", smtp_host="smtp.test")

@@ -192,6 +192,7 @@ def test_kemajuan_dalam_epoch_pertama_tak_ditebak_kedua_akurat(tmp_path, monkeyp
     (durasinya belum bisa dipakai jadi persen), epoch KEDUA melaporkan persen
     yang dihitung dari durasi epoch pertama yang sudah terjadi."""
     monkeypatch.setattr(latih, "hidup", lambda pid: True)   # anggap prosesnya hidup
+    latih._tulis(tmp_path, 1, {"nomor": 1})      # perbarui() tak membuat record
     latih.perbarui(tmp_path, 1, keadaan="jalan", pid=12345, versi=1,
                    par={"epochs": 400}, mulai_pada="2026-09-17 11:15")
     d = latih.dir_latih(tmp_path, 1)
@@ -938,3 +939,54 @@ def test_akun_test_async_berhasil(klien, lingkungan, monkeypatch):
             break
         time.sleep(0.05)
     assert st["keadaan"] == "berhasil"
+
+
+# ============================================================
+# INTEGRITAS REKAM TRAINING
+# ============================================================
+# Dua cacat nyata yang pernah terjadi di produksi:
+#   1. Training yang SUDAH DIHAPUS hidup lagi sebagai "hantu" -- subprocess
+#      yatimnya menulis status terakhir, `baca() or {}` membuat record baru,
+#      dan halaman menampilkan "gagal" tanpa direktori/backend/apa pun.
+#   2. Record rusak jadi 60 byte karena dua proses (web + subprocess) memakai
+#      nama berkas sementara yang SAMA lalu saling menimpa.
+
+def test_perbarui_tak_membangkitkan_record_yang_dihapus(tmp_path):
+    latih._tulis(tmp_path, 1, {"nomor": 1, "nama": "x", "backend": "server"})
+    assert latih.buang(tmp_path, 1) is True
+    # Subprocess yatim menulis status terakhirnya SESUDAH dihapus.
+    assert latih.perbarui(tmp_path, 1, keadaan="gagal", galat="remote mati") == {}
+    assert latih.baca(tmp_path, 1) is None
+    assert not latih.berkas_latih(tmp_path, 1).exists(), "record hantu muncul lagi"
+
+
+def test_perbarui_tetap_menggabung_record_yang_ada(tmp_path):
+    latih._tulis(tmp_path, 2, {"nomor": 2, "nama": "x", "backend": "server"})
+    out = latih.perbarui(tmp_path, 2, keadaan="selesai")
+    assert out["nama"] == "x" and out["backend"] == "server"
+    assert out["keadaan"] == "selesai"
+
+
+def test_record_rusak_dicadangkan_bukan_ditelan(tmp_path):
+    p = latih.berkas_latih(tmp_path, 3)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text("{ini bukan json")
+    latih.perbarui(tmp_path, 3, keadaan="gagal")
+    assert p.with_suffix(".json.rusak").exists(), "salinan record rusak tak disimpan"
+    assert latih.baca(tmp_path, 3)["keadaan"] == "gagal"
+
+
+def test_tulis_rekam_atomik_dan_tmp_unik_per_proses(tmp_path):
+    import os as _os
+    p = tmp_path / "L9.json"
+    latih.tulis_rekam(p, {"a": 1})
+    assert json.loads(p.read_text())["a"] == 1
+    # Tak ada sisa berkas sementara, dan namanya mengandung PID (unik per proses).
+    assert list(tmp_path.glob("*.tmp")) == []
+    assert f".{_os.getpid()}.tmp" in str(p.with_suffix(p.suffix + f".{_os.getpid()}.tmp"))
+
+
+def test_latih_aksi_juga_anti_hantu(tmp_path):
+    from app.services import latih_aksi
+    assert latih_aksi.perbarui(tmp_path, 1, keadaan="gagal") == {}
+    assert not latih_aksi.berkas_latih(tmp_path, 1).exists()

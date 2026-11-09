@@ -146,19 +146,17 @@ def baca(ds, nomor: int) -> dict | None:
 
 
 def _tulis(ds, nomor: int, isi: dict) -> None:
-    p = berkas_latih(ds, nomor)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    tmp = p.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(isi, indent=1))
-    os.replace(tmp, p)
+    # Implementasi BERSAMA dengan latih.py (tulis atomik, nama tmp unik
+    # per-proses, kunci antar-proses) supaya bug yang sama tak perlu
+    # diperbaiki dua kali.
+    latih.tulis_rekam(berkas_latih(ds, nomor), isi)
 
 
 def perbarui(ds, nomor: int, **nilai) -> dict:
+    """Perbarui record aksi yang SUDAH ADA; tak pernah membuat yang baru
+    (training yang sudah dihapus tak boleh hidup lagi sebagai hantu)."""
     with _kunci:
-        isi = baca(ds, nomor) or {}
-        isi.update(nilai)
-        _tulis(ds, nomor, isi)
-        return isi
+        return latih.perbarui_rekam(berkas_latih(ds, nomor), nilai, f"A{nomor}")
 
 
 def bobot_training(ds, nomor: int, jenis: str = "best") -> Path | None:
