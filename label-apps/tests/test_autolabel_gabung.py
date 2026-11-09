@@ -101,7 +101,7 @@ def _box_shape(x1, y1, x2, y2, label):
 
 def test_jalankan_dua_sumber_merge(tmp_path, monkeypatch):
     # terlatih & zeroshot menemukan objek SAMA -> 1 bentuk, label terlatih.
-    pred = lambda m, it, conf, kelas: [_box_shape(10, 10, 50, 50, "kaleng")]
+    pred = lambda m, it, conf, kelas, skor=None: [_box_shape(10, 10, 50, 50, "kaleng")]
     teks = lambda img, prompt, model="", ambang=0.1: [
         autolabel.Temuan(label="can", points=[[11, 11], [49, 49]],
                          bbox=(11, 11, 49, 49), skor=0.8, shape_type="rectangle")]
@@ -118,7 +118,7 @@ def test_jalankan_dua_sumber_merge(tmp_path, monkeypatch):
 
 def test_jalankan_sumber_saling_menutup(tmp_path, monkeypatch):
     # terlatih menemukan A, zeroshot menemukan B (beda) -> union 2 bentuk.
-    pred = lambda m, it, conf, kelas: [_box_shape(0, 0, 20, 20, "kaleng")]
+    pred = lambda m, it, conf, kelas, skor=None: [_box_shape(0, 0, 20, 20, "kaleng")]
     teks = lambda img, prompt, model="", ambang=0.1: [
         autolabel.Temuan(label="carton", points=[[40, 40], [58, 58]],
                          bbox=(40, 40, 58, 58), skor=0.7, shape_type="rectangle")]
@@ -137,7 +137,7 @@ def test_jalankan_tanpa_sumber_error(tmp_path, monkeypatch):
 
 
 def test_jalankan_ditolak_saat_training(tmp_path, monkeypatch):
-    pred = lambda m, it, conf, kelas: [_box_shape(10, 10, 50, 50, "kaleng")]
+    pred = lambda m, it, conf, kelas, skor=None: [_box_shape(10, 10, 50, 50, "kaleng")]
     d, tid = _siapkan(tmp_path, monkeypatch, 1, prediksi_satu=pred, latih_aktif=True)
     with pytest.raises(ag.TrainingSedangJalan):
         ag.jalankan(d, tmp_path, "darma", 1000, [{"jenis": "terlatih", "nomor": 1}], tid=tid)
@@ -152,7 +152,7 @@ def test_jalankan_pose_ditolak(tmp_path, monkeypatch):
 
 
 def test_jalankan_batch_scope(tmp_path, monkeypatch):
-    pred = lambda m, it, conf, kelas: [_box_shape(10, 10, 50, 50, "kaleng")]
+    pred = lambda m, it, conf, kelas, skor=None: [_box_shape(10, 10, 50, 50, "kaleng")]
     d, tid = _siapkan(tmp_path, monkeypatch, 3, prediksi_satu=pred)
     hasil = ag.jalankan(d, tmp_path, "darma", 1000,
                         [{"jenis": "terlatih", "nomor": 1}], batch="")
@@ -263,3 +263,75 @@ def test_rute_model_unggah_gerbang(klien, lingkungan, monkeypatch):
     monkeypatch.setattr(tugas, "boleh_unggah", lambda data, akun: False)
     r = klien.put("/api/autolabel/model-unggah?nama=x.pt", content=b"x")
     assert r.json()["ok"] is False
+
+
+# ---------------------------------------------- keyakinan model ikut terbawa
+class _Conf:
+    def __init__(self, v):
+        self.v = v
+
+    def tolist(self):
+        return self.v
+
+
+class _BoxesC:
+    def __init__(self, xyxy, cls, conf):
+        self.xyxy = _Conf(xyxy)
+        self.cls = _Conf(cls)
+        self.conf = _Conf(conf)
+
+
+class _RC:
+    names = {0: "kaleng"}
+    masks = None
+
+    def __init__(self, xyxy, cls, conf):
+        self.boxes = _BoxesC(xyxy, cls, conf)
+
+
+def test_shapes_dari_hasil_mengisi_skor():
+    """Keyakinan dikeluarkan lewat parameter terpisah, BUKAN field di dict
+    bentuknya: dict itu ditulis apa adanya ke .json anotasi."""
+    from app.services import prelabel
+    skor = []
+    sh = prelabel._shapes_dari_hasil(
+        _RC([[0, 0, 10, 10], [5, 5, 20, 20]], [0, 0], [0.9, 0.4]),
+        ["kaleng"], 100, 100, skor)
+    assert len(sh) == 2 and skor == [0.9, 0.4]
+    for s in sh:                                  # tak ada titipan angka
+        assert set(s) == {"label", "text", "points", "group_id",
+                          "shape_type", "flags"}
+
+
+def test_shapes_dari_hasil_tanpa_conf_tetap_jalan():
+    from app.services import prelabel
+
+    class _B:
+        xyxy = _Conf([[0, 0, 10, 10]])
+        cls = _Conf([0])
+
+    class _R:
+        names = {0: "kaleng"}
+        masks = None
+        boxes = _B()
+
+    skor = []
+    assert len(prelabel._shapes_dari_hasil(_R(), ["kaleng"], 100, 100, skor)) == 1
+    assert skor == [0.0]
+
+
+def test_sumber_model_membawa_skor(monkeypatch):
+    """Dulu dipaku 0.0, jadi deteksi model terlatih SELALU terurut paling akhir
+    saat gabung() menyemai kelompok dan zero-shot yang selalu jadi intinya."""
+    from app.services import prelabel
+
+    def pred(m, it, conf, kelas, skor=None):
+        if skor is not None:
+            skor.extend([0.88, 0.31])
+        return [_box_shape(0, 0, 10, 10, "kaleng"),
+                _box_shape(50, 50, 60, 60, "kaleng")]
+
+    monkeypatch.setattr(prelabel, "_prediksi_satu", pred)
+    it = {"img": __import__("pathlib").Path("x.jpg"), "W": 100, "H": 100}
+    dets = ag.sumber_model(object(), it, 0.25, ["kaleng"], "L1")
+    assert [round(d.skor, 2) for d in dets] == [0.88, 0.31]

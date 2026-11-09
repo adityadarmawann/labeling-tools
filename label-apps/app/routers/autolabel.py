@@ -19,8 +19,8 @@ from fastapi import APIRouter, Depends, Request
 
 from ..config import Settings, get_settings
 from ..deps import bodi_json, current_session_api
-from ..services import (autolabel, autolabel_gabung, autolabel_zero, gpu_sinyal,
-                        prelabel, scanner, tugas)
+from ..services import (ai_antre, autolabel, autolabel_gabung, autolabel_zero,
+                        gpu_sinyal, prelabel, scanner, tugas)
 from ..session import Session
 
 router = APIRouter(tags=["autolabel"])
@@ -29,6 +29,7 @@ router = APIRouter(tags=["autolabel"])
 # s/d ratusan MB; 2 GB memberi kepala tanpa membuka pintu berkas raksasa.
 MAKS_PT = 2_000_000_000
 
+FITUR = "auto-label"
 _tugas: dict[str, asyncio.Task] = {}
 _batal: dict[str, bool] = {}
 
@@ -73,9 +74,19 @@ async def info(sess: Session = Depends(current_session_api),
             "training_aktif": gpu_sinyal.latih_aktif()}
 
 
-def _spawn(akun: str, buat_hasil):
+def _sibuk(fitur: str) -> dict:
+    return {"ok": False, "error": f"masih ada {fitur} yang berjalan; tunggu "
+                                  "sampai selesai atau batalkan dulu"}
+
+
+def _spawn(akun: str, buat_hasil) -> bool:
+    """Klaim antrean AI lalu jalankan di thread. False kalau akun itu sedang
+    memegang pekerjaan AI lain (klaimnya atomik, jadi inilah penjaga yang
+    sebenarnya; pemeriksaan di rute hanya untuk pesan yang lebih cepat)."""
     """Jalankan `buat_hasil()` (yang memanggil jalankan) di thread, petakan hasil/
     galat ke saluran kemajuan bersama. buat_hasil mengembalikan dict hasil."""
+    if ai_antre.klaim(akun, FITUR):
+        return False
     _batal[akun] = False
 
     def kerja():
@@ -91,8 +102,13 @@ def _spawn(akun: str, buat_hasil):
             autolabel_zero.catat_maju(akun, jalan=False, galat=str(e)[:200])
         except Exception as e:                       # pragma: no cover
             autolabel_zero.catat_maju(akun, jalan=False, galat=str(e)[:200])
+        finally:
+            # Klaim dilepas APA PUN hasilnya: dibatalkan, galat, atau selesai.
+            # Klaim yang tertinggal mengunci akunnya dari semua fitur AI.
+            ai_antre.lepas(akun, FITUR)
 
     _tugas[akun] = asyncio.create_task(asyncio.to_thread(kerja))
+    return True
 
 
 @router.post("/api/autolabel/mulai")
@@ -117,9 +133,17 @@ async def mulai(request: Request,
         if not tid:
             return {"ok": False, "error": "tugas tak disebut"}
 
-    t = _tugas.get(sess.user)
-    if t and not t.done():
-        return {"ok": False, "error": "masih ada auto-label yang berjalan"}
+    # Satu pekerjaan AI per akun, LINTAS FITUR. Dulu tiap router punya petanya
+    # sendiri, jadi auto-label dan pre-label bisa jalan berbarengan di GPU yang
+    # sama, dan pesan penolakannya pun menyebut fitur yang keliru.
+    #
+    # Di sini baru PEMERIKSAAN, bukan klaim: di bawah masih ada beberapa jalur
+    # yang menolak permintaan karena isinya tak sah, dan klaim yang diambil
+    # sebelum itu akan tertinggal di sana -- mengunci akunnya dari semua fitur
+    # AI sampai proses dimatikan. Klaim sesungguhnya diambil tepat sebelum
+    # pekerjaannya dijalankan, dan ia sendiri atomik.
+    if (lain := ai_antre.sedang_jalan(sess.user)):
+        return _sibuk(lain)
 
     jenis = await asyncio.to_thread(scanner.jenis_projek, sess.src)
     prompt_bawaan = await asyncio.to_thread(autolabel_zero.prompt_default, sess.src)
@@ -167,9 +191,10 @@ async def mulai(request: Request,
             return {"ok": False, "error": "tidak ada sumber yang sah dipilih"}
         iou = min(max(_conf(body.get("iou"), 0.6), 0.3), 0.95)
 
-        _spawn(akun, lambda batal: autolabel_gabung.jalankan(
-            ds, uploads, akun, batas, sumber, tid=tid or None, batch=batch,
-            iou_ambang=iou, batal=batal))
+        if not _spawn(akun, lambda batal: autolabel_gabung.jalankan(
+                ds, uploads, akun, batas, sumber, tid=tid or None, batch=batch,
+                iou_ambang=iou, batal=batal)):
+            return _sibuk(ai_antre.sedang_jalan(akun) or "pekerjaan AI")
         return {"ok": True, "sumber": len(sumber)}
 
     # ---- Mode ZERO-SHOT (lama, back-compat) ------------------------------
@@ -181,8 +206,10 @@ async def mulai(request: Request,
         return {"ok": False, "error": "projek belum punya kelas; ketik nama "
                                       "objek yang dicari dulu"}
     conf = _conf(body.get("conf"), 0.1)
-    _spawn(akun, lambda batal: autolabel_zero.jalankan(
-        ds, uploads, tid, akun, batas, conf, model, prompt, batal=batal, batch=batch))
+    if not _spawn(akun, lambda batal: autolabel_zero.jalankan(
+            ds, uploads, tid, akun, batas, conf, model, prompt, batal=batal,
+            batch=batch)):
+        return _sibuk(ai_antre.sedang_jalan(akun) or "pekerjaan AI")
     return {"ok": True, "model": model, "prompt": prompt}
 
 

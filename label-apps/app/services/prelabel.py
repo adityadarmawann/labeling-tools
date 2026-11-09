@@ -25,7 +25,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import annotations, latih, olah_gpu, scanner, tugas
+from . import ai_antre, annotations, latih, olah_gpu, scanner, tugas
 
 # ------------------------------------------------------------------ kemajuan
 _maju: dict[str, dict] = {}
@@ -50,11 +50,11 @@ def bersihkan_maju(kunci: str) -> None:
 
 
 # --------------------------------------------------------------- throttle
-# Prediksi berebut GPU dengan training/pembuatan versi. Dibatasi satu job
-# serentak secara bawaan: yang kedua MENUNGGU giliran, bukan ditolak, supaya
-# orang tak perlu menekan tombolnya lagi. Angkanya bisa dinaikkan lewat env.
-SERENTAK = max(1, int(os.environ.get("LABELAPP_PRELABEL_SERENTAK") or 1))
-_giliran = threading.Semaphore(SERENTAK)
+# Prediksi berebut GPU dengan training/pembuatan versi. Antreannya DIPAKAI
+# BERSAMA dengan auto-label (ai_antre): dua semaphore terpisah membiarkan satu
+# orang memuat dua model sekaligus di GPU yang sama.
+SERENTAK = ai_antre.SERENTAK
+_giliran = ai_antre.giliran
 
 
 class Dibatalkan(Exception):
@@ -88,8 +88,16 @@ def _nama_kelas(ci: int, names_model: dict, kelas: list) -> str:
     return str(ci)
 
 
-def _shapes_dari_hasil(r, kelas: list, W: int, H: int) -> list[dict]:
-    """Satu hasil ultralytics -> daftar bentuk labelme (kotak atau poligon)."""
+def _shapes_dari_hasil(r, kelas: list, W: int, H: int,
+                       skor: list | None = None) -> list[dict]:
+    """Satu hasil ultralytics -> daftar bentuk labelme (kotak atau poligon).
+
+    `skor` opsional: kalau diberi list, keyakinan tiap deteksi DITAMBAHKAN ke
+    situ, sejajar indeks dengan bentuk yang dikembalikan. Sengaja parameter
+    keluaran terpisah, bukan field di dalam dict bentuknya: dict itu ditulis
+    APA ADANYA ke .json anotasi, jadi menitipkan angka di sana akan bocor ke
+    berkas anotasi orang. 0.0 kalau modelnya tak memberi keyakinan.
+    """
     def kurung(x, batas):
         return min(max(float(x), 0.0), float(batas))
 
@@ -98,11 +106,24 @@ def _shapes_dari_hasil(r, kelas: list, W: int, H: int) -> list[dict]:
     masks = getattr(r, "masks", None)
     out: list[dict] = []
 
+    def confs() -> list:
+        c = getattr(boxes, "conf", None) if boxes is not None else None
+        try:
+            return [float(v) for v in c.tolist()]
+        except (AttributeError, TypeError, ValueError):
+            return []
+
+    cf = confs()
+
+    def catat(i: int) -> None:
+        if skor is not None:
+            skor.append(cf[i] if i < len(cf) else 0.0)
+
     # Model segmentasi: ambil poligon per objek (koordinat gambar penuh).
     if (masks is not None and getattr(masks, "xy", None) is not None
             and boxes is not None):
         clss = boxes.cls.tolist()
-        for poly_xy, ci in zip(masks.xy, clss):
+        for i, (poly_xy, ci) in enumerate(zip(masks.xy, clss)):
             if poly_xy is None or len(poly_xy) < 3:
                 continue
             pts = [[kurung(x, W), kurung(y, H)] for x, y in poly_xy]
@@ -110,21 +131,25 @@ def _shapes_dari_hasil(r, kelas: list, W: int, H: int) -> list[dict]:
             out.append({"label": _nama_kelas(ci, names_model, kelas), "text": "",
                         "points": pts, "group_id": None,
                         "shape_type": "polygon", "flags": {}})
+            catat(i)
         return out
 
     # Model deteksi: kotak 2 titik [[x1,y1],[x2,y2]], konvensi labelme.
     if boxes is not None:
-        for xyxy, ci in zip(boxes.xyxy.tolist(), boxes.cls.tolist()):
+        for i, (xyxy, ci) in enumerate(zip(boxes.xyxy.tolist(),
+                                            boxes.cls.tolist())):
             x1, y1, x2, y2 = xyxy
             out.append({
                 "label": _nama_kelas(ci, names_model, kelas), "text": "",
                 "points": [[kurung(x1, W), kurung(y1, H)],
                            [kurung(x2, W), kurung(y2, H)]],
                 "group_id": None, "shape_type": "rectangle", "flags": {}})
+            catat(i)
     return out
 
 
-def _prediksi_satu(model, it: dict, conf: float, kelas: list) -> list[dict]:
+def _prediksi_satu(model, it: dict, conf: float, kelas: list,
+                   skor: list | None = None) -> list[dict]:
     dev = 0 if olah_gpu.MODE == "gpu" else "cpu"
     try:
         hasil = model(str(it["img"]), conf=float(conf), verbose=False, device=dev)
@@ -134,7 +159,7 @@ def _prediksi_satu(model, it: dict, conf: float, kelas: list) -> list[dict]:
         hasil = model(str(it["img"]), conf=float(conf), verbose=False, device="cpu")
     out: list[dict] = []
     for r in hasil:
-        out += _shapes_dari_hasil(r, kelas, it["W"], it["H"])
+        out += _shapes_dari_hasil(r, kelas, it["W"], it["H"], skor)
     return out
 
 

@@ -19,10 +19,13 @@ import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import autolabel, gpu_sinyal, prelabel, scanner, tugas
+from ..log import catat
+from . import ai_antre, autolabel, gpu_sinyal, prelabel, scanner, tugas
 from . import autolabel_zero
 from .autolabel_zero import (Dibatalkan, TrainingSedangJalan, bersihkan_maju,
                              catat_maju, kemajuan)
+
+log = catat("labelapp.autolabel")
 
 # Urutan prioritas sumber saat dua sumber menemukan objek yang SAMA: label
 # diambil dari sumber paling tepercaya untuk KELAS. Model terlatih projek tahu
@@ -129,9 +132,13 @@ def ke_bentuk(deteksi: list[Deteksi], jenis: str, W: int, H: int) -> list[dict]:
 # ============================== LANGKAH 2 ==================================
 # Adapter sumber (gambar -> list[Deteksi]) + orkestrator job.
 
-# Satu job serentak secara bawaan (berbagi beban GPU dengan training/versi).
-SERENTAK = max(1, int(os.environ.get("LABELAPP_GABUNG_SERENTAK") or 1))
-_giliran = threading.Semaphore(SERENTAK)
+# Antrean yang SAMA dengan pre-label dan zero-shot (ai_antre). Jalur ini
+# justru yang paling berbahaya kalau berdiri sendiri: satu job ensemble
+# bisa memuat model terlatih + .pt eksternal + SAM/YOLO-World +
+# GroundingDINO sekaligus, jadi membiarkannya berjalan berbarengan dengan
+# jalur lain melipatgandakan pemakaian VRAM tanpa ada yang membatasi.
+SERENTAK = ai_antre.SERENTAK
+_giliran = ai_antre.giliran
 
 # Model .pt yang diunggah dari luar disimpan di .latih/_eksternal/ (awalan "_"
 # menjaganya di luar glob L* run terlatih). Lister + endpoint unggah menyusul.
@@ -169,12 +176,23 @@ def _shape_ke_deteksi(s: dict, sumber: str, skor: float) -> Deteksi | None:
     return None
 
 
+def _catat_sumber_gagal(nama: str, it: dict) -> None:
+    log.warning("auto-label: sumber %s gagal pada %s", nama,
+                it["img"].name, exc_info=True)
+
+
 def sumber_model(model, it: dict, conf: float, kelas: list, sumber: str) -> list[Deteksi]:
     """Model ultralytics (terlatih projek / .pt eksternal) -> Deteksi. Reuse
     jalur prediksi prelabel supaya kotak/mask ditangani sama."""
     out: list[Deteksi] = []
-    for s in prelabel._prediksi_satu(model, it, conf, kelas):
-        d = _shape_ke_deteksi(s, sumber, 0.0)
+    # Keyakinan model IKUT, tidak lagi dipaku 0.0. gabung() menyemai kelompok
+    # dari skor tertinggi, jadi dengan 0.0 deteksi model terlatih selalu
+    # terurut paling akhir dan zero-shot yang selalu jadi inti kelompok --
+    # kebalikan dari maksudnya.
+    skor: list[float] = []
+    bentuk = prelabel._prediksi_satu(model, it, conf, kelas, skor)
+    for i, sh in enumerate(bentuk):
+        d = _shape_ke_deteksi(sh, sumber, skor[i] if i < len(skor) else 0.0)
         if d is not None:
             out.append(d)
     return out
@@ -300,24 +318,29 @@ def jalankan(ds: Path, uploads_root: Path, akun: str, batas: int, sumber: list,
                 dilewati += 1
             else:
                 dets: list[Deteksi] = []
+                # Satu sumber gagal pada satu gambar tidak boleh menjatuhkan
+                # seluruh job, TAPI juga tidak boleh senyap: ditelan diam-diam,
+                # galat pemrograman (mis. tanda tangan adapter berubah) menyamar
+                # jadi "tak ada deteksi" dan job tetap melapor sukses dengan nol
+                # objek. Dicatat sekali per (sumber, gambar).
                 for nm, m, kelas, cf in model_src:
                     try:
                         dets += sumber_model(m, it, cf, kelas, nm)
-                    except Exception:            # noqa: BLE001 -- 1 sumber/1 gambar gagal
-                        pass
+                    except Exception:            # noqa: BLE001
+                        _catat_sumber_gagal(nm, it)
                 for sc in zs:
                     try:
                         dets += sumber_zeroshot(it["img"], sc.get("model"),
                                                 sc.get("prompt") or [],
                                                 float(sc.get("conf", 0.1)))
                     except Exception:            # noqa: BLE001
-                        pass
+                        _catat_sumber_gagal("zeroshot", it)
                 for sc in gd:
                     try:
                         dets += sumber_groundingdino(it["img"], sc.get("prompt") or [],
                                                      float(sc.get("conf", 0.25)), refine)
                     except Exception:            # noqa: BLE001
-                        pass
+                        _catat_sumber_gagal("groundingdino", it)
                 bentuk = ke_bentuk(gabung(dets, iou_ambang), jenis, it["W"], it["H"])
                 if bentuk:
                     names = prelabel.tulis_prediksi(it, ds, names, bentuk)

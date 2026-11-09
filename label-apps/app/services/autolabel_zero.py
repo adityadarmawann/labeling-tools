@@ -31,7 +31,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import autolabel, gpu_sinyal, scanner, tugas
+from . import ai_antre, autolabel, gpu_sinyal, scanner, tugas
 from .prelabel import Dibatalkan, tulis_prediksi
 
 # ------------------------------------------------------------------ kemajuan
@@ -60,8 +60,10 @@ def bersihkan_maju(kunci: str) -> None:
 
 # --------------------------------------------------------------- throttle
 # Satu job serentak secara bawaan: yang kedua MENUNGGU giliran, bukan ditolak.
-SERENTAK = max(1, int(os.environ.get("LABELAPP_AUTOLABEL_SERENTAK") or 1))
-_giliran = threading.Semaphore(SERENTAK)
+# Antrean yang SAMA dengan pre-label (ai_antre) -- keduanya memuat model ke GPU
+# yang sama, jadi membatasinya sendiri-sendiri tidak membatasi apa pun.
+SERENTAK = ai_antre.SERENTAK
+_giliran = ai_antre.giliran
 
 
 class TrainingSedangJalan(RuntimeError):

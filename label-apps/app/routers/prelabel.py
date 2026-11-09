@@ -15,12 +15,13 @@ from fastapi import APIRouter, Depends, Request
 from ..config import Settings, get_settings
 from ..deps import bodi_json, current_session_api
 from ..session import Session
-from ..services import prelabel
+from ..services import ai_antre, prelabel
 
 router = APIRouter(tags=["prelabel"])
 
 # Keadaan job per akun. Di memori, hilang saat proses mati -- sama seperti
 # kemajuan di prelabel.py; tak ada yang perlu dibersihkan.
+FITUR = "pre-label"
 _tugas: dict[str, asyncio.Task] = {}
 _batal: dict[str, bool] = {}
 
@@ -67,9 +68,12 @@ async def mulai(request: Request,
         conf = 0.25
     conf = min(max(conf, 0.01), 0.99)
 
-    t = _tugas.get(sess.user)
-    if t and not t.done():
-        return {"ok": False, "error": "masih ada pre-label yang berjalan"}
+    # Satu pekerjaan AI per akun, LINTAS FITUR (lihat services/ai_antre.py).
+    # Klaimnya atomik dan diambil DI SINI, sesudah seluruh validasi bodi lewat,
+    # supaya tak ada jalur penolakan yang meninggalkan klaim tersangkut.
+    if (lain := ai_antre.klaim(sess.user, FITUR)):
+        return {"ok": False, "error": f"masih ada {lain} yang berjalan; tunggu "
+                                      "sampai selesai atau batalkan dulu"}
 
     ds, akun, uploads = sess.src, sess.user, settings.uploads_root
     _batal[akun] = False
@@ -86,6 +90,10 @@ async def mulai(request: Request,
             prelabel.catat_maju(akun, jalan=False, galat=str(e)[:200])
         except Exception as e:                       # pragma: no cover
             prelabel.catat_maju(akun, jalan=False, galat=str(e)[:200])
+        finally:
+            # Dilepas APA PUN hasilnya; klaim yang tertinggal mengunci akunnya
+            # dari semua fitur AI.
+            ai_antre.lepas(akun, FITUR)
 
     _tugas[akun] = asyncio.create_task(asyncio.to_thread(kerja))
     return {"ok": True}
