@@ -40,7 +40,8 @@ def _siapkan(klien, ruang, nama="ctx", n=6):
     # yang terakhir dibiarkan belum dilabeli.
     for i, ip in enumerate(ips[:-1]):
         _tulis(ip, perlu_dicek=(i % 2 == 0))
-    klien.post("/api/dataset/masukkan", json={"gambar": [str(p) for p in ips]})
+    klien.post("/api/tugas/dataset",
+               json={"gambar": [str(p) for p in ips], "masuk": True})
     return d, ips
 
 
@@ -211,3 +212,88 @@ def test_lihat_tak_pecah_saat_subset_kosong(klien, lingkungan):
     r = klien.get("/view", params={"path": str(ips[0]), "f": "dicek",
                                    "q": "tak-ada-berkas-bernama-begini"})
     assert r.status_code == 200
+
+
+# ------------------------------------- lingkup dataset (di / belum / semua)
+def test_tautan_verifikasi_batch_tidak_buntu(klien, lingkungan):
+    """Regresi terukur: angka b.dicek dihitung dari gambar yang BELUM masuk
+    dataset, sedangkan kisi bawaannya hanya memuat isi dataset. Tautannya
+    selalu mendarat di halaman kosong pada projek terkurasi -- yaitu setiap
+    projek ruang kerja."""
+    from app.services import tugas as svc
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = buat_dataset(ruang / "batch-verif", 3, 0)
+    svc.mulai_kurasi(d, "paul")                  # projek ruang kerja sungguhan
+    klien.post(f"/setsrc?path={d}")
+    ips = sorted(d.glob("*.jpg"))
+    for ip in ips:
+        _tulis(ip, perlu_dicek=True)
+    klien.get("/")                               # segarkan sesi
+
+    h = klien.get("/anotasi", params={"ds": d.name}).text
+    m = re.search(r'href="(/\?f=dicek[^"]*)"', h)
+    assert m, "kartu verifikasi tak muncul"
+    assert "dsf=belum" in m.group(1), m.group(1)
+
+    kisi = klien.get(m.group(1).replace("&amp;", "&")).text
+    tampil = _nama_dari(kisi, r'/label\?path=([^"&]+)')
+    assert sorted(tampil) == sorted(p.name for p in ips), tampil
+
+
+def test_lingkup_dataset_membelah_tanpa_sisa(klien, lingkungan):
+    from app.services import tugas as svc
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = buat_dataset(ruang / "lingkup-belah", 4, 0)
+    svc.mulai_kurasi(d, "paul")
+    klien.post(f"/setsrc?path={d}")
+    ips = sorted(d.glob("*.jpg"))
+    for ip in ips:
+        _tulis(ip, perlu_dicek=False)
+    klien.get("/")                               # segarkan sesi dulu
+    r = klien.post("/api/tugas/dataset",
+                   json={"gambar": [str(ips[0]), str(ips[1])], "masuk": True})
+    assert r.json().get("ok"), r.json()
+    klien.get("/")
+
+    def nama(dsf):
+        h = klien.get("/", params={"dsf": dsf} if dsf != "di" else {}).text
+        return sorted(_nama_dari(h, r'/label\?path=([^"&]+)'))
+
+    di, belum, semua = nama("di"), nama("belum"), nama("semua")
+    assert di == sorted(p.name for p in ips[:2])
+    assert belum == sorted(p.name for p in ips[2:])
+    assert sorted(di + belum) == semua
+
+
+def test_kontrol_lingkup_terlihat_di_kisi(klien, lingkungan):
+    from app.services import tugas as svc
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = buat_dataset(ruang / "lingkup-ui", 2, 0)
+    svc.mulai_kurasi(d, "paul")
+    klien.post(f"/setsrc?path={d}")
+    h = klien.get("/").text
+    assert 'aria-label="Lingkup dataset"' in h
+    for teks in ("Di dataset", "Belum masuk", "Semua"):
+        assert teks in h, teks
+
+
+def test_lingkup_tak_hilang_saat_ganti_saringan_lain(klien, lingkungan):
+    """Chip saringan lain tidak boleh membuang lingkup yang sedang berlaku."""
+    from app.services import tugas as svc
+    masuk(klien, "paul", PW_PAUL)
+    ruang = pathlib.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = buat_dataset(ruang / "lingkup-tahan", 2, 0)
+    svc.mulai_kurasi(d, "paul")
+    klien.post(f"/setsrc?path={d}")
+    h = klien.get("/", params={"dsf": "belum"}).text
+    # Tautan KEADAAN (f=...) harus mempertahankan lingkup. Dikecualikan:
+    # "Bersihkan semua" (f=all tanpa apa pun) dan kontrol lingkup itu sendiri,
+    # yang memang tugasnya mengganti lingkup.
+    tautan = [t for t in re.findall(r'href="(\?f=[^"]*)"', h)
+              if t != "?f=all" and "dsf=semua" not in t and "dsf=di" not in t]
+    assert tautan, "tak ada tautan saringan"
+    nakal = [t for t in tautan if "dsf=belum" not in t]
+    assert not nakal, nakal[:3]

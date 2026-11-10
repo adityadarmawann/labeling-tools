@@ -167,9 +167,15 @@ async def index(request: Request, f: str = "all",
     # Ekspor, splitting, dan versi sudah memakai saringan yang sama sejak
     # awal. Yang tertinggal cuma halamannya, dan itu membuat halaman ini
     # menyebut angka yang berbeda dari yang benar-benar diekspor.
+    # Lingkup DATASET sebagai saringan yang terlihat, sejajar tab di halaman
+    # job. Bawaannya tetap "di" (hanya isi dataset). Tanpa pilihan ini, gambar
+    # yang sudah dianotasi tetapi belum dinyatakan masuk -- persis keadaan
+    # hasil auto-label sebatch -- tidak punya permukaan sama sekali.
+    dsf = str(request.query_params.get("dsf") or "di")
+    dsf = dsf if dsf in ("di", "belum", "semua") else "di"
     items, hitung_ds = await asyncio.to_thread(
-        tugas.saring_dataset, seluruh, sess.src,
-        settings.uploads_root)
+        konteks_kisi.pilih_dataset, seluruh, sess.src,
+        settings.uploads_root, dsf)
 
     kelas_hitung: dict[str, int] = {}
     for it in items:
@@ -288,6 +294,10 @@ async def index(request: Request, f: str = "all",
                                      settings.uploads_root, sess.user)
 
     resp = templates.TemplateResponse(request, "index.html", {
+        # Lingkup dataset yang sedang berlaku (di / belum / semua), dan
+        # apakah projek ini memang tunduk aturan dataset. Folder dataset
+        # bersama tidak punya konsep itu, jadi pilihannya tak ditawarkan.
+        "dsf": dsf, "warisan": bool(hitung_ds.get("warisan")),
         "sess": sess,
         "pr": pr,
         "aktif": "dataset",
@@ -416,8 +426,8 @@ async def view(request: Request, path: str = "",
         with sess.lock:
             semua = list(sess.items)
         try:
-            dalam, _ = tugas.saring_dataset(semua, sess.src,
-                                            settings.uploads_root)
+            dalam, _ = konteks_kisi.pilih_dataset(
+                semua, sess.src, settings.uploads_root, lingkup["dsf"])
             daftar = konteks_kisi.subset(
                 dalam, sess.src, sess.user,
                 tugas.baca_projek(sess.src, settings.uploads_root),

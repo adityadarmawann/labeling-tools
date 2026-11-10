@@ -209,7 +209,8 @@ def _subset_kisi(sess: Session, kisi: dict, uploads_root):
     with sess.lock:
         items = list(sess.items)
     try:
-        dalam, _ = tugas.saring_dataset(items, sess.src, uploads_root)
+        dalam, _ = konteks_kisi.pilih_dataset(items, sess.src, uploads_root,
+                                              kisi.get("dsf", "di"))
         data = tugas.baca_projek(sess.src, uploads_root)
         tagdata = tag.baca(sess.src)
     except OSError:

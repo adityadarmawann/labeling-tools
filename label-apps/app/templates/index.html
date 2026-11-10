@@ -10,8 +10,9 @@
 {# Setiap tautan saringan membawa urutan dan pencarian yang sedang aktif.
    Tanpa itu, mengklik satu chip diam-diam mengembalikan urutan ke bawaan —
    dan orang menyangka daftarnya yang berubah, bukan urutannya. #}
-{% macro tautan(val_f=none, val_c=none, val_s=none, val_q=none, val_x=none, val_m=none, val_tg=none, val_bt=none, val_sp=none, val_tu=none, val_hal=none) -%}
+{% macro tautan(val_dsf=none, val_f=none, val_c=none, val_s=none, val_q=none, val_x=none, val_m=none, val_tg=none, val_bt=none, val_sp=none, val_tu=none, val_hal=none) -%}
 {%- set ff = val_f if val_f is not none else flt -%}
+{%- set dd = val_dsf if val_dsf is not none else dsf -%}
 {%- set cc = val_c if val_c is not none else kelas -%}
 {%- if cc is string -%}{%- set cc = [cc] if cc else [] -%}{%- endif -%}
 {%- set ss = val_s if val_s is not none else urut -%}
@@ -22,7 +23,7 @@
 {%- set bb = val_bt if val_bt is not none else batch_pilih -%}
 {%- set pp = val_sp if val_sp is not none else split_pilih -%}
 {%- set uu = val_tu if val_tu is not none else turunan_pilih -%}
-?f={{ ff }}{% for k in cc %}&c={{ k | urlquote }}{% endfor %}
+?f={{ ff }}{% if dd and dd != 'di' %}&dsf={{ dd }}{% endif %}{% for k in cc %}&c={{ k | urlquote }}{% endfor %}
 {%- for k in xx %}&x={{ k }}{% endfor %}
 {%- if mm and mm != "atau" %}&m={{ mm }}{% endif %}
 {%- if ss and ss != 'nama' %}&s={{ ss }}{% endif %}
@@ -53,6 +54,7 @@
    Diawali '&' karena selalu menempel sesudah ?path=. #}
 {% macro ctx() -%}
 {%- if flt and flt != 'all' %}&f={{ flt }}{% endif -%}
+{%- if dsf and dsf != 'di' %}&dsf={{ dsf }}{% endif -%}
 {%- for k in kelas %}&c={{ k | urlquote }}{% endfor -%}
 {%- for k in tanpa %}&x={{ k }}{% endfor -%}
 {%- if mode and mode != 'atau' %}&m={{ mode }}{% endif -%}
@@ -70,6 +72,7 @@
    menyebut medan yang jadi milik form itu sendiri. #}
 {% macro titipan(kecuali='') -%}
 {%- if 'f' not in kecuali %}<input type="hidden" name="f" value="{{ flt }}">{% endif -%}
+{%- if 'd' not in kecuali and dsf and dsf != 'di' %}<input type="hidden" name="dsf" value="{{ dsf }}">{% endif -%}
 {%- if 's' not in kecuali and urut and urut != 'nama' %}<input type="hidden" name="s" value="{{ urut }}">{% endif -%}
 {%- if 'q' not in kecuali and cari %}<input type="hidden" name="q" value="{{ cari }}">{% endif -%}
 {%- if 'c' not in kecuali %}{% for k in kelas %}<input type="hidden" name="c" value="{{ k }}">{% endfor %}{% endif -%}
@@ -231,6 +234,23 @@
         {%- endfor %}
       </span>
     </span>
+
+    {#- Lingkup dataset. Sejajar dengan tab di halaman job, dan satu-satunya
+        jalan melihat gambar yang SUDAH dianotasi tetapi belum dinyatakan masuk
+        dataset -- persis keadaan hasil auto-label sebatch, yang sebelumnya tak
+        punya permukaan sama sekali. Hanya ditawarkan pada projek yang memang
+        tunduk aturan dataset; folder dataset bersama tak punya konsep ini. -#}
+    {% if not warisan %}
+    <span class="seg" role="group" aria-label="Lingkup dataset">
+      {%- for val, nama, ket in [
+            ('di', 'Di dataset', 'Gambar yang sudah dinyatakan masuk dataset. Inilah yang diekspor dan dilatih.'),
+            ('belum', 'Belum masuk', 'Sudah dianotasi atau baru di-auto-label, tetapi belum dinyatakan masuk dataset.'),
+            ('semua', 'Semua', 'Seluruh gambar projek, masuk dataset atau belum.')] %}
+      <a class="seg-opt"{% if dsf == val %} data-on aria-current="true"{% endif %}
+         title="{{ ket }}" href="{{ tautan(val_dsf=val) }}">{{ nama }}</a>
+      {%- endfor %}
+    </span>
+    {% endif %}
 
     <span class="menu menu-kiri" id="menu-kelas">
       <button class="chip kelas-tombol" id="kelas-tombol"

@@ -178,7 +178,13 @@
             Kisi Dataset sudah bisa menyaring per unggahan (bt) dan per keadaan
             (f), jadi dua saringan yang sudah ada itu yang dipakai. -#}
         {% if b.dicek %}
-        <a class="an-mulai an-verif" href="/?f=dicek&amp;bt={{ b.batch | urlquote }}"
+        {#- `dsf=belum` WAJIB. Angka b.dicek dihitung dari gambar yang belum
+            ditugaskan DAN belum masuk dataset, sedangkan kisi Dataset bawaannya
+            hanya memuat isi dataset. Tanpa lingkup ini tautannya selalu
+            mendarat di halaman kosong: kartunya menjanjikan 312 gambar, kisinya
+            memberi nol. -#}
+        <a class="an-mulai an-verif"
+           href="/?f=dicek&amp;dsf=belum{% if b.batch %}&amp;bt={{ b.batch | urlquote }}{% endif %}"
            title="Periksa hasil auto-label unggahan ini satu per satu">
           Verifikasi {{ b.dicek }} hasil AI &rarr;</a>
         {% endif %}

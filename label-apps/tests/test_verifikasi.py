@@ -45,8 +45,8 @@ def test_kisi_dataset_punya_dua_keadaan_verifikasi(klien, lingkungan):
     ips = sorted(d.glob("*.jpg"))
     _tulis(ips[0], True)
     _tulis(ips[1], False)
-    klien.post("/api/dataset/masukkan",
-               json={"gambar": [str(p) for p in ips]})
+    klien.post("/api/tugas/dataset",
+               json={"gambar": [str(p) for p in ips], "masuk": True})
 
     h = klien.get("/", params={"f": "dicek"}).text
     assert "Belum diverifikasi" in h and "Terverifikasi" in h
@@ -63,7 +63,8 @@ def test_saring_dicek_dan_verif_saling_melengkapi(klien, lingkungan):
     _tulis(ips[1], True)
     _tulis(ips[2], False)
     # ips[3] belum dilabeli
-    klien.post("/api/dataset/masukkan", json={"gambar": [str(p) for p in ips]})
+    klien.post("/api/tugas/dataset",
+               json={"gambar": [str(p) for p in ips], "masuk": True})
 
     from app.routers import review
     from app.services import scanner

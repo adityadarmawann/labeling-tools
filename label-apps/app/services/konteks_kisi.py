@@ -158,7 +158,7 @@ def saring(items: list[dict], flt: str, kelas, tanpa=(), mode="atau", *,
 # konteks ke kanvas, dan rute kanvas untuk membacanya kembali. SATU daftar:
 # menambah saringan baru di kisi tanpa menambahkannya di sini membuat kanvas
 # diam-diam menyusuri subset yang lebih luas daripada yang dilihat orang.
-KUNCI_URL = ("f", "s", "q", "c", "x", "m", "tg", "bt", "sp", "tu")
+KUNCI_URL = ("f", "s", "q", "c", "x", "m", "tg", "bt", "sp", "tu", "dsf")
 
 
 def _banyak(qp, nama: str) -> list[str]:
@@ -178,6 +178,13 @@ def baca(qp) -> dict:
     satu = (lambda n, b="": str(qp.get(n) or b))
     return {
         "f": satu("f", "all"),
+        # Lingkup DATASET, sejajar dengan tab di halaman job: "di" (bawaan,
+        # hanya isi dataset), "belum" (sudah dianotasi tapi belum dinyatakan
+        # masuk), "semua". Tanpa ini, hasil auto-label sebatch tak punya
+        # permukaan sama sekali: kisi hanya memuat isi dataset, sedangkan
+        # gambar yang baru di-auto-label justru BELUM dimasukkan.
+        "dsf": (satu("dsf", "di") if satu("dsf", "di") in ("di", "belum", "semua")
+                else "di"),
         "urut": satu("s", URUT_BAWAAN),
         "cari": satu("q").strip(),
         "kelas": list(dict.fromkeys(k for k in _banyak(qp, "c") if k)),
@@ -196,7 +203,7 @@ def ada_lingkup(p: dict) -> bool:
     dari kisi polos tak perlu membayar ongkos membangun subset."""
     return bool(p["f"] != "all" or p["cari"] or p["kelas"] or p["tanpa"]
                 or p["tag"] or p["batch"] or p["split"] or p["turunan"]
-                or p["urut"] != URUT_BAWAAN)
+                or p["urut"] != URUT_BAWAAN or p["dsf"] != "di")
 
 
 def subset(items: list[dict], src, user: str, data: dict, tagdata: dict,
@@ -260,6 +267,8 @@ def ke_query(p: dict, awalan: str = "&") -> str:
     bagian: list[str] = []
     if p["f"] and p["f"] != "all":
         bagian.append(f"f={quote(p['f'])}")
+    if p["dsf"] and p["dsf"] != "di":
+        bagian.append(f"dsf={quote(p['dsf'])}")
     bagian += [f"c={quote(k)}" for k in p["kelas"]]
     bagian += [f"x={quote(k)}" for k in p["tanpa"]]
     if p["mode"] and p["mode"] != "atau":
@@ -276,3 +285,24 @@ def ke_query(p: dict, awalan: str = "&") -> str:
     if not bagian:
         return ""
     return awalan + "&".join(bagian)
+
+
+def pilih_dataset(items: list, src, uploads_root, dsf: str = "di"):
+    """Terapkan lingkup DATASET, lalu kembalikan (subset, hitungan).
+
+    Kisi Dataset selalu menyaring ke isi dataset. Itu benar sebagai bawaan,
+    tetapi membuat satu golongan gambar tak punya permukaan sama sekali:
+    yang sudah dianotasi (mis. oleh auto-label sebatch) tetapi belum pernah
+    dinyatakan masuk. Tombol "Verifikasi N hasil AI" di papan menunjuk ke
+    sana dan selalu mendarat di halaman kosong, karena angkanya justru
+    dihitung dari gambar yang BELUM masuk dataset.
+    """
+    from . import tugas as _tugas
+
+    dalam, hitung = _tugas.saring_dataset(items, src, uploads_root)
+    if hitung.get("warisan") or dsf == "di":
+        return dalam, hitung
+    if dsf == "semua":
+        return list(items), hitung
+    tersisa = {id(x) for x in dalam}
+    return [x for x in items if id(x) not in tersisa], hitung
