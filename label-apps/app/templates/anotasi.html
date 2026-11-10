@@ -235,10 +235,35 @@
         <a class="an-mulai" href="/bagi?ds={{ pr.ds | urlquote }}{% if b.batch %}&batch={{ b.batch | urlquote }}{% endif %}">
           Bagi tugas &rarr;</a>
         {% endif %}
+        {#- Jalan KERJA langsung ke gambar unggahan ini, tanpa harus dibagi jadi
+            job dulu. Dibuka untuk siapa pun yang memang berhak menulis ke
+            gambar yang belum ditugaskan, termasuk Labeler berakses menyeluruh.
+
+            Tanpa ini, pemilik yang memberi seseorang peran "Labeler
+            menyeluruh" mendapati orang itu login dan tidak menemukan satu
+            gambar pun untuk dikerjakan: papan menyembunyikan seluruh aksinya,
+            halaman job cuma memuat yang sudah dibagi, dan kisi Dataset cuma
+            memuat yang sudah dinyatakan masuk. Perannya ada, jalannya tidak.
+
+            Memakai lingkup "belum masuk dataset" pada kisi, saringan yang
+            memang dibuat untuk golongan gambar ini. -#}
+        {% if boleh_lepas %}
+        <a class="an-mulai an-kerja"
+           href="/?f=unlab&amp;dsf=belum{% if b.batch %}&amp;bt={{ b.batch | urlquote }}{% endif %}"
+           title="Buka gambar unggahan ini yang belum dilabeli, tanpa perlu dibagi dulu">
+          Labeli sendiri &rarr;</a>
+        {% endif %}
       </article>
       {%- endfor %}
       {% if not boleh_bagi %}
-      <span class="halus" style="text-align:center">Pemilik projek yang membaginya.</span>
+      <span class="halus" style="text-align:center">
+        {%- if boleh_lepas -%}
+        Pemilik projek yang membaginya. Kamu boleh mengerjakan gambar ini
+        langsung lewat tombol di tiap unggahan.
+        {%- else -%}
+        Pemilik projek yang membaginya.
+        {%- endif -%}
+      </span>
       {% endif %}
       {% else %}
       <div class="an-kosong"><b>Semuanya sudah dibagi</b>

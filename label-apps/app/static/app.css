@@ -879,6 +879,18 @@ input:focus{outline:0;border-color:var(--ok)}
 /* Pil saringan aktif, satu per saringan, masing-masing bisa dibuang sendiri.
    Dibedakan dari .saring-bersih: yang ini menyebut ISI saringannya dan hanya
    membuang satu, sementara yang itu mengosongkan semuanya. */
+/* fieldset tak boleh membawa bingkai bawaan peramban: ia dipakai di sini
+   semata untuk menamai grup centang bagi pembaca layar. */
+fieldset.vh-fgrup{border:0;margin:0;padding:0;min-width:0}
+fieldset.vh-fgrup>legend{padding:0;float:none}
+
+/* Fokus papan tik harus terlihat pada SEMUA chip, termasuk yang jadi
+   tombol dropdown saringan. Sebelumnya ia bergantung pada cincin bawaan
+   peramban saja, tidak konsisten dengan .lh-btn dan .akun-tombol yang sudah
+   punya aturannya sendiri. */
+.chip:focus-visible,.kd-baris:focus-visible,.kelas-baris:focus-visible,
+.saring-pil:focus-visible,.seg-opt:focus-visible{
+  outline:2px solid var(--aksi);outline-offset:2px;border-radius:99px}
 .saring-pil{display:inline-flex;align-items:center;gap:6px;
   background:var(--sunk);border-color:var(--garis);color:var(--ink)}
 .saring-pil span[aria-hidden]{color:var(--ink-dim);font-size:14px;line-height:1}

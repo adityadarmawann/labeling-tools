@@ -36,8 +36,11 @@
         di 120 per halaman dan hanya bisa diubah dengan menyunting URL. -#}
     <input type="hidden" name="hal" value="1">
 
-    <div class="vh-fgrup">
-      <span class="vh-flabel">Split</span>
+    {#- fieldset/legend, bukan span biasa. Tanpa keduanya pembaca layar
+        membacakan dua puluh centang berturut-turut tanpa tahu mana Split dan
+        mana Kelas. -#}
+    <fieldset class="vh-fgrup">
+      <legend class="vh-flabel">Split</legend>
       {% for s in ['train', 'valid', 'test'] %}
       <label class="vh-cek">
         <input type="checkbox" name="sp" value="{{ s }}"
@@ -45,10 +48,10 @@
         {{ s }} <i>{{ idx.jumlah_split[s] }}</i>
       </label>
       {% endfor %}
-    </div>
+    </fieldset>
 
-    <div class="vh-fgrup vh-fkelas">
-      <span class="vh-flabel">Kelas</span>
+    <fieldset class="vh-fgrup vh-fkelas">
+      <legend class="vh-flabel">Kelas</legend>
       {% for nama in idx.kelas %}
       <label class="vh-cek">
         <input type="checkbox" name="c" value="{{ nama }}"
@@ -61,7 +64,7 @@
                {% if neg_dipilih %}checked{% endif %} onchange="vhSubmit()">
         sampel negatif <i>{{ idx.negatif }}</i>
       </label>
-    </div>
+    </fieldset>
 
     {#- Tampilkan label: BUKAN filter, jadi tidak ikut disubmit ke server.
         Ia cuma menukar sumber gambar tiap kartu, supaya menyalakannya tidak

@@ -246,6 +246,10 @@ async def halaman_papan(request: Request, ds: str = "", urut: str = "terbaru",
         "sess": sess, "pr": pr, "aktif": "anotasi",
         "boleh_kelola": svc.boleh_kelola(data, sess.user),
         "boleh_bagi": svc.boleh_bagi(data, sess.user),
+        # Boleh mengerjakan gambar yang belum ditugaskan ke siapa pun. Lebih
+        # longgar dari boleh_bagi: Labeler berakses "semua" ikut, karena
+        # haknya memang berlaku untuk gambar apa pun di projek ini.
+        "boleh_lepas": svc.boleh_labeli_lepas(data, sess.user),
         "pemilik": data["pemilik"] or sess.user,
         "aku": sess.user,
         # Dipakai kolom "Dikerjakan" yang kosong untuk membedakan anggota yang

@@ -156,6 +156,10 @@
   <div class="bar bar-saring">
     <form class="saring-cari" method="get" action="/">
       {{ titipan('q') }}
+      {#- Label sungguhan, bukan placeholder. Placeholder hilang begitu kotaknya
+          diisi, jadi pembaca layar dan orang yang kembali ke halaman ini tidak
+          punya apa pun yang menyebut kotak itu untuk apa. -#}
+      <label class="sr-only" for="cari">Cari nama berkas di dataset ini</label>
       <input class="cari-nama" type="search" id="cari" name="q" value="{{ cari }}"
              placeholder="Cari nama berkas…" autocomplete="off"
              title="Mencari di SELURUH dataset, bukan cuma halaman ini">
@@ -226,8 +230,12 @@
         <i class="kd-caret" aria-hidden="true">&#9662;</i></button>
       <span class="menu-isi" id="keadaan-isi">
         {%- for val, nama, n, warna, ket in keadaan %}
+        {#- `aria-current`, bukan cuma `data-on`. Atribut data tidak punya
+            makna aksesibilitas apa pun, jadi pembaca layar tak diberi tahu
+            keadaan mana yang sedang berlaku. Halaman job sudah benar sejak
+            dulu; daftar ini tertinggal. -#}
         <a class="kd-baris" title="{{ ket }}"
-           {% if val == flt %}data-on{% endif %}
+           {% if val == flt %}data-on aria-current="true"{% endif %}
            href="{{ tautan(val_f=val) }}">
           {%- if warna %}<i class="titik t-{{ warna }}"></i>{% else %}<i class="titik t-kosong"></i>{% endif %}
           <span>{{ nama }}</span><b>{{ n }}</b></a>

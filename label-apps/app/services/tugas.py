@@ -342,6 +342,27 @@ def boleh_labeli(data: dict, akun: str, kunci: str, batch: str = "") -> bool:
     return ditugaskan
 
 
+def boleh_labeli_lepas(data: dict, akun: str) -> bool:
+    """Boleh mengerjakan gambar yang BELUM ditugaskan ke siapa pun.
+
+    Pemilik dan Editor jelas boleh. Yang sering terlewat: Labeler berakses
+    "semua" juga boleh menurut boleh_labeli -- haknya memang berlaku untuk
+    gambar apa pun di projek ini.
+
+    Tanpa fungsi ini, antarmuka menggerbangi kolom "Belum ditugaskan" dengan
+    boleh_bagi (pemilik/Editor saja), sehingga pemilik yang memberi seseorang
+    peran "Labeler menyeluruh" mendapati orang itu login dan tidak menemukan
+    satu gambar pun untuk dikerjakan: papan menyembunyikan kolomnya, halaman
+    job hanya memuat yang sudah dibagi, dan kisi Dataset hanya memuat yang
+    sudah dinyatakan masuk. Perannya ada, jalannya tidak.
+    """
+    if boleh_bagi(data, akun):
+        return True
+    if peran_anggota(data, akun) != "pelabel":
+        return False
+    return ((data["anggota"].get(akun) or {}).get("akses")) == "semua"
+
+
 def tolak_tulis(ds: Path, akun: str, gambar: Path) -> str:
     """
     Penjaga satu pintu untuk SEMUA jalur yang mengubah label sebuah gambar.

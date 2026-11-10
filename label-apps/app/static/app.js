@@ -448,26 +448,80 @@ async function dariDrop(dt) {
   // Bedanya isi: keadaan berisi TAUTAN (pilihan tunggal, satu klik langsung
   // berlaku), dua lainnya berisi form bercentang yang butuh Terapkan — jadi
   // klik di dalam menu keadaan sengaja TIDAK dihentikan.
+  /*
+   * Satu pemasang untuk SEMUA dropdown saringan, lengkap dengan papan tiknya.
+   *
+   * Sebelum ini keadaan buka/tutup cuma atribut `data-buka`: tidak ada
+   * aria-expanded, tidak ada Escape, tidak ada navigasi panah. Pengguna papan
+   * tik bisa MEMBUKA menu kelas tetapi tidak bisa menutupnya, dan daftar yang
+   * bisa berisi lima puluh baris hanya bisa disusuri dengan Tab satu per satu.
+   * Menu akun di berkas ini sudah punya semuanya sejak dulu; menu saringan
+   * tertinggal.
+   */
+  function pasangMenu(mm, tombol, hentikanKlikDalam) {
+    if (!mm || !tombol) return;
+    const barisnya = () => [...mm.querySelectorAll(
+      '.menu-isi a, .menu-isi label, .menu-isi button, .menu-isi select, '
+      + '.menu-isi input:not([type=hidden])')]
+      .filter(el => el.offsetParent !== null);
+
+    function setel(buka) {
+      mm.toggleAttribute('data-buka', buka);
+      tombol.setAttribute('aria-expanded', buka ? 'true' : 'false');
+    }
+    tombol.setAttribute('aria-haspopup', 'true');
+    tombol.setAttribute('aria-expanded', 'false');
+    if (!tombol.getAttribute('type')) tombol.setAttribute('type', 'button');
+
+    tombol.onclick = ev => {
+      ev.stopPropagation();
+      setel(!mm.hasAttribute('data-buka'));
+    };
+    tombol.addEventListener('keydown', ev => {
+      if (ev.key === 'ArrowDown' || ev.key === 'Enter' || ev.key === ' ') {
+        if (!mm.hasAttribute('data-buka')) {
+          ev.preventDefault(); setel(true);
+          const b = barisnya(); if (b.length) b[0].focus();
+        }
+      }
+    });
+    mm.addEventListener('keydown', ev => {
+      if (ev.key === 'Escape') {
+        // Fokus dikembalikan ke tombolnya: tanpa itu fokus tertinggal di
+        // dalam menu yang baru saja disembunyikan dan Tab berikutnya
+        // melompat ke tempat yang tak terduga.
+        ev.stopPropagation(); setel(false); tombol.focus(); return;
+      }
+      if (ev.key !== 'ArrowDown' && ev.key !== 'ArrowUp'
+          && ev.key !== 'Home' && ev.key !== 'End') return;
+      const b = barisnya();
+      if (!b.length) return;
+      ev.preventDefault();
+      const i = b.indexOf(document.activeElement);
+      const ke = ev.key === 'Home' ? 0
+        : ev.key === 'End' ? b.length - 1
+          : ev.key === 'ArrowDown' ? Math.min(i + 1, b.length - 1)
+            : Math.max(i - 1, 0);
+      b[ke < 0 ? 0 : ke].focus();
+    });
+    if (hentikanKlikDalam) mm.addEventListener('click', ev => ev.stopPropagation());
+    document.addEventListener('click', () => setel(false));
+  }
+
+  // Dropdown keadaan dan tag: bentuknya sama dengan dropdown kelas. Bedanya
+  // isi: keadaan berisi TAUTAN (pilihan tunggal, satu klik langsung berlaku),
+  // dua lainnya berisi form bercentang yang butuh Terapkan -- jadi klik di
+  // dalam menu keadaan sengaja TIDAK dihentikan.
   for (const [wadah, tombol, tautan] of [['menu-keadaan', 'keadaan-tombol', true],
                                          ['menu-tag', 'tag-tombol', false],
                                          ['menu-split', 'split-tombol', false]]) {
-    const mm = document.getElementById(wadah);
-    if (!mm) continue;
-    document.getElementById(tombol).onclick = ev => {
-      ev.stopPropagation();
-      mm.toggleAttribute('data-buka');
-    };
-    if (!tautan) mm.addEventListener('click', ev => ev.stopPropagation());
-    document.addEventListener('click', () => mm.removeAttribute('data-buka'));
+    pasangMenu(document.getElementById(wadah),
+               document.getElementById(tombol), !tautan);
   }
 
   const m = document.getElementById('menu-kelas');
   if (!m) return;
-  document.getElementById('kelas-tombol').onclick = ev => {
-    ev.stopPropagation();
-    m.toggleAttribute('data-buka');
-  };
-  m.addEventListener('click', ev => ev.stopPropagation());
+  pasangMenu(m, document.getElementById('kelas-tombol'), true);
 
   // Penanda `data-on` pada segmen yang aktif. Dipasang lewat JS, bukan
   // selektor :has(), supaya tampilannya tidak bergantung pada dukungan

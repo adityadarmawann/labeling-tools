@@ -33,7 +33,22 @@
     const menu = $('jb-menu-kelas');
     if (!menu) return;
     const tombol = $('jb-kelas-tombol');
-    tombol.onclick = (ev) => { ev.stopPropagation(); menu.toggleAttribute('data-buka'); };
+    // aria-expanded DIPERBARUI. Templatnya menjanjikan atribut itu sejak dulu
+    // tetapi nilainya tak pernah berubah, jadi pembaca layar selalu diberi
+    // tahu menunya tertutup termasuk saat terbuka -- lebih buruk daripada
+    // tidak mencantumkannya sama sekali. Escape menutup dan mengembalikan
+    // fokus ke tombolnya.
+    const setel = (buka) => {
+      menu.toggleAttribute('data-buka', buka);
+      tombol.setAttribute('aria-expanded', buka ? 'true' : 'false');
+    };
+    tombol.onclick = (ev) => {
+      ev.stopPropagation(); setel(!menu.hasAttribute('data-buka'));
+    };
+    menu.addEventListener('keydown', (ev) => {
+      if (ev.key !== 'Escape') return;
+      ev.stopPropagation(); setel(false); tombol.focus();
+    });
     menu.addEventListener('click', (ev) => ev.stopPropagation());
     document.addEventListener('click', () => menu.removeAttribute('data-buka'));
   })();
