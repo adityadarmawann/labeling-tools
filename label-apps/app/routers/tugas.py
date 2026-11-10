@@ -137,6 +137,15 @@ def _belum_ditugaskan(sess: Session, d, data: dict, batch: str = "") -> list[str
 
 @router.get("/anotasi", response_class=HTMLResponse)
 async def halaman_papan(request: Request, ds: str = "", urut: str = "terbaru",
+                        # Saringan papan. Tiga kolom merender SELURUH kartu
+                        # tanpa paginasi dan tanpa saringan apa pun: pada
+                        # projek dengan 40 tugas, satu-satunya cara mencari
+                        # pekerjaan seseorang adalah membaca satu per satu.
+                        # CVAT dan Label Studio sama-sama punya saringan
+                        # assignee dan state di papan pekerjaannya.
+                        pelabel_q: str = Query("", alias="pl"),
+                        keadaan_q: str = Query("", alias="kd"),
+                        cari_q: str = Query("", alias="q"),
                         sess: Session = Depends(current_session),
                         settings: Settings = Depends(get_settings)):
     """
@@ -210,7 +219,30 @@ async def halaman_papan(request: Request, ds: str = "", urut: str = "terbaru",
     sumber_impor = scanner.nama_sumber_dataset(d)
     papan = svc.papan(data, berlabel, semua, batch_dari, dicek, urut,
                       sumber_impor)
+
+    # Saringan papan, dipasang SESUDAH kartunya disusun supaya angka per-orang
+    # dan hitungan kolom tetap menghitung keseluruhan, bukan hasil saringan.
+    # Daftar pilihannya juga diambil dari kartu yang BELUM disaring, kalau
+    # tidak memilih satu pelabel akan membuat pelabel lain hilang dari menu.
+    n_kartu_semua = len(papan["kartu"])      # SEBELUM disaring
+    pelabel_ada = sorted({k["pelabel"] for k in papan["kartu"] if k["pelabel"]})
+    pelabel_f = pelabel_q if pelabel_q in pelabel_ada else ""
+    keadaan_f = keadaan_q if keadaan_q in (svc.BARU, svc.JALAN,
+                                           svc.SELESAI) else ""
+    cari_p = (cari_q or "").strip()
+    if pelabel_f or keadaan_f or cari_p:
+        pola = cari_p.lower()
+        papan = dict(papan)
+        papan["kartu"] = [
+            k for k in papan["kartu"]
+            if (not pelabel_f or k["pelabel"] == pelabel_f)
+            and (not keadaan_f or k["keadaan"] == keadaan_f)
+            and (not pola or pola in str(k["judul"]).lower()
+                 or pola in str(k["pelabel"]).lower())]
     return templates.TemplateResponse(request, "anotasi.html", {
+        "pelabel_ada": pelabel_ada, "pelabel_f": pelabel_f,
+        "keadaan_f": keadaan_f, "cari_papan": cari_p,
+        "n_kartu_semua": n_kartu_semua,
         "sess": sess, "pr": pr, "aktif": "anotasi",
         "boleh_kelola": svc.boleh_kelola(data, sess.user),
         "boleh_bagi": svc.boleh_bagi(data, sess.user),

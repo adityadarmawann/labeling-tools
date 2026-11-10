@@ -105,16 +105,55 @@
   </div>
   {% endif %}
 
-  {# ---------------------------------------------------- urutan #}
+  {# ------------------------------------------- saringan papan + urutan
+
+     Tiga kolom merender SELURUH kartu tanpa paginasi. Pada projek dengan 40
+     tugas, satu-satunya cara mencari pekerjaan seseorang adalah membaca satu
+     per satu. Datanya sudah ada di tiap kartu (pelabel, keadaan, judul);
+     yang tidak ada cuma kontrolnya.
+
+     Semuanya dalam SATU form GET supaya memilih pelabel tidak membuang
+     urutan, dan sebaliknya. #}
   <form class="an-urut an-kendali-baris" method="get" action="/anotasi">
     <input type="hidden" name="ds" value="{{ pr.ds }}">
+
+    {% if pelabel_ada %}
+    <label class="halus" for="an-pl">Pelabel</label>
+    <select class="chip" id="an-pl" name="pl" onchange="this.form.submit()">
+      <option value="">semua pelabel</option>
+      {%- for nama in pelabel_ada %}
+      <option value="{{ nama }}"{% if pelabel_f == nama %} selected{% endif %}>{{ nama }}</option>
+      {%- endfor %}
+    </select>
+    {% endif %}
+
+    <label class="halus" for="an-kd">Keadaan</label>
+    <select class="chip" id="an-kd" name="kd" onchange="this.form.submit()">
+      <option value="">semua keadaan</option>
+      <option value="baru"{% if keadaan_f == 'baru' %} selected{% endif %}>Belum disentuh</option>
+      <option value="jalan"{% if keadaan_f == 'jalan' %} selected{% endif %}>Sedang dikerjakan</option>
+      <option value="selesai"{% if keadaan_f == 'selesai' %} selected{% endif %}>Selesai</option>
+    </select>
+
+    <label class="sr-only" for="an-cari">Cari judul tugas atau nama pelabel</label>
+    <input class="chip" id="an-cari" type="search" name="q" value="{{ cari_papan }}"
+           placeholder="cari judul tugas atau pelabel…"
+           autocomplete="off" spellcheck="false">
+
     <label class="halus" for="an-urut">Urutkan</label>
     <select class="chip" id="an-urut" name="urut" onchange="this.form.submit()">
       {%- for nilai, nama in urut_pilihan.items() %}
       <option value="{{ nilai }}"{% if urut == nilai %} selected{% endif %}>{{ nama }}</option>
       {%- endfor %}
     </select>
-    <noscript><button class="chip" type="submit">Terapkan</button></noscript>
+    <button class="chip" type="submit">Terapkan</button>
+
+    {% if pelabel_f or keadaan_f or cari_papan %}
+    <a class="chip saring-pil" href="/anotasi?ds={{ pr.ds | urlquote }}{% if urut != 'terbaru' %}&amp;urut={{ urut }}{% endif %}"
+       title="Buang saringan papan">
+      {{ kartu | length }} dari {{ n_kartu_semua }} tugas
+      <span aria-hidden="true">&times;</span></a>
+    {% endif %}
   </form>
   </div>
 
