@@ -77,81 +77,23 @@ def urutkan(items: list[dict], urut: str) -> list[dict]:
 
 
 def saring(items: list[dict], flt: str, kelas, tanpa=(), mode="atau", *,
-            tugasku=frozenset()) -> list[dict]:
-    if flt == "tugasku":
-        # Gambar yang ditugaskan kepadaku. Bukan sekadar kenyamanan: di projek
-        # 10.000 gambar, jatah seseorang bisa 200, dan tanpa saringan ini ia
-        # menggulir sembilan ribu delapan ratus gambar milik orang lain untuk
-        # menemukan pekerjaannya sendiri.
-        items = [i for i in items if id(i) in tugasku]
-    elif flt == "issue":
-        items = [i for i in items if i["issues"] and i["shapes"]]
-    elif flt == "bg":
-        # Gambar yang SENGAJA ditandai tanpa objek — sampel negatif. Ia berbeda
-        # dari "belum dilabeli": yang ini sudah selesai diperiksa, dan porsinya
-        # di dataset menentukan seberapa sering model salah menebak latar
-        # sebagai objek. Tanpa saringan sendiri, ia tidak bisa dihitung maupun
-        # ditinjau ulang.
-        items = [i for i in items if scanner.severity(i) == "bg"]
-    elif flt == "sudah":
-        # Latar IKUT. Menandai gambar tanpa objek adalah keputusan yang sudah
-        # diambil, bukan pekerjaan yang belum dikerjakan — dan ia satu-satunya
-        # isi sampel negatif, yang di sini justru paling perlu dihitung.
-        #
-        # Empat tempat lain sudah menghitungnya begitu sejak awal: kartu
-        # projek, sidebar, papan anotasi, dan halaman tugas. Grid yang
-        # sendirian mengecualikannya membuat satu projek menyebut dua angka
-        # "sudah dikerjakan" yang berbeda di dua halaman.
-        items = [i for i in items if scanner.severity(i) != "stop"]
-    elif flt == "dicek":
-        # Hasil auto-label yang BELUM diperiksa manusia. Sengaja memakai kata
-        # "verifikasi", bukan "perlu dicek": kata itu sudah dipakai halaman ini
-        # sendiri untuk severity "warn" (anotasi yang BENTUKNYA mencurigakan),
-        # dan dua arti yang memakai satu kata membuat orang mengira keduanya
-        # menghitung hal yang sama.
-        items = [i for i in items
-                 if i.get("perlu_dicek") and scanner.severity(i) != "stop"]
-    elif flt == "verif":
-        # Pasangannya: sudah dilabeli DAN sudah dilewati manusia. Tanpa ini,
-        # "Sudah dilabeli" mencampur hasil AI mentah dengan yang benar-benar
-        # selesai diperiksa, dan tak ada angka yang menunjukkan kemajuan
-        # verifikasi.
-        items = [i for i in items
-                 if scanner.severity(i) != "stop" and not i.get("perlu_dicek")]
-    elif flt == "unlab":
-        # severity 'stop', bukan sekadar "tanpa objek": gambar yang sudah
-        # ditandai latar memang tanpa objek tapi sudah selesai diperiksa, dan
-        # angka di chip "Belum dilabeli" juga menghitung 'stop'. Kalau di sini
-        # dipakai "tanpa objek", jumlah di chip tidak sama dengan isi grid.
-        items = [i for i in items if scanner.severity(i) == "stop"]
-    if kelas or tanpa:
-        # Beberapa kelas sekaligus, dengan arti "punya SALAH SATU dari ini" —
-        # sama seperti filter Classes di Roboflow. Arti "punya SEMUANYA" jarang
-        # dibutuhkan dan mudah disalahpahami, jadi tidak dipakai.
-        #
-        # Keadaan tanpa-kelas ikut di dalam pilihan yang SAMA, bukan saringan
-        # terpisah: "botol atau latar" adalah satu pertanyaan, dan memisahkannya
-        # ke dua kotak membuat orang harus menebak apakah keduanya digabung
-        # dengan DAN atau ATAU.
-        pilih = set(kelas)
-        sev_pilih = {TANPA_KELAS[t][1] for t in tanpa if t in TANPA_KELAS}
+           tugasku=frozenset()) -> list[dict]:
+    """Saringan keadaan + kelas atas daftar item mentah.
 
-        def cocok(it):
-            ada = {str(s["label"]) for s in it["shapes"]}
-            sev = scanner.severity(it)
-            if mode == "dan":
-                # SEMUA kelas yang dicentang harus ada pada gambar yang sama.
-                #
-                # Latar dan Belum dilabeli tidak ikut di mode ini, dan tidak
-                # ditawarkan di antarmukanya. Gambar berobjek menurut
-                # definisinya bukan latar, jadi "punya botol DAN latar" selalu
-                # nol — dan menawarkan pilihan yang pasti nol itu sendiri sudah
-                # cacat, betapa pun benarnya angka nol itu.
-                return pilih <= ada
-            return bool(pilih & ada) or sev in sev_pilih
+    Badannya kini tipis: aturannya tinggal di _cocok_keadaan dan _cocok_kelas,
+    dipakai bersama facet() supaya angka di menu dan isi kisi tidak bisa
+    berbeda. Dipertahankan sebagai fungsi tersendiri karena rute dan uji sudah
+    memanggilnya dengan item mentah.
+    """
+    keluar = []
+    for it in items:
+        per, _n = scanner.objek_per_kelas(it)
+        f = {"it": it, "sev": scanner.severity(it), "kelas": set(per),
+             "dicek": bool(it.get("perlu_dicek")), "aku": id(it) in tugasku}
+        if _cocok_keadaan(f, flt) and _cocok_kelas(f, kelas, tanpa, mode):
+            keluar.append(it)
+    return keluar
 
-        items = [i for i in items if cocok(i)]
-    return items
 
 
 # Parameter lingkup yang dikenal kisi. Dipakai templat untuk menitipkan
@@ -207,52 +149,18 @@ def ada_lingkup(p: dict) -> bool:
 
 
 def subset(items: list[dict], src, user: str, data: dict, tagdata: dict,
-           p: dict) -> list[dict]:
+           p: dict, skel_kelas: str = "") -> list[dict]:
     """Gambar yang BENAR-BENAR tampil di kisi untuk parameter `p`, urut sama.
 
-    Urutan langkahnya sengaja identik dengan rute kisi: saring keadaan/kelas
-    dulu, lalu tag dan unggahan, lalu split dan asal-usul, lalu pencarian
-    nama, baru diurutkan. Mengubah urutannya di satu tempat saja membuat
-    subset kanvas dan isi kisi berbeda tanpa ada yang mengeluh.
+    Satu aturan saja: _cocok() yang sama dipakai kisi, facet, kanvas, dan
+    halaman Lihat. Dulu urutan langkahnya ditulis ulang di sini dan di rute
+    kisi; dua salinan aturan saring selalu berakhir berbeda, dan bedanya
+    senyap karena yang satu menampilkan sementara yang lain menyusuri.
     """
-    from . import tag as _tag
-    from . import tugas as _tugas
-
-    tugasku: set = set()
-    if data and not data.get("warisan"):
-        for it in items:
-            k = _tag.kunci_gambar(src, it["img"])
-            if _tugas.pelabel_gambar(data, k) == user:
-                tugasku.add(id(it))
-
-    perlu_tag = bool(p["tag"] or p["batch"])
-    tag_dari: dict = {}
-    if perlu_tag and (tagdata or {}).get("gambar"):
-        for it in items:
-            r = _tag.untuk(tagdata, _tag.kunci_gambar(src, it["img"]))
-            if r["tag"] or r["batch"]:
-                tag_dari[id(it)] = r
-
-    keluar = saring(items, p["f"], p["kelas"], p["tanpa"], p["mode"],
-                    tugasku=tugasku)
-    if p["tag"]:
-        pilih = set(p["tag"])
-        keluar = [it for it in keluar
-                  if pilih & set((tag_dari.get(id(it)) or {}).get("tag") or [])]
-    if p["batch"]:
-        keluar = [it for it in keluar
-                  if (tag_dari.get(id(it)) or {}).get("batch") == p["batch"]]
-    if p["split"]:
-        pilih = set(p["split"])
-        keluar = [it for it in keluar if (it.get("split") or "") in pilih]
-    if p["turunan"]:
-        pilih = set(p["turunan"])
-        keluar = [it for it in keluar
-                  if scanner.jenis_turunan(it["img"].name) in pilih]
-    if p["cari"]:
-        pola = p["cari"].lower()
-        keluar = [it for it in keluar if pola in it["img"].name.lower()]
+    fk = fakta(items, src, user, data, tagdata, skel_kelas)
+    keluar = [f["it"] for f in fk if _cocok(f, p)]
     return urutkan(keluar, p["urut"] if p["urut"] in URUT else URUT_BAWAAN)
+
 
 
 def ke_query(p: dict, awalan: str = "&") -> str:
@@ -306,3 +214,154 @@ def pilih_dataset(items: list, src, uploads_root, dsf: str = "di"):
         return list(items), hitung
     tersisa = {id(x) for x in dalam}
     return [x for x in items if id(x) not in tersisa], hitung
+
+
+# ----------------------------------------------------------------- facet
+# Angka tiap saringan dihitung atas hasil saringan LAIN yang sedang aktif,
+# bukan atas seluruh dataset.
+#
+# Tanpa itu: orang menyaring split "valid", membuka menu kelas, melihat
+# "botol 842", mencentangnya, dan mendapat NOL hasil -- karena 842 itu angka
+# seluruh dataset. Tidak ada apa pun di layar yang menjelaskannya. Roboflow dan
+# Label Studio sama-sama memakai hitungan ber-facet; ini padanannya.
+#
+# Dimensi sebuah facet TIDAK ikut menyaring dirinya sendiri: kalau ikut,
+# mencentang satu kelas akan membuat semua kelas lain menunjukkan nol dan
+# daftar itu berhenti bisa dipakai memilih.
+
+
+def fakta(items: list, src, user: str, data: dict, tagdata: dict,
+          skel_kelas: str = "") -> list[dict]:
+    """Sifat tiap gambar yang dibutuhkan saringan, dihitung SEKALI.
+
+    Memisahkan "membaca gambar" dari "menyaring" supaya facet bisa menjalankan
+    saringan delapan kali tanpa membaca apa pun delapan kali.
+    """
+    from . import tag as _tag
+    from . import tugas as _tugas
+
+    warisan = bool((data or {}).get("warisan"))
+    punya_tag = bool((tagdata or {}).get("gambar"))
+    keluar = []
+    for it in items:
+        k = _tag.kunci_gambar(src, it["img"]) if (not warisan or punya_tag) else ""
+        r = _tag.untuk(tagdata, k) if punya_tag else {"tag": [], "batch": ""}
+        per, n_obj = scanner.objek_per_kelas(it, skel_kelas)
+        keluar.append({
+            "it": it,
+            "sev": scanner.severity(it),
+            "kelas": set(per),
+            "objek": per,
+            "n_obj": n_obj,
+            "dicek": bool(it.get("perlu_dicek")),
+            "aku": (not warisan) and _tugas.pelabel_gambar(data, k) == user,
+            "tag": set(r.get("tag") or []),
+            "batch": str(r.get("batch") or ""),
+            "split": str(it.get("split") or ""),
+            "turunan": scanner.jenis_turunan(it["img"].name),
+            "nama": it["img"].name.lower(),
+        })
+    return keluar
+
+
+def _cocok_keadaan(f: dict, flt: str) -> bool:
+    """Aturan dimensi KEADAAN, dipakai bersama saring() dan facet()."""
+    sev = f["sev"]
+    if flt == "tugasku":
+        return f["aku"]
+    if flt == "issue":
+        return bool(f["it"]["issues"] and f["it"]["shapes"])
+    if flt == "bg":
+        return sev == "bg"
+    if flt == "sudah":
+        return sev != "stop"
+    if flt == "unlab":
+        return sev == "stop"
+    if flt == "dicek":
+        return f["dicek"] and sev != "stop"
+    if flt == "verif":
+        return sev != "stop" and not f["dicek"]
+    return True
+
+
+def _cocok_kelas(f: dict, kelas, tanpa, mode: str) -> bool:
+    if not kelas and not tanpa:
+        return True
+    pilih = set(kelas)
+    sev_pilih = {TANPA_KELAS[t][1] for t in tanpa if t in TANPA_KELAS}
+    if mode == "dan":
+        return pilih <= f["kelas"]
+    return bool(pilih & f["kelas"]) or f["sev"] in sev_pilih
+
+
+_DIMENSI = ("f", "kelas", "tag", "batch", "split", "turunan", "cari")
+
+
+def _cocok(f: dict, p: dict, kecuali: str = "") -> bool:
+    if kecuali != "f" and not _cocok_keadaan(f, p["f"]):
+        return False
+    if kecuali != "kelas" and not _cocok_kelas(f, p["kelas"], p["tanpa"],
+                                               p["mode"]):
+        return False
+    if kecuali != "tag" and p["tag"] and not (set(p["tag"]) & f["tag"]):
+        return False
+    if kecuali != "batch" and p["batch"] and f["batch"] != p["batch"]:
+        return False
+    if kecuali != "split" and p["split"] and f["split"] not in set(p["split"]):
+        return False
+    if kecuali != "turunan" and p["turunan"] \
+            and f["turunan"] not in set(p["turunan"]):
+        return False
+    if kecuali != "cari" and p["cari"] and p["cari"].lower() not in f["nama"]:
+        return False
+    return True
+
+
+def facet(fk: list[dict], p: dict) -> dict:
+    """Hitungan tiap dimensi, masing-masing atas hasil saringan LAIN."""
+    def basis(dim: str) -> list[dict]:
+        return [f for f in fk if _cocok(f, p, kecuali=dim)]
+
+    b_f = basis("f")
+    keadaan = {v: sum(1 for f in b_f if _cocok_keadaan(f, v))
+               for v in ("all", "tugasku", "issue", "bg", "sudah", "unlab",
+                         "dicek", "verif")}
+
+    b_k = basis("kelas")
+    kelas_gambar: dict[str, int] = {}
+    kelas_objek: dict[str, int] = {}
+    for f in b_k:
+        for k, n in f["objek"].items():
+            kelas_gambar[k] = kelas_gambar.get(k, 0) + 1
+            kelas_objek[k] = kelas_objek.get(k, 0) + n
+    tanpa_hitung = {"latar": sum(1 for f in b_k if f["sev"] == "bg"),
+                    "unlab": sum(1 for f in b_k if f["sev"] == "stop")}
+
+    tag_hitung: dict[str, int] = {}
+    for f in basis("tag"):
+        for t in f["tag"]:
+            tag_hitung[t] = tag_hitung.get(t, 0) + 1
+    batch_hitung: dict[str, int] = {}
+    for f in basis("batch"):
+        if f["batch"]:
+            batch_hitung[f["batch"]] = batch_hitung.get(f["batch"], 0) + 1
+    split_hitung: dict[str, int] = {}
+    for f in basis("split"):
+        if f["split"]:
+            split_hitung[f["split"]] = split_hitung.get(f["split"], 0) + 1
+    turunan_hitung: dict[str, int] = {}
+    for f in basis("turunan"):
+        turunan_hitung[f["turunan"]] = turunan_hitung.get(f["turunan"], 0) + 1
+
+    tampil = [f for f in fk if _cocok(f, p)]
+    return {"keadaan": keadaan,
+            "kelas_gambar": dict(sorted(kelas_gambar.items())),
+            "kelas_objek": kelas_objek,
+            "tanpa": tanpa_hitung,
+            "tag": dict(sorted(tag_hitung.items())),
+            "batch": dict(sorted(batch_hitung.items())),
+            "split": dict(sorted(split_hitung.items())),
+            "turunan": turunan_hitung,
+            "tampil": [f["it"] for f in tampil],
+            "n_obj_tampil": sum(f["n_obj"] for f in tampil),
+            "n_obj_semua": sum(f["n_obj"] for f in fk)}

@@ -107,8 +107,13 @@ def test_kisi_dan_lihat_memakai_aturan_yang_sama():
     akar = pathlib.Path(__file__).resolve().parents[1]
     r = (akar / "app" / "routers" / "review.py").read_text()
     t = (akar / "app" / "routers" / "tugas.py").read_text()
-    assert r.count("scanner.objek_per_kelas(") >= 2        # kisi + /view
+    k = (akar / "app" / "services" / "konteks_kisi.py").read_text()
+    assert "scanner.objek_per_kelas(" in r                 # halaman Lihat
     assert "scanner.objek_per_kelas(" in t                 # halaman job
+    # Kisi Dataset lewat konteks_kisi, yang juga yang menyaring dan menghitung
+    # facet: satu tempat, jadi angka di menu dan isi kisi tak bisa berbeda.
+    assert "scanner.objek_per_kelas(" in k
+    assert "konteks_kisi.fakta(" in r
 
 
 def test_kontras_angka_saringan_bukan_ink_faint():

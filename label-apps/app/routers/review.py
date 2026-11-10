@@ -201,15 +201,6 @@ async def index(request: Request, f: str = "all",
     _tdata_kelas = await asyncio.to_thread(
         tugas.baca_projek, sess.src, settings.uploads_root)
     _skel = str(((_tdata_kelas.get("skeleton") or {}).get("kelas") or "")).strip()
-    kelas_hitung: dict[str, int] = {}
-    kelas_gambar: dict[str, int] = {}
-    for it in items:
-        per, _n = scanner.objek_per_kelas(it, _skel)
-        for k, n in per.items():
-            kelas_hitung[k] = kelas_hitung.get(k, 0) + n
-            kelas_gambar[k] = kelas_gambar.get(k, 0) + 1
-
-    sev = [scanner.severity(i) for i in items]
 
     mode = "dan" if mode_q == "dan" else "atau"
     urut = urut_q if urut_q in URUT else URUT_BAWAAN
@@ -259,38 +250,29 @@ async def index(request: Request, f: str = "all",
             if r["tag"] or r["batch"]:
                 tag_dari[id(it)] = r
 
-    tampil = _filter(items, f, kelas, tanpa, mode, tugasku=tugasku_id)
-
-    # Saringan tag dan unggahan dipasang SESUDAH saringan lain, dan sengaja
-    # bersifat "punya salah satu": "sesi pagi atau lampu redup" adalah satu
-    # pertanyaan, dan menuntut keduanya sekaligus hampir tidak pernah yang
-    # dimaksud saat menandai gambar.
+    # Saringan dan hitungan ber-facet dalam SATU jalan.
+    #
+    # Dulu daftar ini disaring di sini langkah demi langkah, sementara angka
+    # tiap saringan dihitung terpisah atas SELURUH dataset. Akibatnya: orang
+    # menyaring split "valid", membuka menu kelas, melihat "botol 842",
+    # mencentangnya, dan mendapat nol hasil -- karena 842 itu angka seluruh
+    # dataset dan tak ada apa pun di layar yang menjelaskannya.
+    #
+    # Kini tiap dimensi dihitung atas hasil saringan LAIN yang sedang aktif,
+    # dengan predikat yang sama persis yang dipakai menyaring. Dimensi sebuah
+    # facet tidak ikut menyaring dirinya sendiri: kalau ikut, mencentang satu
+    # kelas membuat semua kelas lain menunjukkan nol dan daftarnya berhenti
+    # bisa dipakai memilih.
     tag_pilih = [x for x in dict.fromkeys(tag_q) if x]
-    if tag_pilih:
-        pilih = set(tag_pilih)
-        tampil = [it for it in tampil
-                  if pilih & set((tag_dari.get(id(it)) or {}).get("tag") or [])]
-    if batch_q:
-        tampil = [it for it in tampil
-                  if (tag_dari.get(id(it)) or {}).get("batch") == batch_q]
-
-    # Split dan asal-usul gambar. Keduanya bersifat "punya salah satu" seperti
-    # tag: "train atau valid" satu pertanyaan, dan menuntut keduanya sekaligus
-    # mustahil karena satu gambar cuma punya satu split.
     split_pilih = [x for x in dict.fromkeys(split_q) if x]
-    if split_pilih:
-        pilih = set(split_pilih)
-        tampil = [it for it in tampil if (it.get("split") or "") in pilih]
     turunan_pilih = [x for x in dict.fromkeys(turunan_q)
                      if x in ("asli", "aug", "bal")]
-    if turunan_pilih:
-        pilih = set(turunan_pilih)
-        tampil = [it for it in tampil
-                  if scanner.jenis_turunan(it["img"].name) in pilih]
-    if cari:
-        pola = cari.lower()
-        tampil = [it for it in tampil if pola in it["img"].name.lower()]
-    tampil = _urutkan(tampil, urut)
+    prm = {"f": f, "urut": urut, "cari": cari, "kelas": kelas, "tanpa": tanpa,
+           "mode": mode, "tag": tag_pilih, "batch": batch_q,
+           "split": split_pilih, "turunan": turunan_pilih, "dsf": dsf}
+    fk = konteks_kisi.fakta(items, sess.src, sess.user, tdata, tdata_tag, _skel)
+    fc = konteks_kisi.facet(fk, prm)
+    tampil = _urutkan(fc["tampil"], urut)
 
     # Potong jadi satu halaman. Dihitung SESUDAH seluruh saringan dan urutan,
     # supaya "halaman 2" berarti halaman kedua dari yang sedang dilihat, bukan
@@ -329,7 +311,7 @@ async def index(request: Request, f: str = "all",
     resp = templates.TemplateResponse(request, "index.html", {
         "boleh_latar": boleh_latar,
         # Jumlah GAMBAR per kelas, pasangan dari kelas_hitung (objek).
-        "kelas_gambar": kelas_gambar,
+        "kelas_gambar": fc["kelas_gambar"],
         # Lingkup dataset yang sedang berlaku (di / belum / semua), dan
         # apakah projek ini memang tunduk aturan dataset. Folder dataset
         # bersama tidak punya konsep itu, jadi pilihannya tak ditawarkan.
@@ -379,50 +361,47 @@ async def index(request: Request, f: str = "all",
         # dan n_bg — chip "Sudah dilabeli" memang memuat yang perlu dicek dan
         # yang ditandai latar — jadi ia tidak bisa dipakai sebagai potongan
         # bilah.
-        "n_ok": sum(1 for s in sev if s == "ok"),
-        "n_warn": sum(1 for s in sev if s == "warn"),
-        "n_stop": sum(1 for s in sev if s == "stop"),
-        "n_bg": sum(1 for s in sev if s == "bg"),
+        "n_ok": fc["keadaan"]["sudah"] - fc["keadaan"]["issue"]
+                - fc["keadaan"]["bg"],
+        # Semua angka di bawah ber-FACET: dihitung atas hasil saringan lain
+        # yang sedang aktif, bukan atas seluruh dataset.
+        "n_warn": fc["keadaan"]["issue"],
+        "n_stop": fc["keadaan"]["unlab"],
+        "n_bg": fc["keadaan"]["bg"],
         # Hasil auto-label yang belum/sudah diperiksa manusia. Dihitung dari
         # field item perlu_dicek (ikut cache pindai, jadi gratis).
-        "n_dicek": sum(1 for i in items
-                       if i.get("perlu_dicek") and scanner.severity(i) != "stop"),
-        "n_verif": sum(1 for i in items
-                       if scanner.severity(i) != "stop" and not i.get("perlu_dicek")),
-        "n_sudah": sum(1 for s in sev if s in ("ok", "warn", "bg")),
+        "n_dicek": fc["keadaan"]["dicek"],
+        "n_verif": fc["keadaan"]["verif"],
+        "n_sudah": fc["keadaan"]["sudah"],
         # Dihitung dengan aturan yang SAMA seperti daftar kelas dan halaman
         # Lihat: instance pose dilipat jadi satu objek. Dulu ia menjumlah
         # BENTUK, jadi satu gambar court berisi satu objek dilaporkan 34.
-        "n_obj": sum(kelas_hitung.values()),
+        "n_obj": fc["n_obj_semua"],
         # Objek pada hasil saringan yang sedang tampil, bukan seluruh dataset.
-        "n_obj_tampil": sum(
-            sum(scanner.objek_per_kelas(i, _skel)[0].values()) for i in tampil),
+        "n_obj_tampil": fc["n_obj_tampil"],
         # Penugasan: siapa pemilik tiap gambar, dan berapa jatahku. Kosong di
         # projek yang belum pernah dibagi, dan chip-nya pun tidak muncul.
-        "tag_hitung": svc_tag.hitung(tdata_tag),
+        "tag_hitung": {"tag": fc["tag"], "batch": fc["batch"]},
         "tag_pilih": tag_pilih,
         "batch_pilih": batch_q,
         # Menu Split hanya digambar kalau ada yang bisa dipilih. Dataset labelme
         # biasa tidak punya split sama sekali, dan dataset yang belum pernah
         # diaugmentasi tidak punya turunan; menu kosong di sana cuma satu
         # tombol lagi untuk dilewati.
-        "split_hitung": dict(sorted(
-            Counter(it["split"] for it in items if it.get("split")).items())),
-        "turunan_hitung": dict(sorted(
-            Counter(scanner.jenis_turunan(it["img"].name)
-                    for it in items).items())),
+        "split_hitung": fc["split"],
+        "turunan_hitung": dict(sorted(fc["turunan"].items())),
         "split_pilih": split_pilih,
         "turunan_pilih": turunan_pilih,
         # `pelabel_dari` sendiri tidak lagi diserahkan: kartu tidak mencetak
         # cap pelabel lagi. Perhitungannya TETAP dipakai di bawah untuk
         # `ada_tugas`, yang menentukan muncul tidaknya saringan "Tugasku".
-        "n_tugasku": len(tugasku_id),
+        "n_tugasku": fc["keadaan"]["tugasku"],
         # `n_jatah_projek` sendiri tidak diserahkan: sisa jatah disebutkan di
         # halaman Anotasi, bukan di sini. Hitungannya TETAP dipakai untuk
         # `ada_tugas`, yang menentukan muncul tidaknya saringan "Tugasku".
         "ada_tugas": bool(pelabel_dari) or bool(n_jatah_projek),
         "pemilik_projek": tdata["pemilik"],
-        "kelas_hitung": dict(sorted(kelas_hitung.items())),
+        "kelas_hitung": fc["kelas_objek"],
         # Kenapa dataset ini tidak bisa ditambahi gambar. Dulu kalimat ini
         # menempel pada chip "Tambah gambar" yang dimatikan; chipnya sudah
         # tidak ada (memasukkan gambar dikerjakan lewat "Unggah data" di
