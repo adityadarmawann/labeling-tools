@@ -1072,6 +1072,39 @@ def inspect(shapes, W, H, has_ann=False, jenis: str = "") -> list[str]:
     return sorted(set(out))
 
 
+def objek_per_kelas(it: dict, skel_kelas: str = "") -> tuple[dict, int]:
+    """Hitung OBJEK satu gambar per kelas, dengan instance pose dilipat.
+
+    Satu instance pose (titik-titik ber-group_id sama) = SATU objek, kelasnya
+    dari KOTAK bbox-nya, bukan tiap keypoint dihitung kelas tersendiri. Tanpa
+    pelipatan ini projek keypoint tampil sebagai "34 objek, 34 kelas" berisi
+    slot titik 01..33 padahal di gambar cuma ADA SATU court -- dan daftar kelas
+    di menu saringan ikut terisi 33 nama palsu.
+
+    Dulu aturan ini hanya hidup di rute /view. Kisi Dataset menghitung per
+    BENTUK, jadi satu projek menyebut dua angka berbeda untuk gambar yang sama
+    di dua halaman. Dipindahkan ke sini supaya keduanya memakai satu aturan.
+    """
+    hitung: dict[str, int] = {}
+    instance_kelas: dict = {}
+    n_obj = 0
+    for s in it["shapes"]:
+        gid = s.get("group_id")
+        if gid is None:
+            k = str(s["label"])
+            hitung[k] = hitung.get(k, 0) + 1
+            n_obj += 1
+        elif s.get("type") == "rectangle":
+            instance_kelas[gid] = str(s["label"])
+        else:
+            instance_kelas.setdefault(gid, None)
+    for gid, kelas in instance_kelas.items():
+        k = kelas or skel_kelas or "objek"
+        hitung[k] = hitung.get(k, 0) + 1
+        n_obj += 1
+    return hitung, n_obj
+
+
 def severity(it: dict) -> str:
     """ok | warn | stop | bg — menentukan warna rel di kartu dan strip atas."""
     if not it["shapes"]:

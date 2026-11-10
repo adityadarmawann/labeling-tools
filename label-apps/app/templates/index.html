@@ -311,20 +311,36 @@
               <input type="checkbox" name="x" value="latar"
                      {% if 'latar' in tanpa %}checked{% endif %}><span class="cb"></span>
               <i style="background:var(--latar)"></i>
-              <span>{{ tanpa_nama['latar'] }}</span><b>{{ n_bg }}</b></label>
+              <span>{{ tanpa_nama['latar'] }}</span>
+              <b title="{{ n_bg }} gambar">{{ n_bg }} <small>gbr</small></b></label>
             <label class="kelas-baris">
               <input type="checkbox" name="x" value="unlab"
                      {% if 'unlab' in tanpa %}checked{% endif %}><span class="cb"></span>
               <i style="background:var(--stop)"></i>
-              <span>{{ tanpa_nama['unlab'] }}</span><b>{{ n_stop }}</b></label>
+              <span>{{ tanpa_nama['unlab'] }}</span>
+              <b title="{{ n_stop }} gambar">{{ n_stop }} <small>gbr</small></b></label>
           </div>
+          {#- DUA angka per kelas, masing-masing dengan satuannya.
+
+              Dulu cuma ada satu, dan itu jumlah OBJEK. Saringannya bekerja per
+              GAMBAR, jadi menu berkata "botol 842" lalu hasilnya "310 gambar"
+              dan tak ada apa pun di layar yang menjelaskan kenapa. Dua baris
+              tepat di atas (Latar, Belum dilabeli) memang hitungan gambar:
+              satu kolom angka, dua satuan, tanpa satuan ditulis.
+
+              Gambar ditaruh DULUAN karena itulah yang berubah saat kelasnya
+              dicentang. -#}
           <div class="kelas-daftar">
+            <span class="kelas-kepala" aria-hidden="true">
+              <span>kelas</span><b>gbr</b><em>objek</em></span>
             {%- for k, n in kelas_hitung.items() %}
-            <label class="kelas-baris">
+            <label class="kelas-baris kelas-baris-2">
               <input type="checkbox" name="c" value="{{ k }}"
                      {% if k in kelas %}checked{% endif %}><span class="cb"></span>
               <i style="background:{{ k | warnakelas(warna_peta) }}"></i>
-              <span>{{ k }}</span><b>{{ n }}</b></label>
+              <span>{{ k }}</span>
+              <b title="{{ kelas_gambar.get(k, 0) }} gambar memuat kelas ini">{{ kelas_gambar.get(k, 0) }}</b>
+              <em title="{{ n }} objek berkelas ini">{{ n }}</em></label>
             {%- else %}
             <span class="menu-catatan">Belum ada kelas terpakai di dataset ini.</span>
             {%- endfor %}
@@ -781,9 +797,13 @@
       dataset, sama seperti "1-38 dari 38" di sebelahnya, jadi keduanya terbaca
       sekali pandang sebagai satu keterangan. Di pojok kiri atas ia justru
       berdiri sendirian sebagai satu baris utuh untuk dua kata. -#}
-  <span class="hal-info">{{ mulai }}&ndash;{{ akhir }} dari <b>{{ n_tampil }}</b>
-    {%- if n_tampil != total %} cocok <em>&middot; dari {{ total }} gambar</em>{% endif %}
-    <span class="hal-objek">&middot; {{ n_obj }} objek</span></span>
+  {#- Satuan ditulis di KEDUA angka. "310" lalu "842" tanpa keterangan membuat
+      orang menyangka saringannya rusak; yang benar "310 gambar, 842 objek". -#}
+  <span class="hal-info">{{ mulai }}&ndash;{{ akhir }} dari
+    <b>{{ n_tampil }} gambar</b>
+    <span class="hal-objek">&middot; {{ n_obj_tampil }} objek</span>
+    {%- if n_tampil != total %} <em>&middot; disaring dari {{ total }} gambar,
+      {{ n_obj }} objek</em>{% endif %}</span>
 
   {%- if n_hal > 1 %}
   {#- Jendela nomor: selalu halaman 1, selalu halaman terakhir, dan tetangga

@@ -174,13 +174,21 @@
                 <i style="background:var(--latar)"></i>
                 <span>Latar (tanpa objek)</span><b>{{ n_latar }}</b></label>
             </div>
+            {#- Dua angka dengan satuannya, sama seperti kisi Dataset. Angka
+                tunggal di sini berarti GAMBAR sementara di kisi berarti OBJEK:
+                kontrol yang terlihat identik menyebut dua hal berbeda, dan satu
+                projek menyebut dua angka untuk kelas yang sama di dua halaman. -#}
             <div class="kelas-daftar">
+              <span class="kelas-kepala" aria-hidden="true">
+                <span>kelas</span><b>gbr</b><em>objek</em></span>
               {%- for k, kn in kelas_hitung.items() %}
-              <label class="kelas-baris">
+              <label class="kelas-baris kelas-baris-2">
                 <input type="checkbox" name="c" value="{{ k }}"{% if k in kelas_aktif %} checked{% endif %}>
                 <span class="cb"></span>
                 <i style="background:{{ k | warnakelas(warna_peta) }}"></i>
-                <span>{{ k }}</span><b>{{ kn }}</b></label>
+                <span>{{ k }}</span>
+                <b title="{{ kn }} gambar memuat kelas ini">{{ kn }}</b>
+                <em title="{{ kelas_objek.get(k, 0) }} objek berkelas ini">{{ kelas_objek.get(k, 0) }}</em></label>
               {%- else %}
               <span class="menu-catatan">Belum ada kelas terpakai di tugas ini.</span>
               {%- endfor %}

@@ -1094,6 +1094,22 @@ input:focus{outline:0;border-color:var(--ok)}
 .kelas-baris{display:flex;align-items:center;gap:9px;padding:7px 8px;margin:0;
   font-size:12.5px;color:var(--ink-dim);cursor:pointer;border-radius:7px;
   transition:background .1s}
+
+/* Dua angka per kelas: jumlah GAMBAR lalu jumlah OBJEK, masing-masing dengan
+   satuannya di baris kepala. Keduanya rata kanan dengan lebar tetap supaya
+   kolomnya benar-benar berbaris dan bisa dibandingkan sekilas; tabular-nums
+   mencegah digit bergeser antar baris. */
+.kelas-baris-2 b, .kelas-baris-2 em, .kelas-kepala b, .kelas-kepala em{
+  min-width:3.2em;text-align:right;font-variant-numeric:tabular-nums;
+  font-style:normal}
+.kelas-baris-2 em{color:var(--ink-dim);font-weight:600}
+.kelas-kepala{display:flex;align-items:center;gap:8px;padding:2px 8px 4px;
+  font-size:10px;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--ink-dim)}
+.kelas-kepala>span:first-child{flex:1}
+/* Satuan pada baris Latar / Belum dilabeli, yang memang hitungan gambar. */
+.kelas-baris b small{font-size:9.5px;font-weight:600;color:var(--ink-dim);
+  margin-left:2px}
 .kelas-baris:hover{background:var(--hover);color:var(--ink)}
 
 /* Kotak centang digambar sendiri: yang bawaan sistem tampil beda-beda di tiap
@@ -1111,8 +1127,14 @@ input:focus{outline:0;border-color:var(--ok)}
 
 .kelas-baris i{width:9px;height:9px;border-radius:3px;flex:0 0 auto}
 .kelas-baris span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Angka saringan memakai --ink-dim, BUKAN --ink-faint.
+
+   Angka itulah yang paling sering dibaca orang di menu saringan, dan dengan
+   --ink-faint (#93a0ae) di atas --sunk (#eef1f5) kontrasnya sekitar 2,4:1 pada
+   tema terang, jauh di bawah 4,5:1 yang disyaratkan WCAG AA, pada ukuran 11px
+   pula. Tema gelap memang sudah lolos; yang diperbaiki di sini tema terang. */
 .kelas-baris b{flex:0 0 auto;font-variant-numeric:tabular-nums;font-size:11px;
-  font-weight:600;color:var(--ink-faint);background:var(--sunk);
+  font-weight:600;color:var(--ink-dim);background:var(--sunk);
   padding:1px 6px;border-radius:99px;min-width:24px;text-align:center}
 .kelas-tanpa .kelas-baris span{font-style:italic}
 
@@ -1122,7 +1144,7 @@ input:focus{outline:0;border-color:var(--ok)}
    elipsis di tengah baris yang sebetulnya masih lapang: "hasil augment…  4". */
 .kelas-baris .kelas-nama{flex:1 1 auto;min-width:0}
 .kelas-baris .kelas-n{flex:0 0 auto;font-variant-numeric:tabular-nums;
-  font-size:11px;font-weight:600;color:var(--ink-faint);background:var(--sunk);
+  font-size:11px;font-weight:600;color:var(--ink-dim);background:var(--sunk);
   padding:1px 6px;border-radius:99px;min-width:24px;text-align:center}
 
 /* Kaki menu bercentang (Tag, Bagian): Terapkan + Bersihkan.

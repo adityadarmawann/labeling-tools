@@ -187,11 +187,27 @@ async def index(request: Request, f: str = "all",
         konteks_kisi.pilih_dataset, seluruh, sess.src,
         settings.uploads_root, dsf)
 
+    # Dua angka per kelas, dan keduanya disebut satuannya di antarmuka.
+    #
+    # Dulu hanya ada satu: jumlah OBJEK. Padahal saringannya bekerja per
+    # GAMBAR, jadi menu berkata "botol 842" lalu hasilnya "310 gambar" dan tak
+    # ada apa pun di layar yang menjelaskan kenapa. Lebih buruk, dua baris
+    # pertama di daftar yang sama (Latar, Belum dilabeli) memang hitungan
+    # gambar: satu kolom angka, dua satuan, tanpa satuan ditulis.
+    #
+    # Pelipatan instance pose dipakai di sini juga, lewat aturan yang sama
+    # dengan halaman Lihat. Tanpa itu projek keypoint mendaftar 33 "kelas"
+    # bernama 01..33 berisi slot titik.
+    _tdata_kelas = await asyncio.to_thread(
+        tugas.baca_projek, sess.src, settings.uploads_root)
+    _skel = str(((_tdata_kelas.get("skeleton") or {}).get("kelas") or "")).strip()
     kelas_hitung: dict[str, int] = {}
+    kelas_gambar: dict[str, int] = {}
     for it in items:
-        for s in it["shapes"]:
-            k = str(s["label"])
-            kelas_hitung[k] = kelas_hitung.get(k, 0) + 1
+        per, _n = scanner.objek_per_kelas(it, _skel)
+        for k, n in per.items():
+            kelas_hitung[k] = kelas_hitung.get(k, 0) + n
+            kelas_gambar[k] = kelas_gambar.get(k, 0) + 1
 
     sev = [scanner.severity(i) for i in items]
 
@@ -312,6 +328,8 @@ async def index(request: Request, f: str = "all",
 
     resp = templates.TemplateResponse(request, "index.html", {
         "boleh_latar": boleh_latar,
+        # Jumlah GAMBAR per kelas, pasangan dari kelas_hitung (objek).
+        "kelas_gambar": kelas_gambar,
         # Lingkup dataset yang sedang berlaku (di / belum / semua), dan
         # apakah projek ini memang tunduk aturan dataset. Folder dataset
         # bersama tidak punya konsep itu, jadi pilihannya tak ditawarkan.
@@ -372,7 +390,13 @@ async def index(request: Request, f: str = "all",
         "n_verif": sum(1 for i in items
                        if scanner.severity(i) != "stop" and not i.get("perlu_dicek")),
         "n_sudah": sum(1 for s in sev if s in ("ok", "warn", "bg")),
-        "n_obj": sum(len(i["shapes"]) for i in items),
+        # Dihitung dengan aturan yang SAMA seperti daftar kelas dan halaman
+        # Lihat: instance pose dilipat jadi satu objek. Dulu ia menjumlah
+        # BENTUK, jadi satu gambar court berisi satu objek dilaporkan 34.
+        "n_obj": sum(kelas_hitung.values()),
+        # Objek pada hasil saringan yang sedang tampil, bukan seluruh dataset.
+        "n_obj_tampil": sum(
+            sum(scanner.objek_per_kelas(i, _skel)[0].values()) for i in tampil),
         # Penugasan: siapa pemilik tiap gambar, dan berapa jatahku. Kosong di
         # projek yang belum pernah dibagi, dan chip-nya pun tidak muncul.
         "tag_hitung": svc_tag.hitung(tdata_tag),
@@ -486,23 +510,7 @@ async def view(request: Request, path: str = "",
     # seperti dulu. Kelas instance jatuh ke skeleton.kelas, lalu "objek", kalau
     # instance-nya kebetulan tak punya kotak (mis. pose berbasis hull).
     skel_kelas = str(((tugas_data.get("skeleton") or {}).get("kelas") or "")).strip()
-    hitung: dict[str, int] = {}
-    instance_kelas: dict = {}
-    n_obj = 0
-    for s in it["shapes"]:
-        gid = s.get("group_id")
-        if gid is None:
-            k = str(s["label"])
-            hitung[k] = hitung.get(k, 0) + 1
-            n_obj += 1
-        elif s.get("type") == "rectangle":
-            instance_kelas[gid] = str(s["label"])
-        else:
-            instance_kelas.setdefault(gid, None)
-    for gid, kelas in instance_kelas.items():
-        k = kelas or skel_kelas or "objek"
-        hitung[k] = hitung.get(k, 0) + 1
-        n_obj += 1
+    hitung, n_obj = scanner.objek_per_kelas(it, skel_kelas)
 
     return templates.TemplateResponse(request, "view.html", {
         "sess": sess, "local": is_local(request), "it": it,

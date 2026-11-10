@@ -438,12 +438,18 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
     with sess.lock:
         items = list(sess.items)
     punya = set(job.get("gambar") or [])
+    # Kelas objek skeleton projek, dipakai melipat instance pose jadi satu
+    # objek alih-alih 33 "kelas" bernama slot titik.
+    skel_kelas = str(((data.get("skeleton") or {}).get("kelas") or "")).strip()
     isi = []
     for it in items:
         k = svc_tag.kunci_gambar(d, it["img"])
         if k not in punya:
             continue
         sev = scanner.severity(it)
+        # Objek per kelas gambar ini, dengan instance pose dilipat. Dihitung
+        # SEKALI lalu dipakai dua kali (daftar kelas + jumlah objek).
+        per_kelas, _ = scanner.objek_per_kelas(it, skel_kelas)
         isi.append({
             "it": it, "kunci": k,
             # Latar TERMASUK sudah dianotasi. Menandai gambar tanpa objek
@@ -456,7 +462,12 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
             # Hasil auto-label yang belum diverifikasi manusia. Dari item scan
             # (gratis, ikut cache) -> badge + tab + hitungan tanpa baca .json lagi.
             "perlu_dicek": (sev != "stop") and bool(it.get("perlu_dicek")),
-            "kelas": sorted({str(s["label"]) for s in it["shapes"]}),
+            # Kelas yang ADA di gambar ini, dan berapa OBJEK tiap kelasnya.
+            # Aturan pelipatan instance pose sama dengan kisi Dataset dan
+            # halaman Lihat (scanner.objek_per_kelas): tanpa itu satu gambar
+            # court berisi satu objek mendaftar 33 "kelas" bernama slot titik.
+            "kelas": sorted(per_kelas),
+            "objek": per_kelas,
             "di_dataset": svc.sudah_dimasukkan(data, k),
         })
     isi.sort(key=lambda x: x["it"]["img"].name)
@@ -479,9 +490,11 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
     # yang menawarkan kelas yang tidak ada isinya selalu memberi nol, dan yang
     # membacanya menyangka jatahnya kosong.
     kelas_hitung: dict[str, int] = {}
+    kelas_objek: dict[str, int] = {}
     for x in isi:
         for k2 in x["kelas"]:
             kelas_hitung[k2] = kelas_hitung.get(k2, 0) + 1
+            kelas_objek[k2] = kelas_objek.get(k2, 0) + x["objek"].get(k2, 0)
 
     # -- saringan, DI SERVER (dulu di job.js) --------------------------------
     saring = (saring_q if saring_q in ("semua", "belum", "sudah", "dicek",
@@ -544,6 +557,8 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
         "n": n_semua, "n_label": n_label, "n_latar": n_latar,
         "n_dataset": n_ds, "n_dicek": n_dicek, "n_verif": n_verif,
         "kelas_hitung": dict(sorted(kelas_hitung.items())),
+        # Pasangan satuannya: kelas_hitung = GAMBAR, kelas_objek = OBJEK.
+        "kelas_objek": kelas_objek,
         # Warna kelas pilihan projek untuk swatch di menu saringan kelas.
         "warna_peta": data.get("kelas_warna") or {},
         "persen": round(n_label * 100 / n_semua) if n_semua else 0,
