@@ -40,6 +40,30 @@
 {%- if val_hal and val_hal > 1 %}&hal={{ val_hal }}{% endif %}
 {%- endmacro %}
 
+{# Konteks LINGKUP untuk tautan ke halaman detail (/label dan /view).
+
+   Kanvas harus menyusuri subset yang SAMA dengan yang dilihat orang di kisi.
+   Tanpa titipan ini, menyaring kisi jadi "Belum diverifikasi" lalu membuka
+   satu gambar membuat panah kiri/kanan menyusuri SELURUH projek: terukur,
+   kisi menampilkan 00, 02, 04 sementara kanvas melompat dari 00 ke 01.
+
+   `per` dan `hal` sengaja TIDAK ikut: keduanya soal tampilan kisi, dan subset
+   navigasi kanvas adalah seluruh hasil saringan, bukan satu halaman. Daftar
+   kuncinya harus tetap sama dengan konteks_kisi.KUNCI_URL di sisi server.
+   Diawali '&' karena selalu menempel sesudah ?path=. #}
+{% macro ctx() -%}
+{%- if flt and flt != 'all' %}&f={{ flt }}{% endif -%}
+{%- for k in kelas %}&c={{ k | urlquote }}{% endfor -%}
+{%- for k in tanpa %}&x={{ k }}{% endfor -%}
+{%- if mode and mode != 'atau' %}&m={{ mode }}{% endif -%}
+{%- if urut and urut != 'nama' %}&s={{ urut }}{% endif -%}
+{%- if cari %}&q={{ cari | urlquote }}{% endif -%}
+{%- for g in tag_pilih %}&tg={{ g | urlquote }}{% endfor -%}
+{%- if batch_pilih %}&bt={{ batch_pilih | urlquote }}{% endif -%}
+{%- for k in split_pilih %}&sp={{ k | urlquote }}{% endfor -%}
+{%- for k in turunan_pilih %}&tu={{ k }}{% endfor -%}
+{%- endmacro %}
+
 {# Medan tersembunyi untuk form kecil di baris saringan. Tiap form hanya
    memiliki SATU kontrol; sisa keadaan halaman harus ikut dititipkan, kalau
    tidak mengurutkan akan membuang saringan kelas dan sebaliknya. `kecuali`
@@ -535,7 +559,7 @@
         <input type="checkbox" class="kp-in" data-path="{{ p }}"
                aria-label="Pilih {{ p.split('/')[-1] }}"></label>
       {%- endif %}
-      <a href="/view?path={{ p }}" aria-label="Lihat {{ p.split('/')[-1] }}"><img loading="lazy" src="/thumb?path={{ p }}&s=320" alt="{{ p.split('/')[-1] }}"></a>
+      <a href="/view?path={{ p }}{{ ctx() }}" aria-label="Lihat {{ p.split('/')[-1] }}"><img loading="lazy" src="/thumb?path={{ p }}&s=320" alt="{{ p.split('/')[-1] }}"></a>
       {#- Lencana keadaan: chip kecil di kiri-bawah gambar (gaya Roboflow),
           menggantikan rel warna di tepi kiri. Titiknya berwarna menurut
           severity; kata-katanya di title & aria agar tetap terbaca pembaca
@@ -599,10 +623,10 @@
           perbaikan, tanpa harus membaca chip kelas di atasnya dulu.
           Yang ditandai latar tetap "Labeli" — tidak ada label untuk disunting
           di sana, dan ke situlah kamu masuk kalau tanda latarnya ternyata salah. -#}
-      <a class="btn pri" href="/label?path={{ p }}"
+      <a class="btn pri" href="/label?path={{ p }}{{ ctx() }}"
          title="{% if it.shapes %}Perbaiki {{ it.shapes | length }} objek yang sudah ada{% else %}Buka kanvas dan mulai melabeli{% endif %}"
          >{{ 'Edit label' if it.shapes else 'Labeli' }}</a>
-      <a class="btn" href="/view?path={{ p }}">Lihat</a>
+      <a class="btn" href="/view?path={{ p }}{{ ctx() }}">Lihat</a>
       {%- if local %}
       {#- Ikon, bukan teks. Empat tombol berteks tidak muat di kartu selebar
           212px, dan "Desktop" adalah yang paling pantas kehilangan labelnya:

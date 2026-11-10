@@ -78,8 +78,17 @@ const el = id => document.getElementById(id);
 const KONTEKS = (() => {
   try {
     const q = new URLSearchParams(location.search), p = new URLSearchParams();
-    for (const k of ['job', 'saring', 'dsf', 'bg']) if (q.get(k)) p.set(k, q.get(k));
-    for (const c of q.getAll('c')) p.append('c', c);
+    // Lingkup JOB (saring/dsf/bg) dan lingkup KISI Dataset (f/s/q/m/bt dan
+    // kawan-kawannya) dua kosakata yang berbeda, dan keduanya harus ikut.
+    // Daftar ini WAJIB sama dengan konteks_kisi.KUNCI_URL di sisi server:
+    // kunci yang tertinggal di sini membuat panah PERTAMA benar lalu panah
+    // kedua diam-diam kembali menyusuri seluruh projek.
+    for (const k of ['job', 'saring', 'dsf', 'bg', 'f', 's', 'q', 'm', 'bt']) {
+      if (q.get(k)) p.set(k, q.get(k));
+    }
+    for (const k of ['c', 'x', 'tg', 'sp', 'tu']) {
+      for (const v of q.getAll(k)) p.append(k, v);
+    }
     const s = p.toString();
     return s ? '&' + s : '';
   } catch (e) { return ''; }

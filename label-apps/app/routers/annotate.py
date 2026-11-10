@@ -23,7 +23,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from ..config import Settings, get_settings
 from ..deps import current_session, current_session_api, is_local, bodi_json
-from ..services import annotations, autolabel, scanner, tugas
+from ..services import (annotations, autolabel, konteks_kisi, scanner, tag,
+                        tugas)
 from ..services.autolabel import TidakAdaObjek
 from ..session import Session
 from ..log import catat
@@ -190,9 +191,35 @@ def _kunci_nav(job, saring, dsf, kelas, latar):
             tuple(sorted(str(k) for k in (kelas or ()))), bool(latar))
 
 
+def _kunci_kisi(p: dict) -> tuple:
+    """Kunci konteks navigasi untuk lingkup KISI Dataset."""
+    return ("kisi", p["f"], p["urut"], p["cari"], p["mode"], p["batch"],
+            tuple(p["kelas"]), tuple(p["tanpa"]), tuple(p["tag"]),
+            tuple(p["split"]), tuple(p["turunan"]))
+
+
+def _subset_kisi(sess: Session, kisi: dict, uploads_root):
+    """Gambar yang BENAR-BENAR tampil di kisi Dataset untuk saringan `kisi`.
+
+    Dua langkahnya sama persis dengan rute kisi: isi dataset dulu
+    (saring_dataset), baru saringan tampilan. Melewatkan langkah pertama
+    membuat panah kanvas keluar dari dataset ke gambar yang di halaman itu
+    memang tidak ada.
+    """
+    with sess.lock:
+        items = list(sess.items)
+    try:
+        dalam, _ = tugas.saring_dataset(items, sess.src, uploads_root)
+        data = tugas.baca_projek(sess.src, uploads_root)
+        tagdata = tag.baca(sess.src)
+    except OSError:
+        return None
+    return konteks_kisi.subset(dalam, sess.src, sess.user, data, tagdata, kisi)
+
+
 def _nav(sess: Session, it: dict, *, job: str = "", saring: str = "semua",
          dsf: str = "semua", kelas=(), latar: bool = False, uploads_root=None,
-         bekukan: bool = False):
+         bekukan: bool = False, kisi: dict | None = None):
     """(prev_it, next_it, posisi, daftar) untuk panah kiri/kanan kanvas.
 
     Kalau `job` diberi, navigasi dibatasi ke subset penugasan itu yang cocok
@@ -245,7 +272,40 @@ def _nav(sess: Session, it: dict, *, job: str = "", saring: str = "semua",
                 next_it = _it(i)
                 posisi = (i, len(nama))
             return prev_it, next_it, posisi, daftar
-    # daftar penuh (tanpa job, atau job tak dikenal)
+    # Lingkup KISI Dataset. Dulu cabang ini tak ada sama sekali: membuka
+    # gambar dari kisi yang sedang disaring membuat panah kiri/kanan menyusuri
+    # SELURUH projek. Terukur: kisi menampilkan 00, 02, 04 sementara kanvas
+    # melompat dari 00 ke 01 -- gambar yang bahkan tidak ada di saringannya.
+    if kisi and sess.src is not None and konteks_kisi.ada_lingkup(kisi):
+        kunci = _kunci_kisi(kisi)
+        beku = sess.nav_beku
+        if bekukan or not beku or beku.get("kunci") != kunci:
+            daftar0 = _subset_kisi(sess, kisi, uploads_root)
+            if daftar0 is not None:
+                sess.nav_beku = beku = {
+                    "kunci": kunci,
+                    "nama": [x["img"].name for x in daftar0],
+                    "paths": [str(x["img"].resolve()) for x in daftar0]}
+            else:
+                sess.nav_beku = beku = None
+        if beku is not None:
+            paths = beku["paths"]
+            daftar = [x for x in (sess.find(q) for q in paths) if x is not None]
+            # Posisi dicari lewat PATH, bukan bisect atas nama: kisi punya
+            # delapan urutan (terbaru dilabeli, objek terbanyak, ...) dan hanya
+            # satu di antaranya urut nama. Pencarian biner atas daftar yang tak
+            # terurut nama memberi tetangga yang salah tanpa suara.
+            posisi_dari = {q: j for j, q in enumerate(paths)}
+            i = posisi_dari.get(str(it["img"].resolve()), -1)
+
+            def _ambil(idx):
+                return sess.find(paths[idx]) if 0 <= idx < len(paths) else None
+
+            if i < 0:                       # tak ada di subset (mis. baru lolos saring)
+                return None, None, (0, len(paths)), daftar
+            return (_ambil(i - 1), _ambil(i + 1), (i + 1, len(paths)), daftar)
+
+    # daftar penuh (tanpa job, tanpa lingkup kisi, atau job tak dikenal)
     with sess.lock:
         items = list(sess.items)
     # Cari lewat IDENTITAS, bukan items.index(it): tiap item memuat bentuk
@@ -295,7 +355,8 @@ async def halaman(request: Request, path: str = "",
     # lalu masuk lagi -> jumlah "1/600" tak menyusut saat melabeli.
     prev_it, next_it, posisi, daftar = _nav(
         sess, it, job=job, saring=saring, dsf=dsf, kelas=c, latar=bool(bg),
-        uploads_root=settings.uploads_root, bekukan=True)
+        uploads_root=settings.uploads_root, bekukan=True,
+        kisi=konteks_kisi.baca(request.query_params))
     # `split` ikut dikirim: pada ekspor Roboflow, nama berkas yang sama bisa
     # muncul di train/valid/test sebagai baris yang tampak kembar, dan tanpa
     # penandanya orang tidak tahu mana yang sedang dibuka.
@@ -375,9 +436,10 @@ async def halaman(request: Request, path: str = "",
 
 
 @router.get("/api/label-data")
-async def label_data(path: str = "", job: str = "", saring: str = "semua",
-                     dsf: str = "semua", c: list[str] = Query(default=[]),
-                     bg: int = 0, sess: Session = Depends(current_session),
+async def label_data(request: Request, path: str = "", job: str = "",
+                     saring: str = "semua", dsf: str = "semua",
+                     c: list[str] = Query(default=[]), bg: int = 0,
+                     sess: Session = Depends(current_session),
                      settings: Settings = Depends(get_settings)):
     """
     Data SATU gambar untuk kanvas — anotasi, tetangga, posisi — sebagai JSON.
@@ -399,7 +461,8 @@ async def label_data(path: str = "", job: str = "", saring: str = "semua",
     mentah = baca_mentah(it["img"].with_suffix(".json"))
     prev_it, next_it, posisi, _ = _nav(
         sess, it, job=job, saring=saring, dsf=dsf, kelas=c, latar=bool(bg),
-        uploads_root=settings.uploads_root)
+        uploads_root=settings.uploads_root,
+        kisi=konteks_kisi.baca(request.query_params))
     tolak = tugas.tolak_tulis(sess.src, sess.user, it["img"]) if sess.src else ""
     return {
         "ok": True,

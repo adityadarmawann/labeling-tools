@@ -11,8 +11,9 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from ..config import Settings, get_settings
 from ..deps import current_session, current_session_api, is_local, require_local
 from ..security import safe_slug
-from ..services import (annotations, anylabeling, projek as svc_projek,
-                        render, scanner, tambah, tugas)
+from ..services import (annotations, anylabeling, konteks_kisi,
+                        projek as svc_projek, render, scanner, tambah,
+                        tugas)
 from ..services.annotations import Menolak
 from ..session import Session
 from ..templating import templates
@@ -23,18 +24,13 @@ router = APIRouter(tags=["review"])
 THUMB_MIN, THUMB_MAX = 32, 2000
 
 
-# Pilihan urutan. Kunci dipakai di URL, nilainya yang tampil di menu.
-URUT = {
-    "nama": "Nama berkas (A→Z)",
-    "nama-turun": "Nama berkas (Z→A)",
-    "label-baru": "Terbaru dilabeli",
-    "label-lama": "Terlama dilabeli",
-    "gambar-baru": "Gambar terbaru ditambahkan",
-    "gambar-lama": "Gambar terlama ditambahkan",
-    "objek-banyak": "Objek terbanyak",
-    "objek-sedikit": "Objek tersedikit",
-}
-URUT_BAWAAN = "nama"
+# Pilihan urutan, keadaan tanpa-kelas, dan aturan saring+urut TINGGAL DI
+# services/konteks_kisi.py. Halaman kanvas harus menyusuri subset yang SAMA
+# dengan yang dilihat orang di kisi, dan dua salinan aturan selalu berakhir
+# berbeda tanpa ada yang mengeluh. Nama lama dipertahankan sebagai alias
+# supaya pemanggil dan uji yang sudah ada tidak perlu diubah.
+URUT = konteks_kisi.URUT
+URUT_BAWAAN = konteks_kisi.URUT_BAWAAN
 
 # Jumlah kartu per halaman. Empat pilihan saja, dan angkanya sengaja bulat:
 # yang dibutuhkan orang bukan angka bebas, melainkan "sedikit dulu" atau
@@ -75,124 +71,11 @@ def simpan_per(response, per_q: int) -> None:
 # sama-sama gambar tanpa objek, tetapi artinya berlawanan: `latar` sudah selesai
 # diperiksa dan sengaja dikosongkan (padanan Mark Null di Roboflow), `unlab`
 # justru pekerjaan yang belum dikerjakan.
-TANPA_KELAS = {
-    "latar": ("Latar (tanpa objek)", "bg"),
-    "unlab": ("Belum dilabeli", "stop"),
-}
+TANPA_KELAS = konteks_kisi.TANPA_KELAS
 
 
-def _urutkan(items: list[dict], urut: str) -> list[dict]:
-    """
-    Urutkan hasil saringan.
-
-    Waktu label dibaca dari disk di sini, bukan diambil dari hasil pindai:
-    orang melabeli beberapa gambar lalu kembali ke grid untuk melihat hasilnya,
-    dan nilai yang dibekukan saat memindai tidak akan berubah sampai dipindai
-    ulang — persis membuat "Terbaru dilabeli" tidak berguna.
-
-    Nama berkas selalu jadi kunci kedua supaya urutannya tetap sama di antara
-    gambar yang nilainya seri; tanpa itu, grid bisa berubah urutan sendiri tiap
-    kali dimuat ulang.
-    """
-    nama = lambda it: it["img"].name.lower()          # noqa: E731
-    if urut == "nama-turun":
-        return sorted(items, key=nama, reverse=True)
-    if urut in ("label-baru", "label-lama"):
-        w = {id(it): scanner.waktu_label(it) for it in items}
-        return sorted(items, key=lambda it: (-w[id(it)], nama(it))) if urut == "label-baru" \
-            else sorted(items, key=lambda it: (w[id(it)], nama(it)))
-    if urut in ("gambar-baru", "gambar-lama"):
-        def mtime(it):
-            try:
-                return it["img"].stat().st_mtime
-            except OSError:
-                return 0.0
-        w = {id(it): mtime(it) for it in items}
-        return sorted(items, key=lambda it: (-w[id(it)], nama(it))) if urut == "gambar-baru" \
-            else sorted(items, key=lambda it: (w[id(it)], nama(it)))
-    if urut == "objek-banyak":
-        return sorted(items, key=lambda it: (-len(it["shapes"]), nama(it)))
-    if urut == "objek-sedikit":
-        return sorted(items, key=lambda it: (len(it["shapes"]), nama(it)))
-    return sorted(items, key=nama)
-
-
-def _filter(items: list[dict], flt: str, kelas, tanpa=(), mode="atau", *,
-            tugasku=frozenset()) -> list[dict]:
-    if flt == "tugasku":
-        # Gambar yang ditugaskan kepadaku. Bukan sekadar kenyamanan: di projek
-        # 10.000 gambar, jatah seseorang bisa 200, dan tanpa saringan ini ia
-        # menggulir sembilan ribu delapan ratus gambar milik orang lain untuk
-        # menemukan pekerjaannya sendiri.
-        items = [i for i in items if id(i) in tugasku]
-    elif flt == "issue":
-        items = [i for i in items if i["issues"] and i["shapes"]]
-    elif flt == "bg":
-        # Gambar yang SENGAJA ditandai tanpa objek — sampel negatif. Ia berbeda
-        # dari "belum dilabeli": yang ini sudah selesai diperiksa, dan porsinya
-        # di dataset menentukan seberapa sering model salah menebak latar
-        # sebagai objek. Tanpa saringan sendiri, ia tidak bisa dihitung maupun
-        # ditinjau ulang.
-        items = [i for i in items if scanner.severity(i) == "bg"]
-    elif flt == "sudah":
-        # Latar IKUT. Menandai gambar tanpa objek adalah keputusan yang sudah
-        # diambil, bukan pekerjaan yang belum dikerjakan — dan ia satu-satunya
-        # isi sampel negatif, yang di sini justru paling perlu dihitung.
-        #
-        # Empat tempat lain sudah menghitungnya begitu sejak awal: kartu
-        # projek, sidebar, papan anotasi, dan halaman tugas. Grid yang
-        # sendirian mengecualikannya membuat satu projek menyebut dua angka
-        # "sudah dikerjakan" yang berbeda di dua halaman.
-        items = [i for i in items if scanner.severity(i) != "stop"]
-    elif flt == "dicek":
-        # Hasil auto-label yang BELUM diperiksa manusia. Sengaja memakai kata
-        # "verifikasi", bukan "perlu dicek": kata itu sudah dipakai halaman ini
-        # sendiri untuk severity "warn" (anotasi yang BENTUKNYA mencurigakan),
-        # dan dua arti yang memakai satu kata membuat orang mengira keduanya
-        # menghitung hal yang sama.
-        items = [i for i in items
-                 if i.get("perlu_dicek") and scanner.severity(i) != "stop"]
-    elif flt == "verif":
-        # Pasangannya: sudah dilabeli DAN sudah dilewati manusia. Tanpa ini,
-        # "Sudah dilabeli" mencampur hasil AI mentah dengan yang benar-benar
-        # selesai diperiksa, dan tak ada angka yang menunjukkan kemajuan
-        # verifikasi.
-        items = [i for i in items
-                 if scanner.severity(i) != "stop" and not i.get("perlu_dicek")]
-    elif flt == "unlab":
-        # severity 'stop', bukan sekadar "tanpa objek": gambar yang sudah
-        # ditandai latar memang tanpa objek tapi sudah selesai diperiksa, dan
-        # angka di chip "Belum dilabeli" juga menghitung 'stop'. Kalau di sini
-        # dipakai "tanpa objek", jumlah di chip tidak sama dengan isi grid.
-        items = [i for i in items if scanner.severity(i) == "stop"]
-    if kelas or tanpa:
-        # Beberapa kelas sekaligus, dengan arti "punya SALAH SATU dari ini" —
-        # sama seperti filter Classes di Roboflow. Arti "punya SEMUANYA" jarang
-        # dibutuhkan dan mudah disalahpahami, jadi tidak dipakai.
-        #
-        # Keadaan tanpa-kelas ikut di dalam pilihan yang SAMA, bukan saringan
-        # terpisah: "botol atau latar" adalah satu pertanyaan, dan memisahkannya
-        # ke dua kotak membuat orang harus menebak apakah keduanya digabung
-        # dengan DAN atau ATAU.
-        pilih = set(kelas)
-        sev_pilih = {TANPA_KELAS[t][1] for t in tanpa if t in TANPA_KELAS}
-
-        def cocok(it):
-            ada = {str(s["label"]) for s in it["shapes"]}
-            sev = scanner.severity(it)
-            if mode == "dan":
-                # SEMUA kelas yang dicentang harus ada pada gambar yang sama.
-                #
-                # Latar dan Belum dilabeli tidak ikut di mode ini, dan tidak
-                # ditawarkan di antarmukanya. Gambar berobjek menurut
-                # definisinya bukan latar, jadi "punya botol DAN latar" selalu
-                # nol — dan menawarkan pilihan yang pasti nol itu sendiri sudah
-                # cacat, betapa pun benarnya angka nol itu.
-                return pilih <= ada
-            return bool(pilih & ada) or sev in sev_pilih
-
-        items = [i for i in items if cocok(i)]
-    return items
+_urutkan = konteks_kisi.urutkan
+_filter = konteks_kisi.saring
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -501,6 +384,11 @@ async def index(request: Request, f: str = "all",
     return resp
 
 
+def svc_tag_baca(src):
+    from ..services import tag as svc_tag
+    return svc_tag.baca(src)
+
+
 @router.get("/view", response_class=HTMLResponse)
 async def view(request: Request, path: str = "",
                sess: Session = Depends(current_session),
@@ -513,8 +401,31 @@ async def view(request: Request, path: str = "",
         return templates.TemplateResponse(
             request, "notfound.html", {"sess": sess},
             status_code=404)
+    # Lingkup saringan kisi ikut dihormati di sini, sama seperti di kanvas.
+    # Dulu halaman ini selalu menyusuri sess.items penuh: alur "saring Belum
+    # diverifikasi -> Lihat -> panah kanan" putus di langkah kedua, mendarat di
+    # gambar yang tidak ada di saringannya, dan "37 dari 204" menyebut posisi
+    # di seluruh dataset alih-alih di 12 hasil yang sedang diperiksa.
+    lingkup = konteks_kisi.baca(request.query_params)
+    # Dua bentuk: '?...' untuk kembali ke kisi, '&...' untuk menempel sesudah
+    # ?path= pada tautan pindah gambar.
+    ctx_kisi = konteks_kisi.ke_query(lingkup, "?")
+    ctx_nav = konteks_kisi.ke_query(lingkup, "&")
+    daftar = None
+    if konteks_kisi.ada_lingkup(lingkup):
+        with sess.lock:
+            semua = list(sess.items)
+        try:
+            dalam, _ = tugas.saring_dataset(semua, sess.src,
+                                            settings.uploads_root)
+            daftar = konteks_kisi.subset(
+                dalam, sess.src, sess.user,
+                tugas.baca_projek(sess.src, settings.uploads_root),
+                svc_tag_baca(sess.src), lingkup)
+        except OSError:
+            daftar = None
     with sess.lock:
-        items = sess.items
+        items = daftar if daftar is not None else sess.items
         # Identitas, BUKAN items.index(it): item memuat bentuk ber-`pts` array
         # numpy, dan list.index (pakai `==`) melempar "truth value of an array
         # is ambiguous". `it` objek yang sama dari sess.items (sess.find). Sama
@@ -569,6 +480,7 @@ async def view(request: Request, path: str = "",
         "sess": sess, "local": is_local(request), "it": it,
         "sev": scanner.severity(it), "prev_it": prev_it, "next_it": next_it,
         "posisi": posisi, "hitung": dict(sorted(hitung.items())), "n_obj": n_obj,
+        "ctx_kisi": ctx_kisi, "ctx_nav": ctx_nav,
         "tag": svc_tag.untuk(tdata, kunci),
         "pelabel": ("" if tugas_data["warisan"]
                     else svc_tugas.pelabel_gambar(tugas_data, kunci)),
