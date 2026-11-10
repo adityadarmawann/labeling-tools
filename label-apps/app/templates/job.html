@@ -68,6 +68,8 @@
     {%- if latar_aktif %}&bg=1{% endif -%}
     {%- set pp = p if p is not none else per -%}
     {%- if pp != per_bawaan %}&per={{ pp }}{% endif -%}
+    {%- if cari %}&q={{ cari | urlquote }}{% endif -%}
+    {%- if urut and urut != 'nama' %}&s={{ urut }}{% endif -%}
     {%- if h and h > 1 %}&hal={{ h }}{% endif -%}
     {%- endmacro -%}
     {#- Konteks untuk tautan "Labeli": bikin panah kiri/kanan kanvas menyusuri
@@ -80,6 +82,12 @@
     {%- if dsf != 'semua' %}&dsf={{ dsf }}{% endif -%}
     {%- for k in kelas_aktif %}&c={{ k | urlquote }}{% endfor -%}
     {%- if latar_aktif %}&bg=1{% endif -%}
+    {#- Cari dan urutan IKUT. Tanpa keduanya, panah kiri/kanan kanvas
+        menyusuri subset yang urutannya berbeda dari yang dilihat orang di
+        kisi, dan "berikutnya" melompat ke gambar yang tidak bertetangga di
+        layar. Persis keluhan yang sudah diperbaiki untuk kisi Dataset. -#}
+    {%- if cari %}&q={{ cari | urlquote }}{% endif -%}
+    {%- if urut and urut != 'nama' %}&s={{ urut }}{% endif -%}
     {%- endmacro -%}
     <section class="jb-utama">
       <div class="jb-baris-saring">
@@ -202,6 +210,40 @@
               <button class="chip aksi" type="submit">Terapkan</button>
             </span>
           </form>
+        </span>
+
+        {#- Cari nama berkas dan pemilih urutan. Halaman INILAH yang bisa berisi
+            11 ribu gambar, dan sampai sekarang ia satu-satunya kisi tanpa
+            keduanya: urutannya dipaku nama naik, dan Ctrl+F peramban cuma
+            mengenai 50 ubin yang sedang tampil. Saringan lain dititipkan
+            sebagai medan tersembunyi supaya mencari tidak membuang tab, kelas,
+            atau status dataset yang sedang berlaku. -#}
+        <form class="jb-cari" method="get" action="/tugas/{{ tid }}">
+          <input type="hidden" name="ds" value="{{ pr.ds }}">
+          {%- if saring != 'semua' %}<input type="hidden" name="saring" value="{{ saring }}">{% endif %}
+          {%- if dsf != 'semua' %}<input type="hidden" name="dsf" value="{{ dsf }}">{% endif %}
+          {%- for k in kelas_aktif %}<input type="hidden" name="c" value="{{ k }}">{% endfor %}
+          {%- if latar_aktif %}<input type="hidden" name="bg" value="1">{% endif %}
+          {%- if urut and urut != 'nama' %}<input type="hidden" name="s" value="{{ urut }}">{% endif %}
+          {%- if per != per_bawaan %}<input type="hidden" name="per" value="{{ per }}">{% endif %}
+          <label class="sr-only" for="jb-cari">Cari nama berkas di tugas ini</label>
+          <input class="chip" id="jb-cari" type="search" name="q" value="{{ cari }}"
+                 placeholder="cari nama berkas… mis. frame-00412"
+                 autocomplete="off" spellcheck="false">
+          <button class="chip" type="submit">Cari</button>
+          {%- if cari %}
+          <a class="chip" href="{{ jt() | replace('&q=' + (cari | urlquote), '') }}"
+             title="Hapus pencarian">&times;</a>
+          {%- endif %}
+        </form>
+
+        <span class="saring-urut jb-urut">
+          <label class="halus" for="jb-urut">Urut</label>
+          <select class="chip" id="jb-urut" name="s" data-jb-urut>
+            {%- for nilai, nama in urut_pilihan.items() %}
+            <option value="{{ nilai }}"{% if urut == nilai %} selected{% endif %}>{{ nama }}</option>
+            {%- endfor %}
+          </select>
         </span>
       </div>
 

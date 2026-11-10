@@ -21,6 +21,7 @@ from ..deps import current_session, current_session_api, bodi_json
 from ..services import tag as svc_tag
 from ..services import projek as svc_projek
 from ..services import tugas as svc
+from ..services import konteks_kisi
 from ..services import surel
 from ..session import Session
 from ..templating import templates
@@ -392,6 +393,12 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
                       per_q: int = Query(0, alias="per"),
                       hal_q: int = Query(1, alias="hal"),
                       dari_q: int = Query(0, alias="dari"),
+                      # Cari nama berkas dan urutan. Halaman INILAH yang bisa
+                      # berisi 11 ribu gambar, dan sampai sekarang ia satu-
+                      # satunya kisi tanpa keduanya: urutannya dipaku nama naik
+                      # dan Ctrl+F peramban cuma mengenai 50 ubin yang tampil.
+                      cari_q: str = Query("", alias="q"),
+                      urut_q: str = Query("nama", alias="s"),
                       sess: Session = Depends(current_session),
                       settings: Settings = Depends(get_settings)):
     """
@@ -538,6 +545,23 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
                   if (latar_pilih and x["latar"])
                   or (kpset & set(x["kelas"]))]
 
+    # Cari nama berkas. Dipasang SESUDAH saringan lain, sama seperti di kisi
+    # Dataset, supaya "cari" selalu berarti "di antara yang sedang tampil".
+    cari = (cari_q or "").strip()
+    if cari:
+        pola = cari.lower()
+        tampil = [x for x in tampil if pola in x["it"]["img"].name.lower()]
+
+    # Urutan. Memakai daftar dan fungsi yang SAMA dengan kisi Dataset, bukan
+    # daftar kedua: dua daftar urutan pasti berbeda suatu saat, dan halaman
+    # yang menawarkan "Objek terbanyak" lalu mengurutkan nama adalah bug yang
+    # tak menyalakan alarm apa pun.
+    urut = urut_q if urut_q in konteks_kisi.URUT else konteks_kisi.URUT_BAWAAN
+    if urut != konteks_kisi.URUT_BAWAAN:
+        pos = {id(it): i for i, it in
+               enumerate(konteks_kisi.urutkan([x["it"] for x in tampil], urut))}
+        tampil.sort(key=lambda x: pos.get(id(x["it"]), 0))
+
     # -- paginasi, pola sama persis dengan grid Dataset ----------------------
     per = per_efektif(per_q, request)
     n_tampil = len(tampil)
@@ -552,6 +576,7 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
         x["meta"] = scanner.meta_simpan(x["it"])
 
     resp = templates.TemplateResponse(request, "job.html", {
+        "cari": cari, "urut": urut, "urut_pilihan": konteks_kisi.URUT,
         "sess": sess, "pr": pr, "aktif": "anotasi", "aku": sess.user,
         "tid": tid, "job": job, "isi": halaman,
         "n": n_semua, "n_label": n_label, "n_latar": n_latar,

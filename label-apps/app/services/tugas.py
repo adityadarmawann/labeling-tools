@@ -639,6 +639,7 @@ def masukkan(ds: Path, kunci_daftar: list[str], pemilik: str = "") -> dict:
 
 def gambar_konteks_job(items: list[dict], data: dict, ds: Path, tid: str, *,
                        saring: str = "semua", dsf: str = "semua",
+                       cari: str = "", urut: str = "nama",
                        kelas=(), latar: bool = False) -> list[dict] | None:
     """Item gambar TERURUT (nama) untuk satu konteks job + filter — sama persis
     dengan yang ditampilkan halaman rincian job (routers/tugas.halaman_rincian).
@@ -689,8 +690,16 @@ def gambar_konteks_job(items: list[dict], data: dict, ds: Path, tid: str, *,
             if not ((latar and sev == "bg") or (kpset & kls)):
                 continue
         keluar.append(it)
-    keluar.sort(key=lambda x: x["img"].name)
-    return keluar
+    # Cari nama berkas dan urutan, aturan yang SAMA dengan rute job. Tanpa
+    # keduanya, panah kiri/kanan kanvas menyusuri subset yang urutannya berbeda
+    # dari yang dilihat orang di kisi: "berikutnya" melompat ke gambar yang
+    # tidak bertetangga di layar.
+    if cari:
+        pola = cari.lower()
+        keluar = [x for x in keluar if pola in x["img"].name.lower()]
+    from . import konteks_kisi
+    return konteks_kisi.urutkan(keluar, urut if urut in konteks_kisi.URUT
+                                else konteks_kisi.URUT_BAWAAN)
 
 
 def gambar_belum_batch(items: list, ds: Path, batch: str) -> list:

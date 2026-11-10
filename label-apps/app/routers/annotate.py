@@ -185,10 +185,16 @@ def bentuk_untuk_kanvas(it: dict, mentah: dict) -> list[dict]:
     return out
 
 
-def _kunci_nav(job, saring, dsf, kelas, latar):
-    """Kunci konteks navigasi: job + semua filter yang membentuk subsetnya."""
+def _kunci_nav(job, saring, dsf, kelas, latar, cari="", urut="nama"):
+    """Kunci konteks navigasi: job + semua filter yang membentuk subsetnya.
+
+    Cari dan urutan IKUT. Tanpa keduanya, mengubah urutan di kisi job tidak
+    membatalkan snapshot beku, jadi panah kiri/kanan terus menyusuri urutan
+    yang lama sementara layar sudah menunjukkan urutan baru.
+    """
     return (job or "", saring, dsf,
-            tuple(sorted(str(k) for k in (kelas or ()))), bool(latar))
+            tuple(sorted(str(k) for k in (kelas or ()))), bool(latar),
+            str(cari or ""), str(urut or "nama"))
 
 
 def _kunci_kisi(p: dict) -> tuple:
@@ -220,7 +226,8 @@ def _subset_kisi(sess: Session, kisi: dict, uploads_root):
 
 def _nav(sess: Session, it: dict, *, job: str = "", saring: str = "semua",
          dsf: str = "semua", kelas=(), latar: bool = False, uploads_root=None,
-         bekukan: bool = False, kisi: dict | None = None):
+         bekukan: bool = False, kisi: dict | None = None,
+         cari: str = "", urut: str = "nama"):
     """(prev_it, next_it, posisi, daftar) untuk panah kiri/kanan kanvas.
 
     Kalau `job` diberi, navigasi dibatasi ke subset penugasan itu yang cocok
@@ -233,7 +240,7 @@ def _nav(sess: Session, it: dict, *, job: str = "", saring: str = "semua",
     (kanvas dibuka dari grid Dataset / /view). `daftar` juga mengisi panel Files.
     """
     if job and sess.src is not None:
-        kunci = _kunci_nav(job, saring, dsf, kelas, latar)
+        kunci = _kunci_nav(job, saring, dsf, kelas, latar, cari, urut)
         beku = sess.nav_beku
         if bekukan or not beku or beku.get("kunci") != kunci:
             with sess.lock:
@@ -242,7 +249,7 @@ def _nav(sess: Session, it: dict, *, job: str = "", saring: str = "semua",
                 data = tugas.baca_projek(sess.src, uploads_root)
                 daftar0 = tugas.gambar_konteks_job(
                     items, data, sess.src, job, saring=saring, dsf=dsf,
-                    kelas=list(kelas), latar=latar)
+                    kelas=list(kelas), latar=latar, cari=cari, urut=urut)
             except OSError:
                 daftar0 = None
             if daftar0 is not None:
@@ -256,11 +263,21 @@ def _nav(sess: Session, it: dict, *, job: str = "", saring: str = "semua",
         if beku is not None:
             nama, paths = beku["nama"], beku["paths"]
             daftar = [x for x in (sess.find(p) for p in paths) if x is not None]
-            # Posisi lewat nama (snapshot terurut nama). Gambar yang sedang
-            # dibuka TETAP di snapshot walau sudah dilabeli -> maju/mundur stabil
-            # dan jumlah tetap.
-            i = bisect.bisect_left(nama, it["img"].name)
-            ada = i < len(nama) and nama[i] == it["img"].name
+            # Posisi lewat PETA path, bukan pencarian biner atas nama. Kisi job
+            # kini punya delapan urutan dan hanya satu di antaranya urut nama;
+            # pencarian biner atas daftar yang tak terurut nama memberi
+            # tetangga yang salah tanpa suara. Gambar yang sedang dibuka TETAP
+            # di snapshot walau sudah dilabeli, jadi maju/mundur tetap stabil
+            # dan jumlahnya tak menyusut.
+            _pos = beku.get("pos")
+            if _pos is None:
+                _pos = beku["pos"] = {q: j for j, q in enumerate(paths)}
+            i = _pos.get(str(it["img"].resolve()), -1)
+            ada = i >= 0
+            if not ada:
+                # Tak ada di snapshot (mis. dibuka dari luar subset): sisipkan
+                # pada posisi urut nama supaya panahnya tetap masuk akal.
+                i = bisect.bisect_left(nama, it["img"].name)
 
             def _it(idx):
                 return sess.find(paths[idx]) if 0 <= idx < len(paths) else None
@@ -324,6 +341,7 @@ def _nav(sess: Session, it: dict, *, job: str = "", saring: str = "semua",
 async def halaman(request: Request, path: str = "",
                   job: str = "", saring: str = "semua", dsf: str = "semua",
                   c: list[str] = Query(default=[]), bg: int = 0,
+                  q: str = "", s: str = "nama",
                   sess: Session = Depends(current_session),
                   settings: Settings = Depends(get_settings)):
     # Isi projek dipindai sekali lalu dipakai dari ingatan sesi. Di halaman ini
@@ -357,7 +375,7 @@ async def halaman(request: Request, path: str = "",
     prev_it, next_it, posisi, daftar = _nav(
         sess, it, job=job, saring=saring, dsf=dsf, kelas=c, latar=bool(bg),
         uploads_root=settings.uploads_root, bekukan=True,
-        kisi=konteks_kisi.baca(request.query_params))
+        cari=q, urut=s, kisi=konteks_kisi.baca(request.query_params))
     # `split` ikut dikirim: pada ekspor Roboflow, nama berkas yang sama bisa
     # muncul di train/valid/test sebagai baris yang tampak kembar, dan tanpa
     # penandanya orang tidak tahu mana yang sedang dibuka.
@@ -440,6 +458,7 @@ async def halaman(request: Request, path: str = "",
 async def label_data(request: Request, path: str = "", job: str = "",
                      saring: str = "semua", dsf: str = "semua",
                      c: list[str] = Query(default=[]), bg: int = 0,
+                     q: str = "", s: str = "nama",
                      sess: Session = Depends(current_session),
                      settings: Settings = Depends(get_settings)):
     """
@@ -462,7 +481,7 @@ async def label_data(request: Request, path: str = "", job: str = "",
     mentah = baca_mentah(it["img"].with_suffix(".json"))
     prev_it, next_it, posisi, _ = _nav(
         sess, it, job=job, saring=saring, dsf=dsf, kelas=c, latar=bool(bg),
-        uploads_root=settings.uploads_root,
+        uploads_root=settings.uploads_root, cari=q, urut=s,
         kisi=konteks_kisi.baca(request.query_params))
     tolak = tugas.tolak_tulis(sess.src, sess.user, it["img"]) if sess.src else ""
     return {

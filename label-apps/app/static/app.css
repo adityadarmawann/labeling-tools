@@ -2554,7 +2554,13 @@ button.an-mulai.an-autolabel{background:none;border:0;cursor:pointer;
 /* HP: baris tahap jadi satu baris penuh yang digulir mendatar, supaya tombol
    tahap tak berdesakan dengan saringan kelas dan tetap terbaca utuh. */
 @media (max-width:560px){
-  .seg.jb-tab{flex:1 1 100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  /* Cari nama berkas + pemilih urutan di halaman job. Ikut membungkus ke baris
+   berikutnya seperti kontrol saringan lain di baris yang sama. */
+.jb-cari{display:inline-flex;align-items:center;gap:6px}
+.jb-cari input[type=search]{min-width:15rem;max-width:100%}
+.jb-urut{display:inline-flex;align-items:center;gap:6px}
+@media (max-width:820px){.jb-cari input[type=search]{min-width:9rem}}
+.seg.jb-tab{flex:1 1 100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
 }
 /* Angka di kontrol tersegmen menempel ke katanya: "Semua50". Diberi jarak di
    sini, bukan spasi di templat, supaya tidak ada spasi yang ikut tersalin saat

@@ -225,3 +225,18 @@
   $('jb-hapus').onclick = hapus;
   perbarui();
 })();
+
+/* Pemilih urutan: ganti pilihan langsung memuat ulang dengan `s` baru, sambil
+   mempertahankan seluruh saringan yang sedang berlaku. Dibangun dari URL
+   halaman ini sendiri, bukan dari daftar kunci kedua yang bisa tertinggal. */
+(function () {
+  const sel = document.querySelector('[data-jb-urut]');
+  if (!sel) return;
+  sel.addEventListener('change', () => {
+    const u = new URL(location.href);
+    if (sel.value && sel.value !== 'nama') u.searchParams.set('s', sel.value);
+    else u.searchParams.delete('s');
+    u.searchParams.delete('hal');      // urutan baru -> mulai dari halaman 1
+    location.href = u.toString();
+  });
+})();
