@@ -151,7 +151,10 @@
             dititipkan supaya memilih kelas tidak mengembalikan tab atau jumlah
             per halaman ke bawaannya. -#}
         <span class="menu menu-kiri" id="jb-menu-kelas">
-          <button class="chip kelas-tombol{% if kelas_aktif or latar_aktif %} chip-on{% endif %}"
+          {#- `data-on`, bukan kelas `chip-on`: kelas itu tidak pernah ada di CSS mana
+                  pun, jadi tombolnya tampil persis sama saat saringan kelas aktif maupun
+                  tidak. Konvensi aplikasi ini memang [data-on]. -#}
+          <button class="chip kelas-tombol"{% if kelas_aktif or latar_aktif %} data-on{% endif %}
                   type="button" id="jb-kelas-tombol"
                   aria-haspopup="true" aria-expanded="false">
             {%- set n_kel = kelas_aktif | length + (1 if latar_aktif else 0) -%}
@@ -288,8 +291,21 @@
       </div>
       <div class="pkosong" id="jb-kosong"{% if isi %} hidden{% endif %}>
         <b>Tidak ada yang cocok</b>
-        Tidak ada gambar pada saringan ini.
-      </div>
+    {#- Menyebut saringan PENYEBABNYA, bukan "saringan ini". Pola yang sama
+        sudah dipakai kisi Dataset; di sinilah orang paling butuh tahu kenapa
+        layarnya kosong, karena bilah tabnya ada jauh di atas. -#}
+    {%- set jb_aktif = [] %}
+    {%- if saring != 'semua' %}{% set _ = jb_aktif.append(
+          {'belum': 'Perlu dilabeli', 'sudah': 'Sudah dilabeli',
+           'dicek': 'Belum diverifikasi', 'verif': 'Terverifikasi'}[saring]) %}{% endif %}
+    {%- if dsf != 'semua' %}{% set _ = jb_aktif.append(
+          'Di dataset' if dsf == 'di' else 'Belum di dataset') %}{% endif %}
+    {%- if kelas_aktif %}{% set _ = jb_aktif.append('kelas ' + (kelas_aktif | join(', '))) %}{% endif %}
+    {%- if latar_aktif %}{% set _ = jb_aktif.append('latar') %}{% endif %}
+    {% if jb_aktif %}Saringan yang berlaku: <b>{{ jb_aktif | join(' &middot; ') }}</b>.
+    <a class="chip" href="{{ jt(s='semua', dd='semua') }}#jb-kisi">&times; Bersihkan</a>
+    {% else %}Tidak ada gambar pada saringan ini.{% endif %}
+  </div>
 
       {#- Bar paginasi, pola sama persis dengan grid Dataset. "1–50 dari 86"
           selalu tampil, juga saat cuma satu halaman: kalimat itulah yang

@@ -875,6 +875,18 @@ input:focus{outline:0;border-color:var(--ok)}
    membuka tiga dropdown satu per satu. --aksi, bukan --stop: membatalkan
    saringan bukan tindakan berbahaya. */
 .saring-bersih{margin-left:auto;color:var(--aksi);border-color:var(--aksi)}
+
+/* Pil saringan aktif, satu per saringan, masing-masing bisa dibuang sendiri.
+   Dibedakan dari .saring-bersih: yang ini menyebut ISI saringannya dan hanya
+   membuang satu, sementara yang itu mengosongkan semuanya. */
+.saring-pil{display:inline-flex;align-items:center;gap:6px;
+  background:var(--sunk);border-color:var(--garis);color:var(--ink)}
+.saring-pil span[aria-hidden]{color:var(--ink-dim);font-size:14px;line-height:1}
+.saring-pil:hover{border-color:var(--ink-dim)}
+.saring-pil:hover span[aria-hidden]{color:var(--ink)}
+/* Sesudah deretan pil, 'Bersihkan semua' harus menempel di ujung deretan,
+   bukan terlempar ke kanan oleh margin-left:auto miliknya sendiri. */
+.saring-pil + .saring-bersih{margin-left:0}
 .saring-bersih:hover{background:var(--ok-lembut);color:var(--aksi);
   border-color:var(--aksi)}
 

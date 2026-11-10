@@ -9,7 +9,7 @@
 {#- Satu kalimat vonis per keadaan. severity() sudah dikirim router; yang
     kurang cuma penerjemahannya ke bahasa manusia. -#}
 {%- set vonis = {'ok':   'Anotasi terlihat wajar',
-                 'warn': 'Perlu diperiksa',
+                 'warn': 'Perlu dicek',
                  'stop': 'Belum dilabeli',
                  'bg':   'Ditandai latar, sengaja tanpa objek'} -%}
 {#- SATU baris toolbar (dulu dua baris besar yang memakan tempat). Prinsip:
@@ -132,7 +132,7 @@
       </ul>
       <p class="lh-sepi">Warna petak sama dengan warna anotasinya di gambar.</p>
       {%- else %}
-      <p class="lh-sepi">&mdash; tidak ada objek di gambar ini</p>
+      <p class="lh-sepi">Tidak ada objek di gambar ini.</p>
       {%- endif %}
     </section>
 

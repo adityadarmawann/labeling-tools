@@ -101,7 +101,7 @@
 
 {% set panduan_isi = "_panduan_grid.html" %}
 {% set panduan_judul = "Panduan halaman Dataset" %}
-{% set panduan_cari = "cari… mis. latar, perlu dicek, tag" %}
+{% set panduan_cari = "cari… mis. latar, belum diverifikasi, tag" %}
 {# Istilahnya kata, bukan tombol — kolomnya perlu bentuk yang lain. #}
 {% set panduan_kata = true %}
 {# Halaman ini punya dialog panduan -> tampilkan "Panduan" di menu akun. #}
@@ -268,9 +268,16 @@
         {%- endif %} <i class="kd-caret" aria-hidden="true">▾</i></button>
       <span class="menu-isi" id="kelas-isi">
         <form method="get" action="/">
-          <input type="hidden" name="f" value="{{ flt }}">
-          {% if urut and urut != 'nama' %}<input type="hidden" name="s" value="{{ urut }}">{% endif %}
-          {% if cari %}<input type="hidden" name="q" value="{{ cari }}">{% endif %}
+          {#- 'c', 'x', dan 'm' dibuang karena form inilah yang menuliskannya.
+              Dulu di sini ditulis tiga medan tersembunyi sendiri (f, s, q) dan
+              sisanya TIDAK dititipkan sama sekali: menekan "Terapkan" pada
+              saringan kelas diam-diam membuang tag, unggahan, split, asal
+              gambar, dan jumlah per halaman. Kisinya MELEBAR tepat ketika orang
+              baru saja menambah satu saringan. Lebih buruk lagi, tombol
+              "Bersihkan" tepat di sebelahnya memakai tautan() yang memang
+              mempertahankan semuanya -- dua tombol bersebelahan, dua perilaku
+              berlawanan. -#}
+          {{ titipan('cxm') }}
           {# Kata kerjanya ditaruh di JUDUL, bukan di dalam segmen. Sebagai dua
              kata berdiri sendiri, "Semuanya" terbaca ambigu — bisa disangka
              "tampilkan semua gambar". Dengan judulnya, ketiga bagian ini
@@ -491,19 +498,43 @@
         membuka tiga dropdown satu per satu untuk mengosongkannya. Urutan dan
         jumlah per halaman TIDAK ikut dibatalkan: keduanya preferensi tampilan,
         bukan saringan. -#}
+    {#- Tiap saringan aktif jadi PIL-nya sendiri yang bisa dibuang satu per
+        satu. Dulu semuanya dipadatkan ke satu tombol "Bersihkan saringan 3"
+        dengan rinciannya hanya di `title`: di layar sentuh rincian itu tak
+        terjangkau sama sekali, dan membuang SATU saringan dari tiga menuntut
+        membuka dropdown yang benar lalu mencari tombol bersihkan di dalamnya.
+        Daftarnya sudah dihitung di sini sejak dulu; yang berubah cuma tempat
+        menggambarnya. -#}
     {%- set saring_aktif = [] %}
-    {%- if flt != 'all' %}{% set _ = saring_aktif.append(
-          keadaan | selectattr('0', 'equalto', flt) | map(attribute='1') | first) %}{% endif %}
-    {%- if pilihan_nama %}{% set _ = saring_aktif.append(pilihan_nama | join(', ')) %}{% endif %}
-    {%- if tag_pilih %}{% set _ = saring_aktif.append('tag ' + (tag_pilih | join(', '))) %}{% endif %}
-    {%- if batch_pilih %}{% set _ = saring_aktif.append('unggahan ' + batch_pilih) %}{% endif %}
-    {%- if split_pilih %}{% set _ = saring_aktif.append('bagian ' + (split_pilih | join(', '))) %}{% endif %}
-    {%- if turunan_pilih %}{% set _ = saring_aktif.append('asal ' + (turunan_pilih | join(', '))) %}{% endif %}
-    {%- if cari %}{% set _ = saring_aktif.append('cari "' + cari + '"') %}{% endif %}
-    {%- if saring_aktif %}
-    <a class="chip saring-bersih" title="{{ saring_aktif | join(' · ') }}"
-       href="{{ tautan(val_f='all', val_c=[], val_x=[], val_m='atau', val_q='', val_tg=[], val_bt='', val_sp=[], val_tu=[]) }}"
-       >&times; Bersihkan saringan <b>{{ saring_aktif | length }}</b></a>
+    {%- if flt != 'all' %}{% set _ = saring_aktif.append((
+          keadaan | selectattr('0', 'equalto', flt) | map(attribute='1') | first,
+          tautan(val_f='all'))) %}{% endif %}
+    {%- if dsf and dsf != 'di' %}{% set _ = saring_aktif.append((
+          ('belum masuk dataset' if dsf == 'belum' else 'termasuk di luar dataset'),
+          tautan(val_dsf='di'))) %}{% endif %}
+    {%- if pilihan_nama %}{% set _ = saring_aktif.append((
+          pilihan_nama | join(', '),
+          tautan(val_c=[], val_x=[], val_m='atau'))) %}{% endif %}
+    {%- if tag_pilih %}{% set _ = saring_aktif.append((
+          'tag ' + (tag_pilih | join(', ')), tautan(val_tg=[]))) %}{% endif %}
+    {%- if batch_pilih %}{% set _ = saring_aktif.append((
+          'unggahan ' + batch_pilih, tautan(val_bt=''))) %}{% endif %}
+    {%- if split_pilih %}{% set _ = saring_aktif.append((
+          'bagian ' + (split_pilih | join(', ')), tautan(val_sp=[]))) %}{% endif %}
+    {%- if turunan_pilih %}{% set _ = saring_aktif.append((
+          'asal ' + (turunan_pilih | join(', ')), tautan(val_tu=[]))) %}{% endif %}
+    {%- if cari %}{% set _ = saring_aktif.append((
+          'cari "' + cari + '"', tautan(val_q=''))) %}{% endif %}
+    {%- set saring_nama = saring_aktif | map(attribute=0) | list %}
+    {%- for nama, buang in saring_aktif %}
+    <a class="chip saring-pil" href="{{ buang }}"
+       title="Buang saringan ini: {{ nama }}">{{ nama }} <span aria-hidden="true">&times;</span>
+       <span class="sr-only">buang saringan</span></a>
+    {%- endfor %}
+    {%- if saring_aktif | length > 1 %}
+    <a class="chip saring-bersih" title="{{ saring_nama | join(' · ') }}"
+       href="{{ tautan(val_f='all', val_dsf='di', val_c=[], val_x=[], val_m='atau', val_q='', val_tg=[], val_bt='', val_sp=[], val_tu=[]) }}"
+       >&times; Bersihkan semua <b>{{ saring_aktif | length }}</b></a>
     {%- endif %}
 
     {#- Tindakan atas dataset, didorong ke ujung KANAN baris yang sama.
@@ -691,7 +722,7 @@
         halaman dan yang terlihat sekarang cuma kotak ini. -#}
     {%- if saring_aktif %}
     <p class="empty-saring">Saringan yang berlaku:
-      <b>{{ saring_aktif | join(' · ') }}</b></p>
+      <b>{{ saring_nama | join(' · ') }}</b></p>
     <p><a class="chip saring-bersih"
           href="{{ tautan(val_f='all', val_c=[], val_x=[], val_m='atau', val_q='', val_tg=[], val_bt='', val_sp=[], val_tu=[]) }}"
           >&times; Bersihkan saringan</a></p>

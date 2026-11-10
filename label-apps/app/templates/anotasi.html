@@ -90,7 +90,12 @@
     </select>
     <span class="halus" id="an-jenis-pesan">
       {%- if jenis_efektif == "poligon" -%}
-      Kotak, titik, dan garis akan ditandai perlu dicek, lalu dikembalikan ke
+      {#- Tidak menyebut "perlu dicek": tanda itu HANYA ditulis auto-label,
+          dan buatversi tak pernah menulisnya sama sekali. Teks lama
+          menjanjikan keadaan yang tidak pernah ada dan tak bisa dicari dengan
+          saringan mana pun. Yang benar-benar terjadi: gambarnya dikembalikan
+          ke kolom Anotasi saat versi dibuat. -#}
+      Kotak, titik, dan garis tidak dipakai, dan gambarnya dikembalikan ke
       sini saat versi dibuat.
       {%- else -%}
       Poligon diturunkan jadi kotak pembungkusnya saat versi dibuat. Tidak ada
@@ -459,7 +464,7 @@
     <div class="op-dlg-atas">
       <h3 id="az-judul">Auto-label</h3>
       <p class="halus">Pilih satu atau beberapa sumber. Hasilnya DIGABUNG dan
-        ditandai "perlu dicek"; di mana satu sumber lemah, yang lain menutup.
+        ditandai "belum diverifikasi"; di mana satu sumber lemah, yang lain menutup.
         Gambar yang sudah dilabeli atau ditandai latar tidak disentuh.</p>
 
       <div class="az-sumber">

@@ -76,6 +76,10 @@ TANPA_KELAS = konteks_kisi.TANPA_KELAS
 
 _urutkan = konteks_kisi.urutkan
 _filter = konteks_kisi.saring
+# Nilai `f` yang sah. Dipakai menjepit masukan URL; padanannya di halaman job
+# (routers/tugas.py) sudah memakai daftar putih sejak dulu.
+KEADAAN_SAH = ("all", "tugasku", "issue", "bg", "sudah", "unlab", "dicek",
+               "verif")
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -171,6 +175,12 @@ async def index(request: Request, f: str = "all",
     # job. Bawaannya tetap "di" (hanya isi dataset). Tanpa pilihan ini, gambar
     # yang sudah dianotasi tetapi belum dinyatakan masuk -- persis keadaan
     # hasil auto-label sebatch -- tidak punya permukaan sama sekali.
+    # Keadaan yang TIDAK dikenal dijepit ke "all". Dulu ?f=ngawur jatuh ke
+    # cabang terakhir _filter dan mengembalikan semuanya, tetapi templat tetap
+    # menganggapnya saringan aktif: tombolnya menyala hitam berisi caret saja,
+    # dan chip "Bersihkan saringan 1" menyebut nama kosong.
+    if f not in KEADAAN_SAH:
+        f = "all"
     dsf = str(request.query_params.get("dsf") or "di")
     dsf = dsf if dsf in ("di", "belum", "semua") else "di"
     items, hitung_ds = await asyncio.to_thread(

@@ -16,14 +16,14 @@
   <div class="vh-kepala">
     <div>
       <a class="vh-balik" href="/versi">&larr; Versi</a>
-      <h2 class="vh-judul">Hasil augmentasi &mdash; versi {{ nomor }}</h2>
+      <h2 class="vh-judul">Hasil augmentasi versi {{ nomor }}</h2>
     </div>
     <div class="vh-ringkas">
-      <span class="vh-pil">Total <b>{{ "{:,}".format(idx.total) }}</b></span>
-      <span class="vh-pil vh-pil-train">train <b>{{ "{:,}".format(idx.jumlah_split.train) }}</b></span>
-      <span class="vh-pil vh-pil-valid">valid <b>{{ "{:,}".format(idx.jumlah_split.valid) }}</b></span>
-      <span class="vh-pil vh-pil-test">test <b>{{ "{:,}".format(idx.jumlah_split.test) }}</b></span>
-      <span class="vh-pil vh-pil-neg">negatif <b>{{ "{:,}".format(idx.negatif) }}</b></span>
+      <span class="vh-pil">Total <b>{{ "{:,}".format(idx.total).replace(",", ".") }}</b></span>
+      <span class="vh-pil vh-pil-train">train <b>{{ "{:,}".format(idx.jumlah_split.train).replace(",", ".") }}</b></span>
+      <span class="vh-pil vh-pil-valid">valid <b>{{ "{:,}".format(idx.jumlah_split.valid).replace(",", ".") }}</b></span>
+      <span class="vh-pil vh-pil-test">test <b>{{ "{:,}".format(idx.jumlah_split.test).replace(",", ".") }}</b></span>
+      <span class="vh-pil vh-pil-neg">negatif <b>{{ "{:,}".format(idx.negatif).replace(",", ".") }}</b></span>
     </div>
   </div>
 
@@ -31,7 +31,10 @@
       Semua filter dikerjakan di server (paginasi aman untuk puluhan ribu gambar). -#}
   <form class="vh-filter" method="get" action="/versi/hasil" id="vh-form">
     <input type="hidden" name="nomor" value="{{ nomor }}">
-    <input type="hidden" name="per" value="{{ per }}">
+    {#- Dulu `per` cuma medan tersembunyi, padahal JS di bawah mencari
+        #vh-per yang tak pernah ada: versi berisi puluhan ribu gambar terkunci
+        di 120 per halaman dan hanya bisa diubah dengan menyunting URL. -#}
+    <input type="hidden" name="hal" value="1">
 
     <div class="vh-fgrup">
       <span class="vh-flabel">Split</span>
@@ -70,6 +73,15 @@
       </label>
     </div>
 
+    <div class="vh-fgrup">
+      <label class="vh-flabel" for="vh-per">Per halaman</label>
+      <select class="chip" id="vh-per" name="per">
+        {%- for n in [60, 120, 240, 480] %}
+        <option value="{{ n }}"{% if per == n %} selected{% endif %}>{{ n }}</option>
+        {%- endfor %}
+      </select>
+    </div>
+
     {% if sp_set or c_set or neg_dipilih %}
     <a class="vh-bersih" href="/versi/hasil?nomor={{ nomor }}&per={{ per }}">Bersihkan</a>
     {% endif %}
@@ -78,7 +90,7 @@
   {#- Hasil filter + posisi paginasi -#}
   <div class="vh-sub">
     Menampilkan <b>{{ mulai + 1 if n else 0 }}&ndash;{{ mulai + items|length }}</b>
-    dari <b>{{ "{:,}".format(n) }}</b> gambar
+    dari <b>{{ "{:,}".format(n).replace(",", ".") }}</b> gambar
     &middot; halaman {{ hal }} / {{ n_hal }}
   </div>
 
@@ -102,7 +114,19 @@
     {% endfor %}
   </div>
   {% else %}
-  <div class="vh-kosong">Tidak ada gambar yang cocok dengan filter.</div>
+  <div class="vh-kosong">
+    <b>Tidak ada yang cocok</b>
+    {#- Menyebut saringan PENYEBABNYA, bukan "filter". Pola yang sama sudah
+        dipakai kisi Dataset dan halaman job. -#}
+    {%- set vh_aktif = [] %}
+    {%- if sp_set %}{% set _ = vh_aktif.append('split ' + (sp_set | sort | join(', '))) %}{% endif %}
+    {%- if c_set %}{% set _ = vh_aktif.append('kelas ' + (c_set | sort | join(', '))) %}{% endif %}
+    {%- if neg_dipilih %}{% set _ = vh_aktif.append('sampel negatif') %}{% endif %}
+    {% if vh_aktif %}<span class="halus">Saringan yang berlaku:
+      <b>{{ vh_aktif | join(' &middot; ') }}</b></span>
+    <a class="chip" href="/versi/hasil?nomor={{ nomor }}&amp;per={{ per }}">&times; Bersihkan</a>
+    {% endif %}
+  </div>
   {% endif %}
 
   {#- Paginasi: jendela nomor halaman di sekitar halaman kini -#}
