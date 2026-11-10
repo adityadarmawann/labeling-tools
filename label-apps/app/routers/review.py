@@ -293,6 +293,13 @@ async def index(request: Request, f: str = "all",
     # yang tampil supaya murah pada dataset puluhan ribu gambar.
     for it in halaman:
         it["meta"] = scanner.meta_simpan(it)
+    # Hak tulis per gambar, HANYA untuk kartu yang benar-benar tampil. Tombol
+    # "Latar" dulu dirender tanpa penjaga apa pun sementara rutenya menolak
+    # lewat tolak_tulis: pelabel spesifik melihat tombol di setiap kartu,
+    # menekannya, dan dijawab "gambar ini ditugaskan ke ...". Halaman Lihat dan
+    # halaman job sudah menyerahkan hak ini ke templatnya sejak dulu.
+    boleh_latar = {str(it["img"].resolve()) for it in halaman
+                   if not tugas.tolak_tulis(sess.src, sess.user, it["img"])}
 
     # Sidebar projek. Hanya untuk dataset yang ada di ruang kerja seseorang:
     # dataset yang dibuka langsung dari path server tidak punya halaman Unggah,
@@ -304,6 +311,7 @@ async def index(request: Request, f: str = "all",
                                      settings.uploads_root, sess.user)
 
     resp = templates.TemplateResponse(request, "index.html", {
+        "boleh_latar": boleh_latar,
         # Lingkup dataset yang sedang berlaku (di / belum / semua), dan
         # apakah projek ini memang tunduk aturan dataset. Folder dataset
         # bersama tidak punya konsep itu, jadi pilihannya tak ditawarkan.

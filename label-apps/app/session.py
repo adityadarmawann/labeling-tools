@@ -409,6 +409,14 @@ class Session:
         if self.cap == cap:
             return False
         berubah = berubah_sejak(self.src, self.cap)
+        # Sidik diambil SEBELUM perubahan diproses, bukan sesudah. Diambil
+        # sesudah, ia merekam keadaan disk yang mungkin memuat perubahan yang
+        # TIDAK ikut disusulkan di sini -- mis. ratusan berkas yang ditulis
+        # jalur lain di antaranya -- dan periksa_disk() lalu menyimpulkan
+        # foldernya tak berubah sehingga pemindaian penuh dilewati dan berkas
+        # itu basi di sesi ini selamanya. Diambil lebih dulu, kesalahannya
+        # berpihak pada sekali pindai berlebih, bukan pada data yang hilang.
+        sidik_awal = sidik_disk(self.src)
         with self.lock:
             if berubah is None:
                 self.load(self.src)
@@ -428,7 +436,7 @@ class Session:
             # akan melihat folder yang "berbeda" sesudah tiap kali melabeli,
             # lalu memicu pemindaian penuh 5,8 detik untuk perubahan yang baru
             # saja diproses dengan cara murah.
-            self._sidik = sidik_disk(self.src)
+            self._sidik = sidik_awal
         return True
 
     def kpt_sesi(self) -> dict | None:

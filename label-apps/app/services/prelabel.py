@@ -164,6 +164,21 @@ def _prediksi_satu(model, it: dict, conf: float, kelas: list,
 
 
 # ------------------------------------------------------------------ tulis
+def _beritahu(ds, gambar) -> None:
+    """Naikkan pencacah perubahan projek supaya sesi lain memindai ulang.
+
+    Jalur AI menulis dari thread latar, jauh dari rute yang biasanya
+    memanggilnya. Dilewatkan, hasilnya tak pernah terlihat sesi yang sedang
+    terbuka, dan lebih buruk: perbandingan sidik di periksa_disk bisa
+    MENELANNYA, karena segarkan() menyetel ulang sidik tanpa memuat apa pun.
+    """
+    from ..session import tandai_berubah
+    try:
+        tandai_berubah(ds, gambar)
+    except Exception:                       # noqa: BLE001 -- jangan jatuhkan job
+        pass
+
+
 def tulis_prediksi(it: dict, src: Path, names: dict, bentuk: list[dict]) -> dict:
     """Tulis bentuk prediksi untuk SATU gambar, format sama dengan /api/simpan.
 
@@ -405,6 +420,13 @@ def jalankan(ds: Path, uploads_root: Path, tid: str, nomor: int, akun: str,
                 except Exception:
                     bentuk = []
                 if bentuk:
+                    # Sesi lain harus tahu berkas ini berubah. Tanpa ini,
+                    # pelabel yang sedang bekerja di kanvas TIDAK AKAN PERNAH
+                    # melihat hasil auto-label selama ia memakai panah kiri/
+                    # kanan: segarkan() keluar lebih awal kalau pencacahnya tak
+                    # naik. Ia lalu melabeli ulang dari nol lalu menyimpan, dan
+                    # simpanannya menimpa hasil AI.
+                    _beritahu(ds, it["img"])
                     if pose:
                         tulis_prediksi_pose(it, bentuk)
                         # Hitung instance (rectangle), bukan tiap titik.

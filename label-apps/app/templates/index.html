@@ -695,9 +695,15 @@
           yang paling boleh hilang: tombol ini hanya muncul di kartu yang sudah
           ditandai latar, jadi "latar" mengulang apa yang sudah dinyatakan
           kartunya sendiri. Kalimat utuhnya tetap di title. -#}
+      {#- Hanya untuk yang memang berhak menulis ke gambar ini. Tombol yang
+          muncul lalu dijawab "gambar ini ditugaskan ke ..." adalah tombol
+          yang tidak bisa ditekan, dan di halaman berisi ribuan kartu ia
+          muncul ribuan kali. -#}
+      {%- if p in boleh_latar %}
       <button class="btn" onclick="markbg('{{ p }}',false)"
               title="Batal tanda latar">Batal</button>
-      {%- elif not it.shapes %}
+      {%- endif %}
+      {%- elif not it.shapes and p in boleh_latar %}
       <button class="btn" onclick="markbg('{{ p }}',true)"
               title="Tandai sebagai latar (tanpa objek)">Latar</button>
       {%- endif %}

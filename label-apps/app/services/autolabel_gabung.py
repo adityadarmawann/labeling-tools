@@ -341,7 +341,14 @@ def jalankan(ds: Path, uploads_root: Path, akun: str, batas: int, sumber: list,
                     except Exception:            # noqa: BLE001
                         _catat_sumber_gagal("groundingdino", it)
                 bentuk = ke_bentuk(gabung(dets, iou_ambang), jenis, it["W"], it["H"])
+                    # Sesi lain harus tahu berkas ini berubah. Tanpa ini,
+                    # pelabel yang sedang bekerja di kanvas TIDAK AKAN PERNAH
+                    # melihat hasil auto-label selama ia memakai panah kiri/
+                    # kanan: segarkan() keluar lebih awal kalau pencacahnya tak
+                    # naik. Ia lalu melabeli ulang dari nol lalu menyimpan, dan
+                    # simpanannya menimpa hasil AI.
                 if bentuk:
+                    prelabel._beritahu(ds, it["img"])
                     names = prelabel.tulis_prediksi(it, ds, names, bentuk)
                     objek += len(bentuk)
                     diproses += 1

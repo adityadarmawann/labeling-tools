@@ -66,8 +66,19 @@ def kunci_isi(item: dict) -> str:
     tiap berkas untuk menghitung sidik justru mengembalikan ongkos yang
     hendak dihemat.
     """
+    # Berkas label YOLO IKUT. Pada projek tata-letak YOLO, anotasinya tinggal
+    # di labels/<nama>.txt dan .json-nya tak pernah ada: menandai latar
+    # borongan menulis .txt kosong tanpa menyentuh satu pun berkas yang
+    # terhitung di sini, jadi kuncinya tak berubah, thumbnail lama terus
+    # dilayani -- bahkan sesudah muat ulang, dan untuk SEMUA akun karena
+    # cachenya dipakai bersama. sig_item sudah menyertakan labels/*.txt sejak
+    # dulu; yang tertinggal justru kunci thumbnail ini.
+    kandidat = [item["img"], item["img"].with_suffix(".json")]
+    lab = item.get("labels")
+    if lab:
+        kandidat.append(Path(lab))
     bagian = []
-    for p in (item["img"], item["img"].with_suffix(".json")):
+    for p in kandidat:
         try:
             st = p.stat()
             bagian.append(f"{st.st_mtime_ns}:{st.st_size}")

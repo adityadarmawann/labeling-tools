@@ -31,7 +31,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import ai_antre, autolabel, gpu_sinyal, scanner, tugas
+from . import ai_antre, autolabel, gpu_sinyal, prelabel, scanner, tugas
 from .prelabel import Dibatalkan, tulis_prediksi
 
 # ------------------------------------------------------------------ kemajuan
@@ -189,7 +189,14 @@ def jalankan(ds: Path, uploads_root: Path, tid: str, akun: str,
                     bentuk = []            # tak ada yang cocok -> biarkan "belum"
                 except Exception:          # noqa: BLE001 -- satu gambar gagal
                     bentuk = []            # jangan jatuhkan seluruh job
+                    # Sesi lain harus tahu berkas ini berubah. Tanpa ini,
+                    # pelabel yang sedang bekerja di kanvas TIDAK AKAN PERNAH
+                    # melihat hasil auto-label selama ia memakai panah kiri/
+                    # kanan: segarkan() keluar lebih awal kalau pencacahnya tak
+                    # naik. Ia lalu melabeli ulang dari nol lalu menyimpan, dan
+                    # simpanannya menimpa hasil AI.
                 if bentuk:
+                    prelabel._beritahu(ds, it["img"])
                     names = tulis_prediksi(it, ds, names, bentuk)
                     objek += len(bentuk)
                     diproses += 1
