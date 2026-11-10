@@ -2909,6 +2909,16 @@ function pesan(t) { el('pesan').textContent = t; }
 // menyamai filter `waktusingkat` di server.
 const _BULAN_JEJAK = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
                       'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+// Dasar penjagaan tabrakan pada MUAT AWAL halaman. Perpindahan gambar
+// berikutnya memakai /api/label-data (lihat S.dasarDisunting di bawah), tetapi
+// gambar PERTAMA dirender server sebagai HTML dan tak pernah lewat sana.
+(function () {
+  try {
+    const n = document.getElementById('lab-jejak');
+    if (n) S.dasarDisunting = parseInt(n.dataset.disunting || '0', 10) || 0;
+  } catch (e) { /* jejak tak dirender: biarkan 0, server menerima apa adanya */ }
+})();
+
 function perbaruiJejak(pelabel, epoch) {
   const n = el('lab-jejak');
   if (!n) return;
@@ -2968,10 +2978,28 @@ async function simpan(diam = false) {
         // Catatan tingkat gambar ikut dikirim supaya bisa DISUNTING dari web,
         // bukan sekadar terbawa lewat jalur field asing.
         teks_gambar: S.teksGambar,
+        // Cap waktu anotasi yang SEDANG dipegang kanvas ini. Server memakainya
+        // untuk menolak simpanan yang akan menimpa tulisan orang lain yang
+        // datang sesudah gambar ini dibuka. Datanya sudah dikirim server sejak
+        // dulu dan disimpan di sini; yang tak pernah ada cuma pemakaiannya.
+        dasar: S.dasarDisunting || 0,
       }),
     });
     const j = await r.json();
+    if (j && j.konflik) {
+      // BUKAN sekadar toast yang lewat: autosave akan mencobanya lagi dan
+      // orang tak pernah membaca pesan yang berkedip. Ditahan sampai dijawab.
+      S.kotor = true;
+      status('Tidak disimpan: berubah di disk');
+      if (window.confirm((j.error || 'Anotasi berubah di disk.')
+          + '\n\nMuat ulang gambar ini sekarang? Perubahan yang belum '
+          + 'tersimpan di layar akan hilang.')) {
+        location.reload();
+      }
+      return;
+    }
     if (!j.ok) { toast('Gagal simpan: ' + (j.error || j.detail)); status('Gagal simpan'); return; }
+    if (j.disunting) S.dasarDisunting = j.disunting;
     S.kotor = false;
     el('btn-simpan').removeAttribute('data-kotor');
     status('Tersimpan');
@@ -3064,6 +3092,8 @@ async function muatGambar(path, dorongRiwayat) {
   el('lab-ukuran').textContent = d.W + '×' + d.H;
   // Jejak "oleh <pelabel> <tgl>" ikut gambar yang sekarang -- bukan tertinggal
   // di gambar sebelumnya saat menyusuri dengan panah.
+  // Dasar penjagaan tabrakan: cap waktu anotasi yang kanvas ini pegang.
+  S.dasarDisunting = d.disunting || 0;
   perbaruiJejak(d.pelabel_terakhir || '', d.disunting || 0);
   el('lab-urut-n').textContent = d.posisi[0] + ' / ' + d.posisi[1];
   if (el('lab-files-ct')) el('lab-files-ct').textContent = d.posisi[0] + '/' + d.posisi[1];

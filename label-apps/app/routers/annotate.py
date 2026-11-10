@@ -615,6 +615,36 @@ async def api_simpan(request: Request, sess: Session = Depends(current_session_a
     if tolak:
         return {"ok": False, "error": tolak}
 
+    # Penjagaan tabrakan. Kanvas mengirim kembali `dasar`, yaitu cap waktu
+    # anotasi yang SEDANG ia pegang (server sendiri yang mengirimkannya saat
+    # gambar dibuka). Kalau berkas di disk ternyata lebih baru, berarti ada
+    # orang lain -- atau jalur auto-label, atau tab kedua milik orang yang
+    # sama -- yang menulis di antaranya.
+    #
+    # Dulu rute ini menulis ulang SELURUH berkas tanpa membandingkan apa pun,
+    # padahal datanya sudah ada di kedua sisi: server mengirim `disunting`,
+    # kanvas menyimpannya, dan tak satu pun memakainya. Yang kalah bahkan tak
+    # tahu pernah ada yang menulis: tidak ada toast, tidak ada konflik, tidak
+    # ada cadangan. Autosave membuatnya terjadi tanpa seorang pun menekan apa
+    # pun.
+    #
+    # Tanpa `dasar` permintaannya tetap diterima: kanvas versi lama di tab
+    # yang belum dimuat ulang tak boleh jadi terkunci selamanya.
+    dasar = body.get("dasar")
+    if dasar is not None:
+        try:
+            sekarang = int(scanner.meta_simpan(it).get("disunting") or 0)
+            dasar_i = int(dasar or 0)
+        except (TypeError, ValueError):
+            sekarang = dasar_i = 0
+        if sekarang and dasar_i and sekarang > dasar_i:
+            siapa = str(scanner.meta_simpan(it).get("pelabel") or "").strip()
+            return {"ok": False, "konflik": True, "disunting": sekarang,
+                    "error": ("anotasi gambar ini sudah berubah di disk"
+                              + (f" (terakhir disimpan {siapa})" if siapa else "")
+                              + ". Muat ulang gambarnya dulu supaya kerja orang "
+                                "lain tidak tertimpa.")}
+
     bentuk = []
     W, H = it["W"], it["H"]
     bentuk_masuk = body.get("shapes")
@@ -785,7 +815,11 @@ async def api_simpan(request: Request, sess: Session = Depends(current_session_a
     tandai_berubah(sess.src, it["img"])
     # Sebagian terbuang tetap disebutkan. Diam soal itu membuat orang mengira
     # seluruh yang digambarnya tersimpan.
+    # Cap waktu BARU ikut dikembalikan supaya kanvas memperbarui dasarnya.
+    # Tanpa ini, simpanan kedua dari orang yang sama akan membandingkan dirinya
+    # dengan simpanan pertamanya sendiri dan selalu menyimpulkan konflik.
     return {"ok": True, "n": len(bentuk), "kurang_titik": kurang_titik,
             "cadangan_rusak": cadangan_rusak,
             "issues": it["issues"],
+            "disunting": int(scanner.meta_simpan(it).get("disunting") or 0),
             "sev": scanner.severity(it), "peringatan": peringatan}
