@@ -3953,7 +3953,15 @@ render();
   async function skDariContoh() {
     const n = skNama().length;
     const c = await ambilTataContoh(n);
-    if (!c) { toast('Belum ada gambar berlabel lengkap di projek ini'); return; }
+    if (c && c.belum_ada_rute) {
+      toast('Fitur ini menunggu pembaruan server. Sementara itu pakai '
+            + '"Dari gambar ini" atau susun sendiri di kanvas');
+      return;
+    }
+    if (!c || !c.tata) {
+      toast('Belum ada gambar berlabel lengkap di projek ini');
+      return;
+    }
     SK.tata = c.tata.map(p => p.slice());
     skGambar();
     toast('Susunan diambil dari gambar projek yang sudah dilabeli');
@@ -4201,6 +4209,13 @@ async function ambilTataContoh(n) {
   _tataContoh = null;                  // jangan meminta dua kali walau gagal
   try {
     const r = await fetch('/api/tugas/tata-contoh');
+    if (r.status === 404) {
+      // Server belum punya rute ini (berkas tampilan sudah naik, kodenya
+      // belum). Dibedakan dari "belum ada contoh" supaya pesannya tidak
+      // menyalahkan data orang atas keterlambatan deploy.
+      _tataContoh = { belum_ada_rute: true };
+      return _tataContoh;
+    }
     const j = await r.json();
     if (j && j.ok && Array.isArray(j.tata) && j.tata.length === n) {
       _tataContoh = { tata: j.tata, kotak: j.kotak || null };
@@ -4225,7 +4240,7 @@ async function dropTemplate() {
   let box = [0.3, 0.3, 0.4, 0.4];
   if (!tata) {
     const c = await ambilTataContoh(t.length);
-    if (c) {
+    if (c && c.tata) {
       tata = c.tata;
       if (c.kotak && c.kotak.length === 4) box = c.kotak;
       asal = 'dicontoh dari gambar yang sudah dilabeli';
