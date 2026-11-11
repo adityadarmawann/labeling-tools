@@ -516,6 +516,39 @@
       placeholder="tutup&#10;leher&#10;badan&#10;dasar"></textarea>
     <p class="dlg-sub2" id="skel-nomor"></p>
 
+    {#- Penyunting VISUAL: bentuk dan garis penghubung.
+
+        Sebelum ini template cuma tiga kotak teks. Edge diketik buta sebagai
+        pasangan indeks ("0-1"), jadi menyusun 36 garis untuk 33 titik berarti
+        menghafal nomor tiap titik lalu mengetiknya satu per satu, tanpa pernah
+        melihat bentuk yang sedang dibuat. Dan bentuknya sendiri tak bisa
+        diatur sama sekali: "Drop semua" menebak sendiri, dan hasilnya tak
+        pernah lurus.
+
+        Kotak teks di bawah DIPERTAHANKAN dan tetap tersinkron: menyunting
+        banyak sekaligus lewat teks kadang jauh lebih cepat. -#}
+    <div class="skel-edit">
+      <div class="skel-alat" role="toolbar" aria-label="Alat penyunting template">
+        <span class="seg" role="group" aria-label="Mode">
+          <button type="button" class="seg-opt" id="skel-m-tata" data-on
+                  title="Seret titik untuk menyusun bentuknya">Tata letak</button>
+          <button type="button" class="seg-opt" id="skel-m-edge"
+                  title="Klik dua titik untuk menyambung atau memutusnya">Garis</button>
+        </span>
+        <label class="skel-cek" title="Tempelkan titik ke kisi supaya garisnya lurus">
+          <input type="checkbox" id="skel-snap" checked> Tempel ke kisi</label>
+        <button type="button" class="chip" id="skel-dari-gambar"
+                title="Ambil susunan dari instance lengkap di gambar yang sedang dibuka">Dari gambar ini</button>
+        <button type="button" class="chip" id="skel-dari-contoh"
+                title="Ambil susunan dari gambar projek ini yang sudah dilabeli">Dari contoh projek</button>
+        <button type="button" class="chip" id="skel-reset-tata"
+                title="Susun ulang melingkar, mulai dari nol">Susun ulang</button>
+      </div>
+      <canvas id="skel-kanvas" width="760" height="420"
+              aria-label="Penyunting bentuk dan garis template"></canvas>
+      <p class="dlg-sub2" id="skel-petunjuk"></p>
+    </div>
+
     <label class="form-lbl2" for="skel-edge">Edge, hubungan antar indeks, satu
       per baris "i-j" (opsional)</label>
     <textarea id="skel-edge" rows="3" spellcheck="false"
