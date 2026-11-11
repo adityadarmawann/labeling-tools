@@ -4,6 +4,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from app.security import COOKIE_NAME
 from conftest import PW_ANGGI, PW_PAUL, ROOT, klien_baru, masuk
 
 
@@ -44,9 +45,14 @@ def test_endpoint_json_tanpa_sesi_menjawab_401(klien):
 
 
 def test_password_salah_ditolak(klien):
+    # POST lalu redirect lalu GET: merender penolakan langsung dari POST
+    # membuat muat ulang menagih "Confirm Form Resubmission". Yang diuji di
+    # sini penolakannya, bukan bentuk responsnya.
     r = klien.post("/login", data={"user": "paul", "pw": "ngawur"},
                    follow_redirects=False)
-    assert r.status_code == 401
+    assert r.status_code == 303
+    assert "e=salah" in r.headers["location"]
+    assert not r.cookies.get(COOKIE_NAME), "tak boleh ada sesi dari sandi salah"
 
 
 def test_nama_akun_tidak_peka_huruf_besar(aplikasi):

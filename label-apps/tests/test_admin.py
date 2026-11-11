@@ -300,8 +300,13 @@ def test_daftar_sendiri_belum_bisa_masuk_sebelum_disetujui(klien, lingkungan):
     # Sandinya benar, tapi belum boleh masuk.
     r = klien.post("/login", data={"user": "rizky", "pw": "sandi-rizky-1"},
                    follow_redirects=False)
-    assert r.status_code == 401
-    assert "belum disetujui" in r.text, "pesannya harus membedakan dari sandi salah"
+    assert r.status_code == 303
+    # Sandi benar tapi belum disetujui adalah keadaan yang BERBEDA dari sandi
+    # salah: menyamakannya membuat orang mengetik ulang sandinya berkali-kali
+    # padahal sandinya memang benar.
+    assert "e=belum" in r.headers["location"], r.headers["location"]
+    h = klien.get(r.headers["location"]).text
+    assert "belum disetujui" in h, "pesannya harus membedakan dari sandi salah"
 
 
 def test_setelah_disetujui_baru_bisa_masuk(klien, lingkungan):
@@ -332,15 +337,22 @@ def test_setelah_disetujui_baru_bisa_masuk(klien, lingkungan):
       "email": "bukan-email"}, "email"),
 ])
 def test_daftar_menolak_isian_yang_salah(klien, lingkungan, data, potongan):
-    r = klien.post("/daftar", data=data)
-    assert r.status_code == 400 and potongan in r.text, r.text[:200]
+    # POST lalu redirect lalu GET: merender hasilnya langsung dari POST membuat
+    # muat ulang menagih "Confirm Form Resubmission". Isian yang ditolak tetap
+    # dibawa kembali, KECUALI kata sandinya.
+    r = klien.post("/daftar", data=data, follow_redirects=False)
+    assert r.status_code == 303, r.status_code
+    lokasi = r.headers["location"]
+    assert "pw" not in lokasi, lokasi          # sandi tak pernah masuk URL
+    assert potongan in klien.get(lokasi).text
     assert "budi" not in _users(lingkungan)
 
 
 def test_daftar_menolak_nama_yang_sudah_dipakai(klien, lingkungan):
     r = klien.post("/daftar", data={"user": "paul", "pw": "12345678",
-                                    "pw2": "12345678"})
-    assert r.status_code == 400 and "sudah ada" in r.text
+                                    "pw2": "12345678"}, follow_redirects=False)
+    assert r.status_code == 303
+    assert "sudah ada" in klien.get(r.headers["location"]).text
     # dan sandi paul yang lama TIDAK boleh tertimpa
     assert masuk(klien, "paul", PW_PAUL)
 
