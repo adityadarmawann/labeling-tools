@@ -733,3 +733,22 @@ kbd{font-family:ui-monospace,"SF Mono",Menlo,monospace; font-size:10.5px;
   .lab-canvas { margin: 8px 78px 56px 8px; }
   .lab-berkas { max-width: 44vw; }
 }
+
+/* --------------------------------------------- penyunting template keypoint
+   Kanvas di dalam dialog template. Sebelum ini templatnya cuma tiga kotak
+   teks: bentuknya tak bisa diatur sama sekali, dan garis penghubung diketik
+   buta sebagai pasangan indeks. Untuk 33 titik dan 36 garis itu menuntut
+   orang menghafal nomor tiap titik sebelum bisa mengetik satu baris pun. */
+.skel-edit{margin:10px 0 14px}
+.skel-alat{display:flex;flex-wrap:wrap;gap:8px;align-items:center;
+  margin-bottom:8px}
+.skel-alat .seg-opt{cursor:pointer}
+.skel-cek{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;
+  color:var(--ink-dim);cursor:pointer}
+#skel-kanvas{display:block;width:100%;height:auto;border-radius:10px;
+  border:1px solid var(--garis);background:#12161c;
+  /* Seret titik, bukan seleksi teks: tanpa ini menyeret menyorot label di
+     sekitarnya dan kursornya berkedip jadi caret. */
+  cursor:crosshair;touch-action:none;user-select:none}
+#skel-kanvas:focus-visible{outline:2px solid var(--aksi);outline-offset:2px}
+#skel-petunjuk{margin:6px 2px 0;min-height:1.2em}

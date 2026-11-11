@@ -3735,6 +3735,230 @@ render();
     return out.join('\n');
   }
 
+  /* ---------------------------------------------- penyunting visual template
+
+     Dua hal yang sebelumnya tak bisa diatur sama sekali:
+
+       BENTUK  -- "Drop semua" menebak sendiri, dan tebakannya tak pernah
+                  lurus. Di sini bentuknya disusun sekali lalu disimpan
+                  sebagai `tata`, dan setiap drop memakainya.
+       GARIS   -- edge diketik buta sebagai pasangan indeks. Menyusun 36 garis
+                  untuk 33 titik berarti menghafal nomor tiap titik.
+
+     Koordinat disimpan ternormalkan 0..1 terhadap kotak objek, sama seperti
+     yang dipakai dropTemplate, jadi tak ada penerjemahan di tempat lain. */
+  const SK = { tata: [], edge: [], mode: 'tata', snap: true, pilih: null,
+               seret: -1 };
+  const KISI = 40;                      // 1/40 -> garis lurus mudah didapat
+  // Sisipan tepi. Nilai 0 dan 1 adalah tepi kotak objek, dan memetakannya
+  // tepat ke pinggir kanvas memotong setengah bulatan titik beserta namanya,
+  // lalu membuat titik di tepi mustahil diseret karena separuh sasarannya di
+  // luar kanvas.
+  const TEPI = 26;
+  function skPeta(c) {
+    return { x0: TEPI, y0: TEPI, w: c.width - TEPI * 2, h: c.height - TEPI * 2 };
+  }
+
+  function skNama() { return baris(el('skel-titik').value); }
+
+  function skSesuaikanPanjang() {
+    const n = skNama().length;
+    while (SK.tata.length < n) {
+      // Titik baru ditaruh melingkar, bukan menumpuk di satu sudut: yang
+      // menumpuk mustahil dipisahkan lagi dengan tetikus.
+      const i = SK.tata.length, a = (i / Math.max(n, 1)) * Math.PI * 2;
+      SK.tata.push([0.5 + Math.cos(a) * 0.42, 0.5 + Math.sin(a) * 0.42]);
+    }
+    SK.tata.length = n;
+    SK.edge = SK.edge.filter(([i, j]) => i < n && j < n && i !== j);
+  }
+
+  function skGambar() {
+    const c = el('skel-kanvas');
+    if (!c) return;
+    const g = c.getContext('2d'), W = c.width, H = c.height;
+    const nama = skNama();
+    g.clearRect(0, 0, W, H);
+    g.fillStyle = '#12161c'; g.fillRect(0, 0, W, H);
+    /* Kisi gaya kertas matematika: tiga tingkat ketebalan.
+
+       Satu tingkat saja tak cukup untuk menilai kelurusan. Garis seragam yang
+       samar hilang di latar gelap, dan yang cukup terang jadi bising sampai
+       bentuknya sendiri tenggelam. Dengan garis tebal tiap lima petak, mata
+       bisa menghitung dan membandingkan dua titik yang berjauhan tanpa
+       menyusuri satu per satu; sumbu tengah memberi acuan simetri. */
+    const garis = (n, gaya, lebar) => {
+      g.strokeStyle = gaya; g.lineWidth = lebar;
+      for (let i = 0; i <= KISI; i += n) {
+        const x = Math.round(i / KISI * W) + .5, y = Math.round(i / KISI * H) + .5;
+        g.beginPath(); g.moveTo(x, 0); g.lineTo(x, H); g.stroke();
+        g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke();
+      }
+    };
+    garis(1, 'rgba(255,255,255,.08)', 1);          // petak halus
+    garis(5, 'rgba(255,255,255,.20)', 1);          // tiap lima petak
+    g.strokeStyle = 'rgba(120,200,255,.30)'; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(Math.round(W / 2) + .5, 0);
+    g.lineTo(Math.round(W / 2) + .5, H); g.stroke();
+    g.beginPath(); g.moveTo(0, Math.round(H / 2) + .5);
+    g.lineTo(W, Math.round(H / 2) + .5); g.stroke();
+    const m = skPeta(c);
+    // Bingkai kotak objek: tanpa itu tak ada acuan di mana tepi objek berada,
+    // dan 0..1 jadi angka tanpa tempat.
+    g.strokeStyle = 'rgba(255,255,255,.22)';
+    g.setLineDash([4, 4]); g.lineWidth = 1;
+    g.strokeRect(m.x0 + .5, m.y0 + .5, m.w, m.h);
+    g.setLineDash([]);
+    const P = SK.tata.map(([x, y]) => [m.x0 + x * m.w, m.y0 + y * m.h]);
+    g.strokeStyle = '#6fd18a'; g.lineWidth = 2;
+    for (const [i, j] of SK.edge) {
+      if (!P[i] || !P[j]) continue;
+      g.beginPath(); g.moveTo(P[i][0], P[i][1]); g.lineTo(P[j][0], P[j][1]); g.stroke();
+    }
+    P.forEach(([x, y], i) => {
+      const aktif = SK.pilih === i;
+      g.fillStyle = aktif ? '#ffd166' : '#58c4ff';
+      g.beginPath(); g.arc(x, y, aktif ? 7 : 5, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#e9eef5'; g.font = '11px system-ui, sans-serif';
+      g.fillText(nama[i] != null ? nama[i] : i, x + 8, y - 7);
+    });
+    el('skel-petunjuk').textContent = SK.mode === 'tata'
+      ? 'Seret titik untuk menyusun bentuknya. Kisi membantu membuat garis lurus.'
+      : (SK.pilih == null
+          ? 'Klik titik pertama, lalu titik kedua, untuk menyambung atau memutus garis.'
+          : `Titik "${nama[SK.pilih] ?? SK.pilih}" dipilih. Klik titik kedua.`);
+  }
+
+  /* Saat sebuah titik diseret, titik lain yang SEBARIS dengannya ditandai
+     garis putus-putus. Kisi menunjukkan ke mana sebuah titik jatuh; ini
+     menunjukkan apakah ia sejajar dengan titik yang memang harus sejajar --
+     pertanyaan yang sebenarnya ditanyakan orang saat meluruskan bentuk. */
+  function skSorotSebaris() {
+    if (SK.seret < 0) return;
+    const c = el('skel-kanvas'), g = c.getContext('2d'), m = skPeta(c);
+    const [ax, ay] = SK.tata[SK.seret];
+    const dekat = (a, b) => Math.abs(a - b) < 0.5 / KISI;
+    g.save();
+    g.strokeStyle = 'rgba(255,209,102,.75)';
+    g.setLineDash([5, 4]); g.lineWidth = 1;
+    SK.tata.forEach(([x, y], i) => {
+      if (i === SK.seret) return;
+      if (dekat(x, ax)) {
+        g.beginPath();
+        g.moveTo(m.x0 + ax * m.w, m.y0 + ay * m.h);
+        g.lineTo(m.x0 + x * m.w, m.y0 + y * m.h);
+        g.stroke();
+      } else if (dekat(y, ay)) {
+        g.beginPath();
+        g.moveTo(m.x0 + ax * m.w, m.y0 + ay * m.h);
+        g.lineTo(m.x0 + x * m.w, m.y0 + y * m.h);
+        g.stroke();
+      }
+    });
+    g.restore();
+  }
+
+  function skDekat(mx, my) {
+    const c = el('skel-kanvas'), m = skPeta(c);
+    let best = -1, bd = 14 * 14;
+    SK.tata.forEach(([x, y], i) => {
+      const dx = m.x0 + x * m.w - mx, dy = m.y0 + y * m.h - my;
+      const d = dx * dx + dy * dy;
+      if (d < bd) { bd = d; best = i; }
+    });
+    return best;
+  }
+
+  function skPasangEditor() {
+    const c = el('skel-kanvas');
+    if (!c) return;
+    const pos = ev => {
+      const r = c.getBoundingClientRect();
+      return [(ev.clientX - r.left) * c.width / r.width,
+              (ev.clientY - r.top) * c.height / r.height];
+    };
+    c.addEventListener('mousedown', ev => {
+      const [mx, my] = pos(ev), i = skDekat(mx, my);
+      if (SK.mode === 'edge') {
+        if (i < 0) { SK.pilih = null; skGambar(); return; }
+        if (SK.pilih == null || SK.pilih === i) { SK.pilih = i; skGambar(); return; }
+        const a = Math.min(SK.pilih, i), b = Math.max(SK.pilih, i);
+        const ada = SK.edge.findIndex(([p, q]) =>
+          Math.min(p, q) === a && Math.max(p, q) === b);
+        if (ada >= 0) SK.edge.splice(ada, 1); else SK.edge.push([a, b]);
+        SK.pilih = null; skTulisEdge(); skGambar(); return;
+      }
+      if (i >= 0) { SK.seret = i; ev.preventDefault(); }
+    });
+    window.addEventListener('mousemove', ev => {
+      if (SK.seret < 0) return;
+      const [mx, my] = pos(ev), m = skPeta(c);
+      let x = (mx - m.x0) / m.w, y = (my - m.y0) / m.h;
+      if (SK.snap) { x = Math.round(x * KISI) / KISI; y = Math.round(y * KISI) / KISI; }
+      SK.tata[SK.seret] = [Math.min(1, Math.max(0, x)), Math.min(1, Math.max(0, y))];
+      skGambar();
+      skSorotSebaris();
+    });
+    window.addEventListener('mouseup', () => { SK.seret = -1; });
+
+    const mode = (m) => {
+      SK.mode = m; SK.pilih = null;
+      el('skel-m-tata').toggleAttribute('data-on', m === 'tata');
+      el('skel-m-edge').toggleAttribute('data-on', m === 'edge');
+      skGambar();
+    };
+    el('skel-m-tata').onclick = () => mode('tata');
+    el('skel-m-edge').onclick = () => mode('edge');
+    el('skel-snap').onchange = () => { SK.snap = el('skel-snap').checked; };
+    el('skel-reset-tata').onclick = () => { SK.tata = []; skSesuaikanPanjang(); skGambar(); };
+    el('skel-dari-gambar').onclick = skDariGambar;
+    el('skel-dari-contoh').onclick = skDariContoh;
+    el('skel-titik').addEventListener('input', () => { skSesuaikanPanjang(); skGambar(); });
+    el('skel-edge').addEventListener('input', () => {
+      try { SK.edge = parsePasangan(el('skel-edge').value, skNama().length); skGambar(); }
+      catch (e) { /* diketik separuh: biarkan sampai sah */ }
+    });
+  }
+
+  function skTulisEdge() {
+    el('skel-edge').value = SK.edge.map(e => e[0] + '-' + e[1]).join('\n');
+  }
+
+  /* Ambil susunan dari instance LENGKAP di gambar yang sedang dibuka. Inilah
+     jalan tercepat menuju bentuk yang benar: labeli satu gambar dengan rapi,
+     lalu jadikan dia template. */
+  function skDariGambar() {
+    const nama = skNama();
+    const gids = [...new Set(titikGrupSemua())];
+    for (const gid of gids) {
+      const pts = titikGrup(gid);
+      const rect = S.shapes.find(s => s.group_id === gid && s.shape_type === 'rectangle');
+      if (pts.length !== nama.length || !rect) continue;
+      const [x0, y0] = rect.points[0], [x1, y1] = rect.points[1];
+      const w = (x1 - x0) || 1, h = (y1 - y0) || 1;
+      const byName = {};
+      pts.forEach(s => { byName[s.label] = s.points[0]; });
+      SK.tata = nama.map(n => {
+        const p = byName[n] || [x0, y0];
+        return [Math.min(1, Math.max(0, (p[0] - x0) / w)),
+                Math.min(1, Math.max(0, (p[1] - y0) / h))];
+      });
+      skGambar();
+      toast('Susunan diambil dari instance di gambar ini');
+      return;
+    }
+    toast('Butuh satu instance LENGKAP (semua titik + kotak) di gambar ini');
+  }
+
+  async function skDariContoh() {
+    const n = skNama().length;
+    const c = await ambilTataContoh(n);
+    if (!c) { toast('Belum ada gambar berlabel lengkap di projek ini'); return; }
+    SK.tata = c.tata.map(p => p.slice());
+    skGambar();
+    toast('Susunan diambil dari gambar projek yang sudah dilabeli');
+  }
+
   function isiForm() {
     const sk = D.skeleton || {};
     el('skel-kelas').value = sk.kelas || '';
@@ -3743,6 +3967,12 @@ render();
     el('skel-flip').value = flipKePasangan(sk.flip_idx || []);
     el('skel-galat').textContent = '';
     nomori();
+    // Penyunting visual mengikuti isi yang baru dimuat.
+    SK.tata = (sk.tata || []).map(p => [p[0], p[1]]);
+    SK.edge = (sk.edge || []).map(e => [e[0], e[1]]);
+    SK.pilih = null;
+    skSesuaikanPanjang();
+    skGambar();
   }
 
   function nomori() {
@@ -3778,6 +4008,10 @@ render();
         if (!(el('skel-kelas').value || '').trim()) throw new Error('isi kelas objeknya');
       }
       const edge = kosong ? [] : parsePasangan(el('skel-edge').value, K);
+      // `tata` IKUT dikirim. Sebelum ini tidak, jadi menyimpan template --
+      // bahkan hanya untuk mengganti satu nama -- diam-diam MENGHAPUS tata
+      // letak yang sudah disusun, dan "Drop semua" kembali menebak sendiri.
+      const tata = (kosong || SK.tata.length !== K) ? [] : SK.tata;
       const pasFlip = kosong ? [] : parsePasangan(el('skel-flip').value, K);
       let flip_idx = [];
       if (pasFlip.length) {                   // identitas lalu tukar tiap pasangan
@@ -3788,7 +4022,7 @@ render();
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ skeleton: {
           kelas: (el('skel-kelas').value || '').trim(),
-          titik, edge, flip_idx } }),
+          titik, edge, flip_idx, tata } }),
       });
       const j = await r.json();
       if (!j.ok) { galat.textContent = j.error || 'gagal menyimpan'; return; }
@@ -3801,6 +4035,7 @@ render();
     }
   }
 
+  skPasangEditor();
   tombol.onclick = () => { isiForm(); dlg.hidden = false; el('skel-titik').focus(); };
   el('skel-batal').onclick = () => { dlg.hidden = true; };
   el('skel-simpan').onclick = () => simpan(false);
