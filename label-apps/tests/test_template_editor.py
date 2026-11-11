@@ -73,7 +73,9 @@ def test_mode_garis_menyambung_dan_memutus():
 
 def test_edge_tersinkron_dua_arah():
     assert "function skTulisEdge" in JS       # kanvas -> teks
-    blok = JS.split("function skPasangEditor", 1)[1][:3000]
+    # Seluruh badan pemasang, bukan jendela tetap: menambah satu tombol
+    # seharusnya tidak membuat uji ini gagal.
+    blok = JS.split("function skPasangEditor", 1)[1].split("\n  function ", 1)[0]
     assert "el('skel-edge').addEventListener('input'" in blok   # teks -> kanvas
 
 
@@ -164,3 +166,40 @@ def test_titik_sebaris_ditandai_saat_diseret():
     # Dipanggil DI PENANGAN SERET, bukan sekadar didefinisikan.
     seret = JS.split("window.addEventListener('mousemove'", 1)[1][:600]
     assert "skSorotSebaris();" in seret
+
+
+# ------------------------------------------ nama tombol dan jalan mundur
+def test_tombol_perusak_menyebutkan_akibatnya():
+    """"Susun ulang" terbaca seperti "rapikan": orang menekannya untuk
+    MEMPERBAIKI susunan, lalu mendapati susunannya hilang."""
+    # Komentar Jinja boleh menyebut nama lamanya saat menjelaskan kenapa
+    # diganti; yang tak boleh teks yang TERLIHAT pengguna.
+    terlihat = re.sub(r"\{#.*?#\}", "", HTML, flags=re.S)
+    assert "Susun ulang" not in terlihat
+    assert "Kosongkan susunan" in terlihat
+
+
+def test_mengosongkan_susunan_bertanya_dulu():
+    blok = JS.split("el('skel-reset-tata').onclick", 1)[1][:700]
+    assert "confirm(" in blok
+    # Dan menyebutkan bahwa yang tersimpan belum berubah, supaya orang tahu
+    # masih ada jalan kembali.
+    assert "Simpan template" in blok
+
+
+def test_ada_jalan_kembali_ke_yang_tersimpan():
+    assert 'id="skel-pulihkan"' in HTML
+    blok = JS.split("el('skel-pulihkan').onclick", 1)[1][:600]
+    assert "D.skeleton" in blok and "skGambar()" in blok
+
+
+def test_dialog_menjelaskan_lingkupnya():
+    """Kanvas template dan kanvas anotasi mirip bentuknya; yang satu baku untuk
+    seluruh projek, yang lain untuk satu gambar."""
+    assert "SELURUH projek" in HTML
+    assert "menutup dialog membuangnya" in HTML
+
+
+def test_tombol_pengambil_menyebut_bahwa_ia_mengganti():
+    assert "Ambil dari gambar ini" in HTML
+    assert "Ambil dari contoh projek" in HTML

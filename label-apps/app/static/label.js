@@ -3910,7 +3910,28 @@ render();
     el('skel-m-tata').onclick = () => mode('tata');
     el('skel-m-edge').onclick = () => mode('edge');
     el('skel-snap').onchange = () => { SK.snap = el('skel-snap').checked; };
-    el('skel-reset-tata').onclick = () => { SK.tata = []; skSesuaikanPanjang(); skGambar(); };
+    // Merusak, jadi bertanya dulu. Tanpa konfirmasi, satu klik keliru
+    // menghapus susunan yang mungkin disusun berjam-jam, dan tak ada jalan
+    // kembali selain menutup dialog tanpa menyimpan -- yang tidak terpikirkan
+    // oleh orang yang baru saja melihat kanvasnya berantakan.
+    el('skel-reset-tata').onclick = () => {
+      if (!SK.tata.length
+          || confirm('Kosongkan susunan di kanvas dan mulai dari lingkaran?\n\n'
+                   + 'Yang tersimpan di server belum berubah: selama kamu tidak '
+                   + 'menekan Simpan template, susunan lama masih bisa '
+                   + 'dikembalikan.')) {
+        SK.tata = []; skSesuaikanPanjang(); skGambar();
+      }
+    };
+    el('skel-pulihkan').onclick = () => {
+      const sk = D.skeleton || {};
+      SK.tata = (sk.tata || []).map(p => [p[0], p[1]]);
+      SK.edge = (sk.edge || []).map(e => [e[0], e[1]]);
+      skSesuaikanPanjang(); skTulisEdge(); skGambar();
+      toast((sk.tata || []).length
+        ? 'Kembali ke susunan yang tersimpan'
+        : 'Projek ini memang belum punya susunan tersimpan');
+    };
     el('skel-dari-gambar').onclick = skDariGambar;
     el('skel-dari-contoh').onclick = skDariContoh;
     el('skel-titik').addEventListener('input', () => { skSesuaikanPanjang(); skGambar(); });
