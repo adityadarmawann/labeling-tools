@@ -40,6 +40,7 @@ dan tanpa itu tiap orang mengarang gayanya sendiri.
 from __future__ import annotations
 
 import json
+import statistics
 import re
 import secrets
 import threading
@@ -340,6 +341,97 @@ def boleh_labeli(data: dict, akun: str, kunci: str, batch: str = "") -> bool:
             return ditugaskan or (bool(batch) and batch in scope)
         # akses tak disetel (anggota lama): jatuh ke penugasan papan saja.
     return ditugaskan
+
+
+def tata_contoh(ds: Path, titik: list, maks_berkas: int = 400) -> dict | None:
+    """Tata letak keypoint contoh, diambil dari anotasi yang SUDAH ada.
+
+    Dipakai "Drop semua" pada projek yang belum pernah menyimpan tata letak
+    default. Cadangan lamanya menebar titik di sebuah ELIPS: pada projek
+    lapangan basket hasilnya cincin bernomor yang tak menyerupai apa pun, dan
+    tiap titik harus digeser dari nol. Terbukti di prod -- uji elips atas
+    berkas yang dihasilkannya memberi r kuadrat rata-rata 1,003.
+
+    Yang dikembalikan SATU instance nyata, bukan rata-rata. Me-median-kan
+    banyak instance terlihat menggoda karena meredam derau, tetapi tiap gambar
+    diambil dari sudut kamera yang berbeda: hasilnya campuran beberapa
+    perspektif sekaligus, dan bentuknya berhenti menyerupai lapangan. Yang
+    dipilih instance yang PALING DEKAT ke median -- median dipakai sebagai
+    penilai, bukan sebagai jawaban.
+
+    Dikembalikan juga `kotak`: letak khas instance itu di dalam GAMBAR, dalam
+    pecahan lebar dan tinggi. Tanpa itu, tata letak sebagus apa pun tetap
+    dijatuhkan di kotak 40% di tengah bingkai, padahal lapangan sungguhan
+    hampir memenuhi gambar -- dan seluruhnya harus diperbesar manual.
+
+    None kalau tak ada satu pun instance lengkap untuk dicontoh.
+    """
+    from . import tag as _tag                      # noqa: F401  (konsistensi impor)
+
+    ds = Path(ds)
+    nama = [str(t) for t in (titik or [])]
+    if not nama:
+        return None
+    berkas = sorted(p for p in ds.glob("*.json") if not p.name.startswith("."))
+    if not berkas:
+        berkas = sorted(p for p in ds.glob("images/*.json")
+                        if not p.name.startswith("."))
+    # Disampel merata, bukan diambil dari depan: nama berkas sering berurut
+    # per klip, dan 400 pertama bisa saja satu sudut kamera saja.
+    if len(berkas) > maks_berkas:
+        langkah = len(berkas) / maks_berkas
+        berkas = [berkas[int(i * langkah)] for i in range(maks_berkas)]
+
+    tata: list[list[list[float]]] = []
+    kotak: list[list[float]] = []
+    for p in berkas:
+        try:
+            isi = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        gw = float(isi.get("imageWidth") or 0) or None
+        gh = float(isi.get("imageHeight") or 0) or None
+        grup: dict = {}
+        for sh in isi.get("shapes") or []:
+            g = sh.get("group_id")
+            if g is None:
+                continue
+            r = grup.setdefault(g, {"t": {}, "k": None})
+            if sh.get("shape_type") == "point":
+                r["t"][str(sh.get("label"))] = sh.get("points", [[0, 0]])[0]
+            elif sh.get("shape_type") == "rectangle":
+                r["k"] = sh.get("points")
+        for r in grup.values():
+            if r["k"] is None or len(r["t"]) != len(nama):
+                continue
+            if any(n not in r["t"] for n in nama):
+                continue
+            (x0, y0), (x1, y1) = r["k"]
+            w, h = (x1 - x0) or 1, (y1 - y0) or 1
+            tata.append([[min(1.0, max(0.0, (r["t"][n][0] - x0) / w)),
+                          min(1.0, max(0.0, (r["t"][n][1] - y0) / h))]
+                         for n in nama])
+            if gw and gh:
+                kotak.append([x0 / gw, y0 / gh, w / gw, h / gh])
+    if not tata:
+        return None
+
+    med = [[statistics.median(t[i][a] for t in tata) for a in (0, 1)]
+           for i in range(len(nama))]
+
+    def simpangan(t):
+        return sum(((t[i][0] - med[i][0]) ** 2
+                    + (t[i][1] - med[i][1]) ** 2) ** 0.5 for i in range(len(nama)))
+
+    pilih = min(range(len(tata)), key=lambda i: simpangan(tata[i]))
+    # Kotaknya di-median-kan (bukan diambil dari instance terpilih): letak
+    # lapangan di bingkai jauh lebih stabil antar gambar daripada bentuk
+    # perspektifnya, jadi median di sini meredam derau tanpa merusak apa pun.
+    if kotak:
+        km = [statistics.median(k[a] for k in kotak) for a in range(4)]
+    else:
+        km = [0.3, 0.3, 0.4, 0.4]
+    return {"tata": tata[pilih], "kotak": km, "dari": len(tata)}
 
 
 def boleh_labeli_lepas(data: dict, akun: str) -> bool:

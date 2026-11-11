@@ -311,6 +311,30 @@ async def get_skeleton(ds: str = "", sess: Session = Depends(current_session_api
             "boleh_ubah": svc.boleh_kelola(data, sess.user)}
 
 
+@router.get("/api/tugas/tata-contoh")
+async def tata_contoh(ds: str = "",
+                      sess: Session = Depends(current_session_api),
+                      settings: Settings = Depends(get_settings)):
+    """Tata letak keypoint contoh, diambil dari anotasi projek yang sudah ada.
+
+    Dipakai "Drop semua" ketika projek belum pernah menyimpan tata letak
+    default. Membaca saja: siapa pun yang boleh membuka projeknya boleh
+    memintanya, sama seperti ia boleh melihat anotasi yang jadi sumbernya.
+    """
+    d = svc_projek.temukan(settings.uploads_root, sess.user, ds) if ds else sess.src
+    if d is None:
+        return {"ok": False, "error": "projek tidak ada / belum ada yang dibuka"}
+    data = await asyncio.to_thread(svc.baca_projek, d, settings.uploads_root)
+    titik = ((data.get("skeleton") or {}).get("titik")) or []
+    if not titik:
+        return {"ok": False, "error": "projek ini belum punya template keypoint"}
+    r = await asyncio.to_thread(svc.tata_contoh, d, titik)
+    if not r:
+        return {"ok": False, "error": "belum ada satu pun instance lengkap "
+                                      "untuk dicontoh"}
+    return {"ok": True, **r}
+
+
 @router.post("/api/tugas/skeleton")
 async def post_skeleton(request: Request, ds: str = "",
                         sess: Session = Depends(current_session_api),

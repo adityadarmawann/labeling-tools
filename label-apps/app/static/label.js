@@ -3947,14 +3947,60 @@ function titikGrupSemua() {
                  .map(s => s.group_id);
 }
 
-function dropTemplate() {
+/* Menjatuhkan seluruh titik template sebagai satu instance baru.
+
+   Urutan sumber tata letaknya, dari yang paling tepat:
+     1. `tata` projek -- disimpan sendiri lewat "Jadikan tata letak default".
+     2. Contoh dari anotasi yang SUDAH ada di projek ini (diambil sekali lewat
+        /api/tugas/tata-contoh, lalu diingat selama halaman terbuka).
+     3. Elips, cadangan terakhir.
+
+   Nomor 2 ditambahkan karena nomor 3 praktis tak berguna: pada projek
+   lapangan basket ia menjatuhkan 33 titik bernomor di sebuah CINCIN yang tak
+   menyerupai apa pun, dan tiap titik harus digeser dari nol. Padahal projek
+   yang sama sudah berisi ribuan instance lengkap yang bentuknya benar. */
+let _tataContoh;                       // undefined = belum pernah diminta
+
+async function ambilTataContoh(n) {
+  if (_tataContoh !== undefined) return _tataContoh;
+  _tataContoh = null;                  // jangan meminta dua kali walau gagal
+  try {
+    const r = await fetch('/api/tugas/tata-contoh');
+    const j = await r.json();
+    if (j && j.ok && Array.isArray(j.tata) && j.tata.length === n) {
+      _tataContoh = { tata: j.tata, kotak: j.kotak || null };
+    }
+  } catch (e) { /* luring: jatuh ke cadangan */ }
+  return _tataContoh;
+}
+
+async function dropTemplate() {
   const t = skelTpl().titik || [];
   if (!t.length) { toast('Projek ini belum punya template keypoint'); return; }
   if (S.pose) { perbaruiBbox(S.pose.gid); S.pose = null; }
+
+  const simpan = skelTpl().tata;
+  let tata = (simpan && simpan.length === t.length) ? simpan : null;
+  let asal = 'tata letak default projek';
+  // Kotak tempat template dijatuhkan. Bawaannya 40% di tengah bingkai, yang
+  // memang cocok untuk cadangan melingkar. Begitu tata letaknya diambil dari
+  // pekerjaan nyata, letaknya pun diambil dari sana: pada lapangan basket
+  // kotak khasnya selebar penuh dan dua pertiga bawah bingkai, jadi tanpa ini
+  // bentuknya benar tetapi seluruhnya masih harus diperbesar manual.
+  let box = [0.3, 0.3, 0.4, 0.4];
+  if (!tata) {
+    const c = await ambilTataContoh(t.length);
+    if (c) {
+      tata = c.tata;
+      if (c.kotak && c.kotak.length === 4) box = c.kotak;
+      asal = 'dicontoh dari gambar yang sudah dilabeli';
+    }
+  }
+
   simpanUndo();
   const gid = gidBaru();
-  const tata = (skelTpl().tata && skelTpl().tata.length === t.length) ? skelTpl().tata : null;
-  const cw = D.W * 0.4, ch = D.H * 0.4, ox = D.W * 0.3, oy = D.H * 0.3;
+  const ox = D.W * box[0], oy = D.H * box[1];
+  const cw = D.W * box[2], ch = D.H * box[3];
   t.forEach((nama, i) => {
     let x, y;
     if (tata) { x = ox + tata[i][0] * cw; y = oy + tata[i][1] * ch; }
@@ -3966,7 +4012,10 @@ function dropTemplate() {
   });
   perbaruiBbox(gid);
   tandaiKotor(); setMode('edit'); render();
-  toast('Template dijatuhkan. Di mode Sunting geser tiap titik ke posisinya');
+  toast(tata
+    ? `Template dijatuhkan (${asal}). Geser tiap titik ke posisinya`
+    : 'Belum ada contoh tata letak di projek ini, jadi titiknya ditaruh '
+      + 'melingkar. Rapikan satu gambar lalu tekan "Jadikan tata letak default"');
 }
 
 function visibilitasKeypoint(v) {
