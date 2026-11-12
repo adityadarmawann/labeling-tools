@@ -15,6 +15,25 @@
   // yang rutenya pasti ditolak owner-only -- menyesatkan di tengah alur.
   const KELOLA = isi.dataset.kelola === '1';
 
+  // ---- pesan yang bertahan melewati location.reload()
+  /* Kartu batch yang gambarnya sudah tidak ada cuma hilang kalau halamannya
+     dimuat ulang, tetapi memuat ulang menghapus toast biasa sebelum sempat
+     terbaca. Pesannya dititipkan ke sessionStorage (per-tab) lalu
+     ditampilkan sesudah halaman barunya siap. */
+  const KUNCI_PESAN = 'labelapp_pesan_papan';
+  function toastSesudahMuat(m) {
+    try { sessionStorage.setItem(KUNCI_PESAN, String(m || '')); }
+    catch (e) { toast(m); }          // mode privat: tampilkan seadanya
+  }
+  (() => {
+    let m = '';
+    try {
+      m = sessionStorage.getItem(KUNCI_PESAN) || '';
+      if (m) sessionStorage.removeItem(KUNCI_PESAN);
+    } catch (e) { return; }
+    if (m) toast(m);
+  })();
+
   // ---- buka/tutup menu
   for (const b of document.querySelectorAll('.an-titik')) {
     b.onclick = (ev) => {
@@ -80,8 +99,19 @@
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ batch, ds }),
       });
-      if (!j.ok) { toast(j.error); b.disabled = false; return; }
-      toast(`${j.dibuang} gambar dibuang ke tempat sampah`
+      if (!j.ok) {
+        // Gagal di sini hampir selalu berarti papan yang terbuka sudah tidak
+        // sesuai keadaan server: gambarnya baru saja dibuang, ditugaskan ke
+        // orang lain, atau masuk dataset. Dulu halamannya TIDAK dimuat ulang
+        // saat gagal, jadi kartu yang gambarnya sudah tak ada menetap di layar
+        // dan setiap klik berikutnya mengulang galat yang sama tanpa akhir --
+        // batchnya tampak tak bisa dihapus padahal sudah terhapus sejak klik
+        // pertama.
+        toastSesudahMuat(j.error);
+        location.reload();
+        return;
+      }
+      toastSesudahMuat(`${j.dibuang} gambar dibuang ke tempat sampah`
             + (j.dilindungi ? ` · ${j.dilindungi} dilindungi (orang lain/dataset)` : ''));
       location.reload();
     };
