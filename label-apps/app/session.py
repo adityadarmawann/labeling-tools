@@ -22,7 +22,7 @@ import threading
 import time
 from pathlib import Path
 
-from .config import Settings
+from .config import FOLDER_INTERNAL, Settings
 from .security import safe_slug
 from .services import annotations, scanner
 
@@ -100,13 +100,26 @@ def sidik_disk(src) -> tuple[int, int, int]:
     detik per berkas, jadi projek produksi terbesar (11.319 gambar, ~22.600
     berkas) berada di kisaran 140 ms. Itu harga satu kali muat halaman, jauh
     di bawah 5,8 detik yang dibutuhkan pemindaian penuh.
+
+    Lingkupnya WAJIB sama dengan lingkup scanner (scanner.tersembunyi): ia
+    menjadi kunci cache pindai, jadi apa pun yang dihitung di sini tetapi
+    tidak dipindai -- atau sebaliknya -- membuat cache dianggap sah padahal
+    isinya sudah lain. Itu bukan soal teori: membuang satu batch MEMINDAHKAN
+    berkasnya ke `_sampah-gambar/` di dalam projek yang sama, dan karena
+    folder itu dulu ikut terhitung, jumlah berkas, total byte, maupun mtime
+    terbaru TAK SATU PUN berubah (memindah mempertahankan mtime). Tanda
+    tangannya identik, jalur cepat memakai cache lama apa adanya, dan gambar
+    yang sudah dibuang tetap hidup di ingatan sesi -- kartunya menolak hilang
+    dari papan, "Hapus batch" menjawab 0 terhapus selamanya, dan menyalakan
+    ulang server pun tak menolong karena cachenya ada di disk.
     """
     n = t = s = 0
     for dirpath, dirnames, filenames in os.walk(src):
         # Folder bertitik memang tidak pernah ikut dipindai; menyertakannya di
         # sini membuat penulisan sidecar (.tugas.json, .versi/) terbaca sebagai
         # perubahan dari luar dan memicu pemindaian penuh tiap kali.
-        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+        dirnames[:] = [d for d in dirnames
+                       if not d.startswith(".") and d not in FOLDER_INTERNAL]
         for f in filenames:
             if f.startswith("."):
                 continue
