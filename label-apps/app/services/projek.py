@@ -946,7 +946,7 @@ def hapus_permanen(root: Path, folder: str) -> dict:
 
 
 def gabung(root: Path, sumber: str, tujuan: str, *, kunci: str = "",
-           batal=None) -> dict:
+           batal=None, label: bool = True) -> dict:
     """
     Salin isi projek `sumber` ke dalam `tujuan`, keduanya di ruang kerja ini.
 
@@ -957,8 +957,13 @@ def gabung(root: Path, sumber: str, tujuan: str, *, kunci: str = "",
 
     Sumbernya TIDAK dihapus. Menggabungkan lalu membuang yang lama adalah dua
     keputusan berbeda, dan yang kedua harus disengaja.
+
+    `label=True` (bawaan, perilaku lama) membawa berkas anotasinya juga.
+    `label=False` menyalin gambarnya saja -- yang dipakai kalau projek tujuan
+    jenisnya berbeda, atau kalau memang mau dilabeli ulang dari nol di sana.
     """
     from . import impor, tambah
+    from ..config import ANN_EXT
 
     a = _folder(root, sumber)
     b = _folder(root, tujuan)
@@ -972,34 +977,55 @@ def gabung(root: Path, sumber: str, tujuan: str, *, kunci: str = "",
         raise Tolak("salah satu folder berada di dalam yang lain")
 
     penempat = tambah.Penempat(b)
+
+    # Melewatkan anotasi di PENENTU tempatnya, bukan dengan menyaring daftar
+    # berkas lebih dulu: itu satu-satunya titik yang dilewati setiap berkas,
+    # jadi tak ada jalur yang bisa menyelinap membawa label.
+    def tentukan(rel):
+        if not label and str(rel).lower().endswith(ANN_EXT):
+            return None
+        return penempat.tujuan(rel)
+
     t = time.monotonic()
     hasil = impor.impor_folder(a, b, kunci=kunci, batal=batal,
-                               tentukan=penempat.tujuan,
+                               tentukan=tentukan,
                                lapor_nama=penempat.catat)
-    log.info("gabung: %r -> %r, %s berkas dalam %.0f dtk",
-             a.name, b.name, f"{hasil['berkas']:,}", time.monotonic() - t)
-    return {"sumber": a.name, "tujuan": b.name,
+    log.info("gabung: %r -> %r, %s berkas dalam %.0f dtk (label %s)",
+             a.name, b.name, f"{hasil['berkas']:,}", time.monotonic() - t,
+             "ikut" if label else "tidak ikut")
+    return {"sumber": a.name, "tujuan": b.name, "label": bool(label),
             "ditambah": hasil["berkas"], "sudah_ada": hasil["sudah_ada"],
             "dilewati": hasil["dilewati"], "bentrok": hasil.get("bentrok", [])}
 
 
 def salin_gambar_ke_projek(tujuan: Path, gambar, batch: str = "", *,
-                           kunci: str = "", batal=None) -> dict:
+                           kunci: str = "", batal=None,
+                           label: bool = False) -> dict:
     """
-    Salin DAFTAR gambar (GAMBAR SAJA, tanpa anotasi) ke projek `tujuan`.
+    Salin DAFTAR gambar ke projek `tujuan`, dengan atau tanpa anotasinya.
 
     Dipakai "Kirim gambar ke projek lain" dari papan Anotasi: gambar satu job
     (atau batch) disalin ke projek lain milik sendiri untuk dianotasi di sana.
-    Berbeda dari gabung() yang menyalin SELURUH projek -- ini subset, dan hanya
-    berkas gambarnya; label court/keypoint tak relevan di projek tujuan yang
-    jenisnya lain, jadi sengaja tidak ikut.
+    Berbeda dari gabung() yang menyalin SELURUH projek -- ini subset.
+
+    `label=False` (bawaan) menyalin berkas gambarnya saja: itu yang diminta
+    kalau tujuannya memang melabeli ulang di sana, atau kalau jenis projeknya
+    berbeda sehingga label lama tak berarti apa-apa. `label=True` membawa
+    berkas anotasinya sekali jalan; tanpa pilihan itu, satu-satunya cara
+    memindahkan pekerjaan yang sudah jadi adalah menyalin ribuan berkas
+    lewat terminal.
+
+    Anotasi hanya ikut untuk gambar yang BENAR-BENAR baru di tujuan. Gambar
+    yang sudah ada di sana bisa saja sudah dilabeli orang lain, dan menimpanya
+    dengan label dari projek ini membuang pekerjaan yang tak kelihatan dari
+    sini. Yang dilewati karena itu dilaporkan tersendiri.
 
     Mendarat mengikuti tata letak tujuan (Penempat), tak pernah menimpa, dan
     ditandai `batch` supaya muncul sebagai satu kartu di "Belum ditugaskan"
     tujuan. Sumbernya tidak disentuh. Kemajuan lewat /api/impor/kemajuan.
     """
     from . import impor, tambah, tag
-    from ..config import IMG_EXT
+    from ..config import ANN_EXT, IMG_EXT
 
     tujuan = Path(tujuan)
     if not tujuan.is_dir():
@@ -1019,6 +1045,7 @@ def salin_gambar_ke_projek(tujuan: Path, gambar, batch: str = "", *,
     impor.catat_maju(kunci, tahap="salin", berkas=0, bytes=0,
                      total=len(gambar), total_bytes=total_byte)
     disalin = sudah_ada = dilewati = 0
+    label_ikut = label_lewat = 0
     byte = 0
     kunci_baru: list[str] = []
     for g in gambar:
@@ -1045,6 +1072,32 @@ def salin_gambar_ke_projek(tujuan: Path, gambar, batch: str = "", *,
         kunci_baru.append(tag.kunci_gambar(tujuan, akhir))
         disalin += 1
         byte += akhir.stat().st_size
+        if label:
+            # Penempat mengingat keputusannya per nama-tanpa-ekstensi, jadi
+            # berkas label ini dijamin mendarat di split yang SAMA dengan
+            # gambarnya. Label yatim di split lain membuat gambarnya tampak
+            # belum dilabeli, dan itu lebih buruk daripada tak menyalinnya.
+            for sfx in ANN_EXT:
+                asal = g.with_suffix(sfx)
+                if not asal.is_file():
+                    continue
+                d_lab = penempat.tujuan(asal.name)
+                if d_lab is None:
+                    label_lewat += 1
+                    continue
+                t_lab = d_lab.with_suffix(d_lab.suffix + ".part")
+                try:
+                    shutil.copy2(asal, t_lab)
+                    a_lab, h_lab = tambah.pasang(t_lab, d_lab)
+                except OSError:
+                    t_lab.unlink(missing_ok=True)
+                    label_lewat += 1
+                    continue
+                if a_lab is None:
+                    label_lewat += 1          # sudah ada, isinya sama persis
+                    continue
+                penempat.catat(asal.name, a_lab)
+                label_ikut += 1
         if disalin % impor.LAPOR_TIAP == 0:
             impor.catat_maju(kunci, berkas=disalin, bytes=byte)
 
@@ -1052,7 +1105,11 @@ def salin_gambar_ke_projek(tujuan: Path, gambar, batch: str = "", *,
     if kunci_baru and batch:
         tag.pasang(tujuan, kunci_baru, batch=batch)
     lupakan_survei(tujuan)
-    log.info("kirim gambar -> %r: %s disalin, %s sudah-ada, %s dilewati (batch %r)",
-             tujuan.name, f"{disalin:,}", f"{sudah_ada:,}", f"{dilewati:,}", batch)
+    log.info("kirim gambar -> %r: %s disalin, %s sudah-ada, %s dilewati, "
+             "label %s ikut / %s lewat (batch %r)",
+             tujuan.name, f"{disalin:,}", f"{sudah_ada:,}", f"{dilewati:,}",
+             f"{label_ikut:,}", f"{label_lewat:,}", batch)
     return {"tujuan": tujuan.name, "batch": batch, "disalin": disalin,
-            "sudah_ada": sudah_ada, "dilewati": dilewati}
+            "sudah_ada": sudah_ada, "dilewati": dilewati,
+            "label": bool(label), "label_ikut": label_ikut,
+            "label_lewat": label_lewat}

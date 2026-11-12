@@ -177,30 +177,33 @@
     };
   }
 
-  // ---- kirim gambar satu job ke projek lain milik sendiri (GAMBAR SAJA, disalin).
+  // ---- kirim gambar satu job ke projek lain milik sendiri (disalin).
   // Sumbernya tak berubah; gambar mendarat di "Belum ditugaskan" tujuan sbg batch
-  // senama judul job, siap dianotasi di sana.
+  // senama judul job, siap dianotasi di sana. Anotasinya ikut kalau dipilih.
   async function kirimKeProjek(id, judul) {
     const dsNama = isi.dataset.ds || '';
     const d = await send('/api/projek/daftar');
-    const lain = ((d && d.projek) || [])
-      .map((x) => x.nama).filter((nm) => nm && nm !== dsNama);
+    const lain = ((d && d.projek) || []).filter((x) => x && x.nama && x.nama !== dsNama);
     if (!lain.length) { toast('Belum ada projek lain untuk dikirimi'); return; }
-    const tujuan = prompt(
-      `Kirim (salin) gambar job "${judul}" ke projek mana?\n\n`
-      + `Pilihan: ${lain.join(', ')}\n\n`
-      + 'GAMBAR SAJA yang disalin (tanpa anotasi). Job ini di sini tidak berubah.',
-      lain[0]);
-    if (tujuan === null) return;
-    const t = (tujuan || '').trim();
-    if (!lain.includes(t)) { toast(`Projek "${t}" tak ada di daftar projekmu`); return; }
-    toast('Menyalin gambar ke ' + t + '…');
+    const pil = await pilihProjek({
+      judul: `Kirim gambar "${judul}" ke projek lain`,
+      keterangan: 'Gambarnya DISALIN. Job ini di sini tidak berubah, dan '
+        + 'gambar yang sudah ada di tujuan tidak ditimpa.',
+      daftar: lain,
+      aksi: 'Kirim ke sini',
+      labelKet: 'Anotasi hanya ikut untuk gambar yang benar-benar baru di '
+        + 'tujuan, supaya label orang lain di sana tak tertimpa.',
+    });
+    if (!pil) return;
+    toast('Menyalin gambar ke ' + pil.tujuan + '…');
     const j = await send('/api/tugas/kirim-ke-projek', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ job: id, tujuan: t, ds: dsNama }),
+      body: JSON.stringify({ job: id, tujuan: pil.tujuan, ds: dsNama,
+                             label: !!pil.label }),
     });
     if (!j || !j.ok) { toast((j && j.error) || 'gagal mengirim'); return; }
     toast(`${j.disalin} gambar disalin ke ${j.tujuan}`
+          + (j.label ? ` · ${j.label_ikut} label ikut` : '')
           + (j.sudah_ada ? ` · ${j.sudah_ada} sudah ada di sana` : ''));
   }
 

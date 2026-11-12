@@ -1407,9 +1407,12 @@ async def kirim_ke_projek(request: Request,
                           sess: Session = Depends(current_session_api),
                           settings: Settings = Depends(get_settings)):
     """
-    Salin GAMBAR satu job ke projek LAIN milik sendiri (gambar saja, tanpa
-    anotasi). Sumber tak berubah; gambar mendarat di "Belum ditugaskan" tujuan,
-    ditandai batch senama judul job supaya jadi satu kartu di sana.
+    Salin gambar satu job ke projek LAIN milik sendiri. Sumber tak berubah;
+    gambar mendarat di "Belum ditugaskan" tujuan, ditandai batch senama judul
+    job supaya jadi satu kartu di sana.
+
+    Body `label` menentukan anotasinya ikut atau tidak. Bawaannya TIDAK ikut,
+    sama seperti perilaku lama, supaya pemanggil lama tak berubah artinya.
 
     Mengelola media = pemilik atau Editor (boleh_unggah), dan harus boleh_unggah
     juga di projek TUJUAN. Kemajuan dilaporkan lewat /api/impor/kemajuan.
@@ -1464,7 +1467,7 @@ async def kirim_ke_projek(request: Request,
     try:
         hasil = await asyncio.to_thread(
             svc_projek.salin_gambar_ke_projek, d_tujuan, gambar, batch_nama,
-            kunci=sess.user)
+            kunci=sess.user, label=bool(body.get("label")))
     except svc_projek.Tolak as e:
         return {"ok": False, "error": str(e)}
 

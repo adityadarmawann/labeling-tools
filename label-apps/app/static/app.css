@@ -3146,7 +3146,7 @@ button.an-mulai.an-autolabel{background:none;border:0;cursor:pointer;
    Kotaknya jadi kolom tiga bagian: judul tetap, isi menggulung, kaki tetap.
    .dlg-kotak biasa menggulung SELURUH kotak, jadi judul dan tombol tutup ikut
    hilang ke atas begitu isinya 21 baris. */
-#op-dlg .dlg-kotak{width:min(560px,100%);max-height:min(660px,84vh);max-height:min(660px,84dvh);
+#op-dlg .dlg-kotak,#sp-dlg .dlg-kotak{width:min(560px,100%);max-height:min(660px,84vh);max-height:min(660px,84dvh);
   padding:0;display:flex;flex-direction:column;overflow:hidden}
 .op-dlg-atas{flex:0 0 auto;padding:18px 20px 12px;border-bottom:1px solid var(--line)}
 .op-dlg-atas h3{margin:0 0 4px}
@@ -3338,6 +3338,44 @@ button.an-mulai.an-autolabel{background:none;border:0;cursor:pointer;
 .op-dlg-bawah{flex:0 0 auto;display:flex;align-items:center;gap:10px;
   padding:12px 20px;border-top:1px solid var(--line);background:var(--raised)}
 .op-dlg-bawah .spacer{flex:1}
+
+/* ------------------------------------------------- pemilih projek tujuan
+   Baris projek dibuat dari <button role="radio">, bukan <input type=radio> +
+   label: yang dibutuhkan di sini satu baris penuh yang bisa diklik di mana
+   saja, bisa disusuri panah, dan tetap terbaca pembaca layar sebagai pilihan
+   tunggal. Warnanya seluruhnya dari token tema, jadi terang dan gelap ikut
+   sendiri tanpa aturan terpisah. */
+.sp-baris{display:flex;align-items:baseline;gap:10px;width:100%;
+  padding:9px 12px;border:1px solid transparent;border-radius:8px;
+  background:transparent;color:var(--ink);font:inherit;text-align:left;
+  cursor:pointer}
+.sp-baris+.sp-baris{margin-top:2px}
+.sp-baris:hover{background:var(--hover)}
+.sp-baris[aria-checked="true"]{background:var(--ok-bg);border-color:var(--ok)}
+.sp-baris:focus-visible{outline:2px solid var(--ok);outline-offset:-1px}
+.sp-nama{flex:1 1 auto;min-width:0;font-size:13px;font-weight:600;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sp-ket{flex:0 0 auto;font-size:11.5px;color:var(--ink-faint);
+  font-variant-numeric:tabular-nums}
+.sp-baris[aria-checked="true"] .sp-ket{color:var(--ink-dim)}
+#sp-daftar{padding-top:8px}
+
+/* Centang "salin beserta label" duduk di kaki, sebaris dengan tombolnya:
+   keputusan ini bagian dari tindakan yang akan dijalankan, bukan setelan
+   terpisah, jadi tempatnya di sebelah tombol yang menjalankannya. */
+.sp-centang{display:flex;align-items:flex-start;gap:8px;cursor:pointer;
+  flex:1 1 auto;min-width:0}
+/* Label tombol tak boleh dipatahkan jadi dua baris: tingginya sudah dikunci
+   36px, jadi baris kedua tercetak keluar dari tombolnya. */
+.op-dlg-bawah .wz-tbl{white-space:nowrap}
+.sp-centang input{margin-top:2px;flex:0 0 auto;accent-color:var(--ok)}
+.sp-centang b{display:block;font-size:12.5px;font-weight:600;color:var(--ink)}
+.sp-centang i{display:block;font-style:normal;font-size:11px;
+  color:var(--ink-faint);line-height:1.4}
+@media (max-width:560px){
+  .op-dlg-bawah{flex-wrap:wrap}
+  .sp-centang{max-width:none;order:-1;width:100%}
+}
 
 @media (max-width:900px){
   .wz{max-width:none}
