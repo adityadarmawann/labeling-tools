@@ -406,8 +406,15 @@ async def halaman(request: Request, path: str = "",
     # tanda bahwa berkasnya rusak — lalu orang melabeli dari nol dan
     # menyimpannya, dan berkas lamanya hilang tanpa pernah dilihat siapa pun.
     rusak = "berkas anotasi rusak" in (it.get("issues") or [])
+    # Hasil auto-label yang belum diverifikasi manusia. severity() TIDAK bisa
+    # melihat ini: hasil AI yang mulus severity-nya "ok", persis seperti
+    # pekerjaan manusia yang sudah diperiksa, jadi tanpa flag ini labeler
+    # membuka 150 gambar hasil AI tanpa satu pun tanda bahwa belum ada manusia
+    # yang menyetujuinya.
+    perlu_dicek = bool(it.get("perlu_dicek"))
     return templates.TemplateResponse(request, "label.html", {
         "anotasi_rusak": rusak,
+        "perlu_dicek": perlu_dicek,
         "boleh_ubah": not tolak,
         "alasan_tolak": tolak,
         "sess": sess,
@@ -506,6 +513,10 @@ async def label_data(request: Request, path: str = "", job: str = "",
         # saat halaman penuh dimuat / sesudah Simpan, jadi basi saat navigasi).
         "pelabel_terakhir": str(mentah.get("pelabel") or ""),
         "disunting": int(mentah.get("disunting") or 0),
+        # Hasil AI yang belum diverifikasi. Pindah gambar memakai rute INI,
+        # bukan memuat ulang halaman, jadi tanpa field ini spanduk verifikasi
+        # gambar PERTAMA menempel di seluruh 150 gambar berikutnya.
+        "perlu_dicek": bool(it.get("perlu_dicek")),
     }
 
 

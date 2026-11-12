@@ -620,6 +620,11 @@
       & elemen namanya saat terpotong, dan di alt/aria untuk pembaca layar. -#}
   {#- Severity -> kata yang bisa dibaca, dipakai title & aria lencana keadaan. -#}
   {%- set sev_kata = {'ok':'Sudah dilabeli','warn':'Perlu dicek','stop':'Belum dilabeli','bg':'Latar'}[sev] %}
+  {#- Hasil AI yang belum diverifikasi MENDAHULUI kata severity. severity() tak
+      bisa melihat perlu_dicek, jadi hasil auto-label yang mulus berlencana
+      "Sudah dilabeli" -- tak terbedakan dari pekerjaan manusia yang sudah
+      diperiksa, bahkan di dalam saringan "Belum diverifikasi" itu sendiri. -#}
+  {%- if it.perlu_dicek %}{% set sev_kata = 'Hasil AI, belum diverifikasi' %}{% endif %}
   <div class="card" data-s="{{ sev }}" title="{{ it.img.name }}">
     {#- Thumbnail jadi tokoh utama (gaya Roboflow): sudut membulat, dan SEMUA
         hamparan (kotak centang + lencana keadaan) menumpang di bingkai gambar
@@ -640,6 +645,14 @@
           severity; kata-katanya di title & aria agar tetap terbaca pembaca
           layar -- rel lama tak punya teks sama sekali. -#}
       <span class="rail" role="img" title="{{ sev_kata }}" aria-label="Keadaan: {{ sev_kata }}"></span>
+      {#- Lencana "AI" terbaca mata, bukan cuma tersimpan di title: saat
+          memverifikasi 150 gambar, yang dibutuhkan adalah tahu mana yang sudah
+          selesai diperiksa tanpa membuka satu-satu. Hilang sendiri begitu
+          gambarnya disimpan manusia (perlu_dicek terhapus saat simpan). -#}
+      {%- if it.perlu_dicek %}
+      <span class="kartu-ai" title="Hasil auto-label, belum diverifikasi"
+            aria-hidden="true">AI</span>
+      {%- endif %}
     </div>
     {#- Dipendekkan dari DEPAN, bukan belakang. Berkas satu dataset kerap
         berbagi awalan panjang yang sama (mis. "boston-celtics-...-game-1-") dan

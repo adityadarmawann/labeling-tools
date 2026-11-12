@@ -458,6 +458,22 @@ body.lab {
   background: var(--warn-bg); color: var(--ink);
 }
 .lab-rusak { border: 1px solid var(--warn); }
+
+/* Spanduk verifikasi. Dua kalimat tinggal di satu elemen dan data-keadaan
+   memilih mana yang tampil: mengganti teks lewat innerHTML akan menghapus
+   penanda role="status" dan membuat pembaca layar kehilangan pengumumannya. */
+.lab-verif {
+  flex: 0 0 auto; margin: 10px 12px 0; padding: 8px 12px;
+  border-radius: 9px; font-size: 12.5px; line-height: 1.5;
+  background: var(--warn-bg); color: var(--ink);
+  border: 1px solid var(--warn);
+}
+.lab-verif[data-keadaan="sudah"] {
+  background: var(--ok-bg); border-color: var(--ok);
+}
+.lab-verif .lab-verif-belum, .lab-verif .lab-verif-sudah { display: none; }
+.lab-verif[data-keadaan="belum"] .lab-verif-belum,
+.lab-verif[data-keadaan="sudah"] .lab-verif-sudah { display: inline; }
 .lab-rusak code { font-size: 11.5px; }
 
 /* Kanvas yang hanya bisa dilihat. Alatnya diredupkan dan dimatikan, bukan

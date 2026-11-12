@@ -96,12 +96,29 @@
   </div>
 
   <aside class="lh-sisi">
-    <section class="lh-kotak lh-vonis" data-s="{{ sev }}">
+    {#- Hasil AI yang belum diverifikasi MENDAHULUI vonis severity. severity()
+        tidak bisa melihat perlu_dicek: hasil auto-label yang mulus severity-nya
+        "ok" dan kotak ini akan berkata "Anotasi terlihat wajar" padahal belum
+        ada satu pun manusia yang melihatnya. Itu bukan sekadar kurang
+        keterangan, itu keliru. -#}
+    <section class="lh-kotak lh-vonis" data-s="{{ 'warn' if it.perlu_dicek else sev }}">
       <h3>Temuan</h3>
+      {%- if it.perlu_dicek %}
+      <b>Hasil auto-label, belum diverifikasi</b>
+      {#- Tanpa <b> di dalam kalimat: .lh-vonis b dipasang display:block,
+          jadi satu kata tebal di tengah kalimat memotongnya jadi tiga baris.
+          Nama tombolnya juga disebut persis seperti yang tertulis di layar
+          ("Edit label" selama gambarnya punya objek, dan hasil AI selalu
+          punya), bukan nama lain yang tak bisa dicari mata. -#}
+      <p class="lh-sepi">Anotasinya ditulis AI, belum ada manusia yang
+        memeriksanya. Tekan Edit label di atas untuk meninjau tiap objek.
+        Menyimpan menandainya terverifikasi.</p>
+      {%- else %}
       <b>{{ vonis[sev] }}</b>
+      {%- endif %}
       {%- if it.issues %}
       <div class="lh-temuan">{% for m in it.issues %}<i>{{ m }}</i>{% endfor %}</div>
-      {%- else %}
+      {%- elif not it.perlu_dicek %}
       <p class="lh-sepi">Tidak ada temuan</p>
       {%- endif %}
     </section>

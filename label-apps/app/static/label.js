@@ -2919,6 +2919,22 @@ const _BULAN_JEJAK = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
   } catch (e) { /* jejak tak dirender: biarkan 0, server menerima apa adanya */ }
 })();
 
+// Spanduk verifikasi di atas kanvas. Tiga keadaan, dan ketiganya harus bisa
+// dicapai TANPA memuat ulang halaman: pindah gambar memakai /api/label-data,
+// dan menyimpan juga tidak memuat ulang. Spanduk yang tetap berkata "belum
+// diverifikasi" sesudah Simpan ditekan membuat orang menyimpan lagi dan lagi;
+// spanduk yang menempel saat pindah gambar membuat gambar hasil kerja manusia
+// tampak seperti hasil AI.
+//   'belum'    hasil AI, belum ada manusia yang menyetujuinya
+//   'sudah'    baru saja disimpan manusia di sesi ini
+//   'tak-usah' bukan hasil AI: spanduk disembunyikan, labeler seperti biasa
+function keadaanVerif(k) {
+  const n = el('lab-verif');
+  if (!n) return;
+  n.dataset.keadaan = k;
+  n.hidden = (k === 'tak-usah');
+}
+
 function perbaruiJejak(pelabel, epoch) {
   const n = el('lab-jejak');
   if (!n) return;
@@ -3006,6 +3022,11 @@ async function simpan(diam = false) {
     // Jejak "oleh <aku> <waktu>" di kepala kanvas langsung diperbarui: saya baru
     // saja menyimpan gambar ini, jadi sayalah pelabel terakhirnya.
     perbaruiJejak(D.aku, Math.floor(Date.now() / 1000));
+    // Menyimpan manual MENGHAPUS perlu_dicek di server (lihat KUNCI_ATAS di
+    // routers/annotate.py), jadi spanduknya memang sudah berubah keadaan.
+    if (el('lab-verif') && el('lab-verif').dataset.keadaan === 'belum') {
+      keadaanVerif('sudah');
+    }
     const f = D.berkas.find(x => x.path === D.path);
     if (f) { f.n = j.n; f.sev = j.sev; renderBerkas(); }
     perbaruiLatar();
@@ -3095,6 +3116,7 @@ async function muatGambar(path, dorongRiwayat) {
   // Dasar penjagaan tabrakan: cap waktu anotasi yang kanvas ini pegang.
   S.dasarDisunting = d.disunting || 0;
   perbaruiJejak(d.pelabel_terakhir || '', d.disunting || 0);
+  keadaanVerif(d.perlu_dicek ? 'belum' : 'tak-usah');
   el('lab-urut-n').textContent = d.posisi[0] + ' / ' + d.posisi[1];
   if (el('lab-files-ct')) el('lab-files-ct').textContent = d.posisi[0] + '/' + d.posisi[1];
   perbaruiNav('prev', d.prev);
