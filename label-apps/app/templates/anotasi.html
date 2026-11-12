@@ -690,6 +690,9 @@
     </div>
     <div class="op-dlg-bawah">
       <button class="wz-tbl wz-tbl-sek" type="button" id="az-batal" hidden>Batalkan</button>
+      {#- Alasan Mulai mati duduk di SEBELAH tombolnya. Dulu permintaan yang
+          pasti ditolak server baru dijawab toast sesudah ditekan. -#}
+      <span class="halus az-sebab" id="az-sebab" role="status"></span>
       <span class="spacer"></span>
       <button class="wz-tbl wz-tbl-sek" type="button" data-az-tutup>Tutup</button>
       <button class="wz-tbl wz-tbl-pri" type="button" id="az-mulai">Mulai</button>

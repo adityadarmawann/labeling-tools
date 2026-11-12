@@ -316,15 +316,13 @@ def jalankan(ds: Path, uploads_root: Path, akun: str, batas: int, sumber: list,
 
         sasaran = sasaran if sasaran in tugas.SASARAN else "belum"
         tambah = sasaran != "belum"
-        if batch is not None:
-            target = tugas.gambar_belum_batch(items, ds, batch, sasaran)
-        else:
-            target = tugas.gambar_konteks_job(
-                items, data, ds, tid,
-                saring="belum" if sasaran == "belum"
-                else ("ai" if sasaran == "dicek" else "semua"))
-            if target is None:
-                raise FileNotFoundError("tugas tak dikenal")
+        # Pemilihnya milik tugas.py, bukan disalin di sini: angka yang
+        # dijanjikan dialog dihitung dengan fungsi yang sama persis, jadi ia
+        # tak bisa menjanjikan gambar yang tak akan dikerjakan.
+        target = tugas.target_autolabel(items, data, ds, tid=tid, batch=batch,
+                                        sasaran=sasaran)
+        if target is None:
+            raise FileNotFoundError("tugas tak dikenal")
         if batas and batas > 0:
             target = target[:int(batas)]
 

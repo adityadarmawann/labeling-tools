@@ -21,7 +21,10 @@ from ..config import Settings, get_settings
 from ..deps import bodi_json, current_session_api
 from ..services import (ai_antre, autolabel, autolabel_gabung, autolabel_zero,
                         gpu_sinyal, prelabel, scanner, tugas)
+from ..log import catat
 from ..session import Session
+
+log = catat("labelapp.autolabel")
 
 router = APIRouter(tags=["autolabel"])
 
@@ -61,11 +64,19 @@ def _parse_prompt(raw) -> list:
 
 
 @router.get("/api/autolabel/info")
-async def info(sess: Session = Depends(current_session_api),
+async def info(tid: str = "", batch: str | None = None,
+               sess: Session = Depends(current_session_api),
                settings: Settings = Depends(get_settings)):
     """Semua yang antarmuka butuh: model teks zero-shot (+ukuran unduh), run
     terlatih projek, model .pt diunggah, pilihan/prompt bawaan, apakah Claude
-    aktif, dan apakah training sedang berjalan."""
+    aktif, apakah training sedang berjalan, dan BERAPA GAMBAR yang akan
+    dikerjakan.
+
+    Cacahnya diberikan untuk ketiga pilihan "Kerjakan" sekaligus, dihitung
+    dengan pemilih yang sama persis dengan pekerjanya (tugas.target_autolabel).
+    Tanpa angka ini, "berhenti setelah 1000 gambar" cuma tebakan tanpa jangkar,
+    dan satu-satunya cara tahu lingkupnya kosong adalah menjalankannya dulu.
+    """
     if sess.src is None:
         return {"ok": False, "error": "belum ada projek terbuka"}
     jenis = await asyncio.to_thread(scanner.jenis_projek, sess.src)
@@ -85,7 +96,25 @@ async def info(sess: Session = Depends(current_session_api),
             # dibaca antarmuka mana pun, jadi satu-satunya gunanya adalah
             # membuat pembaca mengira ada jalur Claude yang bisa dinyalakan.
             # Kalau Fase B jadi dikerjakan, menambahkannya kembali sepele.
-            "training_aktif": gpu_sinyal.latih_aktif()}
+            "training_aktif": gpu_sinyal.latih_aktif(),
+            "cacah": await asyncio.to_thread(_cacah, sess, settings, tid, batch)}
+
+
+def _cacah(sess: Session, settings: Settings, tid: str, batch: str | None) -> dict:
+    """Cacah per sasaran untuk lingkup yang sedang dibuka dialog. {} kalau
+    lingkupnya tak dikenal; antarmuka lalu diam saja, bukan menampilkan nol
+    yang keliru."""
+    if sess.src is None:
+        return {}
+    with sess.lock:
+        items = list(sess.items)
+    data = tugas.baca_projek(sess.src, settings.uploads_root)
+    try:
+        return tugas.cacah_autolabel(items, data, sess.src, sess.user,
+                                     tid=tid or None, batch=batch)
+    except Exception:                                   # noqa: BLE001
+        log.warning("cacah auto-label gagal di %s", sess.src.name, exc_info=True)
+        return {}
 
 
 def _sibuk(fitur: str) -> dict:

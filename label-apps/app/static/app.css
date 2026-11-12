@@ -3377,6 +3377,12 @@ button.an-mulai.an-autolabel{background:none;border:0;cursor:pointer;
    terbaca dari bentuknya, bukan dari paragraf bantuan. */
 .az-lingkup{display:flex;align-items:center;gap:8px;margin-top:12px;flex-wrap:wrap}
 .az-lingkup select{flex:0 1 auto;min-width:0}
+/* Cacahnya keterangan milik kontrol di atasnya, jadi dirapatkan ke sana.
+   .halus bawaannya display:block + margin-top:10px, dan di dalam flex yang
+   membungkus itu membuatnya terbaca sebagai kalimat lepas, bukan sebagai
+   jawaban atas pilihan yang baru saja dibuat. */
+.az-lingkup>span.halus{flex:1 1 100%;margin:2px 0 0;font-size:11.5px;
+  color:var(--ink-dim)}
 
 .az-langkah{margin:16px 0 2px;font-size:11px;text-transform:uppercase;
   letter-spacing:.09em;color:var(--ink-faint);font-weight:700}
@@ -3429,6 +3435,8 @@ button.an-mulai.an-autolabel{background:none;border:0;cursor:pointer;
 .az-lanjut summary:focus-visible{outline:2px solid var(--ok);outline-offset:2px}
 .az-lanjut>p.halus{margin:8px 0 0}
 #az-maju:empty{display:none}
+.az-sebab{margin:0;flex:0 1 auto;min-width:0;color:var(--warn)}
+.az-sebab:empty{display:none}
 .sp-centang input{margin-top:2px;flex:0 0 auto;accent-color:var(--ok)}
 .sp-centang b{display:block;font-size:12.5px;font-weight:600;color:var(--ink)}
 .sp-centang i{display:block;font-style:normal;font-size:11px;

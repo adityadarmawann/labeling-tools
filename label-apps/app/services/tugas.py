@@ -455,6 +455,58 @@ def boleh_labeli_lepas(data: dict, akun: str) -> bool:
     return ((data["anggota"].get(akun) or {}).get("akses")) == "semua"
 
 
+def target_autolabel(items: list, data: dict, ds: Path, *,
+                     tid: str | None = None, batch: str | None = None,
+                     sasaran: str = "belum") -> list | None:
+    """Gambar yang akan dikerjakan satu jalan auto-label. None = tugas asing.
+
+    SATU pemilih, dipakai pekerjanya maupun pencacah di antarmuka. Kalau
+    antarmuka menurunkan aturannya sendiri, angka yang dijanjikan di dialog
+    dan gambar yang benar-benar dikerjakan boleh berbeda tanpa ada satu pun
+    yang terlihat salah. Pemetaan sasaran -> saring tinggal di sini, bukan
+    disalin di dua tempat.
+    """
+    sasaran = sasaran if sasaran in SASARAN else "belum"
+    if batch is not None:
+        return gambar_belum_batch(items, ds, batch, sasaran)
+    return gambar_konteks_job(
+        items, data, ds, tid,
+        saring="belum" if sasaran == "belum"
+        else ("ai" if sasaran == "dicek" else "semua"))
+
+
+def cacah_autolabel(items: list, data: dict, ds: Path, akun: str, *,
+                    tid: str | None = None,
+                    batch: str | None = None) -> dict:
+    """{sasaran: {"total": n, "boleh": m}} untuk KETIGA pilihan sekaligus.
+
+    Ketiganya dihitung sekali jalan supaya dialog bisa mengganti angkanya
+    saat pilihan "Kerjakan" diubah tanpa menunggu server lagi.
+
+    `boleh` memisahkan gambar yang benar-benar boleh ditulis akun ini. Berkas
+    tugas dan berkas tag dibaca SEKALI lalu dipakai ulang; tolak_tulis membaca
+    keduanya pada setiap panggilan, dan pada projek 11 ribu gambar itu berarti
+    22 ribu pembacaan berkas hanya untuk satu angka di kepala dialog.
+    """
+    from . import tag as _tag
+
+    tdata = _tag.baca(ds)
+    keluar: dict[str, dict] = {}
+    for s in SASARAN:
+        target = target_autolabel(items, data, ds, tid=tid, batch=batch,
+                                  sasaran=s)
+        if target is None:
+            return {}
+        boleh = 0
+        for it in target:
+            k = kunci_gambar(ds, it["img"])
+            b = _tag.untuk(tdata, k).get("batch", "")
+            if not alasan_tolak(data, akun, k, b):
+                boleh += 1
+        keluar[s] = {"total": len(target), "boleh": boleh}
+    return keluar
+
+
 def tolak_tulis(ds: Path, akun: str, gambar: Path) -> str:
     """
     Penjaga satu pintu untuk SEMUA jalur yang mengubah label sebuah gambar.

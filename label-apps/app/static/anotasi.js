@@ -545,12 +545,58 @@
   /* Keterangan lingkup: selain "belum", hasilnya DITAMBAHKAN ke yang sudah
      ada, bukan menggantinya. Itu satu-satunya hal yang bisa mengejutkan dari
      pilihan ini, jadi disebut di sebelahnya, bukan di dokumentasi. */
+  let azCacah = null;        // {sasaran: {total, boleh}} dari /info
+
+  const azAngka = (n) => Number(n).toLocaleString('id-ID');
+
+  /* Berapa gambar yang akan dikerjakan, untuk pilihan "Kerjakan" yang sedang
+     dipilih. Tanpa angka ini "berhenti setelah 1000 gambar" cuma tebakan
+     tanpa jangkar, dan satu-satunya cara tahu lingkupnya kosong adalah
+     menjalankannya dulu lalu membaca "0 diproses". */
   function azKetSasaran() {
     const v = azEl('az-sasaran').value;
-    azEl('az-sasaran-ket').textContent = v === 'belum' ? ''
-      : 'Bentuk baru ditambahkan ke yang sudah ada, bukan menggantinya.';
+    const ket = azEl('az-sasaran-ket');
+    const c = azCacah && azCacah[v];
+    const tambah = v === 'belum' ? ''
+      : ' Bentuk baru ditambahkan ke yang sudah ada, bukan menggantinya.';
+    if (!c) { ket.textContent = tambah.trim(); azMulaiSiap(); return; }
+    let t = azAngka(c.total) + ' gambar';
+    // Gambar yang tak boleh ditulis akun ini tetap masuk lingkup lalu
+    // dilewati saat jalan. Disebut di sini, bukan baru muncul di hasil.
+    if (c.boleh < c.total) {
+      t += ', ' + azAngka(c.total - c.boleh) + ' di antaranya tak bisa kamu tulis';
+    }
+    ket.textContent = t + tambah;
+    azMulaiSiap();
   }
 
+  /* Mulai hanya menyala kalau permintaannya memang akan lolos di server:
+     ada gambarnya, dan ada sumbernya. Alasannya ditaruh di sebelah tombol,
+     bukan di toast yang baru muncul sesudah ditekan. */
+  function azMulaiSiap() {
+    const mulai = azEl('az-mulai');
+    if (!mulai || mulai.textContent === 'Memuat…') return;
+    const v = azEl('az-sasaran').value;
+    const c = azCacah && azCacah[v];
+    const adaSumber = ['az-s-terlatih', 'az-s-eksternal', 'az-s-zeroshot',
+                       'az-s-gdino'].some((id) => azEl(id).checked);
+    let sebab = '';
+    if (c && c.boleh === 0) {
+      sebab = c.total === 0
+        ? 'Tidak ada gambar yang cocok. Ganti pilihan "Kerjakan".'
+        : 'Semua gambar di lingkup ini tidak bisa kamu tulis.';
+    } else if (!adaSumber) {
+      sebab = 'Pilih dulu satu sumber.';
+    }
+    azEl('az-sebab').textContent = sebab;
+    mulai.disabled = !!sebab;
+  }
+
+  for (const id of ['az-s-terlatih', 'az-s-eksternal', 'az-s-zeroshot',
+                    'az-s-gdino']) {
+    const el = azEl(id);
+    if (el) el.addEventListener('change', azMulaiSiap);
+  }
   for (const id of ['az-kelas-nama', 'az-bentuk', 'az-terlatih',
                     'az-s-terlatih', 'az-s-gdino']) {
     const el = azEl(id);
@@ -571,12 +617,19 @@
     azEl('az-unggah-status').textContent = '';
     const mulai = azEl('az-mulai');
     mulai.disabled = true; mulai.textContent = 'Memuat…';
-    const j = await send('/api/autolabel/info');
+    // Lingkup ikut dikirim: cacahnya harus cacah gambar JOB/BATCH ini,
+    // bukan seluruh projek.
+    const q = new URLSearchParams();
+    if (azScope && azScope.tid) q.set('tid', azScope.tid);
+    if (azScope && azScope.batch != null) q.set('batch', azScope.batch);
+    const j = await send('/api/autolabel/info'
+      + (q.toString() ? '?' + q.toString() : ''));
     if (!j || !j.ok) {
       azEl('az-maju').innerHTML = '<p class="bad" style="padding:12px 16px">'
         + azEsc((j && j.error) || 'gagal memuat') + '</p>';
       mulai.textContent = 'Mulai'; return;
     }
+    azCacah = (j.cacah && Object.keys(j.cacah).length) ? j.cacah : null;
     azIsiInfo(j, true);
     mulai.textContent = 'Mulai';
     /* Dua keadaan membuat dialog ini tak bisa dipakai sama sekali, dan dulu
@@ -585,8 +638,7 @@
        Projek kerangka bahkan tak pernah disebut di antarmuka sama sekali --
        penolakannya hanya hidup di dalam pekerja. */
     if (azHalang(j)) { mulai.disabled = true; return; }
-    mulai.disabled = false;
-    azKetSasaran();
+    azKetSasaran();      // mengisi cacah lalu menilai tombol Mulai
     azAwas();
   }
 
