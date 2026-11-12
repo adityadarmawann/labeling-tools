@@ -477,13 +477,32 @@
     if (mulai) mulai.disabled = false;
   }
 
-  // Tiap centang sumber -> blok konfigurasinya (redup saat tak dicentang).
+  // Tiap centang sumber -> blok konfigurasinya.
   const AZ_KO = { 'az-s-terlatih': 'az-terlatih',
                   'az-s-eksternal': 'az-ko-eksternal',
                   'az-s-zeroshot': 'az-ko-zeroshot',
                   'az-s-gdino': 'az-ko-gdino' };
+  /* Yang dimatikan KENDALINYA, bukan bloknya.
+   *
+   * Dulu blok yang tak dicentang diberi kelas .mati yang memasang
+   * pointer-events:none, dan kolom nama objek tinggal di dalam blok
+   * Zero-shot. Jadi mematikan Zero-shot membuat kolom itu tak bisa diketik
+   * sama sekali, padahal GroundingDINO membacanya -- resep "recall tinggi"
+   * mustahil disetel. Kolomnya kini naik ke tingkat keluarga, dan yang
+   * diredupkan cuma isi blok sumbernya sendiri.
+   *
+   * Sekalian: kedua <select> model LEPAS dari disabled. Keduanya ditulis
+   * disabled di markup dan tak pernah dinyalakan, jadi memilih latihan mana
+   * atau model .pt mana yang dipakai memang tidak pernah bisa. */
   function azToggle(cbId) {
-    azEl(AZ_KO[cbId]).classList.toggle('mati', !azEl(cbId).checked);
+    const blok = azEl(AZ_KO[cbId]);
+    const nyala = azEl(cbId).checked;
+    blok.classList.toggle('mati', !nyala);
+    const kendali = blok.matches('select,input')
+      ? [blok] : [...blok.querySelectorAll('select,input,button')];
+    for (const k of kendali) {
+      if (k.type !== 'file') k.disabled = !nyala;
+    }
   }
 
   function azIsiInfo(j, resetCek) {
@@ -496,7 +515,8 @@
     }).join('');
     const ter = j.terlatih || [];
     azEl('az-terlatih').innerHTML = ter.length
-      ? ter.map((m) => '<option value="' + m.nomor + '">Latihan L' + m.nomor
+      ? ter.map((m) => '<option value="' + m.nomor + '" data-kelas="'
+          + ((m.kelas || []).length) + '">Latihan L' + m.nomor
           + (m.versi != null ? ' (v' + m.versi + ')' : '') + ' — '
           + ((m.kelas || []).length) + ' kelas</option>').join('')
       : '<option value="">(belum ada model terlatih)</option>';
@@ -522,6 +542,25 @@
     }
   }
 
+  /* Keterangan lingkup: selain "belum", hasilnya DITAMBAHKAN ke yang sudah
+     ada, bukan menggantinya. Itu satu-satunya hal yang bisa mengejutkan dari
+     pilihan ini, jadi disebut di sebelahnya, bukan di dokumentasi. */
+  function azKetSasaran() {
+    const v = azEl('az-sasaran').value;
+    azEl('az-sasaran-ket').textContent = v === 'belum' ? ''
+      : 'Bentuk baru ditambahkan ke yang sudah ada, bukan menggantinya.';
+  }
+
+  for (const id of ['az-kelas-nama', 'az-bentuk', 'az-terlatih',
+                    'az-s-terlatih', 'az-s-gdino']) {
+    const el = azEl(id);
+    if (el) el.addEventListener('change', azAwas);
+    if (el && el.tagName === 'INPUT' && el.type === 'text') {
+      el.addEventListener('input', azAwas);
+    }
+  }
+  if (azEl('az-sasaran')) azEl('az-sasaran').addEventListener('change', azKetSasaran);
+
   async function bukaAutolabel(scope) {
     if (!azDlg) return;
     azScope = scope;          // {tid} atau {batch}
@@ -539,13 +578,60 @@
       mulai.textContent = 'Mulai'; return;
     }
     azIsiInfo(j, true);
-    if (j.training_aktif) {
-      azEl('az-maju').innerHTML = '<p class="bad" style="padding:12px 16px">'
-        + 'Training sedang berjalan di server ini, jadi auto-label dinonaktifkan '
-        + 'sampai selesai. Anotasi manual (gambar kotak sendiri) tetap bisa.</p>';
-      mulai.textContent = 'Mulai'; mulai.disabled = true; return;
+    mulai.textContent = 'Mulai';
+    /* Dua keadaan membuat dialog ini tak bisa dipakai sama sekali, dan dulu
+       dua-duanya baru ketahuan SESUDAH Mulai ditekan: orang menyetel sumber,
+       ambang dan nama kelas lebih dulu, lalu dijawab satu baris merah.
+       Projek kerangka bahkan tak pernah disebut di antarmuka sama sekali --
+       penolakannya hanya hidup di dalam pekerja. */
+    if (azHalang(j)) { mulai.disabled = true; return; }
+    mulai.disabled = false;
+    azKetSasaran();
+    azAwas();
+  }
+
+  /* Pesan yang MENGGANTI seluruh isian. Mengembalikan true kalau dialog ini
+     memang tak bisa dipakai sekarang. */
+  function azHalang(j) {
+    const kotak = azEl('az-halang');
+    const atur = azEl('az-atur');
+    let html = '';
+    if (j.jenis === 'kerangka') {
+      html = '<b>Projek kerangka (pose) belum bisa auto-label gabungan.</b> '
+        + 'Pakai "Pre-label dengan AI", yang memakai model pose projek ini.';
+    } else if (j.training_aktif) {
+      html = '<b>Training sedang berjalan di server ini</b>, jadi auto-label '
+        + 'dinonaktifkan sampai selesai. Anotasi manual tetap bisa.';
     }
-    mulai.textContent = 'Mulai'; mulai.disabled = false;
+    kotak.innerHTML = html;
+    kotak.hidden = !html;
+    atur.hidden = !!html;
+    return !!html;
+  }
+
+  /* Peringatan yang hanya muncul saat pasangan pilihannya memang bikin
+     kejutan. Keduanya dulu terjadi diam-diam. */
+  function azAwas() {
+    const nama = (azEl('az-kelas-nama').value || '').trim();
+    const nKelas = parseInt(azEl('az-terlatih').selectedOptions.length
+      ? (azEl('az-terlatih').selectedOptions[0].dataset.kelas || '0') : '0', 10);
+    const pakaiTerlatih = azEl('az-s-terlatih').checked;
+    const wKelas = azEl('az-awas-kelas');
+    // Satu nama dipakai untuk SEMUA objek dari SEMUA sumber. Pada model
+    // berkelas banyak itu melenyapkan taksonominya tanpa sepatah kata pun.
+    if (nama && pakaiTerlatih && nKelas > 1) {
+      wKelas.textContent = 'Semua objek dari semua sumber akan diberi nama "'
+        + nama + '", termasuk ' + nKelas + ' kelas milik model terlatih.';
+      wKelas.hidden = false;
+    } else { wKelas.hidden = true; }
+
+    const wBentuk = azEl('az-awas-bentuk');
+    const bentuk = azEl('az-bentuk').value;
+    if (bentuk === 'kotak' && azEl('az-s-gdino').checked) {
+      wBentuk.textContent = 'Dengan bentuk "kotak", SAM tidak dijalankan, jadi '
+        + 'hasil GroundingDINO tetap kotak.';
+      wBentuk.hidden = false;
+    } else { wBentuk.hidden = true; }
   }
 
   function azPantau() {
@@ -634,9 +720,12 @@
                       kelas_nama: kelasNama });
       }
       if (azEl('az-s-gdino').checked) {
-        // GroundingDINO pakai nama objek yang sama (az-prompt); kosong -> kelas projek.
+        // Nama objeknya sama dengan Zero-shot (satu kolom milik keluarga ini);
+        // kosong -> kelas projek. Ambangnya SENDIRI: dulu ia diam-diam memakai
+        // ambang zero-shot (0,1), bukan 0,25 yang diasumsikan server, dan
+        // itulah sebabnya sumber ini terasa penuh derau.
         sumber.push({ jenis: 'groundingdino', prompt: azEl('az-prompt').value.trim(),
-                      conf: parseFloat(azEl('az-conf').value || '0.25'),
+                      conf: parseFloat(azEl('az-conf-gdino').value || '0.25'),
                       kelas_nama: kelasNama });
       }
       if (!sumber.length) { toast('Pilih minimal satu sumber'); return; }

@@ -525,101 +525,169 @@
 <div class="dlg" id="az-dlg" hidden>
   <div class="dlg-tirai" data-az-tutup></div>
   <div class="dlg-kotak" role="dialog" aria-modal="true" aria-labelledby="az-judul">
+    {#- Kepala TETAP. Dulu seluruh kendali tinggal di sini dan hanya bilah
+        kemajuan yang menggulung, padahal #az-dlg tak pernah didaftarkan ke
+        aturan tata letak tiga bagian -- jadi yang menggulung justru seluruh
+        kotaknya, judul dan tombol Mulai ikut hilang ke atas. -#}
     <div class="op-dlg-atas">
       <h3 id="az-judul">Auto-label</h3>
-      <p class="halus">Pilih satu atau beberapa sumber. Hasilnya DIGABUNG dan
-        ditandai "belum diverifikasi"; di mana satu sumber lemah, yang lain menutup.
-        Gambar yang sudah dilabeli atau ditandai latar tidak disentuh.</p>
-
-      <div class="az-sumber">
-        <label class="az-src"><input type="checkbox" id="az-s-terlatih">
-          Model terlatih projek</label>
-        <select class="chip az-src-ko" id="az-terlatih" disabled></select>
-
-        <label class="az-src"><input type="checkbox" id="az-s-eksternal">
-          Model .pt yang diunggah</label>
-        <div class="az-src-ko" id="az-ko-eksternal">
-          <select class="chip" id="az-eksternal" disabled></select>
-          <label class="an-mulai an-autolabel az-unggah" id="az-unggah-tbl">
-            + Unggah .pt
-            <input type="file" id="az-file" accept=".pt" hidden></label>
-          <span class="halus" id="az-unggah-status"></span>
-        </div>
-
-        <label class="az-src"><input type="checkbox" id="az-s-zeroshot">
-          Zero-shot (tanpa latih)</label>
-        <div class="az-src-ko" id="az-ko-zeroshot">
-          <input class="chip" id="az-prompt" type="text"
-                 placeholder="mis. bottle, can, carton"
-                 style="display:block;width:26rem;max-width:90%">
-          <label class="halus" for="az-model" style="margin-top:6px;display:block">Model teks</label>
-          <select class="chip" id="az-model"></select>
-        </div>
-
-        <label class="az-src" id="az-src-gdino-lbl" hidden>
-          <input type="checkbox" id="az-s-gdino"> GroundingDINO + SAM (recall tinggi)</label>
-        <div class="az-src-ko" id="az-ko-gdino" hidden>
-          <span class="halus">Pakai nama objek yang sama dengan Zero-shot di atas.
-            Menangkap lebih banyak objek lalu SAM merapikannya jadi mask; biayanya
-            lebih banyak kotak ekstra yang perlu dihapus saat verifikasi.</span>
-        </div>
-      </div>
-
-      <div class="pl-baris">
-        <span><label class="halus" for="az-batas">Jumlah maks</label>
-          <input class="chip" id="az-batas" type="number" value="1000"
-                 min="1" max="100000"></span>
-        <span><label class="halus" for="az-conf">Ambang zero-shot</label>
-          <input class="chip" id="az-conf" type="number" value="0.1"
-                 min="0.01" max="0.99" step="0.05"></span>
-        {#- Ambang model .pt dipisah dari ambang zero-shot. Keduanya memakai
-            skala yang sama tetapi watak yang jauh berbeda: model terlatih
-            projek yakin pada kelasnya sendiri (0,25 wajar), zero-shot jauh
-            lebih ragu (0,1). Dulu keduanya memakai satu kotak, dan nilai
-            model terlatih tak pernah dikirim sama sekali sehingga selalu
-            terkunci di 0,25 apa pun yang diketik. -#}
-        <span><label class="halus" for="az-conf-model">Ambang model .pt</label>
-          <input class="chip" id="az-conf-model" type="number" value="0.25"
-                 min="0.01" max="0.99" step="0.05"></span>
-        {#- Ambang penggabungan: dua deteksi yang tumpang tindih lebih dari ini
-            dianggap OBJEK YANG SAMA. Terlalu rendah, dua objek berdampingan
-            dilebur jadi satu; terlalu tinggi, objek yang sama dari dua sumber
-            jadi dua kotak bertumpuk yang harus dihapus satu per satu. -#}
-        {#- Gambar mana yang disentuh. Inilah yang membuat jalan KEDUA mungkin:
-            sesudah jalan pertama seluruh gambar batch sudah punya bentuk,
-            jadi dengan sasaran "belum" saja auto-label berikutnya menemukan
-            nol sasaran. Selain "belum", hasilnya DITAMBAHKAN ke yang sudah
-            ada, bukan menggantinya. -#}
-        <span><label class="halus" for="az-sasaran">Kerjakan gambar</label>
-          <select class="chip" id="az-sasaran">
-            <option value="belum">yang belum dianotasi saja</option>
-            <option value="dicek">+ hasil AI yang belum diverifikasi</option>
-            <option value="semua">semua, termasuk yang sudah diverifikasi</option>
-          </select></span>
-        {#- Bentuk keluaran jalan ini. "Ikut projek" perilaku lama. Memaksanya
-            di sini yang membuat satu batch bisa punya mask produk DAN kotak
-            logo: jalan pertama poligon, jalan kedua kotak. -#}
-        <span><label class="halus" for="az-bentuk">Bentuk hasil</label>
-          <select class="chip" id="az-bentuk">
-            <option value="">ikut format projek</option>
-            <option value="poligon">poligon (segmentasi)</option>
-            <option value="kotak">kotak (bbox)</option>
-          </select></span>
-        {#- Nama kelas hasil jalan ini. Satu batch = satu produk yang sudah
-            diketahui, jadi taksonomi model ("botol") sering bukan nama yang
-            dipakai dataset ("botol-pet-ades"), dan prompt yang bagus untuk
-            deteksi ("ADES logo on the bottle") hampir selalu buruk sebagai
-            nama kelas. Kosong = pakai nama dari model/prompt. -#}
-        <span><label class="halus" for="az-kelas-nama">Nama kelas hasil</label>
-          <input class="chip" id="az-kelas-nama" type="text"
-                 maxlength="80" placeholder="kosong: ikut model atau prompt"
-                 style="width:17rem;max-width:90%"></span>
-        <span><label class="halus" for="az-iou">Ambang gabung (IoU)</label>
-          <input class="chip" id="az-iou" type="number" value="0.6"
-                 min="0.3" max="0.95" step="0.05"></span>
+      <p class="halus">Hasilnya ditandai "belum diverifikasi" supaya gampang
+        dicari saat memeriksa. Gambar yang sudah dilabeli atau ditandai latar
+        tidak disentuh.</p>
+      {#- Lingkup naik ke kepala: ia menentukan gambar MANA yang dikerjakan,
+          jadi ia pertanyaan pertama, bukan setelan di antara enam kotak
+          angka di dasar dialog. -#}
+      <div class="az-lingkup">
+        <label class="halus" for="az-sasaran">Kerjakan</label>
+        <select class="chip" id="az-sasaran">
+          <option value="belum">gambar yang belum dianotasi saja</option>
+          <option value="dicek">+ hasil AI yang belum diverifikasi</option>
+          <option value="semua">semua, termasuk yang sudah diverifikasi</option>
+        </select>
+        <span class="halus" id="az-sasaran-ket"></span>
       </div>
     </div>
-    <div class="op-gulung" id="az-maju"></div>
+
+    <div class="op-gulung">
+      {#- Satu pesan yang MENGGANTI seluruh isian: projek kerangka dan training
+          yang sedang jalan dua-duanya membuat dialog ini tak bisa dipakai sama
+          sekali. Dulu keduanya baru ketahuan sesudah Mulai ditekan. -#}
+      <div class="az-halang" id="az-halang" hidden></div>
+
+      <div id="az-atur">
+        <h4 class="az-langkah">Sumber</h4>
+        {#- Empat sumber dulu berjajar sebagai empat centang setara, dan tak
+            ada apa pun di layar yang mengatakan bahwa dua di antaranya berbagi
+            satu kolom nama objek dan satu ambang. Sekarang mereka dua KELUARGA,
+            dan yang dipakai bersama tinggal di dalam kotak keluarganya. Semua
+            boleh dicentang bersamaan: hasilnya digabung, objek yang sama cukup
+            ditulis sekali. -#}
+        <p class="halus az-langkah-ket">Boleh pilih lebih dari satu. Hasilnya
+          digabung, dan objek yang sama cukup ditulis sekali.</p>
+
+        <section class="az-grup" id="az-grup-model">
+          <h5>Model .pt, sudah tahu kelas projek</h5>
+          <p class="halus">Menulis nama kelas sesuai taksonomi projek. Paling
+            tepat soal nama, tetapi hanya menemukan kelas yang pernah dilatih.</p>
+          <label class="az-src"><input type="checkbox" id="az-s-terlatih">
+            <span>Model terlatih projek</span></label>
+          <select class="chip az-src-ko" id="az-terlatih"
+                  aria-label="Pilih latihan"></select>
+
+          <label class="az-src"><input type="checkbox" id="az-s-eksternal">
+            <span>Model .pt yang diunggah</span></label>
+          <div class="az-src-ko" id="az-ko-eksternal">
+            <select class="chip" id="az-eksternal"
+                    aria-label="Pilih model yang diunggah"></select>
+            <label class="an-mulai an-autolabel az-unggah" id="az-unggah-tbl">
+              + Unggah .pt
+              <input type="file" id="az-file" accept=".pt" hidden></label>
+            <span class="halus" id="az-unggah-status"></span>
+          </div>
+
+          <div class="az-ambang">
+            <label class="halus" for="az-conf-model">Ambang keyakinan</label>
+            <input class="chip" id="az-conf-model" type="number" value="0.25"
+                   min="0.01" max="0.99" step="0.05">
+            <span class="halus">Lebih kecil berarti lebih banyak objek
+              tertangkap dan lebih banyak yang salah. 0,25 wajar untuk model
+              terlatih.</span>
+          </div>
+        </section>
+
+        <section class="az-grup" id="az-grup-teks">
+          <h5>Model teks, diberi tahu nama objeknya</h5>
+          <p class="halus">Tidak perlu dilatih dulu. Kamu yang menyebut objeknya,
+            modelnya yang mencari.</p>
+          {#- Kolom nama objek naik ke tingkat KELUARGA. Dulu ia tinggal di
+              dalam blok Zero-shot, sementara GroundingDINO membacanya juga --
+              dan karena blok yang tak dicentang diberi pointer-events:none,
+              mematikan Zero-shot membuat kolom ini tak bisa diketik sama
+              sekali, sehingga resep "recall tinggi" mustahil disetel. -#}
+          <label class="halus" for="az-prompt">Nama objek yang dicari</label>
+          <input class="chip az-lebar" id="az-prompt" type="text"
+                 placeholder="mis. bottle, can, carton">
+          <p class="halus" id="az-prompt-ket">Pisahkan dengan koma. Dipakai
+            semua sumber di kotak ini. Dikosongkan berarti memakai nama kelas
+            projek.</p>
+
+          <label class="az-src"><input type="checkbox" id="az-s-zeroshot">
+            <span>Zero-shot (tanpa latih)</span></label>
+          <div class="az-src-ko" id="az-ko-zeroshot">
+            <label class="halus" for="az-model">Model teks</label>
+            <select class="chip" id="az-model"></select>
+            <div class="az-ambang">
+              <label class="halus" for="az-conf">Ambang keyakinan</label>
+              <input class="chip" id="az-conf" type="number" value="0.1"
+                     min="0.01" max="0.99" step="0.05">
+              <span class="halus">Model teks jauh lebih ragu daripada model
+                terlatih, jadi 0,1 wajar di sini.</span>
+            </div>
+          </div>
+
+          <label class="az-src" id="az-src-gdino-lbl" hidden>
+            <input type="checkbox" id="az-s-gdino">
+            <span>GroundingDINO + SAM</span></label>
+          <div class="az-src-ko" id="az-ko-gdino" hidden>
+            <p class="halus">Menangkap lebih banyak objek lalu SAM merapikannya
+              jadi mask. Biayanya lebih banyak kotak ekstra yang perlu dihapus
+              saat verifikasi.</p>
+            {#- Ambangnya SENDIRI. Dulu ia diam-diam memakai ambang zero-shot
+                (0,1), bukan 0,25 yang diasumsikan server, dan itulah sebabnya
+                sumber ini terasa penuh derau. -#}
+            <div class="az-ambang">
+              <label class="halus" for="az-conf-gdino">Ambang keyakinan</label>
+              <input class="chip" id="az-conf-gdino" type="number" value="0.25"
+                     min="0.01" max="0.99" step="0.05">
+            </div>
+          </div>
+        </section>
+
+        <h4 class="az-langkah">Hasilnya ditulis sebagai</h4>
+        <div class="az-hasil">
+          {#- Bentuk keluaran jalan ini. Memaksanya di sini yang membuat satu
+              batch bisa punya mask produk DAN kotak logo: jalan pertama
+              poligon, jalan kedua kotak. -#}
+          <span><label class="halus" for="az-bentuk">Bentuk</label>
+            <select class="chip" id="az-bentuk">
+              <option value="">ikut format projek</option>
+              <option value="poligon">poligon (segmentasi)</option>
+              <option value="kotak">kotak (bbox)</option>
+            </select></span>
+          {#- Satu batch = satu produk yang sudah diketahui, jadi taksonomi
+              model ("botol") sering bukan nama yang dipakai dataset
+              ("botol-pet-ades"), dan prompt yang bagus untuk deteksi hampir
+              selalu buruk sebagai nama kelas. -#}
+          <span class="az-lebar2"><label class="halus" for="az-kelas-nama">Nama kelas</label>
+            <input class="chip" id="az-kelas-nama" type="text" maxlength="80"
+                   placeholder="kosong: pakai nama dari model atau prompt"></span>
+        </div>
+        <p class="az-awas" id="az-awas-kelas" hidden></p>
+        <p class="az-awas" id="az-awas-bentuk" hidden></p>
+
+        <details class="az-lanjut">
+          <summary>Setelan lanjutan</summary>
+          <div class="az-hasil">
+            <span><label class="halus" for="az-batas">Berhenti setelah</label>
+              <input class="chip" id="az-batas" type="number" value="1000"
+                     min="1" max="100000">
+              <span class="halus">gambar</span></span>
+            {#- Dua deteksi yang tumpang tindih lebih dari ini dianggap OBJEK
+                YANG SAMA. Terlalu rendah, dua objek berdampingan dilebur jadi
+                satu; terlalu tinggi, objek yang sama dari dua sumber jadi dua
+                kotak bertumpuk yang harus dihapus satu per satu. -#}
+            <span><label class="halus" for="az-iou">Ambang gabung (IoU)</label>
+              <input class="chip" id="az-iou" type="number" value="0.6"
+                     min="0.3" max="0.95" step="0.05"></span>
+          </div>
+          <p class="halus">Dua objek yang tumpang tindih lebih dari ambang
+            gabung dianggap objek yang sama dan ditulis satu kali. Berlaku juga
+            saat sumbernya cuma satu.</p>
+        </details>
+      </div>
+
+      <div id="az-maju"></div>
+    </div>
     <div class="op-dlg-bawah">
       <button class="wz-tbl wz-tbl-sek" type="button" id="az-batal" hidden>Batalkan</button>
       <span class="spacer"></span>

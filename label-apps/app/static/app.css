@@ -2428,12 +2428,12 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
    langsung terbaca sebagai jalur AI. Reset tampilan bawaan <button>. */
 button.an-mulai.an-autolabel{background:none;border:0;cursor:pointer;
   font-family:inherit;color:var(--warn)}
-/* Pilih sumber auto-label gabungan: tiap sumber = centang + konfigurasinya yang
-   masuk ke dalam, redup saat sumbernya tak dicentang. */
-.az-sumber{display:flex;flex-direction:column;gap:4px;margin:4px 0 10px}
-.az-src{font-weight:600;display:flex;align-items:center;gap:7px;margin-top:8px}
-.az-src-ko{margin:0 0 2px 22px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.az-src-ko.mati{opacity:.4;pointer-events:none}
+/* Dulu di sini ada .az-sumber/.az-src/.az-src-ko sendiri, termasuk
+   `.az-src-ko.mati{pointer-events:none}` yang mengunci kolom nama objek
+   milik seluruh keluarga teks. Gaya dialog auto-label kini tinggal di satu
+   tempat, di bawah bersama .az-grup; kalau dibiarkan di sini, aturan lamanya
+   tetap berlaku karena yang baru hanya menimpa opacity, bukan
+   pointer-events. */
 .az-unggah{cursor:pointer;font-size:12px}
 .an-buang{flex:0 0 auto;background:transparent;border:0;cursor:pointer;
   color:var(--ink-faint);font-size:15px;line-height:1;padding:2px 4px}
@@ -3146,7 +3146,7 @@ button.an-mulai.an-autolabel{background:none;border:0;cursor:pointer;
    Kotaknya jadi kolom tiga bagian: judul tetap, isi menggulung, kaki tetap.
    .dlg-kotak biasa menggulung SELURUH kotak, jadi judul dan tombol tutup ikut
    hilang ke atas begitu isinya 21 baris. */
-#op-dlg .dlg-kotak,#sp-dlg .dlg-kotak{width:min(560px,100%);max-height:min(660px,84vh);max-height:min(660px,84dvh);
+#op-dlg .dlg-kotak,#sp-dlg .dlg-kotak,#az-dlg .dlg-kotak{width:min(560px,100%);max-height:min(660px,84vh);max-height:min(660px,84dvh);
   padding:0;display:flex;flex-direction:column;overflow:hidden}
 .op-dlg-atas{flex:0 0 auto;padding:18px 20px 12px;border-bottom:1px solid var(--line)}
 .op-dlg-atas h3{margin:0 0 4px}
@@ -3368,6 +3368,67 @@ button.an-mulai.an-autolabel{background:none;border:0;cursor:pointer;
 /* Label tombol tak boleh dipatahkan jadi dua baris: tingginya sudah dikunci
    36px, jadi baris kedua tercetak keluar dari tombolnya. */
 .op-dlg-bawah .wz-tbl{white-space:nowrap}
+
+/* ------------------------------------------------------ dialog auto-label
+   Empat sumber dulu berjajar sebagai empat centang setara, dan tak ada apa
+   pun di layar yang mengatakan bahwa dua di antaranya berbagi satu kolom
+   nama objek dan satu ambang. Sekarang mereka dua KELUARGA: yang dipakai
+   bersama tinggal di dalam kotak keluarganya, jadi aturan kombinasinya
+   terbaca dari bentuknya, bukan dari paragraf bantuan. */
+.az-lingkup{display:flex;align-items:center;gap:8px;margin-top:12px;flex-wrap:wrap}
+.az-lingkup select{flex:0 1 auto;min-width:0}
+
+.az-langkah{margin:16px 0 2px;font-size:11px;text-transform:uppercase;
+  letter-spacing:.09em;color:var(--ink-faint);font-weight:700}
+.az-langkah:first-child{margin-top:12px}
+.az-langkah-ket{margin:0 0 10px}
+
+.az-grup{border:1px solid var(--line);border-radius:10px;background:var(--panel);
+  padding:12px 14px;margin-bottom:10px}
+.az-grup h5{margin:0 0 2px;font-size:13px;color:var(--ink)}
+.az-grup>p.halus{margin:0 0 10px}
+.az-grup .az-src{display:flex;align-items:center;gap:8px;margin-top:8px;
+  font-size:13px;font-weight:600;color:var(--ink);cursor:pointer}
+.az-grup .az-src input{accent-color:var(--ok);flex:0 0 auto}
+.az-src-ko{margin:6px 0 0 24px}
+/* Diredupkan, TIDAK dikunci dari tetikus: kendali yang mati masih harus bisa
+   difokus dan menjelaskan dirinya. pointer-events:none di sini dulu yang
+   mengunci kolom nama objek milik seluruh keluarga. */
+.az-src-ko.mati{opacity:.45}
+.az-lebar{display:block;width:100%;margin-top:2px}
+/* Label dan kotak angkanya satu baris yang rapat; keterangannya baris
+   SENDIRI di bawah. Dibiarkan ikut membungkus di baris yang sama, flex
+   melemparkan keterangannya ke bawah lalu merenggangkan label dan kotaknya
+   ke dua ujung, dan keduanya jadi tak tampak sepasang. */
+.az-ambang{display:grid;grid-template-columns:auto auto 1fr;gap:4px 8px;
+  align-items:center;margin-top:10px}
+.az-ambang input{width:5.5rem}
+/* Hanya SPAN keterangan yang melebar penuh. Ditulis `.az-ambang .halus`,
+   aturannya kena label di sebelah kiri juga (keduanya .halus), dan labelnya
+   terdorong ke barisnya sendiri -- persis gejala yang mau dihindari. */
+.az-ambang>span.halus{grid-column:1/-1;margin:0}
+.az-ambang>label.halus{margin:0}
+
+.az-hasil{display:grid;grid-template-columns:repeat(auto-fit,minmax(13rem,1fr));
+  gap:10px 14px;align-items:end}
+.az-hasil>span{display:flex;flex-direction:column;gap:4px;min-width:0}
+.az-hasil .az-lebar2{grid-column:1/-1}
+.az-hasil input,.az-hasil select{width:100%}
+
+.az-awas{margin:10px 0 0;padding:8px 10px;border-radius:8px;font-size:12px;
+  line-height:1.5;background:var(--warn-bg);border:1px solid var(--warn);
+  color:var(--ink)}
+.az-halang:empty{display:none}
+.az-halang{margin:4px 0 0;padding:12px 14px;border-radius:9px;font-size:12.5px;
+  line-height:1.55;background:var(--warn-bg);border:1px solid var(--warn);
+  color:var(--ink)}
+
+.az-lanjut{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}
+.az-lanjut summary{cursor:pointer;font-size:12.5px;color:var(--ink-dim);
+  font-weight:600}
+.az-lanjut summary:focus-visible{outline:2px solid var(--ok);outline-offset:2px}
+.az-lanjut>p.halus{margin:8px 0 0}
+#az-maju:empty{display:none}
 .sp-centang input{margin-top:2px;flex:0 0 auto;accent-color:var(--ok)}
 .sp-centang b{display:block;font-size:12.5px;font-weight:600;color:var(--ink)}
 .sp-centang i{display:block;font-style:normal;font-size:11px;

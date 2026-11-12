@@ -104,7 +104,11 @@ def test_warnanya_dari_token_tema():
 
 def test_memakai_tata_letak_popup_yang_sama():
     """Judul tetap, isi menggulung, kaki tetap -- seperti popup operasi."""
-    assert "#op-dlg .dlg-kotak,#sp-dlg .dlg-kotak{" in CSS
+    # Daftar selektornya tumbuh seiring dialog baru ikut memakainya, jadi
+    # yang diuji keanggotaannya, bukan susunan persisnya.
+    sel = next(b for b in CSS.split("}") if "#sp-dlg .dlg-kotak" in b)
+    assert "#op-dlg .dlg-kotak" in sel
+    assert "flex-direction:column" in sel
     blok = _blok(APP_JS, "const pilihProjek = (() => {", "const Progres = (()")
     for kelas in ("op-dlg-atas", "op-gulung", "op-dlg-bawah", "wz-tbl-pri"):
         assert kelas in blok, kelas
