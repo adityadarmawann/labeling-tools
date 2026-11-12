@@ -179,11 +179,71 @@ def _beritahu(ds, gambar) -> None:
         pass
 
 
-def tulis_prediksi(it: dict, src: Path, names: dict, bentuk: list[dict]) -> dict:
+def _kotak_bentuk(b: dict) -> tuple:
+    """Kotak pembungkus sebuah bentuk labelme, untuk membandingkan dua bentuk."""
+    ttk = b.get("points") or []
+    if not ttk:
+        return (0.0, 0.0, 0.0, 0.0)
+    xs = [float(p[0]) for p in ttk]
+    ys = [float(p[1]) for p in ttk]
+    return (min(xs), min(ys), max(xs), max(ys))
+
+
+def _tumpang(a: tuple, b: tuple) -> float:
+    ix1, iy1 = max(a[0], b[0]), max(a[1], b[1])
+    ix2, iy2 = min(a[2], b[2]), min(a[3], b[3])
+    iw, ih = max(0.0, ix2 - ix1), max(0.0, iy2 - iy1)
+    inter = iw * ih
+    ua = ((a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter)
+    return inter / ua if ua > 0 else 0.0
+
+
+def gabung_bentuk(lama: list, baru: list, iou: float = 0.6) -> list:
+    """Bentuk lama + bentuk baru, tanpa menggandakan objek yang sama.
+
+    Dipakai jalan auto-label KEDUA dan seterusnya. Tanpa pembanding ini,
+    menjalankan resep yang sama dua kali menumpuk dua salinan tiap objek di
+    tempat yang sama persis, dan memisahkannya kembali jauh lebih lama
+    daripada melabeli dari nol.
+
+    Yang dianggap sama: KELAS sama, JENIS bentuk sama, dan kotaknya bertindih
+    lebih dari `iou`. Dua hal di tempat yang sama justru yang dicari:
+    kelas berbeda (mask produk dan kotak logo memang bertumpuk) maupun jenis
+    berbeda (poligon presisi di jalan pertama, kotak di jalan kedua). Jenis
+    ikut jadi kunci karena jalan kedua memilih bentuknya secara sadar, dan
+    membuang pilihan itu diam-diam lebih buruk daripada satu duplikat yang
+    kelihatan dan bisa dihapus.
+    """
+    keluar = list(lama)
+    kunci_lama = [(str(b.get("label")), str(b.get("shape_type")),
+                   _kotak_bentuk(b)) for b in lama]
+    for b in baru:
+        k = _kotak_bentuk(b)
+        nama = str(b.get("label"))
+        jenis = str(b.get("shape_type"))
+        if any(n == nama and j == jenis and _tumpang(k, kl) > iou
+               for n, j, kl in kunci_lama):
+            continue
+        keluar.append(b)
+        kunci_lama.append((nama, jenis, k))
+    return keluar
+
+
+def tulis_prediksi(it: dict, src: Path, names: dict, bentuk: list[dict],
+                   tambah: bool = False, ditambah: list | None = None) -> dict:
     """Tulis bentuk prediksi untuk SATU gambar, format sama dengan /api/simpan.
 
+    `tambah=True` MENAMBAHKAN ke bentuk yang sudah ada alih-alih menggantinya.
+    Itu yang membuat jalan auto-label kedua mungkin: mask produk dulu, lalu
+    kotak logo menyusul, tanpa yang pertama terhapus.
+
     Mengembalikan peta kelas yang mungkin bertambah (nama baru didaftarkan),
-    supaya pemanggil memakainya untuk gambar berikutnya."""
+    `ditambah` opsional: kalau diberi list, JUMLAH bentuk yang benar-benar
+    masuk ditambahkan ke situ. Dengan `tambah=True` sebagian bentuk baru bisa
+    dibuang karena menduplikasi yang sudah ada, dan pemanggil yang menghitung
+    dari panjang `bentuk` akan melaporkan objek yang tak pernah ditulis --
+    persis jenis kebohongan yang sudah diperbaiki pada pencacah "dilewati".
+    """
     import json
 
     jp: Path = it["img"].with_suffix(".json")
@@ -193,6 +253,13 @@ def tulis_prediksi(it: dict, src: Path, names: dict, bentuk: list[dict]) -> dict
             lama = json.loads(jp.read_text(encoding="utf-8")) or {}
         except Exception:
             lama = {}
+    if tambah:
+        sebelum = list(lama.get("shapes") or [])
+        bentuk = gabung_bentuk(sebelum, bentuk)
+        if ditambah is not None:
+            ditambah.append(len(bentuk) - len(sebelum))
+    elif ditambah is not None:
+        ditambah.append(len(bentuk))
     isi = {
         "version": lama.get("version") or annotations.LABELME_VERSION,
         "flags": lama.get("flags") or {},
@@ -356,7 +423,7 @@ def model_eksternal(ds: Path) -> list[dict]:
 # ------------------------------------------------------------------ job
 def jalankan(ds: Path, uploads_root: Path, tid: str, nomor: int, akun: str,
              batas: int, conf: float, batal=None,
-             batch: str | None = None) -> dict:
+             batch: str | None = None, sasaran: str = "belum") -> dict:
     """Pre-label gambar BELUM teranotasi dengan model terlatih (maks `batas`).
 
     Lingkup: satu JOB (`tid`) ATAU satu BATCH/unggahan (`batch`), persis seperti
@@ -390,11 +457,15 @@ def jalankan(ds: Path, uploads_root: Path, tid: str, nomor: int, akun: str,
         _sk = data.get("skeleton") or {}
         pose_titik = list(_sk.get("titik") or [])
         pose_kelas = _sk.get("kelas") or "objek"
+        sasaran_x = sasaran if sasaran in tugas.SASARAN else "belum"
+        tambah = sasaran_x != "belum"
         if batch is not None:
-            target = tugas.gambar_belum_batch(items, ds, batch)
+            target = tugas.gambar_belum_batch(items, ds, batch, sasaran_x)
         else:
-            target = tugas.gambar_konteks_job(items, data, ds, tid,
-                                              saring="belum")
+            target = tugas.gambar_konteks_job(
+                items, data, ds, tid,
+                saring="belum" if sasaran_x == "belum"
+                else ("ai" if sasaran_x == "dicek" else "semua"))
             if target is None:
                 raise FileNotFoundError("tugas tak dikenal")
         if batas and batas > 0:
@@ -433,7 +504,8 @@ def jalankan(ds: Path, uploads_root: Path, tid: str, nomor: int, akun: str,
                         objek += sum(1 for s in bentuk
                                      if s["shape_type"] == "rectangle")
                     else:
-                        names = tulis_prediksi(it, ds, names, bentuk)
+                        names = tulis_prediksi(it, ds, names, bentuk,
+                                               tambah=tambah)
                         objek += len(bentuk)
                     diproses += 1
                 else:

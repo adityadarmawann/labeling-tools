@@ -190,7 +190,8 @@ def test_rute_mulai_sumber_ensemble(klien, lingkungan, monkeypatch):
     monkeypatch.setattr(gpu_sinyal, "latih_aktif", lambda: False)
     tangkap = {}
 
-    def fake(ds, up, akun, batas, sumber, tid=None, batch=None, iou_ambang=0.6, batal=None):
+    def fake(ds, up, akun, batas, sumber, tid=None, batch=None, iou_ambang=0.6,
+             batal=None, sasaran="belum", bentuk_paksa=""):
         tangkap["sumber"] = sumber
         return {"total": 0, "diproses": 0, "objek": 0, "dilewati": 0}
     monkeypatch.setattr(ag, "jalankan", fake)
@@ -355,7 +356,7 @@ def test_rute_mulai_memakai_conf_dan_iou_yang_dikirim(tmp_path, monkeypatch, kli
     dicatat = {}
 
     def palsu(ds, uploads, akun, batas, sumber, *, tid=None, batch=None,
-              iou_ambang=0.6, batal=None):
+              iou_ambang=0.6, batal=None, sasaran="belum", bentuk_paksa=""):
         dicatat["sumber"] = sumber
         dicatat["iou"] = iou_ambang
         return {"total": 0, "diproses": 0, "objek": 0, "dilewati": 0,

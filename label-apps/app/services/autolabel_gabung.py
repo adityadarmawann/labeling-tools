@@ -16,7 +16,7 @@ from __future__ import annotations
 import os
 import re
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from ..log import catat
@@ -234,10 +234,27 @@ def sumber_groundingdino(img: Path, prompt: list, conf: float,
     return out
 
 
+def namai(dets: list, nama: str) -> list:
+    """Paksa SEMUA deteksi satu sumber memakai satu nama kelas.
+
+    Satu batch = satu produk yang sudah diketahui, jadi taksonomi model
+    ("botol") sering bukan nama yang dipakai dataset ("botol-pet-ades"), dan
+    prompt yang bagus untuk deteksi ("ADES logo on the bottle") hampir selalu
+    buruk sebagai nama kelas. Tanpa penamaan di sini, satu-satunya jalan
+    adalah mengganti nama ratusan objek satu per satu sesudah auto-label.
+
+    Kosong = biarkan label asli sumbernya.
+    """
+    nama = str(nama or "").strip()
+    if not nama:
+        return dets
+    return [replace(d, label=nama) for d in dets]
+
+
 def _siapkan_model_sumber(ds: Path, sumber: list) -> list[tuple]:
     """Muat model untuk sumber terlatih/eksternal SEKALI (sebelum loop gambar).
-    Kembalikan list (nama_sumber, model, kelas, conf). Sumber yang bobotnya tak
-    ada dilewati diam-diam (tetap jalan dengan sumber lain)."""
+    Kembalikan list (nama_sumber, model, kelas, conf, kelas_nama). Sumber yang
+    bobotnya tak ada dilewati diam-diam (tetap jalan dengan sumber lain)."""
     out = []
     for sc in sumber:
         j = sc.get("jenis")
@@ -247,23 +264,33 @@ def _siapkan_model_sumber(ds: Path, sumber: list) -> list[tuple]:
                 continue
             st = prelabel.latih.status(ds, int(sc["nomor"])) or {}
             out.append(("terlatih", prelabel._muat_model(pt),
-                        list(st.get("kelas") or []), float(sc.get("conf", 0.25))))
+                        list(st.get("kelas") or []), float(sc.get("conf", 0.25)),
+                        str(sc.get("kelas_nama") or "")))
         elif j == "eksternal":
             pt = pt_eksternal(ds, sc.get("nama", ""))
             if not pt.exists():
                 continue
             out.append(("eksternal", prelabel._muat_model(pt), [],
-                        float(sc.get("conf", 0.25))))
+                        float(sc.get("conf", 0.25)),
+                        str(sc.get("kelas_nama") or "")))
     return out
 
 
 def jalankan(ds: Path, uploads_root: Path, akun: str, batas: int, sumber: list,
              *, tid: str | None = None, batch: str | None = None,
-             iou_ambang: float = IOU_BAWAAN, batal=None) -> dict:
+             iou_ambang: float = IOU_BAWAAN, batal=None,
+             sasaran: str = "belum", bentuk_paksa: str = "") -> dict:
     """Auto-label GABUNGAN: jalankan semua sumber terpilih per gambar BELUM
     teranotasi (lingkup job `tid` atau batch `batch`), gabung hasilnya, tulis
     (ditandai perlu_dicek). Melempar TrainingSedangJalan saat training aktif,
-    Dibatalkan saat diminta, ValueError kalau tak ada sumber / projek pose."""
+    Dibatalkan saat diminta, ValueError kalau tak ada sumber / projek pose.
+
+    `sasaran` menentukan gambar mana yang boleh disentuh: "belum" (hanya yang
+    kosong, perilaku lama), "dicek" (itu ditambah hasil AI yang belum
+    diverifikasi), atau "semua". Selain "belum", bentuk baru DITAMBAHKAN ke
+    yang sudah ada, bukan menggantinya -- itu yang membuat jalan kedua
+    mungkin: mask produk dulu, kotak logo menyusul.
+    """
     kunci = akun
     sumber = list(sumber or [])
     if not sumber:
@@ -287,10 +314,15 @@ def jalankan(ds: Path, uploads_root: Path, akun: str, batas: int, sumber: list,
             raise ValueError("projek kerangka (pose) belum didukung auto-label "
                              "gabungan; pakai 'Pre-label dengan AI'.")
 
+        sasaran = sasaran if sasaran in tugas.SASARAN else "belum"
+        tambah = sasaran != "belum"
         if batch is not None:
-            target = tugas.gambar_belum_batch(items, ds, batch)
+            target = tugas.gambar_belum_batch(items, ds, batch, sasaran)
         else:
-            target = tugas.gambar_konteks_job(items, data, ds, tid, saring="belum")
+            target = tugas.gambar_konteks_job(
+                items, data, ds, tid,
+                saring="belum" if sasaran == "belum"
+                else ("ai" if sasaran == "dicek" else "semua"))
             if target is None:
                 raise FileNotFoundError("tugas tak dikenal")
         if batas and batas > 0:
@@ -301,6 +333,12 @@ def jalankan(ds: Path, uploads_root: Path, akun: str, batas: int, sumber: list,
         gd = [sc for sc in sumber if sc.get("jenis") == "groundingdino"]
         if not model_src and not zs and not gd:
             raise ValueError("tak ada sumber yang siap (model/bobot tak ditemukan)")
+        # Bentuk keluaran boleh DIPAKSA per jalan, tidak selalu ikut format
+        # projek. Itu separuh lagi dari kebutuhan "dua jalan": tanpa ini,
+        # jalan kedua di projek segmentasi tetap menghasilkan poligon, jadi
+        # mask produk + kotak logo mustahil betapapun seringnya dijalankan.
+        if bentuk_paksa in ("poligon", "kotak"):
+            jenis = bentuk_paksa
         refine = jenis == "poligon"      # projek seg: kotak GDINO -> mask via SAM
 
         total = len(target)
@@ -322,22 +360,26 @@ def jalankan(ds: Path, uploads_root: Path, akun: str, batas: int, sumber: list,
                 # galat pemrograman (mis. tanda tangan adapter berubah) menyamar
                 # jadi "tak ada deteksi" dan job tetap melapor sukses dengan nol
                 # objek. Dicatat sekali per (sumber, gambar).
-                for nm, m, kelas, cf in model_src:
+                for nm, m, kelas, cf, knm in model_src:
                     try:
-                        dets += sumber_model(m, it, cf, kelas, nm)
+                        dets += namai(sumber_model(m, it, cf, kelas, nm), knm)
                     except Exception:            # noqa: BLE001
                         _catat_sumber_gagal(nm, it)
                 for sc in zs:
                     try:
-                        dets += sumber_zeroshot(it["img"], sc.get("model"),
-                                                sc.get("prompt") or [],
-                                                float(sc.get("conf", 0.1)))
+                        dets += namai(
+                            sumber_zeroshot(it["img"], sc.get("model"),
+                                            sc.get("prompt") or [],
+                                            float(sc.get("conf", 0.1))),
+                            sc.get("kelas_nama"))
                     except Exception:            # noqa: BLE001
                         _catat_sumber_gagal("zeroshot", it)
                 for sc in gd:
                     try:
-                        dets += sumber_groundingdino(it["img"], sc.get("prompt") or [],
-                                                     float(sc.get("conf", 0.25)), refine)
+                        dets += namai(
+                            sumber_groundingdino(it["img"], sc.get("prompt") or [],
+                                                 float(sc.get("conf", 0.25)), refine),
+                            sc.get("kelas_nama"))
                     except Exception:            # noqa: BLE001
                         _catat_sumber_gagal("groundingdino", it)
                 bentuk = ke_bentuk(gabung(dets, iou_ambang), jenis, it["W"], it["H"])
@@ -349,9 +391,19 @@ def jalankan(ds: Path, uploads_root: Path, akun: str, batas: int, sumber: list,
                     # simpanannya menimpa hasil AI.
                 if bentuk:
                     prelabel._beritahu(ds, it["img"])
-                    names = prelabel.tulis_prediksi(it, ds, names, bentuk)
-                    objek += len(bentuk)
-                    diproses += 1
+                    masuk: list[int] = []
+                    names = prelabel.tulis_prediksi(it, ds, names, bentuk,
+                                                    tambah=tambah,
+                                                    ditambah=masuk)
+                    n = masuk[0] if masuk else len(bentuk)
+                    objek += n
+                    # Nol bentuk BARU berarti seluruhnya menduplikasi yang
+                    # sudah ada. Menghitungnya "diproses" membuat laporan
+                    # mengaku menambah objek yang tak pernah ditulis.
+                    if n:
+                        diproses += 1
+                    else:
+                        kosong += 1
                 else:
                     kosong += 1
             catat_maju(kunci,

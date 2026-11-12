@@ -781,6 +781,11 @@ def gambar_konteks_job(items: list[dict], data: dict, ds: Path, tid: str, *,
         berlabel = sev != "stop"           # latar TERMASUK sudah dianotasi
         if saring == "belum" and berlabel:
             continue
+        # Lingkup sasaran auto-label dipetakan ke saringan yang sudah ada:
+        # "ai" = gambar kosong ATAU hasil AI yang belum diverifikasi, yaitu
+        # yang boleh ditambahi oleh jalan auto-label berikutnya.
+        if saring == "ai" and berlabel and not it.get("perlu_dicek"):
+            continue
         if saring == "sudah" and not berlabel:
             continue
         # "dicek" = sudah ADA anotasi tapi hasil auto-label yang belum
@@ -815,7 +820,36 @@ def gambar_konteks_job(items: list[dict], data: dict, ds: Path, tid: str, *,
                                 else konteks_kisi.URUT_BAWAAN)
 
 
-def gambar_belum_batch(items: list, ds: Path, batch: str) -> list:
+# Gambar mana yang boleh disentuh auto-label.
+#   "belum"  -- belum beranotasi sama sekali (perilaku lama, paling aman)
+#   "dicek"  -- itu DITAMBAH hasil AI yang belum diverifikasi manusia
+#   "semua"  -- itu DITAMBAH yang sudah diverifikasi manusia
+SASARAN = ("belum", "dicek", "semua")
+
+
+def _boleh_sasaran(it: dict, sasaran: str) -> bool:
+    """Apakah gambar ini boleh jadi sasaran auto-label untuk lingkup `sasaran`.
+
+    Aturan lama cuma satu: gambar yang belum beranotasi. Itu membuat jalan
+    KEDUA mustahil -- sesudah jalan pertama, seluruh gambar batch sudah punya
+    bentuk, jadi menjalankan auto-label lagi (mis. untuk menambah kotak logo
+    sesudah mask produk) menemukan nol sasaran.
+
+    "dicek" membuka gambar yang isinya masih murni hasil AI. Kerja manusia
+    tetap tak tersentuh, karena menyimpan manual membersihkan tanda itu.
+    """
+    from . import scanner
+
+    kosong = scanner.severity(it) == "stop"
+    if sasaran == "belum" or kosong:
+        return kosong
+    if sasaran == "dicek":
+        return bool(it.get("perlu_dicek"))
+    return sasaran == "semua"
+
+
+def gambar_belum_batch(items: list, ds: Path, batch: str,
+                       sasaran: str = "belum") -> list:
     """Gambar BELUM teranotasi (severity 'stop') milik satu unggahan/batch.
 
     Sepasang dengan gambar_konteks_job: keduanya pemilih LINGKUP, dan tinggal
@@ -832,9 +866,10 @@ def gambar_belum_batch(items: list, ds: Path, batch: str) -> list:
     from . import tag as _tag
     tdata = _tag.baca(ds)
     batch = str(batch or "")
+    sasaran = sasaran if sasaran in SASARAN else "belum"
     out = []
     for it in items:
-        if scanner.severity(it) != "stop":
+        if not _boleh_sasaran(it, sasaran):
             continue
         k = _tag.kunci_gambar(ds, it["img"])
         if str(_tag.untuk(tdata, k).get("batch") or "") == batch:

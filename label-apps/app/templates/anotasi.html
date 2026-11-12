@@ -585,6 +585,35 @@
             dianggap OBJEK YANG SAMA. Terlalu rendah, dua objek berdampingan
             dilebur jadi satu; terlalu tinggi, objek yang sama dari dua sumber
             jadi dua kotak bertumpuk yang harus dihapus satu per satu. -#}
+        {#- Gambar mana yang disentuh. Inilah yang membuat jalan KEDUA mungkin:
+            sesudah jalan pertama seluruh gambar batch sudah punya bentuk,
+            jadi dengan sasaran "belum" saja auto-label berikutnya menemukan
+            nol sasaran. Selain "belum", hasilnya DITAMBAHKAN ke yang sudah
+            ada, bukan menggantinya. -#}
+        <span><label class="halus" for="az-sasaran">Kerjakan gambar</label>
+          <select class="chip" id="az-sasaran">
+            <option value="belum">yang belum dianotasi saja</option>
+            <option value="dicek">+ hasil AI yang belum diverifikasi</option>
+            <option value="semua">semua, termasuk yang sudah diverifikasi</option>
+          </select></span>
+        {#- Bentuk keluaran jalan ini. "Ikut projek" perilaku lama. Memaksanya
+            di sini yang membuat satu batch bisa punya mask produk DAN kotak
+            logo: jalan pertama poligon, jalan kedua kotak. -#}
+        <span><label class="halus" for="az-bentuk">Bentuk hasil</label>
+          <select class="chip" id="az-bentuk">
+            <option value="">ikut format projek</option>
+            <option value="poligon">poligon (segmentasi)</option>
+            <option value="kotak">kotak (bbox)</option>
+          </select></span>
+        {#- Nama kelas hasil jalan ini. Satu batch = satu produk yang sudah
+            diketahui, jadi taksonomi model ("botol") sering bukan nama yang
+            dipakai dataset ("botol-pet-ades"), dan prompt yang bagus untuk
+            deteksi ("ADES logo on the bottle") hampir selalu buruk sebagai
+            nama kelas. Kosong = pakai nama dari model/prompt. -#}
+        <span><label class="halus" for="az-kelas-nama">Nama kelas hasil</label>
+          <input class="chip" id="az-kelas-nama" type="text"
+                 maxlength="80" placeholder="kosong: ikut model atau prompt"
+                 style="width:17rem;max-width:90%"></span>
         <span><label class="halus" for="az-iou">Ambang gabung (IoU)</label>
           <input class="chip" id="az-iou" type="number" value="0.6"
                  min="0.3" max="0.95" step="0.05"></span>

@@ -575,6 +575,11 @@
 
     azEl('az-mulai').addEventListener('click', async () => {
       const sumber = [];
+      // Nama kelas hasil: satu nilai untuk SATU jalan, bukan per sumber.
+      // Satu jalan auto-label mengerjakan satu sasaran ("objeknya", lalu
+      // "logonya"), jadi semua sumber yang dicentang sedang mencari benda
+      // yang sama dan harus menuliskan nama kelas yang sama.
+      const kelasNama = (azEl('az-kelas-nama').value || '').trim();
       // Ambang model .pt TERPISAH dari ambang zero-shot, dan benar-benar
       // dikirim: dulu kedua sumber model tidak mengirim conf sama sekali,
       // jadi nilainya selalu jatuh ke 0,25 bawaan server apa pun isinya.
@@ -582,30 +587,35 @@
       if (azEl('az-s-terlatih').checked && azEl('az-terlatih').value) {
         sumber.push({ jenis: 'terlatih',
                       nomor: parseInt(azEl('az-terlatih').value, 10),
-                      conf: confModel });
+                      conf: confModel, kelas_nama: kelasNama });
       }
       if (azEl('az-s-eksternal').checked && azEl('az-eksternal').value) {
         sumber.push({ jenis: 'eksternal', nama: azEl('az-eksternal').value,
-                      conf: confModel });
+                      conf: confModel, kelas_nama: kelasNama });
       }
       if (azEl('az-s-zeroshot').checked) {
         const prompt = azEl('az-prompt').value.trim();
         if (!prompt) { toast('Isi objek zero-shot, atau matikan sumbernya'); return; }
         sumber.push({ jenis: 'zeroshot', model: azEl('az-model').value,
-                      prompt, conf: parseFloat(azEl('az-conf').value || '0.1') });
+                      prompt, conf: parseFloat(azEl('az-conf').value || '0.1'),
+                      kelas_nama: kelasNama });
       }
       if (azEl('az-s-gdino').checked) {
         // GroundingDINO pakai nama objek yang sama (az-prompt); kosong -> kelas projek.
         sumber.push({ jenis: 'groundingdino', prompt: azEl('az-prompt').value.trim(),
-                      conf: parseFloat(azEl('az-conf').value || '0.25') });
+                      conf: parseFloat(azEl('az-conf').value || '0.25'),
+                      kelas_nama: kelasNama });
       }
       if (!sumber.length) { toast('Pilih minimal satu sumber'); return; }
       const batas = parseInt(azEl('az-batas').value || '1000', 10);
       const iou = parseFloat(azEl('az-iou').value || '0.6');
+      const sasaran = azEl('az-sasaran').value || 'belum';
+      const bentuk = azEl('az-bentuk').value || '';
       azEl('az-mulai').disabled = true;
       const j = await send('/api/autolabel/mulai', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...azScope, sumber, batas, iou }),
+        body: JSON.stringify({ ...azScope, sumber, batas, iou, sasaran,
+                               bentuk }),
       });
       if (!j || !j.ok) {
         azEl('az-maju').innerHTML = '<p class="bad" style="padding:12px 16px">'

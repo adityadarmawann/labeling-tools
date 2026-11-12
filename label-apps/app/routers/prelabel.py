@@ -75,6 +75,9 @@ async def mulai(request: Request,
         return {"ok": False, "error": f"masih ada {lain} yang berjalan; tunggu "
                                       "sampai selesai atau batalkan dulu"}
 
+    from ..services import tugas as svc_tugas
+    sasaran = str(body.get("sasaran") or "belum")
+    sasaran = sasaran if sasaran in svc_tugas.SASARAN else "belum"
     ds, akun, uploads = sess.src, sess.user, settings.uploads_root
     _batal[akun] = False
 
@@ -82,7 +85,7 @@ async def mulai(request: Request,
         try:
             hasil = prelabel.jalankan(ds, uploads, tid, nomor, akun, batas, conf,
                                       batal=lambda: _batal.get(akun, False),
-                                      batch=batch)
+                                      batch=batch, sasaran=sasaran)
             prelabel.catat_maju(akun, jalan=False, selesai=True, **hasil)
         except prelabel.Dibatalkan:
             prelabel.catat_maju(akun, jalan=False, dibatalkan=True)

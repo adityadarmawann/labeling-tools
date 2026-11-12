@@ -109,7 +109,8 @@ def _bentuk_dari_temuan(temuan: list) -> list[dict]:
 # ------------------------------------------------------------------ job
 def jalankan(ds: Path, uploads_root: Path, tid: str, akun: str,
              batas: int, conf: float, model: str, prompt: list[str],
-             batal=None, batch: str | None = None) -> dict:
+             batal=None, batch: str | None = None,
+             sasaran: str = "belum") -> dict:
     """Auto-label zero-shot gambar BELUM teranotasi (maks `batas`).
 
     Lingkup: satu JOB (`tid`) ATAU satu BATCH/unggahan (`batch`, mis. dari kartu
@@ -158,10 +159,15 @@ def jalankan(ds: Path, uploads_root: Path, tid: str, akun: str,
             raise ValueError(
                 "projek kerangka (pose) tidak bisa auto-label zero-shot; "
                 "pakai 'Pre-label dengan AI' dengan model pose terlatih.")
+        sasaran = sasaran if sasaran in tugas.SASARAN else "belum"
+        tambah = sasaran != "belum"
         if batch is not None:
-            target = tugas.gambar_belum_batch(items, ds, batch)
+            target = tugas.gambar_belum_batch(items, ds, batch, sasaran)
         else:
-            target = tugas.gambar_konteks_job(items, data, ds, tid, saring="belum")
+            target = tugas.gambar_konteks_job(
+                items, data, ds, tid,
+                saring="belum" if sasaran == "belum"
+                else ("ai" if sasaran == "dicek" else "semua"))
             if target is None:
                 raise FileNotFoundError("tugas tak dikenal")
         if batas and batas > 0:
@@ -197,9 +203,15 @@ def jalankan(ds: Path, uploads_root: Path, tid: str, akun: str,
                     # simpanannya menimpa hasil AI.
                 if bentuk:
                     prelabel._beritahu(ds, it["img"])
-                    names = tulis_prediksi(it, ds, names, bentuk)
-                    objek += len(bentuk)
-                    diproses += 1
+                    masuk: list[int] = []
+                    names = tulis_prediksi(it, ds, names, bentuk,
+                                           tambah=tambah, ditambah=masuk)
+                    n = masuk[0] if masuk else len(bentuk)
+                    objek += n
+                    if n:
+                        diproses += 1
+                    else:
+                        kosong += 1
                 else:
                     kosong += 1
             catat_maju(kunci,

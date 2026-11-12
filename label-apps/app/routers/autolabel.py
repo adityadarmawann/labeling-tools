@@ -41,6 +41,17 @@ def _conf(v, bawaan: float) -> float:
         return bawaan
 
 
+def _kelas_nama(raw) -> str:
+    """Nama kelas pilihan user untuk satu sumber, atau "" (ikut sumbernya).
+
+    Nama kelas masuk ke berkas label dan ke data.yaml training, jadi baris
+    baru/tab akan merusak keduanya. Dipotong, bukan ditolak: user sedang
+    mengetik nama produk, bukan mengisi formulir.
+    """
+    t = " ".join(str(raw or "").split())
+    return t[:80]
+
+
 def _parse_prompt(raw) -> list:
     if isinstance(raw, str):
         return [t.strip() for t in raw.split(",") if t.strip()]
@@ -154,6 +165,13 @@ async def mulai(request: Request,
         batas = max(1, min(int(body.get("batas") or 1000), 100_000))
     except (TypeError, ValueError):
         batas = 1000
+    # Gambar mana yang boleh disentuh. Bawaannya tetap "belum" (hanya yang
+    # kosong), jadi perilaku lama tak berubah kecuali diminta.
+    sasaran = str(body.get("sasaran") or "belum")
+    sasaran = sasaran if sasaran in tugas.SASARAN else "belum"
+    # Bentuk keluaran yang dipaksa untuk jalan ini. Kosong = ikut format projek.
+    bentuk_paksa = str(body.get("bentuk") or "")
+    bentuk_paksa = bentuk_paksa if bentuk_paksa in ("poligon", "kotak") else ""
     ds, akun, uploads = sess.src, sess.user, settings.uploads_root
 
     # ---- Mode GABUNGAN (beberapa sumber) ---------------------------------
@@ -167,14 +185,16 @@ async def mulai(request: Request,
             if j == "terlatih":
                 try:
                     sumber.append({"jenis": "terlatih", "nomor": int(sc["nomor"]),
-                                   "conf": _conf(sc.get("conf"), 0.25)})
+                                   "conf": _conf(sc.get("conf"), 0.25),
+                                   "kelas_nama": _kelas_nama(sc.get("kelas_nama"))})
                 except (KeyError, TypeError, ValueError):
                     pass
             elif j == "eksternal":
                 nm = str(sc.get("nama") or "").strip()
                 if nm:
                     sumber.append({"jenis": "eksternal", "nama": nm,
-                                   "conf": _conf(sc.get("conf"), 0.25)})
+                                   "conf": _conf(sc.get("conf"), 0.25),
+                                   "kelas_nama": _kelas_nama(sc.get("kelas_nama"))})
             elif j == "zeroshot":
                 m = str(sc.get("model") or "").strip() or autolabel_zero.pilih_model(jenis)
                 if m not in autolabel.MODEL_TEKS:
@@ -183,20 +203,23 @@ async def mulai(request: Request,
                 if not pr:
                     continue
                 sumber.append({"jenis": "zeroshot", "model": m, "prompt": pr,
-                               "conf": _conf(sc.get("conf"), 0.1)})
+                               "conf": _conf(sc.get("conf"), 0.1),
+                               "kelas_nama": _kelas_nama(sc.get("kelas_nama"))})
             elif j == "groundingdino" and autolabel.gdino_tersedia():
                 pr = _parse_prompt(sc.get("prompt")) or prompt_bawaan
                 if not pr:
                     continue
                 sumber.append({"jenis": "groundingdino", "prompt": pr,
-                               "conf": _conf(sc.get("conf"), 0.25)})
+                               "conf": _conf(sc.get("conf"), 0.25),
+                               "kelas_nama": _kelas_nama(sc.get("kelas_nama"))})
         if not sumber:
             return {"ok": False, "error": "tidak ada sumber yang sah dipilih"}
         iou = min(max(_conf(body.get("iou"), 0.6), 0.3), 0.95)
 
         if not _spawn(akun, lambda batal: autolabel_gabung.jalankan(
                 ds, uploads, akun, batas, sumber, tid=tid or None, batch=batch,
-                iou_ambang=iou, batal=batal)):
+                iou_ambang=iou, batal=batal, sasaran=sasaran,
+                bentuk_paksa=bentuk_paksa)):
             return _sibuk(ai_antre.sedang_jalan(akun) or "pekerjaan AI")
         return {"ok": True, "sumber": len(sumber)}
 
@@ -211,7 +234,7 @@ async def mulai(request: Request,
     conf = _conf(body.get("conf"), 0.1)
     if not _spawn(akun, lambda batal: autolabel_zero.jalankan(
             ds, uploads, tid, akun, batas, conf, model, prompt, batal=batal,
-            batch=batch)):
+            batch=batch, sasaran=sasaran)):
         return _sibuk(ai_antre.sedang_jalan(akun) or "pekerjaan AI")
     return {"ok": True, "model": model, "prompt": prompt}
 
