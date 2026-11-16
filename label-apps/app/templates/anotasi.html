@@ -554,7 +554,24 @@
         aturan tata letak tiga bagian -- jadi yang menggulung justru seluruh
         kotaknya, judul dan tombol Mulai ikut hilang ke atas. -#}
     <div class="op-dlg-atas">
-      <h3 id="az-judul">Auto-label</h3>
+      {#- Tombol panduan duduk di sebelah judul, bukan tersembunyi di bawah.
+          Orang yang baru pertama kali membuka dialog ini belum tahu ada
+          aturan yang perlu dibaca lebih dulu, jadi pintunya harus kelihatan
+          sejak pandangan pertama. -#}
+      <div class="az-judul-baris">
+        <h3 id="az-judul">Auto-label</h3>
+        <button class="az-bantu" type="button" id="az-bantu"
+                aria-expanded="false" aria-controls="az-panduan"
+                title="Baca panduan singkat">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor"
+               stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"
+               aria-hidden="true">
+            <circle cx="10" cy="10" r="7.5"/>
+            <path d="M7.9 7.6a2.1 2.1 0 1 1 2.6 2.5c-.5.2-.8.6-.8 1.1v.4"/>
+            <circle cx="10" cy="14.2" r=".7" fill="currentColor" stroke="none"/>
+          </svg>
+          <span>Panduan</span></button>
+      </div>
       <p class="halus">Hasilnya ditandai "belum diverifikasi" supaya gampang
         dicari saat memeriksa. Gambar yang sudah dilabeli atau ditandai latar
         tidak disentuh.</p>
@@ -577,6 +594,66 @@
           yang sedang jalan dua-duanya membuat dialog ini tak bisa dipakai sama
           sekali. Dulu keduanya baru ketahuan sesudah Mulai ditekan. -#}
       <div class="az-halang" id="az-halang" hidden></div>
+
+      {#- Panduan. Ditulis untuk dibaca sekali lalu diingat, bukan untuk
+          menutupi antarmuka yang membingungkan: tiap bagiannya menjawab satu
+          pertanyaan yang memang muncul saat orang memakai fitur ini, dan
+          angka di dalamnya diukur di projek nyata, bukan dikarang. -#}
+      <div class="az-panduan" id="az-panduan" hidden>
+        <h4>Auto-label itu apa</h4>
+        <p>Ia mengisikan anotasi untuk kamu, lalu kamu yang memutuskan benar
+          atau tidak. Hasilnya selalu ditandai "belum diverifikasi", jadi tidak
+          ada yang diam-diam dianggap selesai.</p>
+
+        <h4>Memilih sumber</h4>
+        <p>Ada dua keluarga, dan keduanya boleh dipakai bersamaan.</p>
+        <p><b>Model .pt</b> sudah tahu kelas projekmu, jadi nama kelasnya
+          paling tepat. Tetapi ia hanya menemukan kelas yang pernah dilatih.</p>
+        <p><b>Model teks</b> tidak perlu dilatih dulu. Kamu yang menyebut nama
+          bendanya, modelnya yang mencari. Cocok untuk projek yang belum punya
+          model sama sekali.</p>
+        <p>Kalau keduanya dicentang, hasilnya digabung dan objek yang sama
+          cukup ditulis sekali.</p>
+
+        <h4>Satu nama objek tiap kali jalan</h4>
+        <p>Ini yang paling sering bikin kecewa kalau dilanggar. Model teks jago
+          menemukan benda, tetapi tidak bisa dipercaya memilih di antara
+          beberapa nama.</p>
+        <p>Kami mengukurnya di projek Kahf. Dengan dua nama dikirim sekaligus,
+          kotaknya tepat, tetapi kelasnya salah semuanya, 40 dari 40. Padahal
+          deodorant dan facewash jelas berbeda bentuk.</p>
+        <p>Jadi isi satu nama, jalankan, lalu ulangi untuk nama berikutnya.
+          Semua objek dapat satu kelas yang sama, dan kamu tinggal membetulkan
+          yang minoritas saja.</p>
+
+        <h4>Mask untuk objeknya, kotak untuk logonya</h4>
+        <p>Jalankan dua kali pada gambar yang sama.</p>
+        <p>Jalan pertama: Bentuk <b>poligon</b>, nama kelas misalnya
+          botol-pet-ades.</p>
+        <p>Jalan kedua: ubah "Kerjakan" jadi <b>+ hasil AI yang belum
+          diverifikasi</b>, Bentuk <b>kotak</b>, nama kelas misalnya
+          logo-ades.</p>
+        <p>Jalan kedua menambah, bukan mengganti, dan objek yang sudah ada
+          tidak ditulis dua kali.</p>
+
+        <h4>Ambang keyakinan</h4>
+        <p>Angka kecil berarti model lebih berani: lebih banyak objek
+          tertangkap, lebih banyak pula yang salah. Model terlatih biasanya
+          nyaman di 0,25. Model teks jauh lebih ragu, jadi 0,1 wajar di sana.</p>
+
+        <h4>Sesudah selesai</h4>
+        <p>Hasilnya muncul sebagai "Belum diverifikasi". Bukalah dari kartu
+          batch atau kartu tugas di papan, periksa satu per satu, lalu simpan.
+          Menyimpan itulah yang menandainya terverifikasi.</p>
+
+        <h4>Kalau hasilnya nol objek</h4>
+        <p>Coba turunkan ambangnya, ganti nama bendanya dengan kata yang lebih
+          umum, atau tambahkan sumber lain. Kalau yang tertulis nol gambar,
+          berarti lingkupnya memang kosong: ganti pilihan "Kerjakan" di atas.</p>
+
+        <button class="wz-tbl wz-tbl-sek az-panduan-tutup" type="button"
+                id="az-panduan-tutup">Kembali ke setelan</button>
+      </div>
 
       <div id="az-atur">
         <h4 class="az-langkah">Sumber</h4>

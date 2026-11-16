@@ -613,6 +613,7 @@
     azScope = scope;          // {tid} atau {batch}
     azHenti();
     azDlg.hidden = false;
+    azPanduan(false);          // selalu mulai dari setelan, bukan panduan basi
     azEl('az-maju').innerHTML = '';
     azEl('az-batal').hidden = true;
     azEl('az-unggah-status').textContent = '';
@@ -643,6 +644,34 @@
     azAwas();
   }
 
+  /* Panduan. Menggantikan isian supaya bisa dibaca tanpa terpotong kotak
+     setelan, dan tombol Mulai ikut dimatikan selama dibaca: menekan Mulai
+     dari balik panduan berarti menjalankan setelan yang sedang tak terlihat. */
+  let azTerhalang = false;
+
+  function azPanduan(buka) {
+    const pan = azEl('az-panduan');
+    const tbl = azEl('az-bantu');
+    if (!pan || !tbl) return;
+    pan.hidden = !buka;
+    tbl.setAttribute('aria-expanded', buka ? 'true' : 'false');
+    // Saat terhalang (projek kerangka / training jalan), isian memang sudah
+    // disembunyikan azHalang; jangan dimunculkan kembali saat panduan ditutup.
+    azEl('az-atur').hidden = buka || azTerhalang;
+    const mulai = azEl('az-mulai');
+    if (buka) { mulai.disabled = true; } else if (!azTerhalang) { azMulaiSiap(); }
+    if (buka) pan.scrollTop = 0;
+  }
+
+  if (azEl('az-bantu')) {
+    azEl('az-bantu').addEventListener('click', () => {
+      azPanduan(azEl('az-panduan').hidden);
+    });
+  }
+  if (azEl('az-panduan-tutup')) {
+    azEl('az-panduan-tutup').addEventListener('click', () => azPanduan(false));
+  }
+
   /* Pesan yang MENGGANTI seluruh isian. Mengembalikan true kalau dialog ini
      memang tak bisa dipakai sekarang. */
   function azHalang(j) {
@@ -658,8 +687,9 @@
     }
     kotak.innerHTML = html;
     kotak.hidden = !html;
-    atur.hidden = !!html;
-    return !!html;
+    azTerhalang = !!html;
+    atur.hidden = azTerhalang || !azEl('az-panduan').hidden;
+    return azTerhalang;
   }
 
   /* Peringatan yang hanya muncul saat pasangan pilihannya memang bikin

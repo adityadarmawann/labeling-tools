@@ -3437,6 +3437,29 @@ button.an-mulai.an-autolabel{background:none;border:0;cursor:pointer;
 #az-maju:empty{display:none}
 .az-sebab{margin:0;flex:0 1 auto;min-width:0;color:var(--warn)}
 .az-sebab:empty{display:none}
+
+/* ------------------------------------------------- panduan auto-label
+   Tombolnya sebaris dengan judul supaya terlihat sejak pandangan pertama:
+   orang yang baru membuka dialog ini belum tahu ada aturan yang perlu
+   dibaca, jadi pintunya tak boleh disembunyikan di bawah setelan. */
+.az-judul-baris{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.az-judul-baris h3{flex:1 1 auto;min-width:0}
+.az-bantu{display:inline-flex;align-items:center;gap:5px;flex:0 0 auto;
+  padding:4px 10px;border:1px solid var(--line2);border-radius:999px;
+  background:var(--raised);color:var(--ink-dim);font:inherit;font-size:11.5px;
+  font-weight:600;cursor:pointer}
+.az-bantu svg{width:15px;height:15px;flex:0 0 auto}
+.az-bantu:hover{background:var(--hover);color:var(--ink);border-color:var(--ink-faint)}
+.az-bantu[aria-expanded="true"]{background:var(--ok-bg);border-color:var(--ok);
+  color:var(--ink)}
+.az-bantu:focus-visible{outline:2px solid var(--ok);outline-offset:2px}
+
+.az-panduan{padding:4px 0 8px;font-size:12.5px;line-height:1.65;color:var(--ink-dim)}
+.az-panduan h4{margin:16px 0 4px;font-size:13px;color:var(--ink)}
+.az-panduan h4:first-child{margin-top:6px}
+.az-panduan p{margin:0 0 7px}
+.az-panduan b{color:var(--ink);font-weight:600}
+.az-panduan-tutup{margin-top:12px}
 .sp-centang input{margin-top:2px;flex:0 0 auto;accent-color:var(--ok)}
 .sp-centang b{display:block;font-size:12.5px;font-weight:600;color:var(--ink)}
 .sp-centang i{display:block;font-style:normal;font-size:11px;

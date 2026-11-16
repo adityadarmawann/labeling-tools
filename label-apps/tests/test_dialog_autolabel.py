@@ -210,3 +210,73 @@ def test_peringatan_ikut_berubah_saat_diketik():
     i = JS.index("for (const id of ['az-kelas-nama', 'az-bentuk'")
     blok = JS[i:i + 300]
     assert "az-prompt" in blok and "az-s-zeroshot" in blok
+
+
+# ------------------------------------------------------------- panduan
+def _panduan() -> str:
+    d = _tanpa_komentar(_dlg())
+    i = d.index('id="az-panduan"')
+    return d[i:d.index('id="az-panduan-tutup"', i)]
+
+
+def test_pintu_panduan_terlihat_sejak_pandangan_pertama():
+    """Orang yang baru membuka dialog ini belum tahu ada aturan yang perlu
+    dibaca, jadi pintunya tak boleh disembunyikan di bawah setelan."""
+    d = _dlg()
+    assert 'id="az-bantu"' in d
+    # sebaris dengan judul, bukan di dasar dialog
+    assert d.index('az-judul-baris') < d.index('id="az-bantu"') < d.index('az-lingkup')
+    assert 'aria-expanded="false"' in d and 'aria-controls="az-panduan"' in d
+    assert "<svg" in d[d.index('id="az-bantu"'):d.index('id="az-bantu"') + 600]
+
+
+def test_panduan_tertutup_sampai_diminta():
+    d = _dlg()
+    i = d.index('id="az-panduan"')
+    assert "hidden" in d[i:d.index(">", i)]
+
+
+def test_membuka_panduan_menyembunyikan_setelan():
+    """Menekan Mulai dari balik panduan berarti menjalankan setelan yang
+    sedang tak terlihat."""
+    i = JS.index("function azPanduan(")
+    blok = JS[i:JS.index("if (azEl('az-bantu'))", i)]
+    assert "azEl('az-atur').hidden = buka" in blok
+    assert "mulai.disabled = true" in blok
+    assert "aria-expanded" in blok
+
+
+def test_panduan_tak_memunculkan_setelan_yang_memang_dihalangi():
+    """Projek kerangka dan training yang jalan menyembunyikan setelan. Menutup
+    panduan tak boleh mengembalikannya."""
+    i = JS.index("function azPanduan(")
+    blok = JS[i:JS.index("if (azEl('az-bantu'))", i)]
+    assert "azTerhalang" in blok
+    j = JS.index("function azHalang(")
+    assert "azTerhalang = !!html" in JS[j:JS.index("function azAwas(", j)]
+
+
+def test_dialog_selalu_dibuka_pada_setelan():
+    """Panduan yang tertinggal terbuka dari pemakaian sebelumnya membuat orang
+    mengira dialognya rusak."""
+    i = JS.index("async function bukaAutolabel(")
+    assert "azPanduan(false)" in JS[i:i + 700]
+
+
+def test_panduan_tanpa_tanda_strip_khas_ai():
+    p = _panduan()
+    for tanda in ("—", "–", " - "):
+        assert tanda not in p, repr(tanda)
+
+
+def test_panduan_menjawab_pertanyaan_yang_memang_muncul():
+    p = _panduan().lower()
+    for topik in ("satu nama", "belum diverifikasi", "ambang",
+                  "poligon", "kotak", "nol objek"):
+        assert topik in p, topik
+
+
+def test_angka_di_panduan_yang_diukur_bukan_dikarang():
+    """40 dari 40 datang dari pengukuran nyata di projek Kahf; kalau angkanya
+    pernah diubah, yang mengubah harus ikut mengukurnya lagi."""
+    assert "40 dari 40" in _panduan()
