@@ -383,3 +383,22 @@ def test_dua_bentuk_dijelaskan_secara_umum():
     p = _panduan()
     assert "Dua bentuk anotasi pada gambar yang sama" in p
     assert "objek utama" in p
+
+
+def test_panduan_mengajarkan_cara_memakai_semua_sumber():
+    """"Boleh dicentang semua" tanpa cara memakainya hanya memindahkan
+    kebingungan, bukan menyelesaikannya."""
+    p = _panduan()
+    assert "Kalau ingin memakai semuanya sekaligus" in p
+    for inti in ("Satu nama objek saja", "Nama kelas hasil", "ambang gabung"):
+        assert inti.lower() in p.lower(), inti
+
+
+def test_panduan_menyebut_urutan_hak_nama_kelas_sesuai_kodenya():
+    """Klaim ini harus tetap cocok dengan PRIORITAS_BAWAAN, kalau tidak
+    panduannya mengajarkan sesuatu yang tak lagi benar."""
+    from app.services.autolabel_gabung import PRIORITAS_BAWAAN
+    assert PRIORITAS_BAWAAN.index("terlatih") < PRIORITAS_BAWAAN.index("eksternal")
+    assert PRIORITAS_BAWAAN.index("eksternal") < PRIORITAS_BAWAAN.index("zeroshot")
+    p = _panduan()
+    assert "model terlatih projek lebih dulu" in p

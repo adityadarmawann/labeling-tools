@@ -632,6 +632,26 @@
         <p>Di dalam kelompok model .pt, beberapa model boleh dicentang
           bersamaan. Berguna kalau tiap model menguasai kelas yang berbeda.</p>
 
+        <h4>Kalau ingin memakai semuanya sekaligus</h4>
+        <p>Boleh, dan hasilnya bisa bagus asal empat hal ini diperhatikan.</p>
+        <p><b>Satu.</b> Tetap isi satu nama objek saja. Aturan itu berlaku pada
+          kelompok model teks, berapa pun sumber lain yang ikut dicentang.</p>
+        <p><b>Dua.</b> Biarkan "Nama kelas hasil" kosong. Saat beberapa sumber
+          menemukan objek yang sama, nama kelasnya diambil dari sumber yang
+          paling berhak: model terlatih projek lebih dulu, lalu model .pt yang
+          diunggah, baru model teks. Mengisi kolom itu memaksa semuanya memakai
+          satu nama dan membuang keunggulan tersebut.</p>
+        <p><b>Tiga.</b> Pakai ambang bawaan pada tiap sumber. Angkanya memang
+          berbeda karena wataknya berbeda, dan menyamakannya justru membuat
+          salah satu terlalu berani atau terlalu pendiam.</p>
+        <p><b>Empat.</b> Periksa hasilnya dengan ambang gabung. Kalau satu
+          objek muncul dua kali sebagai kotak bertumpuk, turunkan ambang gabung
+          di Setelan lanjutan. Kalau dua benda berdampingan justru melebur jadi
+          satu, naikkan.</p>
+        <p>Siapkan waktu lebih untuk verifikasi. Semakin banyak sumber, semakin
+          banyak objek yang tertangkap, dan semakin banyak pula kotak berlebih
+          yang perlu dihapus.</p>
+
         <h4>Satu nama objek tiap kali jalan</h4>
         <p>Ini yang paling sering membuat kecewa kalau dilanggar. Model teks pandai
           menemukan benda, tetapi tidak bisa dipercaya memilih di antara
