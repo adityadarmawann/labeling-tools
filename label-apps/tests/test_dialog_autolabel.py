@@ -289,3 +289,97 @@ def test_teks_dialog_memakai_kata_yang_formal():
     d = _tanpa_komentar(_dlg()).lower()
     for kata in ("keluarga", "bikin", "jago", "gitu", "banget", "doang"):
         assert kata not in d, kata
+
+
+# ------------------------------------------------ nama kelas bisa DIPILIH
+def test_nama_kelas_bisa_dipilih_bukan_diketik_dari_nol():
+    """Mengetik dari nol tiap kali bukan cuma lambat: satu huruf berbeda
+    melahirkan kelas kembar yang baru ketahuan jauh di kemudian hari, saat
+    datasetnya sudah dibuat."""
+    d = _dlg()
+    i = d.index('id="az-kelas-nama"')
+    blok = d[i:i + 400]
+    assert 'list="az-kelas-daftar"' in blok
+    assert '<datalist id="az-kelas-daftar">' in d
+    # datalist, BUKAN select: nama baru harus tetap bisa diketik
+    assert "<select" not in blok
+
+
+def test_daftar_kelas_diisi_dari_projek():
+    assert "az-kelas-daftar" in JS
+    i = JS.index("const dl = azEl('az-kelas-daftar')")
+    blok = JS[i:i + 900]
+    assert "j.kelas" in blok
+    assert "azEsc(k)" in blok          # nama kelas dibuat orang
+    # projek tanpa kelas tetap dijelaskan, bukan daftar kosong tanpa kata
+    assert "belum punya kelas" in blok
+
+
+def test_rute_info_mengirim_daftar_kelas(klien, lingkungan):
+    import json
+    import pathlib as _p
+    from conftest import buat_dataset, masuk
+    from tests.test_data import PW_PAUL
+
+    masuk(klien, "paul", PW_PAUL)
+    ruang = _p.Path(klien.get("/api/projek/daftar").json()["ruang"])
+    d = buat_dataset(ruang / "kelas-info", 1, 0)
+    ip = sorted(d.glob("*.jpg"))[0]
+    ip.with_suffix(".json").write_text(json.dumps({
+        "version": "0.4.3", "flags": {}, "imagePath": ip.name,
+        "imageHeight": 64, "imageWidth": 64,
+        "shapes": [{"label": "botol", "text": "", "group_id": None,
+                    "shape_type": "rectangle", "flags": {},
+                    "points": [[4, 4], [20, 20]]}]}))
+    klien.post(f"/setsrc?path={d}")
+    j = klien.get("/api/autolabel/info").json()
+    assert j.get("ok"), j
+    assert "botol" in (j.get("kelas") or [])
+
+
+def test_daftar_kelas_terpisah_dari_prompt_bawaan():
+    """Yang satu usulan kata pencarian, yang satu daftar kelas yang boleh
+    dipakai, dan sumbernya pun berbeda.
+
+    prompt_default membaca data.yaml / classes.txt milik dataset YOLO, jadi
+    untuk projek labelme biasa ia mengembalikan daftar KOSONG betapapun banyak
+    kelas yang sudah dipakai melabeli. Memakainya di sini membuat pemilih nama
+    kelas selalu kosong di projek yang paling umum.
+    """
+    r = pathlib.Path("app/routers/autolabel.py").read_text()
+    assert '"kelas": await asyncio.to_thread(_kelas_projek' in r
+    i = r.index("def _kelas_projek(")
+    blok = r[i:r.index("def _cacah(", i)]
+    assert "kelas_awal" in blok         # kelas yang disiapkan tapi belum dipakai
+    assert "sess.items" in blok         # kelas yang benar-benar dipakai
+    assert "prompt_default" not in blok.split('"""')[2]   # bukan di kodenya
+
+
+# -------------------------------------------------- kombinasi dijelaskan
+def test_panduan_menjawab_mana_yang_boleh_dicentang_bersamaan():
+    p = _panduan()
+    assert "Tidak ada kombinasi yang dilarang" in p
+    assert "Zero-shot dan GroundingDINO mencari" in p
+
+
+def test_kelompok_teks_menyebut_keduanya_mencari_hal_yang_sama():
+    """Supaya tak perlu membuka panduan dulu untuk tahu hal sepenting ini."""
+    d = _tanpa_komentar(_dlg())
+    i = d.index('id="az-grup-teks"')
+    assert "mencari nama objek\n            yang sama" in d[i:i + 700]
+
+
+# --------------------------------------------------- panduan tetap umum
+def test_panduan_tak_terikat_satu_projek():
+    """Fitur ini dipakai projek mana pun, jadi panduannya tak boleh bicara
+    seolah hanya ada satu jenis dataset di dunia."""
+    p = _panduan().lower()
+    for khusus in ("botol", "ades", "kaleng", "smartbin", "rvm",
+                   "kahf", "deodorant", "facewash"):
+        assert khusus not in p, khusus
+
+
+def test_dua_bentuk_dijelaskan_secara_umum():
+    p = _panduan()
+    assert "Dua bentuk anotasi pada gambar yang sama" in p
+    assert "objek utama" in p

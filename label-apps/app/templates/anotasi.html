@@ -616,25 +616,44 @@
         <p>Kalau keduanya dicentang, hasilnya digabung dan objek yang sama
           cukup ditulis sekali.</p>
 
+        <h4>Kombinasi yang masuk akal</h4>
+        <p>Tidak ada kombinasi yang dilarang. Semua sumber boleh dicentang
+          sekaligus, dan hasilnya selalu digabung dengan objek yang sama cukup
+          ditulis sekali. Yang perlu dipertimbangkan bukan boleh atau tidak,
+          melainkan apa yang kamu dapat.</p>
+        <p>Menggabungkan <b>dua kelompok sekaligus</b> biasanya menguntungkan.
+          Model .pt menyumbang nama kelas yang tepat, model teks menemukan
+          benda yang belum pernah dilatih.</p>
+        <p>Di dalam kelompok model teks, <b>Zero-shot dan GroundingDINO mencari
+          nama objek yang sama</b>. Memakai keduanya menambah jumlah objek yang
+          tertangkap, tetapi menambah pula kotak berlebih yang perlu dihapus
+          saat verifikasi. Pilih salah satu lebih dulu, dan tambahkan yang lain
+          hanya kalau hasilnya memang terasa kurang.</p>
+        <p>Di dalam kelompok model .pt, beberapa model boleh dicentang
+          bersamaan. Berguna kalau tiap model menguasai kelas yang berbeda.</p>
+
         <h4>Satu nama objek tiap kali jalan</h4>
         <p>Ini yang paling sering membuat kecewa kalau dilanggar. Model teks pandai
           menemukan benda, tetapi tidak bisa dipercaya memilih di antara
           beberapa nama sekaligus.</p>
-        <p>Kami mengukurnya di projek Kahf. Dengan dua nama dikirim sekaligus,
-          kotaknya tepat, tetapi kelasnya salah semuanya, 40 dari 40. Padahal
-          deodorant dan facewash jelas berbeda bentuk.</p>
+        <p>Ini terukur, bukan dugaan. Pada satu projek nyata, dengan dua nama
+          dikirim sekaligus, kotaknya tepat tetapi kelasnya salah seluruhnya,
+          40 dari 40 objek. Padahal kedua benda itu jelas berbeda bentuknya.</p>
         <p>Jadi isi satu nama, jalankan, lalu ulangi untuk nama berikutnya.
           Semua objek dapat satu kelas yang sama, dan kamu tinggal membetulkan
           yang minoritas saja.</p>
 
-        <h4>Mask untuk objeknya, kotak untuk logonya</h4>
-        <p>Jalankan dua kali pada gambar yang sama.</p>
-        <p>Jalan pertama: Bentuk <b>poligon</b>, nama kelas misalnya
-          botol-pet-ades.</p>
-        <p>Jalan kedua: ubah "Kerjakan" jadi <b>+ hasil AI yang belum
-          diverifikasi</b>, Bentuk <b>kotak</b>, nama kelas misalnya
-          logo-ades.</p>
-        <p>Jalan kedua menambah, bukan mengganti, dan objek yang sudah ada
+        <h4>Dua bentuk anotasi pada gambar yang sama</h4>
+        <p>Sebagian projek memerlukan lebih dari satu bentuk pada gambar yang
+          sama, misalnya poligon yang mengikuti tepi objek utama ditambah kotak
+          untuk bagian yang lebih kecil di dalamnya. Itu dikerjakan dengan dua
+          kali jalan.</p>
+        <p>Jalan pertama: pilih Bentuk <b>poligon</b>, lalu isi nama kelas
+          untuk objek utamanya.</p>
+        <p>Jalan kedua: ubah "Kerjakan" menjadi <b>+ hasil AI yang belum
+          diverifikasi</b>, pilih Bentuk <b>kotak</b>, lalu isi nama kelas
+          untuk bagian yang kedua.</p>
+        <p>Jalan kedua menambahkan, bukan mengganti, dan objek yang sudah ada
           tidak ditulis dua kali.</p>
 
         <h4>Ambang keyakinan</h4>
@@ -700,7 +719,8 @@
         <section class="az-grup" id="az-grup-teks">
           <h5>Model teks, diberi tahu nama objeknya</h5>
           <p class="halus">Tidak perlu dilatih dulu. Kamu yang menyebut objeknya,
-            modelnya yang mencari.</p>
+            modelnya yang mencari. Kedua sumber di bawah mencari nama objek
+            yang sama, jadi pilih salah satu lebih dulu.</p>
           {#- Kolom nama objek naik ke tingkat KELOMPOK. Dulu ia tinggal di
               dalam blok Zero-shot, sementara GroundingDINO membacanya juga --
               dan karena blok yang tak dicentang diberi pointer-events:none,
@@ -769,9 +789,19 @@
               model ("botol") sering bukan nama yang dipakai dataset
               ("botol-pet-ades"), dan prompt yang bagus untuk deteksi hampir
               selalu buruk sebagai nama kelas. -#}
+          {#- Bisa DIPILIH dari kelas yang sudah ada, dan tetap bisa diketik
+              untuk nama baru. Mengetik dari nol tiap kali bukan cuma lambat:
+              satu huruf berbeda melahirkan kelas kembar yang baru ketahuan
+              jauh di kemudian hari, saat dataset sudah dibuat. <datalist>
+              dipakai, bukan <select>, justru supaya keduanya mungkin dalam
+              satu kolom. -#}
           <span class="az-lebar2"><label class="halus" for="az-kelas-nama">Nama kelas</label>
             <input class="chip" id="az-kelas-nama" type="text" maxlength="80"
-                   placeholder="kosong: pakai nama dari model atau prompt"></span>
+                   list="az-kelas-daftar" autocomplete="off"
+                   placeholder="pilih dari daftar atau ketik nama baru">
+            <datalist id="az-kelas-daftar"></datalist>
+            <span class="halus" id="az-kelas-ket">Dikosongkan berarti memakai
+              nama dari model atau dari nama objek yang dicari.</span></span>
         </div>
         <p class="az-awas" id="az-awas-kelas" hidden></p>
         <p class="az-awas" id="az-awas-bentuk" hidden></p>

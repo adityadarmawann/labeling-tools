@@ -14,6 +14,7 @@ mode memakai saluran yang sama (autolabel_zero.kemajuan).
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
 
@@ -89,6 +90,12 @@ async def info(tid: str = "", batch: str | None = None,
             "model_bawaan": autolabel_zero.pilih_model(jenis),
             "jenis": jenis,
             "prompt_bawaan": prompt,
+            # Kelas yang SUDAH ada di projek, untuk pemilih "Nama kelas hasil".
+            # Dikirim terpisah dari prompt_bawaan meski sumbernya bertemu:
+            # yang satu usulan kata pencarian, yang satu daftar kelas yang
+            # boleh dipakai. Menggabungkannya membuat perubahan pada yang satu
+            # diam-diam mengubah arti yang lain.
+            "kelas": await asyncio.to_thread(_kelas_projek, sess),
             "terlatih": terlatih,
             "eksternal": eksternal,
             "groundingdino_siap": inf.get("groundingdino_siap", False),
@@ -98,6 +105,33 @@ async def info(tid: str = "", batch: str | None = None,
             # Kalau Fase B jadi dikerjakan, menambahkannya kembali sepele.
             "training_aktif": gpu_sinyal.latih_aktif(),
             "cacah": await asyncio.to_thread(_cacah, sess, settings, tid, batch)}
+
+
+def _kelas_projek(sess: Session) -> list[str]:
+    """Nama kelas yang sudah dikenal projek, terurut. Sepadan dengan daftar
+    kelas di kanvas labeler, supaya satu projek tak punya dua daftar kelas
+    yang berbeda isinya.
+
+    Dua sumber digabung: kelas yang BENAR-BENAR dipakai di anotasi, dan kelas
+    pemula yang sudah diketik pemilik tetapi belum sempat dipakai melabeli.
+    Yang kedua ikut karena justru di sanalah nama kelas baru biasanya sudah
+    disiapkan sebelum pekerjaannya dimulai.
+
+    autolabel_zero.prompt_default SENGAJA tidak dipakai di sini: ia membaca
+    data.yaml / classes.txt milik dataset YOLO, jadi untuk projek labelme
+    biasa ia mengembalikan daftar kosong betapapun banyak kelas yang sudah
+    dipakai melabeli.
+    """
+    try:
+        with sess.lock:
+            items = list(sess.items)
+        dipakai = {str(s["label"]).strip() for it in items for s in it["shapes"]
+                   if s.get("label") is not None and str(s["label"]).strip()}
+        awal = set(tugas.baca(Path(sess.src)).get("kelas_awal") or []) if sess.src else set()
+    except Exception:                                   # noqa: BLE001
+        log.warning("daftar kelas gagal dibaca di %s", sess.src, exc_info=True)
+        return []
+    return sorted({str(k).strip() for k in (dipakai | awal) if str(k).strip()})
 
 
 def _cacah(sess: Session, settings: Settings, tid: str, batch: str | None) -> dict:

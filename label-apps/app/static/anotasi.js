@@ -528,6 +528,21 @@
     if (!azEl('az-prompt').value) {
       azEl('az-prompt').value = (j.prompt_bawaan || []).join(', ');
     }
+    // Kelas yang sudah ada di projek, supaya nama kelas hasil bisa DIPILIH.
+    // Mengetik dari nol tiap kali bukan cuma lambat: satu huruf berbeda
+    // melahirkan kelas kembar yang baru ketahuan jauh di kemudian hari.
+    const dl = azEl('az-kelas-daftar');
+    if (dl) {
+      dl.innerHTML = (j.kelas || [])
+        .map((k) => '<option value="' + azEsc(k) + '"></option>').join('');
+      azEl('az-kelas-ket').textContent = (j.kelas || []).length
+        ? 'Pilih salah satu dari ' + (j.kelas || []).length + ' kelas projek, '
+          + 'atau ketik nama baru. Dikosongkan berarti memakai nama dari model '
+          + 'atau dari nama objek yang dicari.'
+        : 'Projek ini belum punya kelas, jadi ketik sendiri namanya. '
+          + 'Dikosongkan berarti memakai nama dari model atau dari nama objek '
+          + 'yang dicari.';
+    }
     // GroundingDINO hanya ditawarkan kalau paketnya ada (server GPU).
     const gd = !!j.groundingdino_siap;
     azEl('az-src-gdino-lbl').hidden = !gd;
