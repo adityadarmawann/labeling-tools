@@ -1,0 +1,77 @@
+# systemd service HIGOLAB DEV (worktree dev, FastAPI 0.0.0.0:8043).
+#
+# Kenapa ada: produksi sudah punya unitnya sendiri (higolab.service), jadi
+# sesudah mesin reboot prod bangkit sendiri. DEV tidak. Ia selama ini
+# dinyalakan dengan tangan (./start.sh dev), jadi tiap kali PC dinyalakan
+# ulang dev diam saja dan tak bisa dibuka dari laptop mana pun, sementara
+# prod tampak baik-baik saja. Persis itu yang terjadi 16 Nov 2026.
+#
+# Yang dijalankan tetap ./start.sh dev apa adanya (memuat env/dev.env,
+# memilih venv .venv-gpu, lalu exec python run.py dengan --reload). Jadi tak
+# ada perilaku baru: cuma siapa yang menyalakan (systemd, bukan tangan).
+#
+# BEDA PENTING dari unit produksi:
+#   - Restart=no, BUKAN on-failure. Dev memang sering sengaja dimatikan atau
+#     dibiarkan mati saat kode setengah jadi; systemd yang menghidupkannya
+#     terus-menerus justru menyembunyikan galat yang mau dilihat.
+#   - --reload tetap menyala (diatur start.sh), jadi menyunting berkas tak
+#     perlu restart service.
+#   - Mendengarkan 0.0.0.0:8043 (env/dev.env), supaya bisa diuji dari laptop
+#     lain. Produksi tetap loopback di balik nginx.
+#
+# ---------------------------------------------------------------------------
+# PASANG (butuh sudo -- kamu jalankan sendiri; Claude tak menyentuh systemd):
+#
+#   # 1. Hentikan instance manual yang mungkin masih jalan (punya user paul,
+#   #    tak perlu sudo). Kalau tak ada, perintah ini aman saja.
+#   pkill -f 'run.py --host 0.0.0.0 --port 8043' || true
+#
+#   # 2. Pasang unit + aktifkan supaya ikut boot, sekaligus nyalakan sekarang.
+#   sudo cp /home/paul/computer-vision/smartbin/rvm/labeling-tools-dev/deploy/higolab-dev.service \
+#           /etc/systemd/system/higolab-dev.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now higolab-dev
+#
+# CEK:
+#   systemctl status higolab-dev              # harus active (running)
+#   curl -sI http://127.0.0.1:8043/           # HTTP 200
+#
+# KELOLA SEHARI-HARI:
+#   sudo systemctl restart higolab-dev        # mis. sesudah ganti kode Python
+#   sudo systemctl stop higolab-dev           # matikan
+#   journalctl -u higolab-dev -f              # log langsung
+#
+# CATATAN: kalau dev tak perlu dijangkau laptop lain, cukup JANGAN aktifkan
+# unit ini dan nyalakan manual seperti biasa. Unit ini bukan keharusan; ia
+# cuma menutup celah "sesudah reboot, dev diam".
+# ---------------------------------------------------------------------------
+
+[Unit]
+Description=HIGOLAB Labeling Tools (dev, FastAPI 0.0.0.0:8043)
+Documentation=file:///home/paul/computer-vision/smartbin/rvm/labeling-tools-dev/label-apps/start.sh
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=paul
+Group=paul
+WorkingDirectory=/home/paul/computer-vision/smartbin/rvm/labeling-tools-dev/label-apps
+
+# start.sh dev self-contained: muat env, pilih venv, exec python run.py.
+# /bin/bash eksplisit karena start.sh butuh bash, bukan /bin/sh.
+ExecStart=/bin/bash start.sh dev
+
+StandardOutput=append:/home/paul/computer-vision/smartbin/rvm/labeling-tools-dev/label-apps/logs/dev.log
+StandardError=append:/home/paul/computer-vision/smartbin/rvm/labeling-tools-dev/label-apps/logs/dev.log
+
+# Dev sengaja TIDAK dihidupkan ulang otomatis saat gagal: lihat catatan di atas.
+Restart=no
+TimeoutStartSec=120
+
+# Hanya proses utama yang dihentikan saat stop/restart; job latih yang dispawn
+# app berdiri di process group sendiri dan tak ikut mati.
+KillMode=process
+
+[Install]
+WantedBy=multi-user.target
