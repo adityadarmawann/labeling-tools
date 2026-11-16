@@ -679,12 +679,59 @@ def gdino_tersedia() -> bool:
         return False
 
 
+def _samakan(t: str) -> str:
+    """Bentuk banding: huruf dan angka saja, huruf kecil."""
+    return "".join(c for c in str(t).lower() if c.isalnum())
+
+
+def cocokkan_istilah(frasa: str, istilah: list[str]) -> str:
+    """Frasa balasan GroundingDINO -> SATU istilah dari prompt.
+
+    GroundingDINO melakukan phrase grounding: untuk tiap kotak ia
+    mengembalikan potongan token prompt yang cocok, bukan istilah yang kita
+    minta. Pada nama kelas ber-garis-bawah, tokenizer memecahnya jadi subkata
+    lalu merangkainya kembali apa adanya, sehingga satu kelas
+    `kahf_skinergizing_facewash_50ml` melahirkan belasan "kelas" baru:
+    `kahf _ skiner facewash _ml`, `kaf skin face`, bahkan `ka`.
+
+    Ditulis mentah sebagai nama kelas, pecahan itu mengotori daftar kelas
+    projek dan tiap satunya harus dihapus dengan tangan. Padahal tiap deteksi
+    PASTI berasal dari salah satu istilah yang kita kirim, jadi yang benar
+    adalah mengembalikannya ke istilah itu.
+
+    Dikembalikan dalam ejaan ASLI yang diketik orang, bukan versi huruf kecil
+    yang dikirim ke model.
+    """
+    if not istilah:
+        return str(frasa).strip()
+    f = _samakan(frasa)
+    if not f:
+        return istilah[0]
+    from difflib import SequenceMatcher
+    terbaik, nilai = istilah[0], -1.0
+    for it in istilah:
+        n = _samakan(it)
+        if not n:
+            continue
+        # Awalan diutamakan: pecahan GroundingDINO hampir selalu potongan
+        # DEPAN istilahnya, dan rasio kemiripan saja bisa kalah pada istilah
+        # panjang yang kebetulan banyak huruf samanya.
+        r = SequenceMatcher(None, f, n).ratio() + (0.25 if n.startswith(f) else 0)
+        if r > nilai:
+            terbaik, nilai = it, r
+    return terbaik
+
+
 def dari_groundingdino(img: Path, teks: list[str], ambang: float = 0.25,
                        teks_ambang: float = 0.2, maks: int = 100) -> list[Temuan]:
     """Open-vocabulary teks -> KOTAK via GroundingDINO. teks huruf kecil dipisah
     '. ' (format GroundingDINO). Kotak saja; untuk projek segmentasi, pemanggil
     merapikan tiap kotak jadi mask lewat dari_kotak (SAM)."""
-    teks = [str(t).strip().lower() for t in teks if str(t).strip()]
+    # Ejaan ASLI dipertahankan untuk nama kelas; yang dikirim ke model tetap
+    # huruf kecil (format GroundingDINO). Tanpa ini, kelas "Botol PET" pulang
+    # jadi "botol pet" tanpa ada yang memintanya.
+    asli = [str(t).strip() for t in teks if str(t).strip()]
+    teks = [t.lower() for t in asli]
     if not teks:
         raise TidakAdaObjek("belum ada nama objek yang dicari")
     bgr = cv2.imread(str(img))
@@ -713,7 +760,7 @@ def dari_groundingdino(img: Path, teks: list[str], ambang: float = 0.25,
     out: list[Temuan] = []
     for (x1, y1, x2, y2), s, l in list(zip(boxes, skor, labs))[:int(maks)]:
         x1, y1, x2, y2 = float(x1), float(y1), float(x2), float(y2)
-        out.append(Temuan(label=str(l).strip() or teks[0],
+        out.append(Temuan(label=cocokkan_istilah(l, asli),
                           points=[[x1, y1], [x2, y2]],
                           bbox=(int(x1), int(y1), int(x2), int(y2)),
                           skor=float(s), shape_type="rectangle"))
