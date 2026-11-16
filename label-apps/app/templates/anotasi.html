@@ -340,6 +340,18 @@
                 title="Isi anotasi otomatis untuk gambar yang belum di tugas ini, lalu tinggal diverifikasi">
           Auto-label &rarr;</button>
         {% endif %}
+        {#- Hasil auto-label di dalam job ini yang menunggu diperiksa.
+            Tanpa baris ini papan diam saja sesudah auto-label dijalankan atas
+            sebuah job: angkanya hanya hidup di dalam halaman jobnya, jadi
+            satu-satunya cara menemukannya adalah membuka tiap job satu per
+            satu. Sepadan dengan tautan di kartu batch; bedanya lingkup di sini
+            job, jadi saringannya saring=dicek di halaman job itu. -#}
+        {% if k.dicek %}
+        <a class="an-mulai an-verif"
+           href="/tugas/{{ k.id }}?ds={{ pr.ds | urlquote }}&amp;saring=dicek"
+           title="Periksa hasil auto-label tugas ini satu per satu">
+          Verifikasi {{ k.dicek }} hasil AI &rarr;</a>
+        {% endif %}
         <a class="an-mulai" href="/tugas/{{ k.id }}?ds={{ pr.ds | urlquote }}">
           Lihat isinya &rarr;</a>
       </article>
@@ -445,6 +457,18 @@
                 data-autolabel-job="{{ k.id }}"
                 title="Isi anotasi otomatis untuk gambar yang belum di tugas ini, lalu tinggal diverifikasi">
           Auto-label &rarr;</button>
+        {% endif %}
+        {#- Hasil auto-label di dalam job ini yang menunggu diperiksa.
+            Tanpa baris ini papan diam saja sesudah auto-label dijalankan atas
+            sebuah job: angkanya hanya hidup di dalam halaman jobnya, jadi
+            satu-satunya cara menemukannya adalah membuka tiap job satu per
+            satu. Sepadan dengan tautan di kartu batch; bedanya lingkup di sini
+            job, jadi saringannya saring=dicek di halaman job itu. -#}
+        {% if k.dicek %}
+        <a class="an-mulai an-verif"
+           href="/tugas/{{ k.id }}?ds={{ pr.ds | urlquote }}&amp;saring=dicek"
+           title="Periksa hasil auto-label tugas ini satu per satu">
+          Verifikasi {{ k.dicek }} hasil AI &rarr;</a>
         {% endif %}
         <a class="an-mulai" href="/tugas/{{ k.id }}?ds={{ pr.ds | urlquote }}">
           Lihat isinya &rarr;</a>

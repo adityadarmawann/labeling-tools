@@ -123,3 +123,63 @@ def test_kartu_batch_menautkan_ke_verifikasi(klien, lingkungan):
         _tulis(ip, True)
     h = klien.get("/anotasi", params={"ds": d.name}).text
     assert "f=dicek" in h and "Verifikasi" in h
+
+
+# ------------------------------------------- hasil AI yang duduk di dalam job
+def test_papan_menghitung_dicek_per_job(tmp_path):
+    """Auto-label bisa dijalankan atas sebuah JOB, bukan cuma sebatch.
+
+    Dulu hanya kartu batch yang menghitung hasil AI yang menunggu diperiksa,
+    jadi auto-label atas sebuah job tak meninggalkan satu pun jejak di papan:
+    angkanya hanya hidup di dalam halaman job itu, dan satu-satunya cara
+    menemukannya adalah membuka tiap job lalu kebetulan melihat tabnya.
+    """
+    d = buat_dataset(tmp_path / "pj", 1, 0)
+    data = tugas.baca(d, "paul")
+    data["tugas"]["t1"] = {"pelabel": "paul", "gambar": ["a.jpg", "b.jpg"],
+                           "dibuat": "2026-11-16 10:00", "oleh": "paul"}
+    data["tugas"]["t2"] = {"pelabel": "budi", "gambar": ["c.jpg"],
+                           "dibuat": "2026-11-16 10:00", "oleh": "paul"}
+    semua = {"a.jpg", "b.jpg", "c.jpg"}
+    pp = tugas.papan(data, semua, semua, {}, {"a.jpg", "b.jpg"})
+    per = {k["id"]: k["dicek"] for k in pp["kartu"]}
+    assert per["t1"] == 2
+    assert per["t2"] == 0
+
+
+def test_papan_job_tanpa_dicek_tetap_nol(tmp_path):
+    d = buat_dataset(tmp_path / "pj2", 1, 0)
+    data = tugas.baca(d, "paul")
+    data["tugas"]["t1"] = {"pelabel": "paul", "gambar": ["a.jpg"],
+                           "dibuat": "2026-11-16 10:00", "oleh": "paul"}
+    pp = tugas.papan(data, {"a.jpg"}, {"a.jpg"}, {})
+    assert pp["kartu"][0]["dicek"] == 0
+
+
+def test_dicek_job_dan_batch_tak_saling_mencuri(tmp_path):
+    """Gambar yang sudah ditugaskan keluar dari kartu batch; hitungannya harus
+    pindah ke kartu job, bukan hilang atau dihitung dua kali."""
+    d = buat_dataset(tmp_path / "pj3", 1, 0)
+    data = tugas.baca(d, "paul")
+    data["tugas"]["t1"] = {"pelabel": "paul", "gambar": ["a.jpg"],
+                           "dibuat": "2026-11-16 10:00", "oleh": "paul"}
+    semua = {"a.jpg", "b.jpg"}
+    dicek = {"a.jpg", "b.jpg"}
+    pp = tugas.papan(data, semua, semua, dict.fromkeys(semua, "u1"), dicek)
+    job = sum(k["dicek"] for k in pp["kartu"])
+    batch = sum(b["dicek"] for b in pp["belum_batch"])
+    assert job == 1 and batch == 1
+    assert job + batch == len(dicek)
+
+
+def test_kartu_job_menautkan_ke_verifikasi():
+    """Tautannya memakai saringan yang SUDAH ada di halaman job (saring=dicek),
+    bukan halaman baru."""
+    h = pathlib.Path("app/templates/anotasi.html").read_text()
+    assert "Verifikasi {{ k.dicek }} hasil AI" in h
+    assert "saring=dicek" in h
+    # muncul hanya kalau memang ada yang menunggu
+    i = h.index("Verifikasi {{ k.dicek }} hasil AI")
+    assert "{% if k.dicek %}" in h[max(0, i - 500):i]
+    # dua kolom kartu job (Dikerjakan dan Selesai) sama-sama dapat
+    assert h.count("Verifikasi {{ k.dicek }} hasil AI") == 2

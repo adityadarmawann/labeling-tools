@@ -2153,12 +2153,19 @@ def papan(data: dict, berlabel: set[str], semua: set[str],
     objek atau belum cuma pemindainya.
     """
     bd = batch_dari or {}
+    dk = dicek or set()
     ditugaskan = set()
     kartu = []
     for tid, t in data["tugas"].items():
         g = [k for k in (t.get("gambar") or []) if k in semua]
         ditugaskan.update(g)
         n_label = sum(1 for k in g if k in berlabel)
+        # Hasil auto-label di dalam job INI yang belum diperiksa manusia.
+        # Dulu hanya kartu BATCH yang menghitungnya, jadi hasil auto-label yang
+        # dijalankan atas sebuah job tak punya satu pun jejak di papan: satu-
+        # satunya cara menemukannya adalah membuka tiap job lalu kebetulan
+        # melihat tab "Belum diverifikasi" di dalamnya.
+        n_dicek = sum(1 for k in g if k in dk)
         n_dataset = sum(1 for k in g if sudah_dimasukkan(data, k))
         # SELESAI menuntut seluruhnya sudah DIKERJAKAN, bukan cuma sudah
         # dimasukkan. Memasukkan gambar yang belum dilabeli ke dataset memang
@@ -2191,7 +2198,7 @@ def papan(data: dict, berlabel: set[str], semua: set[str],
             "n_asal": len(t.get("gambar") or []),
             "judul": judul or f"Dibagi {t.get('dibuat', '')[:10]}",
             "dibuat": t.get("dibuat", ""), "catatan": t.get("catatan", ""),
-            "jumlah": len(g), "berlabel": n_label,
+            "jumlah": len(g), "berlabel": n_label, "dicek": n_dicek,
             "di_dataset": n_dataset, "keadaan": keadaan,
             "persen": round(n_label * 100 / len(g)) if g else 0,
         })
@@ -2233,7 +2240,6 @@ def papan(data: dict, berlabel: set[str], semua: set[str],
     # tidak meninggalkan jejak apa pun di kartunya: tak ada yang menunjukkan
     # ada pekerjaan verifikasi yang menunggu, dan tak ada jalan menuju
     # gambar-gambarnya kecuali membaginya jadi job lebih dulu.
-    dk = dicek or set()
     dicek_kelompok: dict[str, int] = {}
     for k in belum:
         b = bd.get(k) or ""
