@@ -598,7 +598,8 @@
     if (el) el.addEventListener('change', azMulaiSiap);
   }
   for (const id of ['az-kelas-nama', 'az-bentuk', 'az-terlatih',
-                    'az-s-terlatih', 'az-s-gdino']) {
+                    'az-s-terlatih', 'az-s-gdino', 'az-prompt',
+                    'az-s-zeroshot']) {
     const el = azEl(id);
     if (el) el.addEventListener('change', azAwas);
     if (el && el.tagName === 'INPUT' && el.type === 'text') {
@@ -676,6 +677,24 @@
         + nama + '", termasuk ' + nKelas + ' kelas milik model terlatih.';
       wKelas.hidden = false;
     } else { wKelas.hidden = true; }
+
+    // Beberapa nama objek dalam satu jalan. Kotaknya tetap benar, tetapi
+    // kelasnya tersebar acak: diukur di projek paragon, 40 dari 40 objek
+    // dapat kelas yang salah meski kedua produknya jelas berbeda bentuknya.
+    // Satu nama per jalan membuat semuanya dapat kelas yang sama, dan yang
+    // perlu dibetulkan tangan tinggal yang minoritas.
+    const wPrompt = azEl('az-awas-prompt');
+    const pakaiTeks = azEl('az-s-zeroshot').checked || azEl('az-s-gdino').checked;
+    const nNama = (azEl('az-prompt').value || '').split(',')
+      .map((x) => x.trim()).filter(Boolean).length;
+    if (pakaiTeks && nNama > 1) {
+      wPrompt.textContent = 'Ada ' + nNama + ' nama objek di satu jalan. '
+        + 'Kotaknya tetap benar, tetapi kelasnya tidak bisa dipercaya: model '
+        + 'teks kerap memberi nama yang salah di antara beberapa pilihan, '
+        + 'bahkan untuk benda yang jelas berbeda. Isi satu nama saja, lalu '
+        + 'jalankan lagi untuk nama berikutnya.';
+      wPrompt.hidden = false;
+    } else { wPrompt.hidden = true; }
 
     const wBentuk = azEl('az-awas-bentuk');
     const bentuk = azEl('az-bentuk').value;

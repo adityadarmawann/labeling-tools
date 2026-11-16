@@ -148,17 +148,23 @@ def test_projek_kerangka_dihalangi_sebelum_disetel():
     assert "mulai.disabled = true" in JS[k:k + 120]
 
 
+def _azawas() -> str:
+    """Badan azAwas() UTUH. Diiris dengan jendela karakter tetap, uji ini
+    diam-diam berhenti memeriksa begitu ada peringatan baru ditambahkan di
+    atasnya dan yang diperiksa terdorong keluar jendela."""
+    i = JS.index("function azAwas(")
+    return JS[i:JS.index("\n  }", JS.index("wBentuk.hidden = true", i))]
+
+
 def test_peringatan_nama_kelas_menyebut_akibatnya():
     """Satu nama dipakai untuk SEMUA objek dari SEMUA sumber; pada model
     berkelas banyak itu melenyapkan taksonominya."""
-    i = JS.index("function azAwas(")
-    blok = JS[i:i + 1800]
+    blok = _azawas()
     assert "az-awas-kelas" in blok and "kelas milik model terlatih" in blok
 
 
 def test_peringatan_bentuk_kotak_mematikan_sam():
-    i = JS.index("function azAwas(")
-    blok = JS[i:i + 1800]
+    blok = _azawas()
     assert "az-awas-bentuk" in blok and "SAM tidak dijalankan" in blok
 
 
@@ -168,3 +174,39 @@ def test_gaya_barunya_dari_token_tema():
     blok = CSS[i:CSS.index("#az-maju:empty", i)]
     assert "var(--" in blok
     assert not re.findall(r"#[0-9a-fA-F]{3,8}\b|\brgb\(", blok)
+
+
+# ------------------------------------------- satu nama objek per jalan
+def test_keterangan_prompt_menuntut_satu_nama():
+    """Aturannya MUTLAK, bukan bersyarat.
+
+    Diukur di projek paragon pada 40 gambar berlabel manusia: dengan dua nama
+    dikirim bersamaan, kotaknya benar (IoU rata-rata 0,91) tetapi KELASNYA
+    salah 40 dari 40, padahal kedua produknya (deodorant dan facewash) jelas
+    berbeda bentuknya. Jadi "kalau kelasnya mirip" terlalu lunak.
+    """
+    d = _tanpa_komentar(_dlg())
+    i = d.index('id="az-prompt-ket"')
+    blok = d[i:i + 420]
+    assert "satu nama saja" in blok
+    assert "tidak bisa dipercaya memilih" in blok
+    # tak boleh kembali jadi syarat
+    assert "kalau kelasnya mirip" not in blok.lower()
+
+
+def test_peringatan_muncul_saat_nama_lebih_dari_satu():
+    assert 'id="az-awas-prompt"' in _dlg()
+    i = JS.index("const wPrompt = azEl('az-awas-prompt')")
+    blok = JS[i:i + 900]
+    assert "nNama > 1" in blok
+    # hanya relevan kalau sumber teks memang dipakai
+    assert "pakaiTeks" in blok
+    assert "Isi satu nama saja" in blok
+
+
+def test_peringatan_ikut_berubah_saat_diketik():
+    """Kalau tidak dipasang ke kolomnya, peringatannya baru muncul sesudah
+    menyentuh kontrol lain -- yaitu saat orangnya sudah berhenti membaca."""
+    i = JS.index("for (const id of ['az-kelas-nama', 'az-bentuk'")
+    blok = JS[i:i + 300]
+    assert "az-prompt" in blok and "az-s-zeroshot" in blok

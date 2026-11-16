@@ -631,9 +631,18 @@
           <label class="halus" for="az-prompt">Nama objek yang dicari</label>
           <input class="chip az-lebar" id="az-prompt" type="text"
                  placeholder="mis. bottle, can, carton">
-          <p class="halus" id="az-prompt-ket">Pisahkan dengan koma. Dipakai
-            semua sumber di kotak ini. Dikosongkan berarti memakai nama kelas
-            projek.</p>
+          {#- Aturannya MUTLAK, bukan bersyarat. Diukur di projek paragon
+              pada 40 gambar berlabel manusia: dengan dua nama dikirim
+              bersamaan, kotaknya benar (IoU rata-rata 0,91) tetapi KELASNYA
+              salah 40 dari 40 -- padahal kedua produknya, deodorant dan
+              facewash, jelas berbeda bentuknya. Jadi "kalau kelasnya mirip"
+              terlalu lunak: model teks memang tak bisa dipercaya memilih di
+              antara beberapa nama, semirip apa pun atau sejauh apa pun. -#}
+          <p class="halus" id="az-prompt-ket">Isi <b>satu nama saja</b> tiap
+            kali jalan, lalu ulangi untuk nama berikutnya. Model teks bagus
+            menemukan benda, tetapi tidak bisa dipercaya memilih di antara
+            beberapa nama. Dikosongkan berarti memakai nama kelas projek.</p>
+          <p class="az-awas" id="az-awas-prompt" hidden></p>
 
           <label class="az-src"><input type="checkbox" id="az-s-zeroshot">
             <span>Zero-shot (tanpa latih)</span></label>
