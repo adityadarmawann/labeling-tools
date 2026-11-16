@@ -472,6 +472,17 @@ body.lab {
   background: var(--ok-bg); border-color: var(--ok);
 }
 .lab-verif .lab-verif-belum, .lab-verif .lab-verif-sudah { display: none; }
+/* Tombolnya sebaris dengan kalimat yang menerangkannya: ia jawaban atas
+   kalimat itu, bukan perkakas berdiri sendiri. */
+.lab-verif-ok {
+  margin-left: 8px; padding: 4px 12px; border-radius: 7px;
+  border: 1px solid var(--aksi); background: var(--aksi); color: var(--aksi-ink);
+  font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
+  white-space: nowrap;
+}
+.lab-verif-ok:hover { filter: brightness(1.08); }
+.lab-verif-ok:disabled { opacity: .55; cursor: default; filter: none; }
+.lab-verif-ok:focus-visible { outline: 2px solid var(--ok); outline-offset: 2px; }
 .lab-verif[data-keadaan="belum"] .lab-verif-belum,
 .lab-verif[data-keadaan="sudah"] .lab-verif-sudah { display: inline; }
 .lab-rusak code { font-size: 11.5px; }

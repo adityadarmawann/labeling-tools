@@ -2928,6 +2928,21 @@ const _BULAN_JEJAK = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
 //   'belum'    hasil AI, belum ada manusia yang menyetujuinya
 //   'sudah'    baru saja disimpan manusia di sesi ini
 //   'tak-usah' bukan hasil AI: spanduk disembunyikan, labeler seperti biasa
+/* "Tandai terverifikasi": menyimpan apa adanya supaya server membuang
+ * perlu_dicek (lihat KUNCI_ATAS di routers/annotate.py). Dibutuhkan karena
+ * autosave hanya menyimpan kalau ada yang BERUBAH: hasil AI yang sudah benar
+ * tak pernah tersentuh, jadi ia menetap sebagai "belum diverifikasi"
+ * selamanya walau sudah dibaca orang satu per satu. Spanduknya berpindah
+ * keadaan lewat jalur simpan yang sama, jadi tak ada dua sumber kebenaran. */
+function pasangTandaiVerif() {
+  const b = el('lab-verif-ok');
+  if (!b) return;
+  b.addEventListener('click', async () => {
+    b.disabled = true;
+    try { await simpan(); } finally { b.disabled = false; }
+  });
+}
+
 function keadaanVerif(k) {
   const n = el('lab-verif');
   if (!n) return;
@@ -3178,6 +3193,7 @@ el('btn-del').onclick = hapusTerpilih;
 el('btn-undo').onclick = urungkan;
 el('btn-redo').onclick = ulangi;
 el('btn-simpan').onclick = simpan;
+pasangTandaiVerif();
 if (el('btn-latar')) el('btn-latar').onclick = toggleLatar;
 el('btn-fit').onclick = muatKeLayar;
 el('btn-zin').onclick = () => zoomDi(1.25, c.width / 2, c.height / 2);
