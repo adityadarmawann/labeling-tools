@@ -51,9 +51,13 @@
 #
 # CEK:
 #   systemctl status higolab            # harus active (running)
-#   curl -sI http://127.0.0.1:8142/login   # produksi, HTTP 200
-#   curl -sI http://127.0.0.1:8043/         # DEV, HTTP 200
-#   curl -skI --resolve annotate.higo.id:443:127.0.0.1 https://annotate.higo.id/login  # 200
+#   # GET, BUKAN HEAD. `curl -I` mengirim HEAD dan aplikasinya hanya
+#   # menerima GET, jadi -I selalu menjawab "405 Method Not Allowed" walau
+#   # servernya sehat sempurna. Perintah cek yang keliru begitu membuat orang
+#   # mengira pemasangannya gagal padahal tidak.
+#   curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8142/login   # produksi, 200
+#   curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8043/        # dev, 200
+#   curl -sk -o /dev/null -w '%{http_code}\n' https://annotate.higo.id/    # lewat nginx, 200
 #
 # KELOLA SEHARI-HARI:
 #   sudo systemctl restart higolab      # nyalakan ulang (mis. sesudah deploy)
