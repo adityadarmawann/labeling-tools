@@ -5,7 +5,7 @@ yang bisa di ceklis barengan, atau mana yang bisa sendiri."
 
 Empat sumber dulu berjajar sebagai empat centang setara, dan tak ada apa pun
 di layar yang mengatakan bahwa dua di antaranya berbagi satu kolom nama objek
-dan satu ambang. Menata ulangnya jadi dua KELUARGA memindahkan jawaban itu ke
+dan satu ambang. Menata ulangnya jadi dua KELOMPOK memindahkan jawaban itu ke
 struktur, bukan ke paragraf bantuan.
 
 Di balik keluhan tampilan itu ada tiga cacat FUNGSI yang diuji di sini juga:
@@ -43,7 +43,7 @@ def test_kolom_nama_objek_tak_terkunci_oleh_centang_zero_shot():
     i = d.index('id="az-ko-zeroshot"')
     j = d.index("</div>", i)
     assert 'id="az-prompt"' not in d[i:j]
-    # dan ia memang naik ke kotak keluarganya
+    # dan ia memang naik ke kotak kelompoknya
     g = d.index('id="az-grup-teks"')
     assert g < d.index('id="az-prompt"') < d.index('id="az-ko-zeroshot"')
 
@@ -91,10 +91,10 @@ def test_dialog_ikut_tata_letak_tiga_bagian():
 
 
 # ------------------------------------------------------- struktur baru
-def test_sumber_dikelompokkan_jadi_dua_keluarga():
+def test_sumber_dikelompokkan_jadi_dua_kelompok():
     d = _dlg()
     assert 'id="az-grup-model"' in d and 'id="az-grup-teks"' in d
-    # tiap sumber tinggal di dalam salah satu keluarga, tak ada yang di luar
+    # tiap sumber tinggal di dalam salah satu kelompok, tak ada yang di luar
     for cb in ("az-s-terlatih", "az-s-eksternal"):
         assert d.index('id="az-grup-model"') < d.index(cb) < d.index('id="az-grup-teks"')
     for cb in ("az-s-zeroshot", "az-s-gdino"):
@@ -280,3 +280,12 @@ def test_angka_di_panduan_yang_diukur_bukan_dikarang():
     """40 dari 40 datang dari pengukuran nyata di projek Kahf; kalau angkanya
     pernah diubah, yang mengubah harus ikut mengukurnya lagi."""
     assert "40 dari 40" in _panduan()
+
+
+def test_teks_dialog_memakai_kata_yang_formal():
+    """"Keluarga" sempat dipakai untuk menyebut dua kelompok sumber, dan
+    ditolak sebagai terlalu tidak formal. Diuji supaya tak menyelinap kembali
+    bersama kata percakapan lain yang sejenis."""
+    d = _tanpa_komentar(_dlg()).lower()
+    for kata in ("keluarga", "bikin", "jago", "gitu", "banget", "doang"):
+        assert kata not in d, kata

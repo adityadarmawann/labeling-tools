@@ -488,7 +488,7 @@
    * pointer-events:none, dan kolom nama objek tinggal di dalam blok
    * Zero-shot. Jadi mematikan Zero-shot membuat kolom itu tak bisa diketik
    * sama sekali, padahal GroundingDINO membacanya -- resep "recall tinggi"
-   * mustahil disetel. Kolomnya kini naik ke tingkat keluarga, dan yang
+   * mustahil disetel. Kolomnya kini naik ke tingkat kelompok, dan yang
    * diredupkan cuma isi blok sumbernya sendiri.
    *
    * Sekalian: kedua <select> model LEPAS dari disabled. Keduanya ditulis
@@ -720,7 +720,7 @@
     if (pakaiTeks && nNama > 1) {
       wPrompt.textContent = 'Ada ' + nNama + ' nama objek di satu jalan. '
         + 'Kotaknya tetap benar, tetapi kelasnya tidak bisa dipercaya: model '
-        + 'teks kerap memberi nama yang salah di antara beberapa pilihan, '
+        + 'teks kerap keliru memilih di antara beberapa nama sekaligus, '
         + 'bahkan untuk benda yang jelas berbeda. Isi satu nama saja, lalu '
         + 'jalankan lagi untuk nama berikutnya.';
       wPrompt.hidden = false;
@@ -821,7 +821,7 @@
                       kelas_nama: kelasNama });
       }
       if (azEl('az-s-gdino').checked) {
-        // Nama objeknya sama dengan Zero-shot (satu kolom milik keluarga ini);
+        // Nama objeknya sama dengan Zero-shot (satu kolom milik kelompok ini);
         // kosong -> kelas projek. Ambangnya SENDIRI: dulu ia diam-diam memakai
         // ambang zero-shot (0,1), bukan 0,25 yang diasumsikan server, dan
         // itulah sebabnya sumber ini terasa penuh derau.

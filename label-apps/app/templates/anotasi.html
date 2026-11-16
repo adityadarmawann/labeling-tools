@@ -601,14 +601,15 @@
           angka di dalamnya diukur di projek nyata, bukan dikarang. -#}
       <div class="az-panduan" id="az-panduan" hidden>
         <h4>Auto-label itu apa</h4>
-        <p>Ia mengisikan anotasi untuk kamu, lalu kamu yang memutuskan benar
+        <p>Auto-label mengisikan anotasi untuk kamu, lalu kamu yang memutuskan benar
           atau tidak. Hasilnya selalu ditandai "belum diverifikasi", jadi tidak
           ada yang diam-diam dianggap selesai.</p>
 
         <h4>Memilih sumber</h4>
-        <p>Ada dua keluarga, dan keduanya boleh dipakai bersamaan.</p>
+        <p>Ada dua kelompok sumber, dan keduanya boleh dipakai bersamaan.</p>
         <p><b>Model .pt</b> sudah tahu kelas projekmu, jadi nama kelasnya
-          paling tepat. Tetapi ia hanya menemukan kelas yang pernah dilatih.</p>
+          paling tepat. Tetapi hanya kelas yang pernah dilatih yang bisa
+          ia temukan.</p>
         <p><b>Model teks</b> tidak perlu dilatih dulu. Kamu yang menyebut nama
           bendanya, modelnya yang mencari. Cocok untuk projek yang belum punya
           model sama sekali.</p>
@@ -616,9 +617,9 @@
           cukup ditulis sekali.</p>
 
         <h4>Satu nama objek tiap kali jalan</h4>
-        <p>Ini yang paling sering bikin kecewa kalau dilanggar. Model teks jago
+        <p>Ini yang paling sering membuat kecewa kalau dilanggar. Model teks pandai
           menemukan benda, tetapi tidak bisa dipercaya memilih di antara
-          beberapa nama.</p>
+          beberapa nama sekaligus.</p>
         <p>Kami mengukurnya di projek Kahf. Dengan dua nama dikirim sekaligus,
           kotaknya tepat, tetapi kelasnya salah semuanya, 40 dari 40. Padahal
           deodorant dan facewash jelas berbeda bentuk.</p>
@@ -659,8 +660,8 @@
         <h4 class="az-langkah">Sumber</h4>
         {#- Empat sumber dulu berjajar sebagai empat centang setara, dan tak
             ada apa pun di layar yang mengatakan bahwa dua di antaranya berbagi
-            satu kolom nama objek dan satu ambang. Sekarang mereka dua KELUARGA,
-            dan yang dipakai bersama tinggal di dalam kotak keluarganya. Semua
+            satu kolom nama objek dan satu ambang. Sekarang mereka dua KELOMPOK,
+            dan yang dipakai bersama tinggal di dalam kotak kelompoknya. Semua
             boleh dicentang bersamaan: hasilnya digabung, objek yang sama cukup
             ditulis sekali. -#}
         <p class="halus az-langkah-ket">Boleh pilih lebih dari satu. Hasilnya
@@ -700,7 +701,7 @@
           <h5>Model teks, diberi tahu nama objeknya</h5>
           <p class="halus">Tidak perlu dilatih dulu. Kamu yang menyebut objeknya,
             modelnya yang mencari.</p>
-          {#- Kolom nama objek naik ke tingkat KELUARGA. Dulu ia tinggal di
+          {#- Kolom nama objek naik ke tingkat KELOMPOK. Dulu ia tinggal di
               dalam blok Zero-shot, sementara GroundingDINO membacanya juga --
               dan karena blok yang tak dicentang diberi pointer-events:none,
               mematikan Zero-shot membuat kolom ini tak bisa diketik sama
@@ -718,7 +719,7 @@
           <p class="halus" id="az-prompt-ket">Isi <b>satu nama saja</b> tiap
             kali jalan, lalu ulangi untuk nama berikutnya. Model teks bagus
             menemukan benda, tetapi tidak bisa dipercaya memilih di antara
-            beberapa nama. Dikosongkan berarti memakai nama kelas projek.</p>
+            beberapa nama sekaligus. Dikosongkan berarti memakai nama kelas projek.</p>
           <p class="az-awas" id="az-awas-prompt" hidden></p>
 
           <label class="az-src"><input type="checkbox" id="az-s-zeroshot">

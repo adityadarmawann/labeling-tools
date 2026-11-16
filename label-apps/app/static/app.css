@@ -2423,14 +2423,14 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
 .an-mulai{align-self:flex-start;margin-top:2px;font-size:12px;
   color:var(--aksi);text-decoration:none;font-weight:600}
 .an-mulai:hover{text-decoration:underline}
-/* Auto-label sebagai tombol link beraksen amber (sama keluarga dengan lencana
+/* Auto-label sebagai tombol link beraksen amber (sekerabat dengan lencana
    "perlu dicek"), supaya beda dari aksi teal "Lihat isinya"/"Bagi tugas" dan
    langsung terbaca sebagai jalur AI. Reset tampilan bawaan <button>. */
 button.an-mulai.an-autolabel{background:none;border:0;cursor:pointer;
   font-family:inherit;color:var(--warn)}
 /* Dulu di sini ada .az-sumber/.az-src/.az-src-ko sendiri, termasuk
    `.az-src-ko.mati{pointer-events:none}` yang mengunci kolom nama objek
-   milik seluruh keluarga teks. Gaya dialog auto-label kini tinggal di satu
+   milik seluruh kelompok teks. Gaya dialog auto-label kini tinggal di satu
    tempat, di bawah bersama .az-grup; kalau dibiarkan di sini, aturan lamanya
    tetap berlaku karena yang baru hanya menimpa opacity, bukan
    pointer-events. */
@@ -3372,8 +3372,8 @@ button.an-mulai.an-autolabel{background:none;border:0;cursor:pointer;
 /* ------------------------------------------------------ dialog auto-label
    Empat sumber dulu berjajar sebagai empat centang setara, dan tak ada apa
    pun di layar yang mengatakan bahwa dua di antaranya berbagi satu kolom
-   nama objek dan satu ambang. Sekarang mereka dua KELUARGA: yang dipakai
-   bersama tinggal di dalam kotak keluarganya, jadi aturan kombinasinya
+   nama objek dan satu ambang. Sekarang mereka dua KELOMPOK: yang dipakai
+   bersama tinggal di dalam kotak kelompoknya, jadi aturan kombinasinya
    terbaca dari bentuknya, bukan dari paragraf bantuan. */
 .az-lingkup{display:flex;align-items:center;gap:8px;margin-top:12px;flex-wrap:wrap}
 .az-lingkup select{flex:0 1 auto;min-width:0}
@@ -3399,7 +3399,7 @@ button.an-mulai.an-autolabel{background:none;border:0;cursor:pointer;
 .az-src-ko{margin:6px 0 0 24px}
 /* Diredupkan, TIDAK dikunci dari tetikus: kendali yang mati masih harus bisa
    difokus dan menjelaskan dirinya. pointer-events:none di sini dulu yang
-   mengunci kolom nama objek milik seluruh keluarga. */
+   mengunci kolom nama objek milik seluruh kelompok. */
 .az-src-ko.mati{opacity:.45}
 .az-lebar{display:block;width:100%;margin-top:2px}
 /* Label dan kotak angkanya satu baris yang rapat; keterangannya baris
