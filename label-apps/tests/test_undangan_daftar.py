@@ -69,7 +69,12 @@ def test_daftar_tanpa_undangan_tetap_menunggu(klien, aplikasi, lingkungan):
     resp = anon.post("/daftar", data={
         "user": "orangluar", "pw": "rahasia123", "pw2": "rahasia123",
         "email": "luar@contoh.com"}, follow_redirects=False)
-    assert resp.status_code == 200          # halaman "selesai, menunggu"
+    # Berhasil mendaftar pun lewat redirect: dirender dari POST, menekan muat
+    # ulang MENGIRIM ULANG pendaftarannya dan percobaan kedua ditolak "nama
+    # akun itu sudah ada".
+    assert resp.status_code == 303
+    assert "ok=orangluar" in resp.headers["location"], resp.headers["location"]
+    assert anon.get(resp.headers["location"]).status_code == 200
     assert not anon.cookies.get(COOKIE_NAME), "tak boleh langsung login"
     users = json.loads(Path(lingkungan["users"]).read_text())
     assert users["orangluar"]["menunggu"] is True

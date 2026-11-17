@@ -41,6 +41,52 @@ def test_penanda_roundtrip_dan_basi():
     _bersihkan()
 
 
+def test_penanda_pid_init_dianggap_basi():
+    # Marker ber-pid 1 (init) pernah terjadi: training menulisnya lalu mati di
+    # reboot. init SELALU hidup, jadi tanpa penjagaan latih_aktif macet True
+    # selamanya (SAM dipaksa CPU, auto-label terblokir). pid <= 1 harus basi.
+    import json
+    _bersihkan()
+    gpu_sinyal._MARKER.write_text(json.dumps({"pid": 1}))
+    assert gpu_sinyal.latih_aktif() is False
+    assert not gpu_sinyal._MARKER.exists()          # basi -> ikut dibersihkan
+    gpu_sinyal._MARKER.write_text(json.dumps({"pid": 0}))
+    assert gpu_sinyal.latih_aktif() is False
+    _bersihkan()
+
+
+def test_tandai_latih_tak_pernah_tulis_pid_init(monkeypatch):
+    # Walau dipaksa pid=1, yang tertulis adalah pid proses sendiri (bukan 1).
+    import json
+    _bersihkan()
+    gpu_sinyal.tandai_latih(1)
+    d = json.loads(gpu_sinyal._MARKER.read_text())
+    assert d["pid"] == os.getpid() and d["pid"] > 1
+    _bersihkan()
+
+
+def test_osam_gpu_eligible_dan_hybrid_sam3():
+    # Diukur di stack sekarang: sam2, YOLO-World, DAN SAM 3 semua boleh GPU.
+    for m in ("sam2:small", "yoloworld:latest", "sam3:latest"):
+        assert m in autolabel.OSAM_GPU_KECIL
+    # SAM 3 memuncak ~6,8 GB -> butuh VRAM bebas lebih besar dari default.
+    assert autolabel.OSAM_GPU_BEBAS["sam3:latest"] > autolabel.OSAM_GPU_MIN_BEBAS
+
+    class _B:
+        def __init__(self, u):
+            self.url = u
+    # Hybrid SAM 3: hanya image_encoder di GPU; language_encoder + decoder CPU.
+    assert autolabel._blob_boleh_gpu("sam3:latest",
+                                     _B("https://x/sam3_image_encoder.onnx")) is True
+    assert autolabel._blob_boleh_gpu("sam3:latest",
+                                     _B("https://x/sam3_language_encoder.onnx")) is False
+    assert autolabel._blob_boleh_gpu("sam3:latest",
+                                     _B("https://x/sam3_decoder.onnx")) is False
+    # Model non-SAM3: semua sesinya boleh GPU.
+    assert autolabel._blob_boleh_gpu("yoloworld:latest",
+                                     _B("https://x/yoloworld.onnx")) is True
+
+
 def test_bebaskan_gpu_melepas_sesi_mobilesam():
     _bersihkan()
     # Pura-pura ada sesi MobileSAM residen; bebaskan harus melepasnya.

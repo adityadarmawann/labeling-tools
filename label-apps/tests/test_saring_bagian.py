@@ -178,11 +178,15 @@ def test_menu_bagian_dan_saringan_lain_hidup_bersama(klien_bersplit):
     assert 'name="tu" value="aug"' in h
     # Tombolnya menyala dan menyebutkan yang sedang dipilih.
     assert "data-on" in h.split('id="split-tombol"')[1][:80]
-    # "Bersihkan saringan" menghitung Bagian juga; tanpa ini angkanya bohong
-    # dan tautannya meninggalkan saringan yang katanya sudah dibersihkan.
+    # Saringan Bagian ikut jadi pil yang bisa dibuang sendiri, dan tautan
+    # buangnya benar-benar melepas sp/tu. Dulu semuanya dipadatkan ke satu
+    # tombol "Bersihkan saringan N"; dengan satu saringan aktif, pil itulah
+    # tombol buangnya, jadi "Bersihkan semua" memang tidak dirender.
     assert "bagian train" in h
-    bersih = h.split('class="chip saring-bersih"')[1].split(">")[0]
-    assert "sp=" not in bersih and "tu=" not in bersih, bersih
+    import re as _re
+    pil = _re.findall(r'<a class="chip saring-pil" href="([^"]+)"[^>]*>bagian', h)
+    assert pil, h[h.index("bagian train") - 300:h.index("bagian train") + 80]
+    assert "sp=" not in pil[0] and "tu=" not in pil[0], pil[0]
 
 
 def test_menu_tag_tidak_membuang_saringan_bagian(klien_bersplit):

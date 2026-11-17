@@ -16,14 +16,14 @@
   <div class="vh-kepala">
     <div>
       <a class="vh-balik" href="/versi">&larr; Versi</a>
-      <h2 class="vh-judul">Hasil augmentasi &mdash; versi {{ nomor }}</h2>
+      <h2 class="vh-judul">Hasil augmentasi versi {{ nomor }}</h2>
     </div>
     <div class="vh-ringkas">
-      <span class="vh-pil">Total <b>{{ "{:,}".format(idx.total) }}</b></span>
-      <span class="vh-pil vh-pil-train">train <b>{{ "{:,}".format(idx.jumlah_split.train) }}</b></span>
-      <span class="vh-pil vh-pil-valid">valid <b>{{ "{:,}".format(idx.jumlah_split.valid) }}</b></span>
-      <span class="vh-pil vh-pil-test">test <b>{{ "{:,}".format(idx.jumlah_split.test) }}</b></span>
-      <span class="vh-pil vh-pil-neg">negatif <b>{{ "{:,}".format(idx.negatif) }}</b></span>
+      <span class="vh-pil">Total <b>{{ "{:,}".format(idx.total).replace(",", ".") }}</b></span>
+      <span class="vh-pil vh-pil-train">train <b>{{ "{:,}".format(idx.jumlah_split.train).replace(",", ".") }}</b></span>
+      <span class="vh-pil vh-pil-valid">valid <b>{{ "{:,}".format(idx.jumlah_split.valid).replace(",", ".") }}</b></span>
+      <span class="vh-pil vh-pil-test">test <b>{{ "{:,}".format(idx.jumlah_split.test).replace(",", ".") }}</b></span>
+      <span class="vh-pil vh-pil-neg">negatif <b>{{ "{:,}".format(idx.negatif).replace(",", ".") }}</b></span>
     </div>
   </div>
 
@@ -31,10 +31,16 @@
       Semua filter dikerjakan di server (paginasi aman untuk puluhan ribu gambar). -#}
   <form class="vh-filter" method="get" action="/versi/hasil" id="vh-form">
     <input type="hidden" name="nomor" value="{{ nomor }}">
-    <input type="hidden" name="per" value="{{ per }}">
+    {#- Dulu `per` cuma medan tersembunyi, padahal JS di bawah mencari
+        #vh-per yang tak pernah ada: versi berisi puluhan ribu gambar terkunci
+        di 120 per halaman dan hanya bisa diubah dengan menyunting URL. -#}
+    <input type="hidden" name="hal" value="1">
 
-    <div class="vh-fgrup">
-      <span class="vh-flabel">Split</span>
+    {#- fieldset/legend, bukan span biasa. Tanpa keduanya pembaca layar
+        membacakan dua puluh centang berturut-turut tanpa tahu mana Split dan
+        mana Kelas. -#}
+    <fieldset class="vh-fgrup">
+      <legend class="vh-flabel">Split</legend>
       {% for s in ['train', 'valid', 'test'] %}
       <label class="vh-cek">
         <input type="checkbox" name="sp" value="{{ s }}"
@@ -42,10 +48,10 @@
         {{ s }} <i>{{ idx.jumlah_split[s] }}</i>
       </label>
       {% endfor %}
-    </div>
+    </fieldset>
 
-    <div class="vh-fgrup vh-fkelas">
-      <span class="vh-flabel">Kelas</span>
+    <fieldset class="vh-fgrup vh-fkelas">
+      <legend class="vh-flabel">Kelas</legend>
       {% for nama in idx.kelas %}
       <label class="vh-cek">
         <input type="checkbox" name="c" value="{{ nama }}"
@@ -58,6 +64,25 @@
                {% if neg_dipilih %}checked{% endif %} onchange="vhSubmit()">
         sampel negatif <i>{{ idx.negatif }}</i>
       </label>
+    </fieldset>
+
+    {#- Tampilkan label: BUKAN filter, jadi tidak ikut disubmit ke server.
+        Ia cuma menukar sumber gambar tiap kartu, supaya menyalakannya tidak
+        memuat ulang halaman dan tidak menghapus filter yang sedang dipakai. -#}
+    <div class="vh-fgrup vh-flabelcek">
+      <label class="vh-cek">
+        <input type="checkbox" id="vh-label" checked>
+        Tampilkan label
+      </label>
+    </div>
+
+    <div class="vh-fgrup">
+      <label class="vh-flabel" for="vh-per">Per halaman</label>
+      <select class="chip" id="vh-per" name="per">
+        {%- for n in [60, 120, 240, 480] %}
+        <option value="{{ n }}"{% if per == n %} selected{% endif %}>{{ n }}</option>
+        {%- endfor %}
+      </select>
     </div>
 
     {% if sp_set or c_set or neg_dipilih %}
@@ -68,15 +93,16 @@
   {#- Hasil filter + posisi paginasi -#}
   <div class="vh-sub">
     Menampilkan <b>{{ mulai + 1 if n else 0 }}&ndash;{{ mulai + items|length }}</b>
-    dari <b>{{ "{:,}".format(n) }}</b> gambar
+    dari <b>{{ "{:,}".format(n).replace(",", ".") }}</b> gambar
     &middot; halaman {{ hal }} / {{ n_hal }}
   </div>
 
   {% if items %}
-  <div class="vh-grid">
+  <div class="vh-grid" id="vh-grid">
     {% for it in items %}
     <figure class="vh-kartu">
       <img loading="lazy"
+           data-src="/versi/gambar?nomor={{ nomor }}&amp;nama={{ it.nama|urlencode }}"
            src="/versi/gambar?nomor={{ nomor }}&amp;nama={{ it.nama|urlencode }}&amp;s=320"
            alt="{{ it.nama }}">
       <figcaption>
@@ -91,7 +117,19 @@
     {% endfor %}
   </div>
   {% else %}
-  <div class="vh-kosong">Tidak ada gambar yang cocok dengan filter.</div>
+  <div class="vh-kosong">
+    <b>Tidak ada yang cocok</b>
+    {#- Menyebut saringan PENYEBABNYA, bukan "filter". Pola yang sama sudah
+        dipakai kisi Dataset dan halaman job. -#}
+    {%- set vh_aktif = [] %}
+    {%- if sp_set %}{% set _ = vh_aktif.append('split ' + (sp_set | sort | join(', '))) %}{% endif %}
+    {%- if c_set %}{% set _ = vh_aktif.append('kelas ' + (c_set | sort | join(', '))) %}{% endif %}
+    {%- if neg_dipilih %}{% set _ = vh_aktif.append('sampel negatif') %}{% endif %}
+    {% if vh_aktif %}<span class="halus">Saringan yang berlaku:
+      <b>{{ vh_aktif | join(' &middot; ') }}</b></span>
+    <a class="chip" href="/versi/hasil?nomor={{ nomor }}&amp;per={{ per }}">&times; Bersihkan</a>
+    {% endif %}
+  </div>
   {% endif %}
 
   {#- Paginasi: jendela nomor halaman di sekitar halaman kini -#}
@@ -123,6 +161,43 @@
     if (h) h.value = 1;               // filter berubah -> mulai dari halaman 1
     f.submit();
   }
+  /*
+   * Tampilkan label. Gambar hasil versi digambari anotasinya DI SERVER
+   * (/versi/gambar?label=1), bukan dilapisi di peramban: kartunya memakai
+   * object-fit yang memotong gambar, jadi lapisan sisi-peramban harus
+   * menirukan potongan itu per gambar supaya tidak meleset.
+   *
+   * Saat label menyala kartunya beralih ke 'contain'. Dengan 'cover' sebagian
+   * gambar terpotong, dan anotasi yang jatuh di bagian terpotong itu hilang
+   * tanpa tanda -- justru hal yang ingin diperiksa orang di halaman ini.
+   */
+  (function () {
+    var cek = document.getElementById('vh-label');
+    var grid = document.getElementById('vh-grid');
+    if (!cek || !grid) return;
+    var KUNCI = 'vh-label';
+    try {
+      var simpan = localStorage.getItem(KUNCI);
+      if (simpan !== null) cek.checked = simpan === '1';
+    } catch (e) { /* penyimpanan ditolak peramban: pakai bawaan saja */ }
+
+    function terap() {
+      var on = cek.checked;
+      grid.classList.toggle('vh-berlabel', on);
+      var gbr = grid.querySelectorAll('img[data-src]');
+      for (var i = 0; i < gbr.length; i++) {
+        var dasar = gbr[i].getAttribute('data-src');
+        // Lebih besar saat berlabel: nama kelas digambar DI dalam gambar, dan
+        // pada 320 px hurufnya mulai pecah begitu kartunya ditampilkan penuh.
+        var baru = on ? dasar + '&s=480&label=1' : dasar + '&s=320';
+        if (gbr[i].getAttribute('src') !== baru) gbr[i].setAttribute('src', baru);
+      }
+      try { localStorage.setItem(KUNCI, on ? '1' : '0'); } catch (e) { /* abaikan */ }
+    }
+    cek.onchange = terap;
+    terap();
+  })();
+
   // Pemilih jumlah per halaman.
   (function () {
     var sel = document.getElementById('vh-per');
@@ -166,6 +241,7 @@
     grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
   .vh-kartu{margin:0;background:var(--panel);border-radius:10px;
     overflow:hidden;border:1px solid var(--line)}
+  .vh-grid.vh-berlabel .vh-kartu img{object-fit:contain;background:rgba(0,0,0,.2)}
   .vh-kartu img{display:block;width:100%;aspect-ratio:1/1;object-fit:cover;
     background:var(--sunk)}
   .vh-kartu figcaption{display:flex;flex-wrap:wrap;gap:4px;align-items:center;

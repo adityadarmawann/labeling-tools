@@ -26,8 +26,11 @@ _MARKER = Path(tempfile.gettempdir()) / "labelapp-latih-gpu-aktif.json"
 
 def tandai_latih(pid: int | None = None) -> None:
     """Dipanggil subproses training SAAT ia sudah memegang GPU (sesudah flock)."""
+    p = int(pid if pid else os.getpid())
+    if p <= 1:                       # init (pid 1) tak pernah training: pakai milik sendiri
+        p = os.getpid()
     try:
-        _MARKER.write_text(json.dumps({"pid": int(pid if pid else os.getpid())}))
+        _MARKER.write_text(json.dumps({"pid": p}))
     except OSError:
         pass
 
@@ -41,7 +44,11 @@ def lepas_latih() -> None:
 
 
 def _hidup(pid: int) -> bool:
-    if pid <= 0:
+    # pid <= 1 tak pernah sah: 0 = tak ada, 1 = init (/sbin/init) yang SELALU
+    # hidup. Marker ber-pid 1 (pernah terjadi: training menulisnya lalu mati di
+    # reboot, pid tersapu) akan membuat penanda macet "hidup" selamanya kalau
+    # init diterima. Tolak <= 1 supaya penanda seperti itu dianggap basi.
+    if pid <= 1:
         return False
     try:
         os.kill(pid, 0)

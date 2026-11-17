@@ -15,12 +15,13 @@ from fastapi import APIRouter, Depends, Request
 from ..config import Settings, get_settings
 from ..deps import bodi_json, current_session_api
 from ..session import Session
-from ..services import prelabel
+from ..services import ai_antre, prelabel
 
 router = APIRouter(tags=["prelabel"])
 
 # Keadaan job per akun. Di memori, hilang saat proses mati -- sama seperti
 # kemajuan di prelabel.py; tak ada yang perlu dibersihkan.
+FITUR = "pre-label"
 _tugas: dict[str, asyncio.Task] = {}
 _batal: dict[str, bool] = {}
 
@@ -41,9 +42,17 @@ async def mulai(request: Request,
     if sess.src is None:
         return {"ok": False, "error": "belum ada projek terbuka"}
     body = await bodi_json(request)
-    tid = str(body.get("tid") or "").strip()
-    if not tid:
-        return {"ok": False, "error": "tugas tak disebut"}
+    # Lingkup: BATCH ("batch", boleh "") atau JOB ("tid") -- bentuk bodi yang
+    # SAMA dengan /api/autolabel/mulai, supaya antarmuka memanggil keduanya
+    # dengan cara yang sama dan tidak ada jalur yang diam-diam cuma job.
+    if "batch" in body:
+        batch = str(body.get("batch") or "")
+        tid = ""
+    else:
+        batch = None
+        tid = str(body.get("tid") or "").strip()
+        if not tid:
+            return {"ok": False, "error": "tugas tak disebut"}
     try:
         nomor = int(body.get("nomor"))
     except (TypeError, ValueError):
@@ -59,24 +68,35 @@ async def mulai(request: Request,
         conf = 0.25
     conf = min(max(conf, 0.01), 0.99)
 
-    t = _tugas.get(sess.user)
-    if t and not t.done():
-        return {"ok": False, "error": "masih ada pre-label yang berjalan"}
+    # Satu pekerjaan AI per akun, LINTAS FITUR (lihat services/ai_antre.py).
+    # Klaimnya atomik dan diambil DI SINI, sesudah seluruh validasi bodi lewat,
+    # supaya tak ada jalur penolakan yang meninggalkan klaim tersangkut.
+    if (lain := ai_antre.klaim(sess.user, FITUR)):
+        return {"ok": False, "error": f"masih ada {lain} yang berjalan; tunggu "
+                                      "sampai selesai atau batalkan dulu"}
 
+    from ..services import tugas as svc_tugas
+    sasaran = str(body.get("sasaran") or "belum")
+    sasaran = sasaran if sasaran in svc_tugas.SASARAN else "belum"
     ds, akun, uploads = sess.src, sess.user, settings.uploads_root
     _batal[akun] = False
 
     def kerja():
         try:
             hasil = prelabel.jalankan(ds, uploads, tid, nomor, akun, batas, conf,
-                                      batal=lambda: _batal.get(akun, False))
+                                      batal=lambda: _batal.get(akun, False),
+                                      batch=batch, sasaran=sasaran)
             prelabel.catat_maju(akun, jalan=False, selesai=True, **hasil)
         except prelabel.Dibatalkan:
             prelabel.catat_maju(akun, jalan=False, dibatalkan=True)
-        except FileNotFoundError as e:
+        except (ValueError, FileNotFoundError) as e:
             prelabel.catat_maju(akun, jalan=False, galat=str(e)[:200])
         except Exception as e:                       # pragma: no cover
             prelabel.catat_maju(akun, jalan=False, galat=str(e)[:200])
+        finally:
+            # Dilepas APA PUN hasilnya; klaim yang tertinggal mengunci akunnya
+            # dari semua fitur AI.
+            ai_antre.lepas(akun, FITUR)
 
     _tugas[akun] = asyncio.create_task(asyncio.to_thread(kerja))
     return {"ok": True}

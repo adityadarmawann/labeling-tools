@@ -22,7 +22,7 @@ import threading
 import time
 from pathlib import Path
 
-from .config import Settings
+from .config import FOLDER_INTERNAL, Settings
 from .security import safe_slug
 from .services import annotations, scanner
 
@@ -100,13 +100,26 @@ def sidik_disk(src) -> tuple[int, int, int]:
     detik per berkas, jadi projek produksi terbesar (11.319 gambar, ~22.600
     berkas) berada di kisaran 140 ms. Itu harga satu kali muat halaman, jauh
     di bawah 5,8 detik yang dibutuhkan pemindaian penuh.
+
+    Lingkupnya WAJIB sama dengan lingkup scanner (scanner.tersembunyi): ia
+    menjadi kunci cache pindai, jadi apa pun yang dihitung di sini tetapi
+    tidak dipindai -- atau sebaliknya -- membuat cache dianggap sah padahal
+    isinya sudah lain. Itu bukan soal teori: membuang satu batch MEMINDAHKAN
+    berkasnya ke `_sampah-gambar/` di dalam projek yang sama, dan karena
+    folder itu dulu ikut terhitung, jumlah berkas, total byte, maupun mtime
+    terbaru TAK SATU PUN berubah (memindah mempertahankan mtime). Tanda
+    tangannya identik, jalur cepat memakai cache lama apa adanya, dan gambar
+    yang sudah dibuang tetap hidup di ingatan sesi -- kartunya menolak hilang
+    dari papan, "Hapus batch" menjawab 0 terhapus selamanya, dan menyalakan
+    ulang server pun tak menolong karena cachenya ada di disk.
     """
     n = t = s = 0
     for dirpath, dirnames, filenames in os.walk(src):
         # Folder bertitik memang tidak pernah ikut dipindai; menyertakannya di
         # sini membuat penulisan sidecar (.tugas.json, .versi/) terbaca sebagai
         # perubahan dari luar dan memicu pemindaian penuh tiap kali.
-        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+        dirnames[:] = [d for d in dirnames
+                       if not d.startswith(".") and d not in FOLDER_INTERNAL]
         for f in filenames:
             if f.startswith("."):
                 continue
@@ -409,6 +422,14 @@ class Session:
         if self.cap == cap:
             return False
         berubah = berubah_sejak(self.src, self.cap)
+        # Sidik diambil SEBELUM perubahan diproses, bukan sesudah. Diambil
+        # sesudah, ia merekam keadaan disk yang mungkin memuat perubahan yang
+        # TIDAK ikut disusulkan di sini -- mis. ratusan berkas yang ditulis
+        # jalur lain di antaranya -- dan periksa_disk() lalu menyimpulkan
+        # foldernya tak berubah sehingga pemindaian penuh dilewati dan berkas
+        # itu basi di sesi ini selamanya. Diambil lebih dulu, kesalahannya
+        # berpihak pada sekali pindai berlebih, bukan pada data yang hilang.
+        sidik_awal = sidik_disk(self.src)
         with self.lock:
             if berubah is None:
                 self.load(self.src)
@@ -428,7 +449,7 @@ class Session:
             # akan melihat folder yang "berbeda" sesudah tiap kali melabeli,
             # lalu memicu pemindaian penuh 5,8 detik untuk perubahan yang baru
             # saja diproses dengan cara murah.
-            self._sidik = sidik_disk(self.src)
+            self._sidik = sidik_awal
         return True
 
     def kpt_sesi(self) -> dict | None:
@@ -447,7 +468,7 @@ class Session:
                 it["shapes"] = sh
                 it["issues"] = scanner.inspect(sh, it["W"], it["H"], True)
             else:
-                sh, W, H = scanner.read_json(it["img"].with_suffix(".json"))
+                sh, W, H, _ = scanner.read_json(it["img"].with_suffix(".json"))
                 it["shapes"] = sh
                 it["issues"] = scanner.inspect(sh, W or it["W"], H or it["H"], True)
         except Exception:

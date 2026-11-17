@@ -10,8 +10,9 @@
 {# Setiap tautan saringan membawa urutan dan pencarian yang sedang aktif.
    Tanpa itu, mengklik satu chip diam-diam mengembalikan urutan ke bawaan —
    dan orang menyangka daftarnya yang berubah, bukan urutannya. #}
-{% macro tautan(val_f=none, val_c=none, val_s=none, val_q=none, val_x=none, val_m=none, val_tg=none, val_bt=none, val_sp=none, val_tu=none, val_hal=none) -%}
+{% macro tautan(val_dsf=none, val_f=none, val_c=none, val_s=none, val_q=none, val_x=none, val_m=none, val_tg=none, val_bt=none, val_sp=none, val_tu=none, val_hal=none) -%}
 {%- set ff = val_f if val_f is not none else flt -%}
+{%- set dd = val_dsf if val_dsf is not none else dsf -%}
 {%- set cc = val_c if val_c is not none else kelas -%}
 {%- if cc is string -%}{%- set cc = [cc] if cc else [] -%}{%- endif -%}
 {%- set ss = val_s if val_s is not none else urut -%}
@@ -22,7 +23,7 @@
 {%- set bb = val_bt if val_bt is not none else batch_pilih -%}
 {%- set pp = val_sp if val_sp is not none else split_pilih -%}
 {%- set uu = val_tu if val_tu is not none else turunan_pilih -%}
-?f={{ ff }}{% for k in cc %}&c={{ k | urlquote }}{% endfor %}
+?f={{ ff }}{% if dd and dd != 'di' %}&dsf={{ dd }}{% endif %}{% for k in cc %}&c={{ k | urlquote }}{% endfor %}
 {%- for k in xx %}&x={{ k }}{% endfor %}
 {%- if mm and mm != "atau" %}&m={{ mm }}{% endif %}
 {%- if ss and ss != 'nama' %}&s={{ ss }}{% endif %}
@@ -40,12 +41,38 @@
 {%- if val_hal and val_hal > 1 %}&hal={{ val_hal }}{% endif %}
 {%- endmacro %}
 
+{# Konteks LINGKUP untuk tautan ke halaman detail (/label dan /view).
+
+   Kanvas harus menyusuri subset yang SAMA dengan yang dilihat orang di kisi.
+   Tanpa titipan ini, menyaring kisi jadi "Belum diverifikasi" lalu membuka
+   satu gambar membuat panah kiri/kanan menyusuri SELURUH projek: terukur,
+   kisi menampilkan 00, 02, 04 sementara kanvas melompat dari 00 ke 01.
+
+   `per` dan `hal` sengaja TIDAK ikut: keduanya soal tampilan kisi, dan subset
+   navigasi kanvas adalah seluruh hasil saringan, bukan satu halaman. Daftar
+   kuncinya harus tetap sama dengan konteks_kisi.KUNCI_URL di sisi server.
+   Diawali '&' karena selalu menempel sesudah ?path=. #}
+{% macro ctx() -%}
+{%- if flt and flt != 'all' %}&f={{ flt }}{% endif -%}
+{%- if dsf and dsf != 'di' %}&dsf={{ dsf }}{% endif -%}
+{%- for k in kelas %}&c={{ k | urlquote }}{% endfor -%}
+{%- for k in tanpa %}&x={{ k }}{% endfor -%}
+{%- if mode and mode != 'atau' %}&m={{ mode }}{% endif -%}
+{%- if urut and urut != 'nama' %}&s={{ urut }}{% endif -%}
+{%- if cari %}&q={{ cari | urlquote }}{% endif -%}
+{%- for g in tag_pilih %}&tg={{ g | urlquote }}{% endfor -%}
+{%- if batch_pilih %}&bt={{ batch_pilih | urlquote }}{% endif -%}
+{%- for k in split_pilih %}&sp={{ k | urlquote }}{% endfor -%}
+{%- for k in turunan_pilih %}&tu={{ k }}{% endfor -%}
+{%- endmacro %}
+
 {# Medan tersembunyi untuk form kecil di baris saringan. Tiap form hanya
    memiliki SATU kontrol; sisa keadaan halaman harus ikut dititipkan, kalau
    tidak mengurutkan akan membuang saringan kelas dan sebaliknya. `kecuali`
    menyebut medan yang jadi milik form itu sendiri. #}
 {% macro titipan(kecuali='') -%}
 {%- if 'f' not in kecuali %}<input type="hidden" name="f" value="{{ flt }}">{% endif -%}
+{%- if 'd' not in kecuali and dsf and dsf != 'di' %}<input type="hidden" name="dsf" value="{{ dsf }}">{% endif -%}
 {%- if 's' not in kecuali and urut and urut != 'nama' %}<input type="hidden" name="s" value="{{ urut }}">{% endif -%}
 {%- if 'q' not in kecuali and cari %}<input type="hidden" name="q" value="{{ cari }}">{% endif -%}
 {%- if 'c' not in kecuali %}{% for k in kelas %}<input type="hidden" name="c" value="{{ k }}">{% endfor %}{% endif -%}
@@ -74,7 +101,7 @@
 
 {% set panduan_isi = "_panduan_grid.html" %}
 {% set panduan_judul = "Panduan halaman Dataset" %}
-{% set panduan_cari = "cari… mis. latar, perlu dicek, tag" %}
+{% set panduan_cari = "cari… mis. latar, belum diverifikasi, tag" %}
 {# Istilahnya kata, bukan tombol — kolomnya perlu bentuk yang lain. #}
 {% set panduan_kata = true %}
 {# Halaman ini punya dialog panduan -> tampilkan "Panduan" di menu akun. #}
@@ -129,6 +156,10 @@
   <div class="bar bar-saring">
     <form class="saring-cari" method="get" action="/">
       {{ titipan('q') }}
+      {#- Label sungguhan, bukan placeholder. Placeholder hilang begitu kotaknya
+          diisi, jadi pembaca layar dan orang yang kembali ke halaman ini tidak
+          punya apa pun yang menyebut kotak itu untuk apa. -#}
+      <label class="sr-only" for="cari">Cari nama berkas di dataset ini</label>
       <input class="cari-nama" type="search" id="cari" name="q" value="{{ cari }}"
              placeholder="Cari nama berkas…" autocomplete="off"
              title="Mencari di SELURUH dataset, bukan cuma halaman ini">
@@ -161,6 +192,22 @@
     {%- set _ = keadaan.append(("sudah", "Sudah dilabeli", n_sudah, "ok",
           "Semua yang sudah dikerjakan, termasuk yang ditandai latar dan "
           "yang perlu dicek.")) %}
+    {#- Sepasang keadaan verifikasi hasil auto-label. Muncul hanya kalau projek
+        ini memang pernah di-auto-label (atau sedang dibuka), supaya menu
+        keadaan tak bertambah panjang di projek yang tidak memakainya.
+
+        Namanya memakai kata "verifikasi", BUKAN "perlu dicek": kata itu sudah
+        dipakai beberapa baris di atas untuk arti yang lain sama sekali --
+        anotasi yang BENTUKNYA mencurigakan menurut pemindai. Dua arti dengan
+        satu kata membuat orang mengira keduanya menghitung hal yang sama. -#}
+    {%- if n_dicek or flt in ('dicek', 'verif') %}
+    {%- set _ = keadaan.append(("dicek", "Belum diverifikasi", n_dicek, "warn",
+          "Hasil auto-label yang belum diperiksa manusia. Menyimpan gambarnya "
+          "secara manual menandainya sudah diverifikasi.")) %}
+    {%- set _ = keadaan.append(("verif", "Terverifikasi", n_verif, "ok",
+          "Sudah dilabeli DAN sudah dilewati manusia. Termasuk yang memang "
+          "dilabeli manual sejak awal.")) %}
+    {%- endif %}
     {%- set _ = keadaan.append(("unlab", "Belum dilabeli", n_stop, "stop",
           "Belum disentuh sama sekali: tidak punya objek dan belum "
           "ditandai latar.")) %}
@@ -183,14 +230,35 @@
         <i class="kd-caret" aria-hidden="true">&#9662;</i></button>
       <span class="menu-isi" id="keadaan-isi">
         {%- for val, nama, n, warna, ket in keadaan %}
+        {#- `aria-current`, bukan cuma `data-on`. Atribut data tidak punya
+            makna aksesibilitas apa pun, jadi pembaca layar tak diberi tahu
+            keadaan mana yang sedang berlaku. Halaman job sudah benar sejak
+            dulu; daftar ini tertinggal. -#}
         <a class="kd-baris" title="{{ ket }}"
-           {% if val == flt %}data-on{% endif %}
+           {% if val == flt %}data-on aria-current="true"{% endif %}
            href="{{ tautan(val_f=val) }}">
           {%- if warna %}<i class="titik t-{{ warna }}"></i>{% else %}<i class="titik t-kosong"></i>{% endif %}
           <span>{{ nama }}</span><b>{{ n }}</b></a>
         {%- endfor %}
       </span>
     </span>
+
+    {#- Lingkup dataset. Sejajar dengan tab di halaman job, dan satu-satunya
+        jalan melihat gambar yang SUDAH dianotasi tetapi belum dinyatakan masuk
+        dataset -- persis keadaan hasil auto-label sebatch, yang sebelumnya tak
+        punya permukaan sama sekali. Hanya ditawarkan pada projek yang memang
+        tunduk aturan dataset; folder dataset bersama tak punya konsep ini. -#}
+    {% if not warisan %}
+    <span class="seg" role="group" aria-label="Lingkup dataset">
+      {%- for val, nama, ket in [
+            ('di', 'Di dataset', 'Gambar yang sudah dinyatakan masuk dataset. Inilah yang diekspor dan dilatih.'),
+            ('belum', 'Belum masuk', 'Sudah dianotasi atau baru di-auto-label, tetapi belum dinyatakan masuk dataset.'),
+            ('semua', 'Semua', 'Seluruh gambar projek, masuk dataset atau belum.')] %}
+      <a class="seg-opt"{% if dsf == val %} data-on aria-current="true"{% endif %}
+         title="{{ ket }}" href="{{ tautan(val_dsf=val) }}">{{ nama }}</a>
+      {%- endfor %}
+    </span>
+    {% endif %}
 
     <span class="menu menu-kiri" id="menu-kelas">
       <button class="chip kelas-tombol" id="kelas-tombol"
@@ -208,9 +276,16 @@
         {%- endif %} <i class="kd-caret" aria-hidden="true">▾</i></button>
       <span class="menu-isi" id="kelas-isi">
         <form method="get" action="/">
-          <input type="hidden" name="f" value="{{ flt }}">
-          {% if urut and urut != 'nama' %}<input type="hidden" name="s" value="{{ urut }}">{% endif %}
-          {% if cari %}<input type="hidden" name="q" value="{{ cari }}">{% endif %}
+          {#- 'c', 'x', dan 'm' dibuang karena form inilah yang menuliskannya.
+              Dulu di sini ditulis tiga medan tersembunyi sendiri (f, s, q) dan
+              sisanya TIDAK dititipkan sama sekali: menekan "Terapkan" pada
+              saringan kelas diam-diam membuang tag, unggahan, split, asal
+              gambar, dan jumlah per halaman. Kisinya MELEBAR tepat ketika orang
+              baru saja menambah satu saringan. Lebih buruk lagi, tombol
+              "Bersihkan" tepat di sebelahnya memakai tautan() yang memang
+              mempertahankan semuanya -- dua tombol bersebelahan, dua perilaku
+              berlawanan. -#}
+          {{ titipan('cxm') }}
           {# Kata kerjanya ditaruh di JUDUL, bukan di dalam segmen. Sebagai dua
              kata berdiri sendiri, "Semuanya" terbaca ambigu — bisa disangka
              "tampilkan semua gambar". Dengan judulnya, ketiga bagian ini
@@ -244,20 +319,36 @@
               <input type="checkbox" name="x" value="latar"
                      {% if 'latar' in tanpa %}checked{% endif %}><span class="cb"></span>
               <i style="background:var(--latar)"></i>
-              <span>{{ tanpa_nama['latar'] }}</span><b>{{ n_bg }}</b></label>
+              <span>{{ tanpa_nama['latar'] }}</span>
+              <b title="{{ n_bg }} gambar">{{ n_bg }} <small>gbr</small></b></label>
             <label class="kelas-baris">
               <input type="checkbox" name="x" value="unlab"
                      {% if 'unlab' in tanpa %}checked{% endif %}><span class="cb"></span>
               <i style="background:var(--stop)"></i>
-              <span>{{ tanpa_nama['unlab'] }}</span><b>{{ n_stop }}</b></label>
+              <span>{{ tanpa_nama['unlab'] }}</span>
+              <b title="{{ n_stop }} gambar">{{ n_stop }} <small>gbr</small></b></label>
           </div>
+          {#- DUA angka per kelas, masing-masing dengan satuannya.
+
+              Dulu cuma ada satu, dan itu jumlah OBJEK. Saringannya bekerja per
+              GAMBAR, jadi menu berkata "botol 842" lalu hasilnya "310 gambar"
+              dan tak ada apa pun di layar yang menjelaskan kenapa. Dua baris
+              tepat di atas (Latar, Belum dilabeli) memang hitungan gambar:
+              satu kolom angka, dua satuan, tanpa satuan ditulis.
+
+              Gambar ditaruh DULUAN karena itulah yang berubah saat kelasnya
+              dicentang. -#}
           <div class="kelas-daftar">
+            <span class="kelas-kepala" aria-hidden="true">
+              <span>kelas</span><b>gbr</b><em>objek</em></span>
             {%- for k, n in kelas_hitung.items() %}
-            <label class="kelas-baris">
+            <label class="kelas-baris kelas-baris-2">
               <input type="checkbox" name="c" value="{{ k }}"
                      {% if k in kelas %}checked{% endif %}><span class="cb"></span>
               <i style="background:{{ k | warnakelas(warna_peta) }}"></i>
-              <span>{{ k }}</span><b>{{ n }}</b></label>
+              <span>{{ k }}</span>
+              <b title="{{ kelas_gambar.get(k, 0) }} gambar memuat kelas ini">{{ kelas_gambar.get(k, 0) }}</b>
+              <em title="{{ n }} objek berkelas ini">{{ n }}</em></label>
             {%- else %}
             <span class="menu-catatan">Belum ada kelas terpakai di dataset ini.</span>
             {%- endfor %}
@@ -431,19 +522,43 @@
         membuka tiga dropdown satu per satu untuk mengosongkannya. Urutan dan
         jumlah per halaman TIDAK ikut dibatalkan: keduanya preferensi tampilan,
         bukan saringan. -#}
+    {#- Tiap saringan aktif jadi PIL-nya sendiri yang bisa dibuang satu per
+        satu. Dulu semuanya dipadatkan ke satu tombol "Bersihkan saringan 3"
+        dengan rinciannya hanya di `title`: di layar sentuh rincian itu tak
+        terjangkau sama sekali, dan membuang SATU saringan dari tiga menuntut
+        membuka dropdown yang benar lalu mencari tombol bersihkan di dalamnya.
+        Daftarnya sudah dihitung di sini sejak dulu; yang berubah cuma tempat
+        menggambarnya. -#}
     {%- set saring_aktif = [] %}
-    {%- if flt != 'all' %}{% set _ = saring_aktif.append(
-          keadaan | selectattr('0', 'equalto', flt) | map(attribute='1') | first) %}{% endif %}
-    {%- if pilihan_nama %}{% set _ = saring_aktif.append(pilihan_nama | join(', ')) %}{% endif %}
-    {%- if tag_pilih %}{% set _ = saring_aktif.append('tag ' + (tag_pilih | join(', '))) %}{% endif %}
-    {%- if batch_pilih %}{% set _ = saring_aktif.append('unggahan ' + batch_pilih) %}{% endif %}
-    {%- if split_pilih %}{% set _ = saring_aktif.append('bagian ' + (split_pilih | join(', '))) %}{% endif %}
-    {%- if turunan_pilih %}{% set _ = saring_aktif.append('asal ' + (turunan_pilih | join(', '))) %}{% endif %}
-    {%- if cari %}{% set _ = saring_aktif.append('cari "' + cari + '"') %}{% endif %}
-    {%- if saring_aktif %}
-    <a class="chip saring-bersih" title="{{ saring_aktif | join(' · ') }}"
-       href="{{ tautan(val_f='all', val_c=[], val_x=[], val_m='atau', val_q='', val_tg=[], val_bt='', val_sp=[], val_tu=[]) }}"
-       >&times; Bersihkan saringan <b>{{ saring_aktif | length }}</b></a>
+    {%- if flt != 'all' %}{% set _ = saring_aktif.append((
+          keadaan | selectattr('0', 'equalto', flt) | map(attribute='1') | first,
+          tautan(val_f='all'))) %}{% endif %}
+    {%- if dsf and dsf != 'di' %}{% set _ = saring_aktif.append((
+          ('belum masuk dataset' if dsf == 'belum' else 'termasuk di luar dataset'),
+          tautan(val_dsf='di'))) %}{% endif %}
+    {%- if pilihan_nama %}{% set _ = saring_aktif.append((
+          pilihan_nama | join(', '),
+          tautan(val_c=[], val_x=[], val_m='atau'))) %}{% endif %}
+    {%- if tag_pilih %}{% set _ = saring_aktif.append((
+          'tag ' + (tag_pilih | join(', ')), tautan(val_tg=[]))) %}{% endif %}
+    {%- if batch_pilih %}{% set _ = saring_aktif.append((
+          'unggahan ' + batch_pilih, tautan(val_bt=''))) %}{% endif %}
+    {%- if split_pilih %}{% set _ = saring_aktif.append((
+          'bagian ' + (split_pilih | join(', ')), tautan(val_sp=[]))) %}{% endif %}
+    {%- if turunan_pilih %}{% set _ = saring_aktif.append((
+          'asal ' + (turunan_pilih | join(', ')), tautan(val_tu=[]))) %}{% endif %}
+    {%- if cari %}{% set _ = saring_aktif.append((
+          'cari "' + cari + '"', tautan(val_q=''))) %}{% endif %}
+    {%- set saring_nama = saring_aktif | map(attribute=0) | list %}
+    {%- for nama, buang in saring_aktif %}
+    <a class="chip saring-pil" href="{{ buang }}"
+       title="Buang saringan ini: {{ nama }}">{{ nama }} <span aria-hidden="true">&times;</span>
+       <span class="sr-only">buang saringan</span></a>
+    {%- endfor %}
+    {%- if saring_aktif | length > 1 %}
+    <a class="chip saring-bersih" title="{{ saring_nama | join(' · ') }}"
+       href="{{ tautan(val_f='all', val_dsf='di', val_c=[], val_x=[], val_m='atau', val_q='', val_tg=[], val_bt='', val_sp=[], val_tu=[]) }}"
+       >&times; Bersihkan semua <b>{{ saring_aktif | length }}</b></a>
     {%- endif %}
 
     {#- Tindakan atas dataset, didorong ke ujung KANAN baris yang sama.
@@ -505,6 +620,11 @@
       & elemen namanya saat terpotong, dan di alt/aria untuk pembaca layar. -#}
   {#- Severity -> kata yang bisa dibaca, dipakai title & aria lencana keadaan. -#}
   {%- set sev_kata = {'ok':'Sudah dilabeli','warn':'Perlu dicek','stop':'Belum dilabeli','bg':'Latar'}[sev] %}
+  {#- Hasil AI yang belum diverifikasi MENDAHULUI kata severity. severity() tak
+      bisa melihat perlu_dicek, jadi hasil auto-label yang mulus berlencana
+      "Sudah dilabeli" -- tak terbedakan dari pekerjaan manusia yang sudah
+      diperiksa, bahkan di dalam saringan "Belum diverifikasi" itu sendiri. -#}
+  {%- if it.perlu_dicek %}{% set sev_kata = 'Hasil AI, belum diverifikasi' %}{% endif %}
   <div class="card" data-s="{{ sev }}" title="{{ it.img.name }}">
     {#- Thumbnail jadi tokoh utama (gaya Roboflow): sudut membulat, dan SEMUA
         hamparan (kotak centang + lencana keadaan) menumpang di bingkai gambar
@@ -519,12 +639,20 @@
         <input type="checkbox" class="kp-in" data-path="{{ p }}"
                aria-label="Pilih {{ p.split('/')[-1] }}"></label>
       {%- endif %}
-      <a href="/view?path={{ p }}" aria-label="Lihat {{ p.split('/')[-1] }}"><img loading="lazy" src="/thumb?path={{ p }}&s=320" alt="{{ p.split('/')[-1] }}"></a>
+      <a href="/view?path={{ p }}{{ ctx() }}" aria-label="Lihat {{ p.split('/')[-1] }}"><img loading="lazy" src="/thumb?path={{ p }}&s=320" alt="{{ p.split('/')[-1] }}"></a>
       {#- Lencana keadaan: chip kecil di kiri-bawah gambar (gaya Roboflow),
           menggantikan rel warna di tepi kiri. Titiknya berwarna menurut
           severity; kata-katanya di title & aria agar tetap terbaca pembaca
           layar -- rel lama tak punya teks sama sekali. -#}
       <span class="rail" role="img" title="{{ sev_kata }}" aria-label="Keadaan: {{ sev_kata }}"></span>
+      {#- Lencana "AI" terbaca mata, bukan cuma tersimpan di title: saat
+          memverifikasi 150 gambar, yang dibutuhkan adalah tahu mana yang sudah
+          selesai diperiksa tanpa membuka satu-satu. Hilang sendiri begitu
+          gambarnya disimpan manusia (perlu_dicek terhapus saat simpan). -#}
+      {%- if it.perlu_dicek %}
+      <span class="kartu-ai" title="Hasil auto-label, belum diverifikasi"
+            aria-hidden="true">AI</span>
+      {%- endif %}
     </div>
     {#- Dipendekkan dari DEPAN, bukan belakang. Berkas satu dataset kerap
         berbagi awalan panjang yang sama (mis. "boston-celtics-...-game-1-") dan
@@ -583,10 +711,10 @@
           perbaikan, tanpa harus membaca chip kelas di atasnya dulu.
           Yang ditandai latar tetap "Labeli" — tidak ada label untuk disunting
           di sana, dan ke situlah kamu masuk kalau tanda latarnya ternyata salah. -#}
-      <a class="btn pri" href="/label?path={{ p }}"
+      <a class="btn pri" href="/label?path={{ p }}{{ ctx() }}"
          title="{% if it.shapes %}Perbaiki {{ it.shapes | length }} objek yang sudah ada{% else %}Buka kanvas dan mulai melabeli{% endif %}"
          >{{ 'Edit label' if it.shapes else 'Labeli' }}</a>
-      <a class="btn" href="/view?path={{ p }}">Lihat</a>
+      <a class="btn" href="/view?path={{ p }}{{ ctx() }}">Lihat</a>
       {%- if local %}
       {#- Ikon, bukan teks. Empat tombol berteks tidak muat di kartu selebar
           212px, dan "Desktop" adalah yang paling pantas kehilangan labelnya:
@@ -604,9 +732,15 @@
           yang paling boleh hilang: tombol ini hanya muncul di kartu yang sudah
           ditandai latar, jadi "latar" mengulang apa yang sudah dinyatakan
           kartunya sendiri. Kalimat utuhnya tetap di title. -#}
+      {#- Hanya untuk yang memang berhak menulis ke gambar ini. Tombol yang
+          muncul lalu dijawab "gambar ini ditugaskan ke ..." adalah tombol
+          yang tidak bisa ditekan, dan di halaman berisi ribuan kartu ia
+          muncul ribuan kali. -#}
+      {%- if p in boleh_latar %}
       <button class="btn" onclick="markbg('{{ p }}',false)"
               title="Batal tanda latar">Batal</button>
-      {%- elif not it.shapes %}
+      {%- endif %}
+      {%- elif not it.shapes and p in boleh_latar %}
       <button class="btn" onclick="markbg('{{ p }}',true)"
               title="Tandai sebagai latar (tanpa objek)">Latar</button>
       {%- endif %}
@@ -631,7 +765,7 @@
         halaman dan yang terlihat sekarang cuma kotak ini. -#}
     {%- if saring_aktif %}
     <p class="empty-saring">Saringan yang berlaku:
-      <b>{{ saring_aktif | join(' · ') }}</b></p>
+      <b>{{ saring_nama | join(' · ') }}</b></p>
     <p><a class="chip saring-bersih"
           href="{{ tautan(val_f='all', val_c=[], val_x=[], val_m='atau', val_q='', val_tg=[], val_bt='', val_sp=[], val_tu=[]) }}"
           >&times; Bersihkan saringan</a></p>
@@ -684,9 +818,13 @@
       dataset, sama seperti "1-38 dari 38" di sebelahnya, jadi keduanya terbaca
       sekali pandang sebagai satu keterangan. Di pojok kiri atas ia justru
       berdiri sendirian sebagai satu baris utuh untuk dua kata. -#}
-  <span class="hal-info">{{ mulai }}&ndash;{{ akhir }} dari <b>{{ n_tampil }}</b>
-    {%- if n_tampil != total %} cocok <em>&middot; dari {{ total }} gambar</em>{% endif %}
-    <span class="hal-objek">&middot; {{ n_obj }} objek</span></span>
+  {#- Satuan ditulis di KEDUA angka. "310" lalu "842" tanpa keterangan membuat
+      orang menyangka saringannya rusak; yang benar "310 gambar, 842 objek". -#}
+  <span class="hal-info">{{ mulai }}&ndash;{{ akhir }} dari
+    <b>{{ n_tampil }} gambar</b>
+    <span class="hal-objek">&middot; {{ n_obj_tampil }} objek</span>
+    {%- if n_tampil != total %} <em>&middot; disaring dari {{ total }} gambar,
+      {{ n_obj }} objek</em>{% endif %}</span>
 
   {%- if n_hal > 1 %}
   {#- Jendela nomor: selalu halaman 1, selalu halaman terakhir, dan tetangga

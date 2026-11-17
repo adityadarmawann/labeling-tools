@@ -274,11 +274,14 @@ async def hapus_permanen(folder: str = "",
 
 
 @router.post("/api/projek/gabung")
-async def gabung(sumber: str = "", tujuan: str = "",
+async def gabung(sumber: str = "", tujuan: str = "", label: bool = True,
                  sess: Session = Depends(current_session_api),
                  settings: Settings = Depends(get_settings)):
     """
     Isi `sumber` disalin ke `tujuan`. Sumbernya tidak dihapus.
+
+    `label=false` menyalin gambarnya saja. Bawaannya ikut, sama seperti
+    perilaku lama, supaya pemanggil lama tak berubah artinya.
 
     Kemajuannya dilaporkan lewat rute impor yang sudah ada
     (`/api/impor/kemajuan`), karena mesin penyalinnya memang sama.
@@ -293,7 +296,7 @@ async def gabung(sumber: str = "", tujuan: str = "",
         await asyncio.to_thread(svc_tugas.mulai_kurasi, d_tujuan,
                                 projek.pemilik_dari(settings.uploads_root, d_tujuan))
     r = await asyncio.to_thread(_jawab, projek.gabung, root, sumber, tujuan,
-                                kunci=sess.user)
+                                kunci=sess.user, label=bool(label))
     if r.get("ok") and sess.src and sess.src.name == projek.bersihkan_nama(tujuan):
         # Dataset tujuan sedang dibuka: daftarnya di ingatan sudah usang.
         await asyncio.to_thread(sess.reload)

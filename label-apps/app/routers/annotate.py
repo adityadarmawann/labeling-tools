@@ -23,7 +23,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from ..config import Settings, get_settings
 from ..deps import current_session, current_session_api, is_local, bodi_json
-from ..services import annotations, autolabel, scanner, tugas
+from ..services import (annotations, autolabel, konteks_kisi, scanner, tag,
+                        tugas)
 from ..services.autolabel import TidakAdaObjek
 from ..session import Session
 from ..log import catat
@@ -87,7 +88,11 @@ def kelas_resmi(sess: Session) -> list[str]:
 # Field tingkat atas dan per-bentuk yang memang milik kita. Sisanya dianggap
 # titipan AnyLabeling dan harus dikembalikan apa adanya saat menyimpan.
 KUNCI_ATAS = {"version", "flags", "shapes", "imagePath", "imageData",
-              "imageHeight", "imageWidth", "pelabel", "disunting"}
+              "imageHeight", "imageWidth", "pelabel", "disunting", "perlu_dicek"}
+# `perlu_dicek`: ditulis auto-label (prelabel/autolabel_zero) = "hasil AI, belum
+# diverifikasi". Masuk KUNCI_ATAS supaya saat manusia MENYIMPAN gambar ini, field
+# itu TIDAK dikembalikan (isi dibangun ulang tanpa menyetelnya) -> otomatis
+# bersih: menyimpan manual = sudah diverifikasi.
 # `pelabel` + `disunting`: siapa yang terakhir menyimpan anotasi gambar ini dan
 # kapan (epoch detik). Dicatat supaya grid & kanvas bisa menampilkan "diedit
 # <kapan> oleh <siapa>" tanpa menebak dari pemilik job (gambar bisa pindah job,
@@ -180,15 +185,49 @@ def bentuk_untuk_kanvas(it: dict, mentah: dict) -> list[dict]:
     return out
 
 
-def _kunci_nav(job, saring, dsf, kelas, latar):
-    """Kunci konteks navigasi: job + semua filter yang membentuk subsetnya."""
+def _kunci_nav(job, saring, dsf, kelas, latar, cari="", urut="nama"):
+    """Kunci konteks navigasi: job + semua filter yang membentuk subsetnya.
+
+    Cari dan urutan IKUT. Tanpa keduanya, mengubah urutan di kisi job tidak
+    membatalkan snapshot beku, jadi panah kiri/kanan terus menyusuri urutan
+    yang lama sementara layar sudah menunjukkan urutan baru.
+    """
     return (job or "", saring, dsf,
-            tuple(sorted(str(k) for k in (kelas or ()))), bool(latar))
+            tuple(sorted(str(k) for k in (kelas or ()))), bool(latar),
+            str(cari or ""), str(urut or "nama"))
+
+
+def _kunci_kisi(p: dict) -> tuple:
+    """Kunci konteks navigasi untuk lingkup KISI Dataset."""
+    return ("kisi", p["f"], p["urut"], p["cari"], p["mode"], p["batch"],
+            tuple(p["kelas"]), tuple(p["tanpa"]), tuple(p["tag"]),
+            tuple(p["split"]), tuple(p["turunan"]))
+
+
+def _subset_kisi(sess: Session, kisi: dict, uploads_root):
+    """Gambar yang BENAR-BENAR tampil di kisi Dataset untuk saringan `kisi`.
+
+    Dua langkahnya sama persis dengan rute kisi: isi dataset dulu
+    (saring_dataset), baru saringan tampilan. Melewatkan langkah pertama
+    membuat panah kanvas keluar dari dataset ke gambar yang di halaman itu
+    memang tidak ada.
+    """
+    with sess.lock:
+        items = list(sess.items)
+    try:
+        dalam, _ = konteks_kisi.pilih_dataset(items, sess.src, uploads_root,
+                                              kisi.get("dsf", "di"))
+        data = tugas.baca_projek(sess.src, uploads_root)
+        tagdata = tag.baca(sess.src)
+    except OSError:
+        return None
+    return konteks_kisi.subset(dalam, sess.src, sess.user, data, tagdata, kisi)
 
 
 def _nav(sess: Session, it: dict, *, job: str = "", saring: str = "semua",
          dsf: str = "semua", kelas=(), latar: bool = False, uploads_root=None,
-         bekukan: bool = False):
+         bekukan: bool = False, kisi: dict | None = None,
+         cari: str = "", urut: str = "nama"):
     """(prev_it, next_it, posisi, daftar) untuk panah kiri/kanan kanvas.
 
     Kalau `job` diberi, navigasi dibatasi ke subset penugasan itu yang cocok
@@ -201,7 +240,7 @@ def _nav(sess: Session, it: dict, *, job: str = "", saring: str = "semua",
     (kanvas dibuka dari grid Dataset / /view). `daftar` juga mengisi panel Files.
     """
     if job and sess.src is not None:
-        kunci = _kunci_nav(job, saring, dsf, kelas, latar)
+        kunci = _kunci_nav(job, saring, dsf, kelas, latar, cari, urut)
         beku = sess.nav_beku
         if bekukan or not beku or beku.get("kunci") != kunci:
             with sess.lock:
@@ -210,7 +249,7 @@ def _nav(sess: Session, it: dict, *, job: str = "", saring: str = "semua",
                 data = tugas.baca_projek(sess.src, uploads_root)
                 daftar0 = tugas.gambar_konteks_job(
                     items, data, sess.src, job, saring=saring, dsf=dsf,
-                    kelas=list(kelas), latar=latar)
+                    kelas=list(kelas), latar=latar, cari=cari, urut=urut)
             except OSError:
                 daftar0 = None
             if daftar0 is not None:
@@ -224,11 +263,21 @@ def _nav(sess: Session, it: dict, *, job: str = "", saring: str = "semua",
         if beku is not None:
             nama, paths = beku["nama"], beku["paths"]
             daftar = [x for x in (sess.find(p) for p in paths) if x is not None]
-            # Posisi lewat nama (snapshot terurut nama). Gambar yang sedang
-            # dibuka TETAP di snapshot walau sudah dilabeli -> maju/mundur stabil
-            # dan jumlah tetap.
-            i = bisect.bisect_left(nama, it["img"].name)
-            ada = i < len(nama) and nama[i] == it["img"].name
+            # Posisi lewat PETA path, bukan pencarian biner atas nama. Kisi job
+            # kini punya delapan urutan dan hanya satu di antaranya urut nama;
+            # pencarian biner atas daftar yang tak terurut nama memberi
+            # tetangga yang salah tanpa suara. Gambar yang sedang dibuka TETAP
+            # di snapshot walau sudah dilabeli, jadi maju/mundur tetap stabil
+            # dan jumlahnya tak menyusut.
+            _pos = beku.get("pos")
+            if _pos is None:
+                _pos = beku["pos"] = {q: j for j, q in enumerate(paths)}
+            i = _pos.get(str(it["img"].resolve()), -1)
+            ada = i >= 0
+            if not ada:
+                # Tak ada di snapshot (mis. dibuka dari luar subset): sisipkan
+                # pada posisi urut nama supaya panahnya tetap masuk akal.
+                i = bisect.bisect_left(nama, it["img"].name)
 
             def _it(idx):
                 return sess.find(paths[idx]) if 0 <= idx < len(paths) else None
@@ -241,7 +290,40 @@ def _nav(sess: Session, it: dict, *, job: str = "", saring: str = "semua",
                 next_it = _it(i)
                 posisi = (i, len(nama))
             return prev_it, next_it, posisi, daftar
-    # daftar penuh (tanpa job, atau job tak dikenal)
+    # Lingkup KISI Dataset. Dulu cabang ini tak ada sama sekali: membuka
+    # gambar dari kisi yang sedang disaring membuat panah kiri/kanan menyusuri
+    # SELURUH projek. Terukur: kisi menampilkan 00, 02, 04 sementara kanvas
+    # melompat dari 00 ke 01 -- gambar yang bahkan tidak ada di saringannya.
+    if kisi and sess.src is not None and konteks_kisi.ada_lingkup(kisi):
+        kunci = _kunci_kisi(kisi)
+        beku = sess.nav_beku
+        if bekukan or not beku or beku.get("kunci") != kunci:
+            daftar0 = _subset_kisi(sess, kisi, uploads_root)
+            if daftar0 is not None:
+                sess.nav_beku = beku = {
+                    "kunci": kunci,
+                    "nama": [x["img"].name for x in daftar0],
+                    "paths": [str(x["img"].resolve()) for x in daftar0]}
+            else:
+                sess.nav_beku = beku = None
+        if beku is not None:
+            paths = beku["paths"]
+            daftar = [x for x in (sess.find(q) for q in paths) if x is not None]
+            # Posisi dicari lewat PATH, bukan bisect atas nama: kisi punya
+            # delapan urutan (terbaru dilabeli, objek terbanyak, ...) dan hanya
+            # satu di antaranya urut nama. Pencarian biner atas daftar yang tak
+            # terurut nama memberi tetangga yang salah tanpa suara.
+            posisi_dari = {q: j for j, q in enumerate(paths)}
+            i = posisi_dari.get(str(it["img"].resolve()), -1)
+
+            def _ambil(idx):
+                return sess.find(paths[idx]) if 0 <= idx < len(paths) else None
+
+            if i < 0:                       # tak ada di subset (mis. baru lolos saring)
+                return None, None, (0, len(paths)), daftar
+            return (_ambil(i - 1), _ambil(i + 1), (i + 1, len(paths)), daftar)
+
+    # daftar penuh (tanpa job, tanpa lingkup kisi, atau job tak dikenal)
     with sess.lock:
         items = list(sess.items)
     # Cari lewat IDENTITAS, bukan items.index(it): tiap item memuat bentuk
@@ -259,6 +341,7 @@ def _nav(sess: Session, it: dict, *, job: str = "", saring: str = "semua",
 async def halaman(request: Request, path: str = "",
                   job: str = "", saring: str = "semua", dsf: str = "semua",
                   c: list[str] = Query(default=[]), bg: int = 0,
+                  q: str = "", s: str = "nama",
                   sess: Session = Depends(current_session),
                   settings: Settings = Depends(get_settings)):
     # Isi projek dipindai sekali lalu dipakai dari ingatan sesi. Di halaman ini
@@ -291,7 +374,8 @@ async def halaman(request: Request, path: str = "",
     # lalu masuk lagi -> jumlah "1/600" tak menyusut saat melabeli.
     prev_it, next_it, posisi, daftar = _nav(
         sess, it, job=job, saring=saring, dsf=dsf, kelas=c, latar=bool(bg),
-        uploads_root=settings.uploads_root, bekukan=True)
+        uploads_root=settings.uploads_root, bekukan=True,
+        cari=q, urut=s, kisi=konteks_kisi.baca(request.query_params))
     # `split` ikut dikirim: pada ekspor Roboflow, nama berkas yang sama bisa
     # muncul di train/valid/test sebagai baris yang tampak kembar, dan tanpa
     # penandanya orang tidak tahu mana yang sedang dibuka.
@@ -322,8 +406,15 @@ async def halaman(request: Request, path: str = "",
     # tanda bahwa berkasnya rusak — lalu orang melabeli dari nol dan
     # menyimpannya, dan berkas lamanya hilang tanpa pernah dilihat siapa pun.
     rusak = "berkas anotasi rusak" in (it.get("issues") or [])
+    # Hasil auto-label yang belum diverifikasi manusia. severity() TIDAK bisa
+    # melihat ini: hasil AI yang mulus severity-nya "ok", persis seperti
+    # pekerjaan manusia yang sudah diperiksa, jadi tanpa flag ini labeler
+    # membuka 150 gambar hasil AI tanpa satu pun tanda bahwa belum ada manusia
+    # yang menyetujuinya.
+    perlu_dicek = bool(it.get("perlu_dicek"))
     return templates.TemplateResponse(request, "label.html", {
         "anotasi_rusak": rusak,
+        "perlu_dicek": perlu_dicek,
         "boleh_ubah": not tolak,
         "alasan_tolak": tolak,
         "sess": sess,
@@ -371,9 +462,11 @@ async def halaman(request: Request, path: str = "",
 
 
 @router.get("/api/label-data")
-async def label_data(path: str = "", job: str = "", saring: str = "semua",
-                     dsf: str = "semua", c: list[str] = Query(default=[]),
-                     bg: int = 0, sess: Session = Depends(current_session),
+async def label_data(request: Request, path: str = "", job: str = "",
+                     saring: str = "semua", dsf: str = "semua",
+                     c: list[str] = Query(default=[]), bg: int = 0,
+                     q: str = "", s: str = "nama",
+                     sess: Session = Depends(current_session),
                      settings: Settings = Depends(get_settings)):
     """
     Data SATU gambar untuk kanvas — anotasi, tetangga, posisi — sebagai JSON.
@@ -395,7 +488,8 @@ async def label_data(path: str = "", job: str = "", saring: str = "semua",
     mentah = baca_mentah(it["img"].with_suffix(".json"))
     prev_it, next_it, posisi, _ = _nav(
         sess, it, job=job, saring=saring, dsf=dsf, kelas=c, latar=bool(bg),
-        uploads_root=settings.uploads_root)
+        uploads_root=settings.uploads_root, cari=q, urut=s,
+        kisi=konteks_kisi.baca(request.query_params))
     tolak = tugas.tolak_tulis(sess.src, sess.user, it["img"]) if sess.src else ""
     return {
         "ok": True,
@@ -419,6 +513,10 @@ async def label_data(path: str = "", job: str = "", saring: str = "semua",
         # saat halaman penuh dimuat / sesudah Simpan, jadi basi saat navigasi).
         "pelabel_terakhir": str(mentah.get("pelabel") or ""),
         "disunting": int(mentah.get("disunting") or 0),
+        # Hasil AI yang belum diverifikasi. Pindah gambar memakai rute INI,
+        # bukan memuat ulang halaman, jadi tanpa field ini spanduk verifikasi
+        # gambar PERTAMA menempel di seluruh 150 gambar berikutnya.
+        "perlu_dicek": bool(it.get("perlu_dicek")),
     }
 
 
@@ -546,6 +644,36 @@ async def api_simpan(request: Request, sess: Session = Depends(current_session_a
     tolak = tugas.tolak_tulis(sess.src, sess.user, it["img"])
     if tolak:
         return {"ok": False, "error": tolak}
+
+    # Penjagaan tabrakan. Kanvas mengirim kembali `dasar`, yaitu cap waktu
+    # anotasi yang SEDANG ia pegang (server sendiri yang mengirimkannya saat
+    # gambar dibuka). Kalau berkas di disk ternyata lebih baru, berarti ada
+    # orang lain -- atau jalur auto-label, atau tab kedua milik orang yang
+    # sama -- yang menulis di antaranya.
+    #
+    # Dulu rute ini menulis ulang SELURUH berkas tanpa membandingkan apa pun,
+    # padahal datanya sudah ada di kedua sisi: server mengirim `disunting`,
+    # kanvas menyimpannya, dan tak satu pun memakainya. Yang kalah bahkan tak
+    # tahu pernah ada yang menulis: tidak ada toast, tidak ada konflik, tidak
+    # ada cadangan. Autosave membuatnya terjadi tanpa seorang pun menekan apa
+    # pun.
+    #
+    # Tanpa `dasar` permintaannya tetap diterima: kanvas versi lama di tab
+    # yang belum dimuat ulang tak boleh jadi terkunci selamanya.
+    dasar = body.get("dasar")
+    if dasar is not None:
+        try:
+            sekarang = int(scanner.meta_simpan(it).get("disunting") or 0)
+            dasar_i = int(dasar or 0)
+        except (TypeError, ValueError):
+            sekarang = dasar_i = 0
+        if sekarang and dasar_i and sekarang > dasar_i:
+            siapa = str(scanner.meta_simpan(it).get("pelabel") or "").strip()
+            return {"ok": False, "konflik": True, "disunting": sekarang,
+                    "error": ("anotasi gambar ini sudah berubah di disk"
+                              + (f" (terakhir disimpan {siapa})" if siapa else "")
+                              + ". Muat ulang gambarnya dulu supaya kerja orang "
+                                "lain tidak tertimpa.")}
 
     bentuk = []
     W, H = it["W"], it["H"]
@@ -694,7 +822,7 @@ async def api_simpan(request: Request, sess: Session = Depends(current_session_a
                 it["shapes"] = sh
                 it["issues"] = scanner.inspect(sh, it["W"], it["H"], True)
             else:
-                sh, W, H = scanner.read_json(jp)
+                sh, W, H, _ = scanner.read_json(jp)
                 it["shapes"] = sh
                 it["issues"] = scanner.inspect(sh, W or it["W"], H or it["H"], True)
         except Exception:
@@ -717,7 +845,11 @@ async def api_simpan(request: Request, sess: Session = Depends(current_session_a
     tandai_berubah(sess.src, it["img"])
     # Sebagian terbuang tetap disebutkan. Diam soal itu membuat orang mengira
     # seluruh yang digambarnya tersimpan.
+    # Cap waktu BARU ikut dikembalikan supaya kanvas memperbarui dasarnya.
+    # Tanpa ini, simpanan kedua dari orang yang sama akan membandingkan dirinya
+    # dengan simpanan pertamanya sendiri dan selalu menyimpulkan konflik.
     return {"ok": True, "n": len(bentuk), "kurang_titik": kurang_titik,
             "cadangan_rusak": cadangan_rusak,
             "issues": it["issues"],
+            "disunting": int(scanner.meta_simpan(it).get("disunting") or 0),
             "sev": scanner.severity(it), "peringatan": peringatan}

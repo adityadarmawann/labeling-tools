@@ -249,6 +249,41 @@
       <b>Hanya bisa dilihat.</b> {{ alasan_tolak }}
     </div>
     {% endif %}
+    {#- Vonis verifikasi gambar INI, di atas kanvas. Halaman verifikasi memang
+        halaman labeler yang sama persis (itu yang membuat alatnya lengkap dan
+        kebiasaannya tak berubah), jadi satu-satunya yang membedakannya adalah
+        kalimat ini. Tanpanya tak ada apa pun di layar yang menjawab "ini hasil
+        AI atau pekerjaan orang?" dan "sudah disetujui atau belum?".
+
+        Keadaannya dipegang data-keadaan, bukan Jinja saja: menyimpan terjadi
+        lewat JS tanpa memuat ulang halaman, dan spanduk yang tetap berkata
+        "belum diverifikasi" sesudah orangnya menekan Simpan justru membuat ia
+        menyimpan lagi dan lagi. -#}
+    <div class="lab-verif" id="lab-verif" role="status"
+         data-keadaan="{{ 'belum' if perlu_dicek else 'tak-usah' }}"
+         {% if not perlu_dicek %}hidden{% endif %}>
+      {#- Tombolnya tinggal DI SINI, bukan di bilah alat. Dua alasan. Pertama,
+          tombol Simpan disembunyikan seluruhnya saat autosave menyala, dan
+          autosave itu bawaan; kalimat yang menyuruh menekan Simpan karenanya
+          menunjuk tombol yang tak ada di layar. Kedua, autosave hanya
+          menyimpan kalau ada yang BERUBAH, jadi hasil AI yang sudah benar tak
+          pernah bisa ditandai selesai diperiksa sama sekali. Ditaruh di bilah
+          alat, ia akan berebut arti dengan "Jadikan objek" yang sudah ada di
+          sana. -#}
+      <span class="lab-verif-belum">
+        <b>Hasil auto-label, belum diverifikasi.</b>
+        Periksa tiap objek: perbaiki yang kurang tepat, hapus yang bukan objek,
+        tambahkan yang terlewat.
+        {%- if boleh_ubah %}
+        <button class="lab-verif-ok" type="button" id="lab-verif-ok">
+          Tandai terverifikasi</button>
+        {%- endif %}
+      </span>
+      <span class="lab-verif-sudah">
+        <b>Terverifikasi.</b> Gambar ini sudah kamu simpan, jadi tidak lagi
+        terhitung sebagai hasil AI yang menunggu pemeriksaan.
+      </span>
+    </div>
     {%- if anotasi_rusak %}
     <p class="lab-rusak" role="alert">
       Berkas anotasi gambar ini <b>tidak bisa dibaca</b>, jadi kanvas dimulai

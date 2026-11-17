@@ -66,8 +66,19 @@ def kunci_isi(item: dict) -> str:
     tiap berkas untuk menghitung sidik justru mengembalikan ongkos yang
     hendak dihemat.
     """
+    # Berkas label YOLO IKUT. Pada projek tata-letak YOLO, anotasinya tinggal
+    # di labels/<nama>.txt dan .json-nya tak pernah ada: menandai latar
+    # borongan menulis .txt kosong tanpa menyentuh satu pun berkas yang
+    # terhitung di sini, jadi kuncinya tak berubah, thumbnail lama terus
+    # dilayani -- bahkan sesudah muat ulang, dan untuk SEMUA akun karena
+    # cachenya dipakai bersama. sig_item sudah menyertakan labels/*.txt sejak
+    # dulu; yang tertinggal justru kunci thumbnail ini.
+    kandidat = [item["img"], item["img"].with_suffix(".json")]
+    lab = item.get("labels")
+    if lab:
+        kandidat.append(Path(lab))
     bagian = []
-    for p in (item["img"], item["img"].with_suffix(".json")):
+    for p in kandidat:
         try:
             st = p.stat()
             bagian.append(f"{st.st_mtime_ns}:{st.st_size}")
@@ -776,6 +787,11 @@ def read_json(jp: Path):
     """
     d = json.loads(Path(jp).read_text(encoding="utf-8"))
     W, H = d.get("imageWidth"), d.get("imageHeight")
+    # Penanda auto-label "perlu dicek" (ditulis prelabel/autolabel_zero,
+    # dibersihkan /api/simpan). Dikembalikan bersama shapes supaya scan bisa
+    # menaruhnya di item TANPA membaca .json kedua kali -> hitungan/filter/badge
+    # grid jadi gratis dan ikut cache (tanda tangan .json sudah dilacak).
+    perlu_dicek = bool(d.get("perlu_dicek")) if isinstance(d, dict) else False
     shapes = []
     for i, s in enumerate(d.get("shapes", [])):
         pts = s.get("points") or []
@@ -801,7 +817,7 @@ def read_json(jp: Path):
                        "flags": s.get("flags") if isinstance(s.get("flags"), dict) else {},
                        "pts": np.array(untuk_menggambar(jenis, pts), np.float32),
                        "pts_asli": [[float(x), float(y)] for x, y in pts]})
-    return shapes, W, H
+    return shapes, W, H, perlu_dicek
 
 
 def bentuk_terlewat(mentah: dict) -> list[dict]:
@@ -1056,6 +1072,39 @@ def inspect(shapes, W, H, has_ann=False, jenis: str = "") -> list[str]:
     return sorted(set(out))
 
 
+def objek_per_kelas(it: dict, skel_kelas: str = "") -> tuple[dict, int]:
+    """Hitung OBJEK satu gambar per kelas, dengan instance pose dilipat.
+
+    Satu instance pose (titik-titik ber-group_id sama) = SATU objek, kelasnya
+    dari KOTAK bbox-nya, bukan tiap keypoint dihitung kelas tersendiri. Tanpa
+    pelipatan ini projek keypoint tampil sebagai "34 objek, 34 kelas" berisi
+    slot titik 01..33 padahal di gambar cuma ADA SATU court -- dan daftar kelas
+    di menu saringan ikut terisi 33 nama palsu.
+
+    Dulu aturan ini hanya hidup di rute /view. Kisi Dataset menghitung per
+    BENTUK, jadi satu projek menyebut dua angka berbeda untuk gambar yang sama
+    di dua halaman. Dipindahkan ke sini supaya keduanya memakai satu aturan.
+    """
+    hitung: dict[str, int] = {}
+    instance_kelas: dict = {}
+    n_obj = 0
+    for s in it["shapes"]:
+        gid = s.get("group_id")
+        if gid is None:
+            k = str(s["label"])
+            hitung[k] = hitung.get(k, 0) + 1
+            n_obj += 1
+        elif s.get("type") == "rectangle":
+            instance_kelas[gid] = str(s["label"])
+        else:
+            instance_kelas.setdefault(gid, None)
+    for gid, kelas in instance_kelas.items():
+        k = kelas or skel_kelas or "objek"
+        hitung[k] = hitung.get(k, 0) + 1
+        n_obj += 1
+    return hitung, n_obj
+
+
 def severity(it: dict) -> str:
     """ok | warn | stop | bg — menentukan warna rel di kartu dan strip atas."""
     if not it["shapes"]:
@@ -1073,11 +1122,15 @@ def meta_simpan(it: dict) -> dict:
     yang benar-benar tampil di satu halaman grid, bukan seluruh isi job."""
     img = it["img"]
     jp = img.with_suffix(".json")
-    pelabel, disunting = "", 0
+    pelabel, disunting, perlu_dicek = "", 0, False
     try:
         d = json.loads(jp.read_text(encoding="utf-8"))
         pelabel = str(d.get("pelabel") or "")
         disunting = int(d.get("disunting") or 0)
+        # Ditulis auto-label (prelabel/autolabel_zero), dibersihkan saat manusia
+        # menyimpan (lihat KUNCI_ATAS di annotate.py). True = hasil AI, belum
+        # diverifikasi manusia.
+        perlu_dicek = bool(d.get("perlu_dicek"))
     except (OSError, ValueError, TypeError):
         pass
     if not disunting:
@@ -1091,7 +1144,20 @@ def meta_simpan(it: dict) -> dict:
                 break
             except OSError:
                 continue
-    return {"pelabel": pelabel, "disunting": disunting}
+    return {"pelabel": pelabel, "disunting": disunting,
+            "perlu_dicek": perlu_dicek}
+
+
+def perlu_dicek(it: dict) -> bool:
+    """True kalau anotasi gambar ini hasil auto-label yang BELUM diverifikasi
+    manusia (field top-level 'perlu_dicek' di .json, ditulis prelabel/
+    autolabel_zero, dibersihkan /api/simpan). Membaca .json, jadi dipakai hanya
+    saat filter 'perlu dicek' aktif atau per ubin yang tampil."""
+    try:
+        d = json.loads(it["img"].with_suffix(".json").read_text(encoding="utf-8"))
+        return bool(d.get("perlu_dicek"))
+    except (OSError, ValueError, TypeError):
+        return False
 
 
 def _scan_yolo(src: Path, names: dict | None = None, kpt: dict | None = None,
@@ -1118,9 +1184,9 @@ def _scan_yolo(src: Path, names: dict | None = None, kpt: dict | None = None,
             continue
         H, W = d
         sh = read_yolo(tp, W, H, names, kpt=kpt)
-        _gabung_cadangan(ip, sh)
+        pd = _gabung_cadangan(ip, sh)
         items.append({"img": ip, "shapes": sh, "W": W, "H": H, "yolo": True,
-                      "labels": tp, "ann": tp,
+                      "labels": tp, "ann": tp, "perlu_dicek": pd,
                       "issues": inspect(sh, W, H, tp.exists())})
     return items, names
 
@@ -1152,14 +1218,15 @@ def _gabung_cadangan(ip: Path, shapes: list[dict]) -> None:
     """
     jp = ip.with_suffix(".json")
     if not jp.is_file():
-        return
+        return False
     try:
         d = json.loads(jp.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return
+        return False
+    perlu_dicek = bool(d.get("perlu_dicek")) if isinstance(d, dict) else False
     cad = d.get("shapes") if isinstance(d, dict) else None
     if not isinstance(cad, list) or len(cad) != len(shapes):
-        return
+        return perlu_dicek            # penanda tetap dibaca walau cadangan tak cocok
     for s, a in zip(shapes, cad):
         if not isinstance(a, dict):
             continue
@@ -1169,6 +1236,7 @@ def _gabung_cadangan(ip: Path, shapes: list[dict]) -> None:
         s["titipan"] = {k: v for k, v in a.items()
                         if k not in ("label", "text", "points", "group_id",
                                      "shape_type", "flags")}
+    return perlu_dicek
 
 
 def _scan_labelme(src: Path, peta: dict | None = None):
@@ -1192,12 +1260,13 @@ def _scan_labelme(src: Path, peta: dict | None = None):
             items.append(ulang)
             continue
         try:
-            sh, W, H = read_json(jp)
+            sh, W, H, pd = read_json(jp)
         except Exception:
             broken.add(jp.stem)
             continue
         seen.add(ip.resolve())
         items.append({"img": ip, "shapes": sh, "W": W, "H": H, "ann": jp,
+                      "perlu_dicek": pd,
                       "issues": inspect(sh, W, H, True)})
 
     # gambar yang belum punya anotasi sama sekali
@@ -1216,7 +1285,7 @@ def _scan_labelme(src: Path, peta: dict | None = None):
         H, W = d
         iss = ["berkas anotasi rusak"] if ip.stem in broken else ["belum dilabeli"]
         items.append({"img": ip, "shapes": [], "W": W, "H": H,
-                      "ann": jp, "issues": iss})
+                      "ann": jp, "perlu_dicek": False, "issues": iss})
     # Dataset labelme boleh punya daftar kelas resmi juga (classes.txt atau
     # data.yaml di folder yang sama). Kalau ada, daftar itu yang membuat kanvas
     # bisa menahan salah ketik nama kelas, dan membuat indeks kelas saat

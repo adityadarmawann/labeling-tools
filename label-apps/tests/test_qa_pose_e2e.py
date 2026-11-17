@@ -57,7 +57,7 @@ def test_qa_pose_pipeline(klien, lingkungan):
     ]})
 
     # 3. Baca balik via scanner: group_id + flags.v bertahan.
-    shp, W, H = scanner.read_json(pathlib.Path(g[0]).with_suffix(".json"))
+    shp, W, H, _ = scanner.read_json(pathlib.Path(g[0]).with_suffix(".json"))
     byk = [s for s in shp if s["type"] == "point"]
     assert len(byk) == 6 and all(s["group_id"] in (0, 1) for s in byk)
     assert any(s["flags"].get("v") == 1 for s in byk)   # occluded bertahan
@@ -82,7 +82,7 @@ def test_qa_pose_pipeline(klien, lingkungan):
     # 5. Build versi pose dari item NYATA (save->scanner->build) + augmentasi.
     items = []
     for ip in [pathlib.Path(x) for x in g]:
-        s, w, h = scanner.read_json(ip.with_suffix(".json"))
+        s, w, h, _ = scanner.read_json(ip.with_suffix(".json"))
         items.append({"img": ip, "W": w, "H": h, "shapes": s})
     skel = tugas.baca(d, "paul")["skeleton"]
     peta = {pathlib.Path(g[0]).stem: "train", pathlib.Path(g[1]).stem: "valid"}

@@ -1,0 +1,117 @@
+# systemd service HIGOLAB (Labeling Tools): PRODUKSI + DEV, satu unit.
+#
+# Tujuan: app FastAPI dinyalakan OTOMATIS tiap mesin boot, tanpa perlu ada orang
+# yang login. Sebelum ini app dijalankan manual (tmux / ./start.sh prod), jadi
+# tiap mesin reboot nginx kehilangan upstream 127.0.0.1:8142 -> 502 Bad Gateway
+# sampai ada yang menyalakannya lagi. Unit ini menutup celah itu.
+#
+# DEV IKUT DI UNIT YANG SAMA. Dulu hanya produksi yang punya unit, jadi sesudah
+# reboot prod bangkit sendiri sementara dev (0.0.0.0:8043) diam saja -- dan dari
+# laptop lain keadaan itu tak bisa dibedakan dari "HIGOLAB mati". Satu unit
+# berarti satu hal yang harus diingat, dan tak ada lagi separuh yang terlupa.
+#
+# Yang dijalankan tetap ./start.sh apa adanya untuk kedua sisi (memuat
+# env/prod.env + env/rahasia.env atau env/dev.env, memilih venv, lalu exec
+# python run.py). Jadi tak ada perilaku baru: cuma siapa yang menyalakan
+# (systemd, bukan tangan). Pembagiannya ada di deploy/higolab-mulai.sh: dev di
+# latar, produksi di depan, dan produksi yang jadi patokan hidup-matinya unit.
+#
+# KONSEKUENSI yang perlu disadari: `systemctl restart higolab` kini menyalakan
+# ulang KEDUANYA. Untuk dev itu tak masalah (ia memang memuat ulang sendiri
+# tiap berkas berubah), tetapi jangan memakai restart hanya demi dev saat ada
+# yang sedang melabeli di produksi.
+#
+# nginx TIDAK disentuh unit ini. nginx tetap memegang 8042 + annotate.higo.id:443
+# dan mem-proxy ke 127.0.0.1:8142.
+#
+# ---------------------------------------------------------------------------
+# PASANG (butuh sudo -- kamu jalankan sendiri; Claude tak menyentuh systemd):
+#
+#   # 1. Hentikan instance manual yang mungkin masih jalan (punya user paul,
+#   #    tak perlu sudo). Kalau tak ada, perintah ini aman saja. DEV ikut,
+#   #    kalau tidak, systemd gagal mengikat 8043 yang masih dipegang proses
+#   #    lama dan dev diam tanpa sebab yang kelihatan.
+#   pkill -f 'run.py --host 127.0.0.1 --port 8142' || true
+#   pkill -f 'run.py --host 0.0.0.0 --port 8043' || true
+#
+#   # 2. Pasang skrip penyalanya ke tempat yang stabil (di luar worktree).
+#   sudo install -m 0755 \
+#        /home/paul/computer-vision/smartbin/rvm/labeling-tools-dev/deploy/higolab-mulai.sh \
+#        /usr/local/bin/higolab-mulai.sh
+#
+#   # 3. Pasang unit + aktifkan supaya ikut boot, sekaligus nyalakan sekarang.
+#   sudo cp /home/paul/computer-vision/smartbin/rvm/labeling-tools-dev/deploy/higolab.service \
+#           /etc/systemd/system/higolab.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now higolab
+#
+# SESUDAH MENGUBAH higolab-mulai.sh: ulangi langkah 2 lalu
+# `sudo systemctl restart higolab`. Yang dijalankan systemd adalah SALINAN di
+# /usr/local/bin, bukan berkas di repo.
+#
+# CEK:
+#   systemctl status higolab            # harus active (running)
+#   # GET, BUKAN HEAD. `curl -I` mengirim HEAD dan aplikasinya hanya
+#   # menerima GET, jadi -I selalu menjawab "405 Method Not Allowed" walau
+#   # servernya sehat sempurna. Perintah cek yang keliru begitu membuat orang
+#   # mengira pemasangannya gagal padahal tidak.
+#   curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8142/login   # produksi, 200
+#   curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8043/        # dev, 200
+#   curl -sk -o /dev/null -w '%{http_code}\n' https://annotate.higo.id/    # lewat nginx, 200
+#
+# KELOLA SEHARI-HARI:
+#   sudo systemctl restart higolab      # nyalakan ulang (mis. sesudah deploy)
+#   sudo systemctl stop higolab         # matikan
+#   journalctl -u higolab -f            # log langsung (juga tetap ke logs/prod.log)
+#
+# CATATAN DEPLOY: deploy.sh milik user dan tidak diubah. Sesudah ./deploy.sh
+# selesai menyalin kode, jalankan `sudo systemctl restart higolab` supaya app
+# memakai kode baru (menggantikan restart manual yang dulu).
+# ---------------------------------------------------------------------------
+
+[Unit]
+Description=HIGOLAB Labeling Tools (produksi 127.0.0.1:8142 + dev 0.0.0.0:8043)
+Documentation=file:///home/paul/computer-vision/smartbin/rvm/labeling-tools-dev/deploy/higolab-mulai.sh
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=paul
+Group=paul
+WorkingDirectory=/home/paul/computer-vision/smartbin/rvm/labeling-tools/label-apps
+
+# Wrapper menyalakan dev di latar lalu produksi di depan, dan menurunkan
+# keduanya saat unit dihentikan. Ia TIDAK memakai exec untuk produksi: exec
+# akan menggantikan wrapper dan menghilangkan jebakan sinyalnya, sehingga dev
+# jadi yatim dan tetap memegang 8043 sesudah unit berhenti.
+# /bin/bash eksplisit karena start.sh butuh bash, bukan /bin/sh.
+# Dipasang ke /usr/local/bin, BUKAN dijalankan langsung dari worktree dev.
+# Kalau unit produksi menunjuk berkas di dalam worktree dev, memindahkan atau
+# menghapus worktree itu ikut menjatuhkan PRODUKSI, dan hubungan sebab-akibatnya
+# tak akan terpikirkan oleh siapa pun yang sedang merapikan folder.
+ExecStart=/bin/bash /usr/local/bin/higolab-mulai.sh
+
+# Log produksi ke berkas yang sama yang dibaca tim selama ini (bukan cuma
+# journald). Log DEV dipisah ke logs/dev.log oleh wrapper: dua server yang
+# menulis ke satu berkas membuat jejak keduanya saling menyisip, justru saat
+# sedang dicari sebabnya.
+# 'append:' didukung sejak systemd 240 (mesin ini 249).
+StandardOutput=append:/home/paul/computer-vision/smartbin/rvm/labeling-tools/label-apps/logs/prod.log
+StandardError=append:/home/paul/computer-vision/smartbin/rvm/labeling-tools/label-apps/logs/prod.log
+
+# Kalau app mati sendiri (crash), hidupkan lagi; reboot tetap ditangani [Install].
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=120
+
+# KillMode=process: hanya proses utama (wrapper) yang disinyali saat
+# stop/restart. Wrapper itu sendiri yang meneruskan SIGTERM ke produksi dan dev
+# lalu menunggu keduanya benar-benar berhenti.
+# Training yang di-spawn app memakai start_new_session (process group sendiri)
+# supaya independen; dengan 'process' job latih yang sedang jalan TIDAK ikut
+# terbunuh saat app di-restart (mis. sesudah deploy).
+KillMode=process
+
+[Install]
+WantedBy=multi-user.target

@@ -90,7 +90,12 @@
     </select>
     <span class="halus" id="an-jenis-pesan">
       {%- if jenis_efektif == "poligon" -%}
-      Kotak, titik, dan garis akan ditandai perlu dicek, lalu dikembalikan ke
+      {#- Tidak menyebut "perlu dicek": tanda itu HANYA ditulis auto-label,
+          dan buatversi tak pernah menulisnya sama sekali. Teks lama
+          menjanjikan keadaan yang tidak pernah ada dan tak bisa dicari dengan
+          saringan mana pun. Yang benar-benar terjadi: gambarnya dikembalikan
+          ke kolom Anotasi saat versi dibuat. -#}
+      Kotak, titik, dan garis tidak dipakai, dan gambarnya dikembalikan ke
       sini saat versi dibuat.
       {%- else -%}
       Poligon diturunkan jadi kotak pembungkusnya saat versi dibuat. Tidak ada
@@ -100,16 +105,55 @@
   </div>
   {% endif %}
 
-  {# ---------------------------------------------------- urutan #}
+  {# ------------------------------------------- saringan papan + urutan
+
+     Tiga kolom merender SELURUH kartu tanpa paginasi. Pada projek dengan 40
+     tugas, satu-satunya cara mencari pekerjaan seseorang adalah membaca satu
+     per satu. Datanya sudah ada di tiap kartu (pelabel, keadaan, judul);
+     yang tidak ada cuma kontrolnya.
+
+     Semuanya dalam SATU form GET supaya memilih pelabel tidak membuang
+     urutan, dan sebaliknya. #}
   <form class="an-urut an-kendali-baris" method="get" action="/anotasi">
     <input type="hidden" name="ds" value="{{ pr.ds }}">
+
+    {% if pelabel_ada %}
+    <label class="halus" for="an-pl">Pelabel</label>
+    <select class="chip" id="an-pl" name="pl" onchange="this.form.submit()">
+      <option value="">semua pelabel</option>
+      {%- for nama in pelabel_ada %}
+      <option value="{{ nama }}"{% if pelabel_f == nama %} selected{% endif %}>{{ nama }}</option>
+      {%- endfor %}
+    </select>
+    {% endif %}
+
+    <label class="halus" for="an-kd">Keadaan</label>
+    <select class="chip" id="an-kd" name="kd" onchange="this.form.submit()">
+      <option value="">semua keadaan</option>
+      <option value="baru"{% if keadaan_f == 'baru' %} selected{% endif %}>Belum disentuh</option>
+      <option value="jalan"{% if keadaan_f == 'jalan' %} selected{% endif %}>Sedang dikerjakan</option>
+      <option value="selesai"{% if keadaan_f == 'selesai' %} selected{% endif %}>Selesai</option>
+    </select>
+
+    <label class="sr-only" for="an-cari">Cari judul tugas atau nama pelabel</label>
+    <input class="chip" id="an-cari" type="search" name="q" value="{{ cari_papan }}"
+           placeholder="cari judul tugas atau pelabel…"
+           autocomplete="off" spellcheck="false">
+
     <label class="halus" for="an-urut">Urutkan</label>
     <select class="chip" id="an-urut" name="urut" onchange="this.form.submit()">
       {%- for nilai, nama in urut_pilihan.items() %}
       <option value="{{ nilai }}"{% if urut == nilai %} selected{% endif %}>{{ nama }}</option>
       {%- endfor %}
     </select>
-    <noscript><button class="chip" type="submit">Terapkan</button></noscript>
+    <button class="chip" type="submit">Terapkan</button>
+
+    {% if pelabel_f or keadaan_f or cari_papan %}
+    <a class="chip saring-pil" href="/anotasi?ds={{ pr.ds | urlquote }}{% if urut != 'terbaru' %}&amp;urut={{ urut }}{% endif %}"
+       title="Buang saringan papan">
+      {{ kartu | length }} dari {{ n_kartu_semua }} tugas
+      <span aria-hidden="true">&times;</span></a>
+    {% endif %}
   </form>
   </div>
 
@@ -164,13 +208,62 @@
         <button class="an-siap" type="button" data-siap="{{ b.batch }}">
           Masukkan {{ b.siap }} yang sudah dianotasi</button>
         {% endif %}
+        {#- Auto-label SEBATCH: isi anotasi otomatis untuk semua gambar unggahan
+            ini sekaligus, tanpa perlu bagi tugas dulu. Hasilnya ditandai "perlu
+            dicek" lalu tinggal diverifikasi. -#}
+        <button class="an-mulai an-autolabel" type="button"
+                data-autolabel-batch="{{ b.batch }}"
+                title="Isi anotasi otomatis untuk semua gambar unggahan ini, lalu tinggal diverifikasi">
+          Auto-label semua &rarr;</button>
+        {#- Jalan menuju verifikasinya. Tanpa tautan ini, menjalankan auto-label
+            sebatch tidak meninggalkan jejak apa pun di kartunya: tidak ada yang
+            menyebut ada pekerjaan verifikasi yang menunggu, dan gambarnya tak
+            bisa ditinjau sama sekali kecuali dibagi jadi job lebih dulu.
+            Kisi Dataset sudah bisa menyaring per unggahan (bt) dan per keadaan
+            (f), jadi dua saringan yang sudah ada itu yang dipakai. -#}
+        {% if b.dicek %}
+        {#- `dsf=belum` WAJIB. Angka b.dicek dihitung dari gambar yang belum
+            ditugaskan DAN belum masuk dataset, sedangkan kisi Dataset bawaannya
+            hanya memuat isi dataset. Tanpa lingkup ini tautannya selalu
+            mendarat di halaman kosong: kartunya menjanjikan 312 gambar, kisinya
+            memberi nol. -#}
+        <a class="an-mulai an-verif"
+           href="/?f=dicek&amp;dsf=belum{% if b.batch %}&amp;bt={{ b.batch | urlquote }}{% endif %}"
+           title="Periksa hasil auto-label unggahan ini satu per satu">
+          Verifikasi {{ b.dicek }} hasil AI &rarr;</a>
+        {% endif %}
         <a class="an-mulai" href="/bagi?ds={{ pr.ds | urlquote }}{% if b.batch %}&batch={{ b.batch | urlquote }}{% endif %}">
           Bagi tugas &rarr;</a>
+        {% endif %}
+        {#- Jalan KERJA langsung ke gambar unggahan ini, tanpa harus dibagi jadi
+            job dulu. Dibuka untuk siapa pun yang memang berhak menulis ke
+            gambar yang belum ditugaskan, termasuk Labeler berakses menyeluruh.
+
+            Tanpa ini, pemilik yang memberi seseorang peran "Labeler
+            menyeluruh" mendapati orang itu login dan tidak menemukan satu
+            gambar pun untuk dikerjakan: papan menyembunyikan seluruh aksinya,
+            halaman job cuma memuat yang sudah dibagi, dan kisi Dataset cuma
+            memuat yang sudah dinyatakan masuk. Perannya ada, jalannya tidak.
+
+            Memakai lingkup "belum masuk dataset" pada kisi, saringan yang
+            memang dibuat untuk golongan gambar ini. -#}
+        {% if boleh_lepas %}
+        <a class="an-mulai an-kerja"
+           href="/?f=unlab&amp;dsf=belum{% if b.batch %}&amp;bt={{ b.batch | urlquote }}{% endif %}"
+           title="Buka gambar unggahan ini yang belum dilabeli, tanpa perlu dibagi dulu">
+          Labeli sendiri &rarr;</a>
         {% endif %}
       </article>
       {%- endfor %}
       {% if not boleh_bagi %}
-      <span class="halus" style="text-align:center">Pemilik projek yang membaginya.</span>
+      <span class="halus" style="text-align:center">
+        {%- if boleh_lepas -%}
+        Pemilik projek yang membaginya. Kamu boleh mengerjakan gambar ini
+        langsung lewat tombol di tiap unggahan.
+        {%- else -%}
+        Pemilik projek yang membaginya.
+        {%- endif -%}
+      </span>
       {% endif %}
       {% else %}
       <div class="an-kosong"><b>Semuanya sudah dibagi</b>
@@ -215,7 +308,7 @@
               <button class="menu-aksi" type="button" data-aksi="judul"
                       data-id="{{ k.id }}">Ganti judul&hellip;</button>
               <button class="menu-aksi" type="button" data-aksi="kirim"
-                      data-id="{{ k.id }}" data-judul="{{ k.judul }}">Kirim gambar ke projek lain&hellip;</button>
+                      data-id="{{ k.id }}" data-judul="{{ k.judul }}">Kirim ke projek lain&hellip;</button>
               <span class="menu-pisah"></span>
               <button class="menu-aksi menu-bahaya" type="button" data-aksi="bubar"
                       data-id="{{ k.id }}">Bubarkan tugas</button>
@@ -240,6 +333,24 @@
         {%- endif %}
         {% if k.catatan %}
         <p class="an-catatan">{{ k.catatan }}</p>
+        {% endif %}
+        {% if boleh_bagi %}
+        <button class="an-mulai an-autolabel" type="button"
+                data-autolabel-job="{{ k.id }}"
+                title="Isi anotasi otomatis untuk gambar yang belum di tugas ini, lalu tinggal diverifikasi">
+          Auto-label &rarr;</button>
+        {% endif %}
+        {#- Hasil auto-label di dalam job ini yang menunggu diperiksa.
+            Tanpa baris ini papan diam saja sesudah auto-label dijalankan atas
+            sebuah job: angkanya hanya hidup di dalam halaman jobnya, jadi
+            satu-satunya cara menemukannya adalah membuka tiap job satu per
+            satu. Sepadan dengan tautan di kartu batch; bedanya lingkup di sini
+            job, jadi saringannya saring=dicek di halaman job itu. -#}
+        {% if k.dicek %}
+        <a class="an-mulai an-verif"
+           href="/tugas/{{ k.id }}?ds={{ pr.ds | urlquote }}&amp;saring=dicek"
+           title="Periksa hasil auto-label tugas ini satu per satu">
+          Verifikasi {{ k.dicek }} hasil AI &rarr;</a>
         {% endif %}
         <a class="an-mulai" href="/tugas/{{ k.id }}?ds={{ pr.ds | urlquote }}">
           Lihat isinya &rarr;</a>
@@ -324,7 +435,7 @@
               <button class="menu-aksi" type="button" data-aksi="judul"
                       data-id="{{ k.id }}">Ganti judul&hellip;</button>
               <button class="menu-aksi" type="button" data-aksi="kirim"
-                      data-id="{{ k.id }}" data-judul="{{ k.judul }}">Kirim gambar ke projek lain&hellip;</button>
+                      data-id="{{ k.id }}" data-judul="{{ k.judul }}">Kirim ke projek lain&hellip;</button>
               <span class="menu-pisah"></span>
               <button class="menu-aksi menu-bahaya" type="button" data-aksi="bubar"
                       data-id="{{ k.id }}">Bubarkan tugas</button>
@@ -341,6 +452,24 @@
           <span><b>{{ k.di_dataset }}</b> gambar masuk dataset</span>
           <b class="an-persen">{{ k.persen }}%</b>
         </div>
+        {% if boleh_bagi %}
+        <button class="an-mulai an-autolabel" type="button"
+                data-autolabel-job="{{ k.id }}"
+                title="Isi anotasi otomatis untuk gambar yang belum di tugas ini, lalu tinggal diverifikasi">
+          Auto-label &rarr;</button>
+        {% endif %}
+        {#- Hasil auto-label di dalam job ini yang menunggu diperiksa.
+            Tanpa baris ini papan diam saja sesudah auto-label dijalankan atas
+            sebuah job: angkanya hanya hidup di dalam halaman jobnya, jadi
+            satu-satunya cara menemukannya adalah membuka tiap job satu per
+            satu. Sepadan dengan tautan di kartu batch; bedanya lingkup di sini
+            job, jadi saringannya saring=dicek di halaman job itu. -#}
+        {% if k.dicek %}
+        <a class="an-mulai an-verif"
+           href="/tugas/{{ k.id }}?ds={{ pr.ds | urlquote }}&amp;saring=dicek"
+           title="Periksa hasil auto-label tugas ini satu per satu">
+          Verifikasi {{ k.dicek }} hasil AI &rarr;</a>
+        {% endif %}
         <a class="an-mulai" href="/tugas/{{ k.id }}?ds={{ pr.ds | urlquote }}">
           Lihat isinya &rarr;</a>
       </article>
@@ -410,6 +539,324 @@
       <span class="spacer"></span>
       <button class="wz-tbl wz-tbl-sek" type="button" data-pl-tutup>Tutup</button>
       <button class="wz-tbl wz-tbl-pri" type="button" id="pl-mulai">Mulai</button>
+    </div>
+  </div>
+</div>
+
+{#- Dialog "Auto-label tanpa latih": model teks zero-shot (YOLO-World untuk
+    kotak, SAM 3 untuk poligon) memprediksi gambar BELUM teranotasi dari nama
+    kelas, tanpa perlu melatih model dulu. Diisi anotasi.js. -#}
+<div class="dlg" id="az-dlg" hidden>
+  <div class="dlg-tirai" data-az-tutup></div>
+  <div class="dlg-kotak" role="dialog" aria-modal="true" aria-labelledby="az-judul">
+    {#- Kepala TETAP. Dulu seluruh kendali tinggal di sini dan hanya bilah
+        kemajuan yang menggulung, padahal #az-dlg tak pernah didaftarkan ke
+        aturan tata letak tiga bagian -- jadi yang menggulung justru seluruh
+        kotaknya, judul dan tombol Mulai ikut hilang ke atas. -#}
+    <div class="op-dlg-atas">
+      {#- Tombol panduan duduk di sebelah judul, bukan tersembunyi di bawah.
+          Orang yang baru pertama kali membuka dialog ini belum tahu ada
+          aturan yang perlu dibaca lebih dulu, jadi pintunya harus kelihatan
+          sejak pandangan pertama. -#}
+      <div class="az-judul-baris">
+        <h3 id="az-judul">Auto-label</h3>
+        <button class="az-bantu" type="button" id="az-bantu"
+                aria-expanded="false" aria-controls="az-panduan"
+                title="Baca panduan singkat">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor"
+               stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"
+               aria-hidden="true">
+            <circle cx="10" cy="10" r="7.5"/>
+            <path d="M7.9 7.6a2.1 2.1 0 1 1 2.6 2.5c-.5.2-.8.6-.8 1.1v.4"/>
+            <circle cx="10" cy="14.2" r=".7" fill="currentColor" stroke="none"/>
+          </svg>
+          <span>Panduan</span></button>
+      </div>
+      <p class="halus">Hasilnya ditandai "belum diverifikasi" supaya gampang
+        dicari saat memeriksa. Gambar yang sudah dilabeli atau ditandai latar
+        tidak disentuh.</p>
+      {#- Lingkup naik ke kepala: ia menentukan gambar MANA yang dikerjakan,
+          jadi ia pertanyaan pertama, bukan setelan di antara enam kotak
+          angka di dasar dialog. -#}
+      <div class="az-lingkup">
+        <label class="halus" for="az-sasaran">Kerjakan</label>
+        <select class="chip" id="az-sasaran">
+          <option value="belum">gambar yang belum dianotasi saja</option>
+          <option value="dicek">+ hasil AI yang belum diverifikasi</option>
+          <option value="semua">semua, termasuk yang sudah diverifikasi</option>
+        </select>
+        <span class="halus" id="az-sasaran-ket"></span>
+      </div>
+    </div>
+
+    <div class="op-gulung">
+      {#- Satu pesan yang MENGGANTI seluruh isian: projek kerangka dan training
+          yang sedang jalan dua-duanya membuat dialog ini tak bisa dipakai sama
+          sekali. Dulu keduanya baru ketahuan sesudah Mulai ditekan. -#}
+      <div class="az-halang" id="az-halang" hidden></div>
+
+      {#- Panduan. Ditulis untuk dibaca sekali lalu diingat, bukan untuk
+          menutupi antarmuka yang membingungkan: tiap bagiannya menjawab satu
+          pertanyaan yang memang muncul saat orang memakai fitur ini, dan
+          angka di dalamnya diukur di projek nyata, bukan dikarang. -#}
+      <div class="az-panduan" id="az-panduan" hidden>
+        <h4>Auto-label itu apa</h4>
+        <p>Auto-label mengisikan anotasi untuk kamu, lalu kamu yang memutuskan benar
+          atau tidak. Hasilnya selalu ditandai "belum diverifikasi", jadi tidak
+          ada yang diam-diam dianggap selesai.</p>
+
+        <h4>Memilih sumber</h4>
+        <p>Ada dua kelompok sumber, dan keduanya boleh dipakai bersamaan.</p>
+        <p><b>Model .pt</b> sudah tahu kelas projekmu, jadi nama kelasnya
+          paling tepat. Tetapi hanya kelas yang pernah dilatih yang bisa
+          ia temukan.</p>
+        <p><b>Model teks</b> tidak perlu dilatih dulu. Kamu yang menyebut nama
+          bendanya, modelnya yang mencari. Cocok untuk projek yang belum punya
+          model sama sekali.</p>
+        <p>Kalau keduanya dicentang, hasilnya digabung dan objek yang sama
+          cukup ditulis sekali.</p>
+
+        <h4>Kombinasi yang masuk akal</h4>
+        <p>Tidak ada kombinasi yang dilarang. Semua sumber boleh dicentang
+          sekaligus, dan hasilnya selalu digabung dengan objek yang sama cukup
+          ditulis sekali. Yang perlu dipertimbangkan bukan boleh atau tidak,
+          melainkan apa yang kamu dapat.</p>
+        <p>Menggabungkan <b>dua kelompok sekaligus</b> biasanya menguntungkan.
+          Model .pt menyumbang nama kelas yang tepat, model teks menemukan
+          benda yang belum pernah dilatih.</p>
+        <p>Di dalam kelompok model teks, <b>Zero-shot dan GroundingDINO mencari
+          nama objek yang sama</b>. Memakai keduanya menambah jumlah objek yang
+          tertangkap, tetapi menambah pula kotak berlebih yang perlu dihapus
+          saat verifikasi. Pilih salah satu lebih dulu, dan tambahkan yang lain
+          hanya kalau hasilnya memang terasa kurang.</p>
+        <p>Di dalam kelompok model .pt, beberapa model boleh dicentang
+          bersamaan. Berguna kalau tiap model menguasai kelas yang berbeda.</p>
+
+        <h4>Kalau ingin memakai semuanya sekaligus</h4>
+        <p>Boleh, dan hasilnya bisa bagus asal empat hal ini diperhatikan.</p>
+        <p><b>Satu.</b> Tetap isi satu nama objek saja. Aturan itu berlaku pada
+          kelompok model teks, berapa pun sumber lain yang ikut dicentang.</p>
+        <p><b>Dua.</b> Biarkan "Nama kelas hasil" kosong. Saat beberapa sumber
+          menemukan objek yang sama, nama kelasnya diambil dari sumber yang
+          paling berhak: model terlatih projek lebih dulu, lalu model .pt yang
+          diunggah, baru model teks. Mengisi kolom itu memaksa semuanya memakai
+          satu nama dan membuang keunggulan tersebut.</p>
+        <p><b>Tiga.</b> Pakai ambang bawaan pada tiap sumber. Angkanya memang
+          berbeda karena wataknya berbeda, dan menyamakannya justru membuat
+          salah satu terlalu berani atau terlalu pendiam.</p>
+        <p><b>Empat.</b> Periksa hasilnya dengan ambang gabung. Kalau satu
+          objek muncul dua kali sebagai kotak bertumpuk, turunkan ambang gabung
+          di Setelan lanjutan. Kalau dua benda berdampingan justru melebur jadi
+          satu, naikkan.</p>
+        <p>Siapkan waktu lebih untuk verifikasi. Semakin banyak sumber, semakin
+          banyak objek yang tertangkap, dan semakin banyak pula kotak berlebih
+          yang perlu dihapus.</p>
+
+        <h4>Satu nama objek tiap kali jalan</h4>
+        <p>Ini yang paling sering membuat kecewa kalau dilanggar. Model teks pandai
+          menemukan benda, tetapi tidak bisa dipercaya memilih di antara
+          beberapa nama sekaligus.</p>
+        <p>Ini terukur, bukan dugaan. Pada satu projek nyata, dengan dua nama
+          dikirim sekaligus, kotaknya tepat tetapi kelasnya salah seluruhnya,
+          40 dari 40 objek. Padahal kedua benda itu jelas berbeda bentuknya.</p>
+        <p>Jadi isi satu nama, jalankan, lalu ulangi untuk nama berikutnya.
+          Semua objek dapat satu kelas yang sama, dan kamu tinggal membetulkan
+          yang minoritas saja.</p>
+
+        <h4>Dua bentuk anotasi pada gambar yang sama</h4>
+        <p>Sebagian projek memerlukan lebih dari satu bentuk pada gambar yang
+          sama, misalnya poligon yang mengikuti tepi objek utama ditambah kotak
+          untuk bagian yang lebih kecil di dalamnya. Itu dikerjakan dengan dua
+          kali jalan.</p>
+        <p>Jalan pertama: pilih Bentuk <b>poligon</b>, lalu isi nama kelas
+          untuk objek utamanya.</p>
+        <p>Jalan kedua: ubah "Kerjakan" menjadi <b>+ hasil AI yang belum
+          diverifikasi</b>, pilih Bentuk <b>kotak</b>, lalu isi nama kelas
+          untuk bagian yang kedua.</p>
+        <p>Jalan kedua menambahkan, bukan mengganti, dan objek yang sudah ada
+          tidak ditulis dua kali.</p>
+
+        <h4>Ambang keyakinan</h4>
+        <p>Angka kecil berarti model lebih berani: lebih banyak objek
+          tertangkap, lebih banyak pula yang salah. Model terlatih biasanya
+          nyaman di 0,25. Model teks jauh lebih ragu, jadi 0,1 wajar di sana.</p>
+
+        <h4>Sesudah selesai</h4>
+        <p>Hasilnya muncul sebagai "Belum diverifikasi". Bukalah dari kartu
+          batch atau kartu tugas di papan, periksa satu per satu, lalu simpan.
+          Menyimpan itulah yang menandainya terverifikasi.</p>
+
+        <h4>Kalau hasilnya nol objek</h4>
+        <p>Coba turunkan ambangnya, ganti nama bendanya dengan kata yang lebih
+          umum, atau tambahkan sumber lain. Kalau yang tertulis nol gambar,
+          berarti lingkupnya memang kosong: ganti pilihan "Kerjakan" di atas.</p>
+
+        <button class="wz-tbl wz-tbl-sek az-panduan-tutup" type="button"
+                id="az-panduan-tutup">Kembali ke setelan</button>
+      </div>
+
+      <div id="az-atur">
+        <h4 class="az-langkah">Sumber</h4>
+        {#- Empat sumber dulu berjajar sebagai empat centang setara, dan tak
+            ada apa pun di layar yang mengatakan bahwa dua di antaranya berbagi
+            satu kolom nama objek dan satu ambang. Sekarang mereka dua KELOMPOK,
+            dan yang dipakai bersama tinggal di dalam kotak kelompoknya. Semua
+            boleh dicentang bersamaan: hasilnya digabung, objek yang sama cukup
+            ditulis sekali. -#}
+        <p class="halus az-langkah-ket">Boleh pilih lebih dari satu. Hasilnya
+          digabung, dan objek yang sama cukup ditulis sekali.</p>
+
+        <section class="az-grup" id="az-grup-model">
+          <h5>Model .pt, sudah tahu kelas projek</h5>
+          <p class="halus">Menulis nama kelas sesuai taksonomi projek. Paling
+            tepat soal nama, tetapi hanya menemukan kelas yang pernah dilatih.</p>
+          <label class="az-src"><input type="checkbox" id="az-s-terlatih">
+            <span>Model terlatih projek</span></label>
+          <select class="chip az-src-ko" id="az-terlatih"
+                  aria-label="Pilih latihan"></select>
+
+          <label class="az-src"><input type="checkbox" id="az-s-eksternal">
+            <span>Model .pt yang diunggah</span></label>
+          <div class="az-src-ko" id="az-ko-eksternal">
+            <select class="chip" id="az-eksternal"
+                    aria-label="Pilih model yang diunggah"></select>
+            <label class="an-mulai an-autolabel az-unggah" id="az-unggah-tbl">
+              + Unggah .pt
+              <input type="file" id="az-file" accept=".pt" hidden></label>
+            <span class="halus" id="az-unggah-status"></span>
+          </div>
+
+          <div class="az-ambang">
+            <label class="halus" for="az-conf-model">Ambang keyakinan</label>
+            <input class="chip" id="az-conf-model" type="number" value="0.25"
+                   min="0.01" max="0.99" step="0.05">
+            <span class="halus">Lebih kecil berarti lebih banyak objek
+              tertangkap dan lebih banyak yang salah. 0,25 wajar untuk model
+              terlatih.</span>
+          </div>
+        </section>
+
+        <section class="az-grup" id="az-grup-teks">
+          <h5>Model teks, diberi tahu nama objeknya</h5>
+          <p class="halus">Tidak perlu dilatih dulu. Kamu yang menyebut objeknya,
+            modelnya yang mencari. Kedua sumber di bawah mencari nama objek
+            yang sama, jadi pilih salah satu lebih dulu.</p>
+          {#- Kolom nama objek naik ke tingkat KELOMPOK. Dulu ia tinggal di
+              dalam blok Zero-shot, sementara GroundingDINO membacanya juga --
+              dan karena blok yang tak dicentang diberi pointer-events:none,
+              mematikan Zero-shot membuat kolom ini tak bisa diketik sama
+              sekali, sehingga resep "recall tinggi" mustahil disetel. -#}
+          <label class="halus" for="az-prompt">Nama objek yang dicari</label>
+          <input class="chip az-lebar" id="az-prompt" type="text"
+                 placeholder="mis. bottle, can, carton">
+          {#- Aturannya MUTLAK, bukan bersyarat. Diukur di projek paragon
+              pada 40 gambar berlabel manusia: dengan dua nama dikirim
+              bersamaan, kotaknya benar (IoU rata-rata 0,91) tetapi KELASNYA
+              salah 40 dari 40 -- padahal kedua produknya, deodorant dan
+              facewash, jelas berbeda bentuknya. Jadi "kalau kelasnya mirip"
+              terlalu lunak: model teks memang tak bisa dipercaya memilih di
+              antara beberapa nama, semirip apa pun atau sejauh apa pun. -#}
+          <p class="halus" id="az-prompt-ket">Isi <b>satu nama saja</b> tiap
+            kali jalan, lalu ulangi untuk nama berikutnya. Model teks bagus
+            menemukan benda, tetapi tidak bisa dipercaya memilih di antara
+            beberapa nama sekaligus. Dikosongkan berarti memakai nama kelas projek.</p>
+          <p class="az-awas" id="az-awas-prompt" hidden></p>
+
+          <label class="az-src"><input type="checkbox" id="az-s-zeroshot">
+            <span>Zero-shot (tanpa latih)</span></label>
+          <div class="az-src-ko" id="az-ko-zeroshot">
+            <label class="halus" for="az-model">Model teks</label>
+            <select class="chip" id="az-model"></select>
+            <div class="az-ambang">
+              <label class="halus" for="az-conf">Ambang keyakinan</label>
+              <input class="chip" id="az-conf" type="number" value="0.1"
+                     min="0.01" max="0.99" step="0.05">
+              <span class="halus">Model teks jauh lebih ragu daripada model
+                terlatih, jadi 0,1 wajar di sini.</span>
+            </div>
+          </div>
+
+          <label class="az-src" id="az-src-gdino-lbl" hidden>
+            <input type="checkbox" id="az-s-gdino">
+            <span>GroundingDINO + SAM</span></label>
+          <div class="az-src-ko" id="az-ko-gdino" hidden>
+            <p class="halus">Menangkap lebih banyak objek lalu SAM merapikannya
+              jadi mask. Biayanya lebih banyak kotak ekstra yang perlu dihapus
+              saat verifikasi.</p>
+            {#- Ambangnya SENDIRI. Dulu ia diam-diam memakai ambang zero-shot
+                (0,1), bukan 0,25 yang diasumsikan server, dan itulah sebabnya
+                sumber ini terasa penuh derau. -#}
+            <div class="az-ambang">
+              <label class="halus" for="az-conf-gdino">Ambang keyakinan</label>
+              <input class="chip" id="az-conf-gdino" type="number" value="0.25"
+                     min="0.01" max="0.99" step="0.05">
+            </div>
+          </div>
+        </section>
+
+        <h4 class="az-langkah">Hasilnya ditulis sebagai</h4>
+        <div class="az-hasil">
+          {#- Bentuk keluaran jalan ini. Memaksanya di sini yang membuat satu
+              batch bisa punya mask produk DAN kotak logo: jalan pertama
+              poligon, jalan kedua kotak. -#}
+          <span><label class="halus" for="az-bentuk">Bentuk</label>
+            <select class="chip" id="az-bentuk">
+              <option value="">ikut format projek</option>
+              <option value="poligon">poligon (segmentasi)</option>
+              <option value="kotak">kotak (bbox)</option>
+            </select></span>
+          {#- Satu batch = satu produk yang sudah diketahui, jadi taksonomi
+              model ("botol") sering bukan nama yang dipakai dataset
+              ("botol-pet-ades"), dan prompt yang bagus untuk deteksi hampir
+              selalu buruk sebagai nama kelas. -#}
+          {#- Bisa DIPILIH dari kelas yang sudah ada, dan tetap bisa diketik
+              untuk nama baru. Mengetik dari nol tiap kali bukan cuma lambat:
+              satu huruf berbeda melahirkan kelas kembar yang baru ketahuan
+              jauh di kemudian hari, saat dataset sudah dibuat. <datalist>
+              dipakai, bukan <select>, justru supaya keduanya mungkin dalam
+              satu kolom. -#}
+          <span class="az-lebar2"><label class="halus" for="az-kelas-nama">Nama kelas</label>
+            <input class="chip" id="az-kelas-nama" type="text" maxlength="80"
+                   list="az-kelas-daftar" autocomplete="off"
+                   placeholder="pilih dari daftar atau ketik nama baru">
+            <datalist id="az-kelas-daftar"></datalist>
+            <span class="halus" id="az-kelas-ket">Dikosongkan berarti memakai
+              nama dari model atau dari nama objek yang dicari.</span></span>
+        </div>
+        <p class="az-awas" id="az-awas-kelas" hidden></p>
+        <p class="az-awas" id="az-awas-bentuk" hidden></p>
+
+        <details class="az-lanjut">
+          <summary>Setelan lanjutan</summary>
+          <div class="az-hasil">
+            <span><label class="halus" for="az-batas">Berhenti setelah</label>
+              <input class="chip" id="az-batas" type="number" value="1000"
+                     min="1" max="100000">
+              <span class="halus">gambar</span></span>
+            {#- Dua deteksi yang tumpang tindih lebih dari ini dianggap OBJEK
+                YANG SAMA. Terlalu rendah, dua objek berdampingan dilebur jadi
+                satu; terlalu tinggi, objek yang sama dari dua sumber jadi dua
+                kotak bertumpuk yang harus dihapus satu per satu. -#}
+            <span><label class="halus" for="az-iou">Ambang gabung (IoU)</label>
+              <input class="chip" id="az-iou" type="number" value="0.6"
+                     min="0.3" max="0.95" step="0.05"></span>
+          </div>
+          <p class="halus">Dua objek yang tumpang tindih lebih dari ambang
+            gabung dianggap objek yang sama dan ditulis satu kali. Berlaku juga
+            saat sumbernya cuma satu.</p>
+        </details>
+      </div>
+
+      <div id="az-maju"></div>
+    </div>
+    <div class="op-dlg-bawah">
+      <button class="wz-tbl wz-tbl-sek" type="button" id="az-batal" hidden>Batalkan</button>
+      {#- Alasan Mulai mati duduk di SEBELAH tombolnya. Dulu permintaan yang
+          pasti ditolak server baru dijawab toast sesudah ditekan. -#}
+      <span class="halus az-sebab" id="az-sebab" role="status"></span>
+      <span class="spacer"></span>
+      <button class="wz-tbl wz-tbl-sek" type="button" data-az-tutup>Tutup</button>
+      <button class="wz-tbl wz-tbl-pri" type="button" id="az-mulai">Mulai</button>
     </div>
   </div>
 </div>

@@ -976,7 +976,7 @@ def test_enam_tipe_bentuk_dibaca_pemindai(lingkungan):
     from app.services import scanner
 
     d, ip = _tulis_enam_bentuk(lingkungan)
-    sh, W, H = scanner.read_json(ip.with_suffix(".json"))
+    sh, W, H, _ = scanner.read_json(ip.with_suffix(".json"))
     assert [s["type"] for s in sh] == [
         "rectangle", "point", "line", "circle", "linestrip", "polygon"]
     # `pts` siap gambar: rectangle jadi 4 sudut, circle jadi poligon.
@@ -1038,7 +1038,7 @@ def test_bentuk_tanpa_luas_tidak_dinilai_sebagai_mask_kecil(lingkungan):
     from app.services import scanner
 
     d, ip = _tulis_enam_bentuk(lingkungan)
-    sh, W, H = scanner.read_json(ip.with_suffix(".json"))
+    sh, W, H, _ = scanner.read_json(ip.with_suffix(".json"))
     temuan = scanner.inspect(sh, W, H, has_ann=True)
     # `point` luasnya nol; kalau ikut dinilai, tiap titik akan selalu dilaporkan
     # sebagai "mask sangat kecil" dan temuan itu jadi kebisingan belaka.
@@ -2241,7 +2241,7 @@ def test_mengurutkan_tidak_merusak_saringan_kelas_yang_aktif(klien, lingkungan,
     # dan hasilnya benar-benar bertahan saat form itu dikirim
     lanjut = klien.get("/?c=botol&c=kaleng&m=dan&s=label-baru").text
     assert lanjut.count('class="card"') == 1, "hanya c-dua yang punya keduanya"
-    assert "1&ndash;1 dari <b>1</b>" in lanjut
+    assert "1&ndash;1 dari\n    <b>1 gambar</b>" in lanjut or "<b>1 gambar</b>" in lanjut
 
 
 def test_tombol_kartu_membedakan_melabeli_dari_menyunting(klien, lingkungan,
@@ -2506,15 +2506,15 @@ def test_grid_memotong_jadi_halaman_bukan_merender_semuanya(klien, lingkungan):
 
     h = klien.get("/").text
     assert h.count('class="card"') == 50, "bawaan 50 per halaman"
-    assert "1&ndash;50 dari <b>130</b>" in h
+    assert "1&ndash;50 dari" in h and "<b>130 gambar</b>" in h
 
     h2 = klien.get("/?hal=2").text
     assert h2.count('class="card"') == 50
-    assert "51&ndash;100 dari <b>130</b>" in h2
+    assert "51&ndash;100 dari" in h2 and "<b>130 gambar</b>" in h2
 
     h3 = klien.get("/?hal=3").text
     assert h3.count('class="card"') == 30, "halaman terakhir hanya sisanya"
-    assert "101&ndash;130 dari <b>130</b>" in h3
+    assert "101&ndash;130 dari" in h3 and "<b>130 gambar</b>" in h3
 
 
 def test_per_halaman_bisa_diubah_dan_nomor_di_luar_rentang_dijepit(
@@ -2556,7 +2556,7 @@ def test_mengubah_per_halaman_mempertahankan_gambar_yang_sedang_dilihat(
     # form "per halaman" mengirim nomor gambar pertama yang sedang terlihat
     assert 'name="dari" value="101"' in h
     lanjut = klien.get("/?per=50&dari=101").text
-    assert "101&ndash;130 dari <b>130</b>" in lanjut
+    assert "101&ndash;130 dari" in lanjut and "<b>130 gambar</b>" in lanjut
 
 
 def test_tautan_halaman_membawa_saringan_dan_saringan_mereset_halaman(

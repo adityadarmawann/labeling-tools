@@ -33,7 +33,22 @@
     const menu = $('jb-menu-kelas');
     if (!menu) return;
     const tombol = $('jb-kelas-tombol');
-    tombol.onclick = (ev) => { ev.stopPropagation(); menu.toggleAttribute('data-buka'); };
+    // aria-expanded DIPERBARUI. Templatnya menjanjikan atribut itu sejak dulu
+    // tetapi nilainya tak pernah berubah, jadi pembaca layar selalu diberi
+    // tahu menunya tertutup termasuk saat terbuka -- lebih buruk daripada
+    // tidak mencantumkannya sama sekali. Escape menutup dan mengembalikan
+    // fokus ke tombolnya.
+    const setel = (buka) => {
+      menu.toggleAttribute('data-buka', buka);
+      tombol.setAttribute('aria-expanded', buka ? 'true' : 'false');
+    };
+    tombol.onclick = (ev) => {
+      ev.stopPropagation(); setel(!menu.hasAttribute('data-buka'));
+    };
+    menu.addEventListener('keydown', (ev) => {
+      if (ev.key !== 'Escape') return;
+      ev.stopPropagation(); setel(false); tombol.focus();
+    });
     menu.addEventListener('click', (ev) => ev.stopPropagation());
     document.addEventListener('click', () => menu.removeAttribute('data-buka'));
   })();
@@ -224,4 +239,19 @@
   $('jb-batal-latar').onclick = () => latar(true);
   $('jb-hapus').onclick = hapus;
   perbarui();
+})();
+
+/* Pemilih urutan: ganti pilihan langsung memuat ulang dengan `s` baru, sambil
+   mempertahankan seluruh saringan yang sedang berlaku. Dibangun dari URL
+   halaman ini sendiri, bukan dari daftar kunci kedua yang bisa tertinggal. */
+(function () {
+  const sel = document.querySelector('[data-jb-urut]');
+  if (!sel) return;
+  sel.addEventListener('change', () => {
+    const u = new URL(location.href);
+    if (sel.value && sel.value !== 'nama') u.searchParams.set('s', sel.value);
+    else u.searchParams.delete('s');
+    u.searchParams.delete('hal');      // urutan baru -> mulai dari halaman 1
+    location.href = u.toString();
+  });
 })();

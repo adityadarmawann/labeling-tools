@@ -448,26 +448,80 @@ async function dariDrop(dt) {
   // Bedanya isi: keadaan berisi TAUTAN (pilihan tunggal, satu klik langsung
   // berlaku), dua lainnya berisi form bercentang yang butuh Terapkan — jadi
   // klik di dalam menu keadaan sengaja TIDAK dihentikan.
+  /*
+   * Satu pemasang untuk SEMUA dropdown saringan, lengkap dengan papan tiknya.
+   *
+   * Sebelum ini keadaan buka/tutup cuma atribut `data-buka`: tidak ada
+   * aria-expanded, tidak ada Escape, tidak ada navigasi panah. Pengguna papan
+   * tik bisa MEMBUKA menu kelas tetapi tidak bisa menutupnya, dan daftar yang
+   * bisa berisi lima puluh baris hanya bisa disusuri dengan Tab satu per satu.
+   * Menu akun di berkas ini sudah punya semuanya sejak dulu; menu saringan
+   * tertinggal.
+   */
+  function pasangMenu(mm, tombol, hentikanKlikDalam) {
+    if (!mm || !tombol) return;
+    const barisnya = () => [...mm.querySelectorAll(
+      '.menu-isi a, .menu-isi label, .menu-isi button, .menu-isi select, '
+      + '.menu-isi input:not([type=hidden])')]
+      .filter(el => el.offsetParent !== null);
+
+    function setel(buka) {
+      mm.toggleAttribute('data-buka', buka);
+      tombol.setAttribute('aria-expanded', buka ? 'true' : 'false');
+    }
+    tombol.setAttribute('aria-haspopup', 'true');
+    tombol.setAttribute('aria-expanded', 'false');
+    if (!tombol.getAttribute('type')) tombol.setAttribute('type', 'button');
+
+    tombol.onclick = ev => {
+      ev.stopPropagation();
+      setel(!mm.hasAttribute('data-buka'));
+    };
+    tombol.addEventListener('keydown', ev => {
+      if (ev.key === 'ArrowDown' || ev.key === 'Enter' || ev.key === ' ') {
+        if (!mm.hasAttribute('data-buka')) {
+          ev.preventDefault(); setel(true);
+          const b = barisnya(); if (b.length) b[0].focus();
+        }
+      }
+    });
+    mm.addEventListener('keydown', ev => {
+      if (ev.key === 'Escape') {
+        // Fokus dikembalikan ke tombolnya: tanpa itu fokus tertinggal di
+        // dalam menu yang baru saja disembunyikan dan Tab berikutnya
+        // melompat ke tempat yang tak terduga.
+        ev.stopPropagation(); setel(false); tombol.focus(); return;
+      }
+      if (ev.key !== 'ArrowDown' && ev.key !== 'ArrowUp'
+          && ev.key !== 'Home' && ev.key !== 'End') return;
+      const b = barisnya();
+      if (!b.length) return;
+      ev.preventDefault();
+      const i = b.indexOf(document.activeElement);
+      const ke = ev.key === 'Home' ? 0
+        : ev.key === 'End' ? b.length - 1
+          : ev.key === 'ArrowDown' ? Math.min(i + 1, b.length - 1)
+            : Math.max(i - 1, 0);
+      b[ke < 0 ? 0 : ke].focus();
+    });
+    if (hentikanKlikDalam) mm.addEventListener('click', ev => ev.stopPropagation());
+    document.addEventListener('click', () => setel(false));
+  }
+
+  // Dropdown keadaan dan tag: bentuknya sama dengan dropdown kelas. Bedanya
+  // isi: keadaan berisi TAUTAN (pilihan tunggal, satu klik langsung berlaku),
+  // dua lainnya berisi form bercentang yang butuh Terapkan -- jadi klik di
+  // dalam menu keadaan sengaja TIDAK dihentikan.
   for (const [wadah, tombol, tautan] of [['menu-keadaan', 'keadaan-tombol', true],
                                          ['menu-tag', 'tag-tombol', false],
                                          ['menu-split', 'split-tombol', false]]) {
-    const mm = document.getElementById(wadah);
-    if (!mm) continue;
-    document.getElementById(tombol).onclick = ev => {
-      ev.stopPropagation();
-      mm.toggleAttribute('data-buka');
-    };
-    if (!tautan) mm.addEventListener('click', ev => ev.stopPropagation());
-    document.addEventListener('click', () => mm.removeAttribute('data-buka'));
+    pasangMenu(document.getElementById(wadah),
+               document.getElementById(tombol), !tautan);
   }
 
   const m = document.getElementById('menu-kelas');
   if (!m) return;
-  document.getElementById('kelas-tombol').onclick = ev => {
-    ev.stopPropagation();
-    m.toggleAttribute('data-buka');
-  };
-  m.addEventListener('click', ev => ev.stopPropagation());
+  pasangMenu(m, document.getElementById('kelas-tombol'), true);
 
   // Penanda `data-on` pada segmen yang aktif. Dipasang lewat JS, bukan
   // selektor :has(), supaya tampilannya tidak bergantung pada dukungan
@@ -505,6 +559,176 @@ async function dariDrop(dt) {
   });
 })();
 
+
+/*
+ * Pemilih projek tujuan: dipakai setiap kali isi satu projek disalin ke
+ * projek lain.
+ *
+ * Dulu dua tempat memakai prompt() peramban, dan prompt() tak bisa dua hal
+ * yang justru paling dibutuhkan di sini: menampilkan projek mana saja yang
+ * ADA (namanya harus diketik ulang, salah satu huruf saja berarti gagal) dan
+ * menanyakan apakah labelnya ikut. Keduanya juga lahir dengan gaya peramban,
+ * bukan gaya aplikasi ini, dan tak kenal tema terang/gelap.
+ *
+ *   const p = await pilihProjek({judul, keterangan, daftar, aksi, labelKet});
+ *   if (!p) return;                  // dibatalkan
+ *   p.tujuan                         // nama projek terpilih
+ *   p.label                          // true = anotasinya ikut disalin
+ *
+ * `daftar` = [{nama, jumlah, anotasi, jenis}] dari /api/projek/daftar.
+ */
+const pilihProjek = (() => {
+  let akar = null;
+  let tutupDgn = null;               // resolve() dialog yang sedang terbuka
+
+  function bangun() {
+    if (akar) return akar;
+    akar = document.createElement('div');
+    akar.className = 'dlg';
+    akar.id = 'sp-dlg';
+    akar.hidden = true;
+    akar.innerHTML = `
+      <div class="dlg-tirai" data-sp-tutup></div>
+      <div class="dlg-kotak" role="dialog" aria-modal="true"
+           aria-labelledby="sp-judul">
+        <div class="op-dlg-atas">
+          <h3 id="sp-judul"></h3>
+          <p class="halus" id="sp-ket"></p>
+          <input class="op-cari" id="sp-cari" type="search" autocomplete="off"
+                 placeholder="Cari projek&hellip;" aria-label="Cari projek">
+        </div>
+        <div class="op-gulung" id="sp-daftar" role="radiogroup"
+             aria-labelledby="sp-judul"></div>
+        <div class="op-dlg-bawah">
+          <label class="sp-centang">
+            <input type="checkbox" id="sp-label">
+            <span>
+              <b>Salin beserta label</b>
+              <i id="sp-label-ket"></i>
+            </span>
+          </label>
+          <span class="spacer"></span>
+          <button class="wz-tbl wz-tbl-sek" type="button" data-sp-tutup>Batal</button>
+          <button class="wz-tbl wz-tbl-pri" type="button" id="sp-ok" disabled></button>
+        </div>
+      </div>`;
+    document.body.appendChild(akar);
+
+    for (const x of akar.querySelectorAll('[data-sp-tutup]')) {
+      x.addEventListener('click', () => selesai(null));
+    }
+    akar.querySelector('#sp-cari').addEventListener('input', saring);
+    akar.querySelector('#sp-ok').addEventListener('click', () => {
+      const t = terpilih();
+      if (t) selesai({ tujuan: t, label: akar.querySelector('#sp-label').checked });
+    });
+    // Panah naik/turun menyusuri daftar, Enter memilih, Esc membatalkan.
+    // Tanpa ini pemilih yang isinya 40 projek cuma bisa dipakai dengan tetikus.
+    akar.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Escape') { ev.preventDefault(); selesai(null); return; }
+      if (ev.key === 'Enter') {
+        const t = terpilih();
+        if (t) {
+          ev.preventDefault();
+          selesai({ tujuan: t, label: akar.querySelector('#sp-label').checked });
+        }
+        return;
+      }
+      if (ev.key !== 'ArrowDown' && ev.key !== 'ArrowUp') return;
+      ev.preventDefault();
+      const baris = [...akar.querySelectorAll('.sp-baris:not([hidden])')];
+      if (!baris.length) return;
+      const i = baris.findIndex(b => b.getAttribute('aria-checked') === 'true');
+      const ke = ev.key === 'ArrowDown'
+        ? Math.min(baris.length - 1, i + 1)
+        : Math.max(0, (i < 0 ? 0 : i - 1));
+      pilih(baris[ke]);
+      baris[ke].scrollIntoView({ block: 'nearest' });
+    });
+    return akar;
+  }
+
+  const terpilih = () => {
+    const b = akar.querySelector('.sp-baris[aria-checked="true"]:not([hidden])');
+    return b ? b.dataset.nama : '';
+  };
+
+  function pilih(b) {
+    for (const x of akar.querySelectorAll('.sp-baris')) {
+      x.setAttribute('aria-checked', x === b ? 'true' : 'false');
+      x.tabIndex = x === b ? 0 : -1;
+    }
+    akar.querySelector('#sp-ok').disabled = !b;
+  }
+
+  function saring() {
+    const q = (akar.querySelector('#sp-cari').value || '').trim().toLowerCase();
+    let tampak = 0;
+    for (const b of akar.querySelectorAll('.sp-baris')) {
+      const cocok = !q || b.dataset.nama.toLowerCase().includes(q);
+      b.hidden = !cocok;
+      if (cocok) tampak++;
+    }
+    akar.querySelector('#sp-hampa').hidden = tampak > 0;
+    // Pilihan yang tersaring hilang tak boleh tetap terhitung terpilih:
+    // tombolnya akan mengirim nama yang tak kelihatan di layar.
+    const t = akar.querySelector('.sp-baris[aria-checked="true"]');
+    if (!t || t.hidden) {
+      pilih(akar.querySelector('.sp-baris:not([hidden])'));
+    }
+  }
+
+  function selesai(hasil) {
+    if (!akar) return;
+    akar.hidden = true;
+    const f = tutupDgn;
+    tutupDgn = null;
+    if (f) f(hasil);
+  }
+
+  return function pilihProjek(opsi) {
+    const o = opsi || {};
+    const d = bangun();
+    const daftar = (o.daftar || []).filter(x => x && x.nama);
+
+    d.querySelector('#sp-judul').textContent = o.judul || 'Salin ke projek lain';
+    d.querySelector('#sp-ket').textContent = o.keterangan || '';
+    d.querySelector('#sp-ok').textContent = o.aksi || 'Salin';
+    d.querySelector('#sp-label').checked = o.labelAwal !== false;
+    d.querySelector('#sp-label-ket').textContent = o.labelKet
+      || 'Kalau tidak dicentang, gambarnya saja yang disalin.';
+    d.querySelector('#sp-cari').value = '';
+
+    const isi = d.querySelector('#sp-daftar');
+    isi.innerHTML = daftar.map((x) => {
+      const ket = [];
+      if (x.jumlah != null) ket.push(esc(String(x.jumlah)) + ' gambar');
+      if (x.anotasi != null) ket.push(esc(String(x.anotasi)) + ' beranotasi');
+      if (x.jenis) ket.push(esc(String(x.jenis)));
+      return `<button type="button" class="sp-baris" role="radio"
+                      aria-checked="false" tabindex="-1"
+                      data-nama="${esc(x.nama)}">
+                <span class="sp-nama">${esc(x.nama)}</span>
+                <span class="sp-ket">${ket.join(' · ')}</span>
+              </button>`;
+    }).join('') + '<p class="op-hampa" id="sp-hampa" hidden>Tak ada projek '
+      + 'yang cocok dengan pencarianmu</p>';
+    for (const b of isi.querySelectorAll('.sp-baris')) {
+      b.addEventListener('click', () => pilih(b));
+      // Klik ganda = pilih lalu jalankan: kebiasaan daftar berkas di mana pun.
+      b.addEventListener('dblclick', () => {
+        pilih(b);
+        selesai({ tujuan: b.dataset.nama, label: d.querySelector('#sp-label').checked });
+      });
+    }
+    pilih(isi.querySelector('.sp-baris'));
+    d.hidden = false;
+    // Fokus ke kotak cari: pada daftar panjang, mengetik dua huruf jauh lebih
+    // cepat daripada menggulir, dan panah tetap bekerja dari sana.
+    setTimeout(() => d.querySelector('#sp-cari').focus(), 0);
+    return new Promise((res) => { tutupDgn = res; });
+  };
+})();
 
 /*
  * Progres bersama.
@@ -1651,19 +1875,28 @@ const Progres = (() => {
       return;
     }
     if (a === 'gabung') {
-      const lain = semua.filter(x => x.nama !== nama).map(x => x.nama);
+      const lain = semua.filter(x => x.nama !== nama);
       if (!lain.length) { toast('Belum ada projek lain untuk digabung'); return; }
-      const tujuan = prompt(
-        `Salin isi "${nama}" ke projek mana?\n\nPilihan: ${lain.join(', ')}`
-        + `\n\n"${nama}" sendiri TIDAK dihapus.`, lain[0]);
-      if (!tujuan) return;
-      const j = await kirim('/api/projek/gabung', {sumber: nama, tujuan},
+      const pil = await pilihProjek({
+        judul: `Salin isi "${nama}" ke projek lain`,
+        keterangan: `"${nama}" sendiri tidak dihapus. Berkas yang sudah ada `
+          + 'di tujuan tidak ditimpa.',
+        daftar: lain,
+        aksi: 'Salin ke sini',
+        labelKet: 'Kalau tidak dicentang, gambarnya saja yang disalin dan '
+          + 'tujuan mulai dari nol.',
+      });
+      if (!pil) return;
+      const tujuan = pil.tujuan;
+      const j = await kirim('/api/projek/gabung',
+                            {sumber: nama, tujuan, label: pil.label ? 1 : 0},
                             `Menggabungkan ${nama} ke ${tujuan}`,
                             '/api/impor/kemajuan');
       if (j && j.ok) {
-        toast(`${n(j.ditambah)} berkas masuk ke ${j.tujuan}`);
+        const ikut = pil.label ? 'beserta label' : 'gambar saja';
+        toast(`${n(j.ditambah)} berkas masuk ke ${j.tujuan} (${ikut})`);
         note.textContent = `${n(j.ditambah)} berkas ditambahkan ke `
-          + `${j.tujuan}, ${n(j.sudah_ada)} sudah ada di sana.`;
+          + `${j.tujuan} (${ikut}), ${n(j.sudah_ada)} sudah ada di sana.`;
         muat();
       }
       return;

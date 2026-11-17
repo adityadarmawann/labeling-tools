@@ -40,6 +40,7 @@ dan tanpa itu tiap orang mengarang gayanya sendiri.
 from __future__ import annotations
 
 import json
+import statistics
 import re
 import secrets
 import threading
@@ -342,6 +343,170 @@ def boleh_labeli(data: dict, akun: str, kunci: str, batch: str = "") -> bool:
     return ditugaskan
 
 
+def tata_contoh(ds: Path, titik: list, maks_berkas: int = 400) -> dict | None:
+    """Tata letak keypoint contoh, diambil dari anotasi yang SUDAH ada.
+
+    Dipakai "Drop semua" pada projek yang belum pernah menyimpan tata letak
+    default. Cadangan lamanya menebar titik di sebuah ELIPS: pada projek
+    lapangan basket hasilnya cincin bernomor yang tak menyerupai apa pun, dan
+    tiap titik harus digeser dari nol. Terbukti di prod -- uji elips atas
+    berkas yang dihasilkannya memberi r kuadrat rata-rata 1,003.
+
+    Yang dikembalikan SATU instance nyata, bukan rata-rata. Me-median-kan
+    banyak instance terlihat menggoda karena meredam derau, tetapi tiap gambar
+    diambil dari sudut kamera yang berbeda: hasilnya campuran beberapa
+    perspektif sekaligus, dan bentuknya berhenti menyerupai lapangan. Yang
+    dipilih instance yang PALING DEKAT ke median -- median dipakai sebagai
+    penilai, bukan sebagai jawaban.
+
+    Dikembalikan juga `kotak`: letak khas instance itu di dalam GAMBAR, dalam
+    pecahan lebar dan tinggi. Tanpa itu, tata letak sebagus apa pun tetap
+    dijatuhkan di kotak 40% di tengah bingkai, padahal lapangan sungguhan
+    hampir memenuhi gambar -- dan seluruhnya harus diperbesar manual.
+
+    None kalau tak ada satu pun instance lengkap untuk dicontoh.
+    """
+    from . import tag as _tag                      # noqa: F401  (konsistensi impor)
+
+    ds = Path(ds)
+    nama = [str(t) for t in (titik or [])]
+    if not nama:
+        return None
+    berkas = sorted(p for p in ds.glob("*.json") if not p.name.startswith("."))
+    if not berkas:
+        berkas = sorted(p for p in ds.glob("images/*.json")
+                        if not p.name.startswith("."))
+    # Disampel merata, bukan diambil dari depan: nama berkas sering berurut
+    # per klip, dan 400 pertama bisa saja satu sudut kamera saja.
+    if len(berkas) > maks_berkas:
+        langkah = len(berkas) / maks_berkas
+        berkas = [berkas[int(i * langkah)] for i in range(maks_berkas)]
+
+    tata: list[list[list[float]]] = []
+    kotak: list[list[float]] = []
+    for p in berkas:
+        try:
+            isi = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        gw = float(isi.get("imageWidth") or 0) or None
+        gh = float(isi.get("imageHeight") or 0) or None
+        grup: dict = {}
+        for sh in isi.get("shapes") or []:
+            g = sh.get("group_id")
+            if g is None:
+                continue
+            r = grup.setdefault(g, {"t": {}, "k": None})
+            if sh.get("shape_type") == "point":
+                r["t"][str(sh.get("label"))] = sh.get("points", [[0, 0]])[0]
+            elif sh.get("shape_type") == "rectangle":
+                r["k"] = sh.get("points")
+        for r in grup.values():
+            if r["k"] is None or len(r["t"]) != len(nama):
+                continue
+            if any(n not in r["t"] for n in nama):
+                continue
+            (x0, y0), (x1, y1) = r["k"]
+            w, h = (x1 - x0) or 1, (y1 - y0) or 1
+            tata.append([[min(1.0, max(0.0, (r["t"][n][0] - x0) / w)),
+                          min(1.0, max(0.0, (r["t"][n][1] - y0) / h))]
+                         for n in nama])
+            if gw and gh:
+                kotak.append([x0 / gw, y0 / gh, w / gw, h / gh])
+    if not tata:
+        return None
+
+    med = [[statistics.median(t[i][a] for t in tata) for a in (0, 1)]
+           for i in range(len(nama))]
+
+    def simpangan(t):
+        return sum(((t[i][0] - med[i][0]) ** 2
+                    + (t[i][1] - med[i][1]) ** 2) ** 0.5 for i in range(len(nama)))
+
+    pilih = min(range(len(tata)), key=lambda i: simpangan(tata[i]))
+    # Kotaknya di-median-kan (bukan diambil dari instance terpilih): letak
+    # lapangan di bingkai jauh lebih stabil antar gambar daripada bentuk
+    # perspektifnya, jadi median di sini meredam derau tanpa merusak apa pun.
+    if kotak:
+        km = [statistics.median(k[a] for k in kotak) for a in range(4)]
+    else:
+        km = [0.3, 0.3, 0.4, 0.4]
+    return {"tata": tata[pilih], "kotak": km, "dari": len(tata)}
+
+
+def boleh_labeli_lepas(data: dict, akun: str) -> bool:
+    """Boleh mengerjakan gambar yang BELUM ditugaskan ke siapa pun.
+
+    Pemilik dan Editor jelas boleh. Yang sering terlewat: Labeler berakses
+    "semua" juga boleh menurut boleh_labeli -- haknya memang berlaku untuk
+    gambar apa pun di projek ini.
+
+    Tanpa fungsi ini, antarmuka menggerbangi kolom "Belum ditugaskan" dengan
+    boleh_bagi (pemilik/Editor saja), sehingga pemilik yang memberi seseorang
+    peran "Labeler menyeluruh" mendapati orang itu login dan tidak menemukan
+    satu gambar pun untuk dikerjakan: papan menyembunyikan kolomnya, halaman
+    job hanya memuat yang sudah dibagi, dan kisi Dataset hanya memuat yang
+    sudah dinyatakan masuk. Perannya ada, jalannya tidak.
+    """
+    if boleh_bagi(data, akun):
+        return True
+    if peran_anggota(data, akun) != "pelabel":
+        return False
+    return ((data["anggota"].get(akun) or {}).get("akses")) == "semua"
+
+
+def target_autolabel(items: list, data: dict, ds: Path, *,
+                     tid: str | None = None, batch: str | None = None,
+                     sasaran: str = "belum") -> list | None:
+    """Gambar yang akan dikerjakan satu jalan auto-label. None = tugas asing.
+
+    SATU pemilih, dipakai pekerjanya maupun pencacah di antarmuka. Kalau
+    antarmuka menurunkan aturannya sendiri, angka yang dijanjikan di dialog
+    dan gambar yang benar-benar dikerjakan boleh berbeda tanpa ada satu pun
+    yang terlihat salah. Pemetaan sasaran -> saring tinggal di sini, bukan
+    disalin di dua tempat.
+    """
+    sasaran = sasaran if sasaran in SASARAN else "belum"
+    if batch is not None:
+        return gambar_belum_batch(items, ds, batch, sasaran)
+    return gambar_konteks_job(
+        items, data, ds, tid,
+        saring="belum" if sasaran == "belum"
+        else ("ai" if sasaran == "dicek" else "semua"))
+
+
+def cacah_autolabel(items: list, data: dict, ds: Path, akun: str, *,
+                    tid: str | None = None,
+                    batch: str | None = None) -> dict:
+    """{sasaran: {"total": n, "boleh": m}} untuk KETIGA pilihan sekaligus.
+
+    Ketiganya dihitung sekali jalan supaya dialog bisa mengganti angkanya
+    saat pilihan "Kerjakan" diubah tanpa menunggu server lagi.
+
+    `boleh` memisahkan gambar yang benar-benar boleh ditulis akun ini. Berkas
+    tugas dan berkas tag dibaca SEKALI lalu dipakai ulang; tolak_tulis membaca
+    keduanya pada setiap panggilan, dan pada projek 11 ribu gambar itu berarti
+    22 ribu pembacaan berkas hanya untuk satu angka di kepala dialog.
+    """
+    from . import tag as _tag
+
+    tdata = _tag.baca(ds)
+    keluar: dict[str, dict] = {}
+    for s in SASARAN:
+        target = target_autolabel(items, data, ds, tid=tid, batch=batch,
+                                  sasaran=s)
+        if target is None:
+            return {}
+        boleh = 0
+        for it in target:
+            k = kunci_gambar(ds, it["img"])
+            b = _tag.untuk(tdata, k).get("batch", "")
+            if not alasan_tolak(data, akun, k, b):
+                boleh += 1
+        keluar[s] = {"total": len(target), "boleh": boleh}
+    return keluar
+
+
 def tolak_tulis(ds: Path, akun: str, gambar: Path) -> str:
     """
     Penjaga satu pintu untuk SEMUA jalur yang mengubah label sebuah gambar.
@@ -639,6 +804,7 @@ def masukkan(ds: Path, kunci_daftar: list[str], pemilik: str = "") -> dict:
 
 def gambar_konteks_job(items: list[dict], data: dict, ds: Path, tid: str, *,
                        saring: str = "semua", dsf: str = "semua",
+                       cari: str = "", urut: str = "nama",
                        kelas=(), latar: bool = False) -> list[dict] | None:
     """Item gambar TERURUT (nama) untuk satu konteks job + filter — sama persis
     dengan yang ditampilkan halaman rincian job (routers/tugas.halaman_rincian).
@@ -667,7 +833,23 @@ def gambar_konteks_job(items: list[dict], data: dict, ds: Path, tid: str, *,
         berlabel = sev != "stop"           # latar TERMASUK sudah dianotasi
         if saring == "belum" and berlabel:
             continue
+        # Lingkup sasaran auto-label dipetakan ke saringan yang sudah ada:
+        # "ai" = gambar kosong ATAU hasil AI yang belum diverifikasi, yaitu
+        # yang boleh ditambahi oleh jalan auto-label berikutnya.
+        if saring == "ai" and berlabel and not it.get("perlu_dicek"):
+            continue
         if saring == "sudah" and not berlabel:
+            continue
+        # "dicek" = sudah ADA anotasi tapi hasil auto-label yang belum
+        # diverifikasi manusia. `perlu_dicek` sudah ada di item dari scan (gratis,
+        # ikut cache) -> tak perlu baca .json lagi di sini.
+        if saring == "dicek" and (not berlabel or not it.get("perlu_dicek")):
+            continue
+        # "verif" = sudah ada anotasi DAN sudah dilewati manusia. Dulu tak ada
+        # saringan ini sama sekali: "sudah" mencampur hasil AI mentah dengan
+        # yang benar-benar sudah diperiksa orang, sehingga tidak ada satu pun
+        # cara melihat berapa yang betul-betul selesai diverifikasi.
+        if saring == "verif" and (not berlabel or it.get("perlu_dicek")):
             continue
         if dsf == "di" and not sudah_dimasukkan(data, k):
             continue
@@ -678,8 +860,74 @@ def gambar_konteks_job(items: list[dict], data: dict, ds: Path, tid: str, *,
             if not ((latar and sev == "bg") or (kpset & kls)):
                 continue
         keluar.append(it)
-    keluar.sort(key=lambda x: x["img"].name)
-    return keluar
+    # Cari nama berkas dan urutan, aturan yang SAMA dengan rute job. Tanpa
+    # keduanya, panah kiri/kanan kanvas menyusuri subset yang urutannya berbeda
+    # dari yang dilihat orang di kisi: "berikutnya" melompat ke gambar yang
+    # tidak bertetangga di layar.
+    if cari:
+        pola = cari.lower()
+        keluar = [x for x in keluar if pola in x["img"].name.lower()]
+    from . import konteks_kisi
+    return konteks_kisi.urutkan(keluar, urut if urut in konteks_kisi.URUT
+                                else konteks_kisi.URUT_BAWAAN)
+
+
+# Gambar mana yang boleh disentuh auto-label.
+#   "belum"  -- belum beranotasi sama sekali (perilaku lama, paling aman)
+#   "dicek"  -- itu DITAMBAH hasil AI yang belum diverifikasi manusia
+#   "semua"  -- itu DITAMBAH yang sudah diverifikasi manusia
+SASARAN = ("belum", "dicek", "semua")
+
+
+def _boleh_sasaran(it: dict, sasaran: str) -> bool:
+    """Apakah gambar ini boleh jadi sasaran auto-label untuk lingkup `sasaran`.
+
+    Aturan lama cuma satu: gambar yang belum beranotasi. Itu membuat jalan
+    KEDUA mustahil -- sesudah jalan pertama, seluruh gambar batch sudah punya
+    bentuk, jadi menjalankan auto-label lagi (mis. untuk menambah kotak logo
+    sesudah mask produk) menemukan nol sasaran.
+
+    "dicek" membuka gambar yang isinya masih murni hasil AI. Kerja manusia
+    tetap tak tersentuh, karena menyimpan manual membersihkan tanda itu.
+    """
+    from . import scanner
+
+    kosong = scanner.severity(it) == "stop"
+    if sasaran == "belum" or kosong:
+        return kosong
+    if sasaran == "dicek":
+        return bool(it.get("perlu_dicek"))
+    return sasaran == "semua"
+
+
+def gambar_belum_batch(items: list, ds: Path, batch: str,
+                       sasaran: str = "belum") -> list:
+    """Gambar BELUM teranotasi (severity 'stop') milik satu unggahan/batch.
+
+    Sepasang dengan gambar_konteks_job: keduanya pemilih LINGKUP, dan tinggal
+    di modul yang sama supaya setiap jalur auto-label (zero-shot, gabungan,
+    pre-label model terlatih) memakai aturan yang sama persis. Sebelumnya ia
+    privat di autolabel_zero, sehingga jalur pre-label -- satu-satunya yang
+    bisa projek pose -- tak punya cara memakai lingkup batch sama sekali.
+
+    Batch gambar disimpan di .tag.json (lihat services/tag.py), bukan di item
+    scanner, jadi dicocokkan lewat kunci gambar. batch '' = unggahan tanpa nama.
+    Hak tulis per gambar tetap dijaga pemanggil (tolak_tulis).
+    """
+    from . import scanner
+    from . import tag as _tag
+    tdata = _tag.baca(ds)
+    batch = str(batch or "")
+    sasaran = sasaran if sasaran in SASARAN else "belum"
+    out = []
+    for it in items:
+        if not _boleh_sasaran(it, sasaran):
+            continue
+        k = _tag.kunci_gambar(ds, it["img"])
+        if str(_tag.untuk(tdata, k).get("batch") or "") == batch:
+            out.append(it)
+    out.sort(key=lambda x: x["img"].name)
+    return out
 
 
 JENIS_ANOTASI = ("poligon", "kotak", "kerangka")
@@ -1895,6 +2143,7 @@ URUT_PAPAN = {
 
 def papan(data: dict, berlabel: set[str], semua: set[str],
           batch_dari: dict[str, str] | None = None,
+          dicek: set[str] | None = None,
           urut: str = "terbaru", sumber_impor: str = "") -> dict:
     """
     Bahan untuk papan Anotasi: tiga kolom.
@@ -1904,12 +2153,19 @@ def papan(data: dict, berlabel: set[str], semua: set[str],
     objek atau belum cuma pemindainya.
     """
     bd = batch_dari or {}
+    dk = dicek or set()
     ditugaskan = set()
     kartu = []
     for tid, t in data["tugas"].items():
         g = [k for k in (t.get("gambar") or []) if k in semua]
         ditugaskan.update(g)
         n_label = sum(1 for k in g if k in berlabel)
+        # Hasil auto-label di dalam job INI yang belum diperiksa manusia.
+        # Dulu hanya kartu BATCH yang menghitungnya, jadi hasil auto-label yang
+        # dijalankan atas sebuah job tak punya satu pun jejak di papan: satu-
+        # satunya cara menemukannya adalah membuka tiap job lalu kebetulan
+        # melihat tab "Belum diverifikasi" di dalamnya.
+        n_dicek = sum(1 for k in g if k in dk)
         n_dataset = sum(1 for k in g if sudah_dimasukkan(data, k))
         # SELESAI menuntut seluruhnya sudah DIKERJAKAN, bukan cuma sudah
         # dimasukkan. Memasukkan gambar yang belum dilabeli ke dataset memang
@@ -1942,7 +2198,7 @@ def papan(data: dict, berlabel: set[str], semua: set[str],
             "n_asal": len(t.get("gambar") or []),
             "judul": judul or f"Dibagi {t.get('dibuat', '')[:10]}",
             "dibuat": t.get("dibuat", ""), "catatan": t.get("catatan", ""),
-            "jumlah": len(g), "berlabel": n_label,
+            "jumlah": len(g), "berlabel": n_label, "dicek": n_dicek,
             "di_dataset": n_dataset, "keadaan": keadaan,
             "persen": round(n_label * 100 / len(g)) if g else 0,
         })
@@ -1979,13 +2235,22 @@ def papan(data: dict, berlabel: set[str], semua: set[str],
     # menghitung dengan aturan sendiri akan menawarkan "masukkan 2" lalu
     # rutenya menjawab tidak ada apa-apa untuk dimasukkan.
     siap_kelompok: dict[str, int] = {}
+    # Berapa di antaranya hasil auto-label yang BELUM diperiksa manusia.
+    # Tanpa angka ini, menjalankan "Auto-label semua" pada sebuah unggahan
+    # tidak meninggalkan jejak apa pun di kartunya: tak ada yang menunjukkan
+    # ada pekerjaan verifikasi yang menunggu, dan tak ada jalan menuju
+    # gambar-gambarnya kecuali membaginya jadi job lebih dulu.
+    dicek_kelompok: dict[str, int] = {}
     for k in belum:
         b = bd.get(k) or ""
         kelompok[b] = kelompok.get(b, 0) + 1
         if k in berlabel and not sudah_dimasukkan(data, k):
             siap_kelompok[b] = siap_kelompok.get(b, 0) + 1
+        if k in dk:
+            dicek_kelompok[b] = dicek_kelompok.get(b, 0) + 1
     belum_batch = sorted(
-        ({"batch": nama, "n": n, "siap": siap_kelompok.get(nama, 0)}
+        ({"batch": nama, "n": n, "siap": siap_kelompok.get(nama, 0),
+          "dicek": dicek_kelompok.get(nama, 0)}
          for nama, n in kelompok.items()),
         key=lambda x: (x["batch"] == "", -x["n"], x["batch"]))
 

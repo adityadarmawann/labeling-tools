@@ -16,6 +16,7 @@
   --ink:#1b2430; --ink-dim:#5f6d7e; --ink-faint:#93a0ae;
   --ok:#1f9d8f; --warn:#c47a10; --stop:#d64a2c;
   --warn-bg:rgba(196,122,16,.10);   /* latar kotak peringatan */
+  --ok-bg:rgba(31,157,143,.10);     /* latar kotak "beres", pasangan warn-bg */
   --aksi:#177f73; --aksi-ink:#ffffff;   /* tombol aksi utama, kontras di dua tema */
   --raised:#fbfcfd;        /* permukaan sedikit terangkat: tombol, kotak isian */
   --sunk:#eef1f5;          /* permukaan cekung: latar gambar, alur bilah progres */
@@ -43,6 +44,7 @@
     --ink:#e6ebf2; --ink-dim:#a3aebd; --ink-faint:#788493;
     --ok:#43b3a4; --warn:#d59a3a; --stop:#e2705a;
     --warn-bg:rgba(213,154,58,.14);
+    --ok-bg:rgba(67,179,164,.14);
     --aksi:#4ec2b2; --aksi-ink:#0c1a18;
     --raised:#212832; --sunk:#161b22; --hover:#252d38;
     --on-ink:#12161c;
@@ -60,6 +62,7 @@
   --ink:#e6ebf2; --ink-dim:#a3aebd; --ink-faint:#788493;
   --ok:#43b3a4; --warn:#d59a3a; --stop:#e2705a;
   --warn-bg:rgba(213,154,58,.14);
+  --ok-bg:rgba(67,179,164,.14);
   --aksi:#4ec2b2; --aksi-ink:#0c1a18;
   --raised:#212832; --sunk:#161b22; --hover:#252d38;
   --on-ink:#12161c;
@@ -875,6 +878,30 @@ input:focus{outline:0;border-color:var(--ok)}
    membuka tiga dropdown satu per satu. --aksi, bukan --stop: membatalkan
    saringan bukan tindakan berbahaya. */
 .saring-bersih{margin-left:auto;color:var(--aksi);border-color:var(--aksi)}
+
+/* Pil saringan aktif, satu per saringan, masing-masing bisa dibuang sendiri.
+   Dibedakan dari .saring-bersih: yang ini menyebut ISI saringannya dan hanya
+   membuang satu, sementara yang itu mengosongkan semuanya. */
+/* fieldset tak boleh membawa bingkai bawaan peramban: ia dipakai di sini
+   semata untuk menamai grup centang bagi pembaca layar. */
+fieldset.vh-fgrup{border:0;margin:0;padding:0;min-width:0}
+fieldset.vh-fgrup>legend{padding:0;float:none}
+
+/* Fokus papan tik harus terlihat pada SEMUA chip, termasuk yang jadi
+   tombol dropdown saringan. Sebelumnya ia bergantung pada cincin bawaan
+   peramban saja, tidak konsisten dengan .lh-btn dan .akun-tombol yang sudah
+   punya aturannya sendiri. */
+.chip:focus-visible,.kd-baris:focus-visible,.kelas-baris:focus-visible,
+.saring-pil:focus-visible,.seg-opt:focus-visible{
+  outline:2px solid var(--aksi);outline-offset:2px;border-radius:99px}
+.saring-pil{display:inline-flex;align-items:center;gap:6px;
+  background:var(--sunk);border-color:var(--garis);color:var(--ink)}
+.saring-pil span[aria-hidden]{color:var(--ink-dim);font-size:14px;line-height:1}
+.saring-pil:hover{border-color:var(--ink-dim)}
+.saring-pil:hover span[aria-hidden]{color:var(--ink)}
+/* Sesudah deretan pil, 'Bersihkan semua' harus menempel di ujung deretan,
+   bukan terlempar ke kanan oleh margin-left:auto miliknya sendiri. */
+.saring-pil + .saring-bersih{margin-left:0}
 .saring-bersih:hover{background:var(--ok-lembut);color:var(--aksi);
   border-color:var(--aksi)}
 
@@ -1082,6 +1109,22 @@ input:focus{outline:0;border-color:var(--ok)}
 .kelas-baris{display:flex;align-items:center;gap:9px;padding:7px 8px;margin:0;
   font-size:12.5px;color:var(--ink-dim);cursor:pointer;border-radius:7px;
   transition:background .1s}
+
+/* Dua angka per kelas: jumlah GAMBAR lalu jumlah OBJEK, masing-masing dengan
+   satuannya di baris kepala. Keduanya rata kanan dengan lebar tetap supaya
+   kolomnya benar-benar berbaris dan bisa dibandingkan sekilas; tabular-nums
+   mencegah digit bergeser antar baris. */
+.kelas-baris-2 b, .kelas-baris-2 em, .kelas-kepala b, .kelas-kepala em{
+  min-width:3.2em;text-align:right;font-variant-numeric:tabular-nums;
+  font-style:normal}
+.kelas-baris-2 em{color:var(--ink-dim);font-weight:600}
+.kelas-kepala{display:flex;align-items:center;gap:8px;padding:2px 8px 4px;
+  font-size:10px;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--ink-dim)}
+.kelas-kepala>span:first-child{flex:1}
+/* Satuan pada baris Latar / Belum dilabeli, yang memang hitungan gambar. */
+.kelas-baris b small{font-size:9.5px;font-weight:600;color:var(--ink-dim);
+  margin-left:2px}
 .kelas-baris:hover{background:var(--hover);color:var(--ink)}
 
 /* Kotak centang digambar sendiri: yang bawaan sistem tampil beda-beda di tiap
@@ -1099,8 +1142,14 @@ input:focus{outline:0;border-color:var(--ok)}
 
 .kelas-baris i{width:9px;height:9px;border-radius:3px;flex:0 0 auto}
 .kelas-baris span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Angka saringan memakai --ink-dim, BUKAN --ink-faint.
+
+   Angka itulah yang paling sering dibaca orang di menu saringan, dan dengan
+   --ink-faint (#93a0ae) di atas --sunk (#eef1f5) kontrasnya sekitar 2,4:1 pada
+   tema terang, jauh di bawah 4,5:1 yang disyaratkan WCAG AA, pada ukuran 11px
+   pula. Tema gelap memang sudah lolos; yang diperbaiki di sini tema terang. */
 .kelas-baris b{flex:0 0 auto;font-variant-numeric:tabular-nums;font-size:11px;
-  font-weight:600;color:var(--ink-faint);background:var(--sunk);
+  font-weight:600;color:var(--ink-dim);background:var(--sunk);
   padding:1px 6px;border-radius:99px;min-width:24px;text-align:center}
 .kelas-tanpa .kelas-baris span{font-style:italic}
 
@@ -1110,7 +1159,7 @@ input:focus{outline:0;border-color:var(--ok)}
    elipsis di tengah baris yang sebetulnya masih lapang: "hasil augment…  4". */
 .kelas-baris .kelas-nama{flex:1 1 auto;min-width:0}
 .kelas-baris .kelas-n{flex:0 0 auto;font-variant-numeric:tabular-nums;
-  font-size:11px;font-weight:600;color:var(--ink-faint);background:var(--sunk);
+  font-size:11px;font-weight:600;color:var(--ink-dim);background:var(--sunk);
   padding:1px 6px;border-radius:99px;min-width:24px;text-align:center}
 
 /* Kaki menu bercentang (Tag, Bagian): Terapkan + Bersihkan.
@@ -1296,6 +1345,14 @@ input:focus{outline:0;border-color:var(--ok)}
 .pmenu a:hover,.pmenu button:hover{background:var(--hover)}
 .pmenu .bahaya{color:var(--stop)}
 .pmenu .bahaya:hover{background:var(--warn-bg)}
+/* Lencana "AI" di kartu kisi: hasil auto-label yang belum diverifikasi.
+   Dipojok KANAN-bawah gambar supaya tidak berebut tempat dengan lencana
+   keadaan (kiri-bawah) maupun kotak centang borongan (kiri-atas). */
+.kartu-ai{position:absolute;right:6px;bottom:6px;z-index:2;
+  padding:1px 6px;border-radius:999px;font-size:10px;font-weight:700;
+  letter-spacing:.04em;background:var(--warn);color:#fff;
+  box-shadow:0 1px 3px rgba(0,0,0,.35)}
+
 
 /* Sedang dibuka: rel + latar + pil, bertumpuk. Rel 3px meminjam bahasa
    .card .rail yang sudah dipakai halaman grid; konsistensi ke dalam lebih
@@ -2366,6 +2423,18 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
 .an-mulai{align-self:flex-start;margin-top:2px;font-size:12px;
   color:var(--aksi);text-decoration:none;font-weight:600}
 .an-mulai:hover{text-decoration:underline}
+/* Auto-label sebagai tombol link beraksen amber (sekerabat dengan lencana
+   "perlu dicek"), supaya beda dari aksi teal "Lihat isinya"/"Bagi tugas" dan
+   langsung terbaca sebagai jalur AI. Reset tampilan bawaan <button>. */
+button.an-mulai.an-autolabel{background:none;border:0;cursor:pointer;
+  font-family:inherit;color:var(--warn)}
+/* Dulu di sini ada .az-sumber/.az-src/.az-src-ko sendiri, termasuk
+   `.az-src-ko.mati{pointer-events:none}` yang mengunci kolom nama objek
+   milik seluruh kelompok teks. Gaya dialog auto-label kini tinggal di satu
+   tempat, di bawah bersama .az-grup; kalau dibiarkan di sini, aturan lamanya
+   tetap berlaku karena yang baru hanya menimpa opacity, bukan
+   pointer-events. */
+.az-unggah{cursor:pointer;font-size:12px}
 .an-buang{flex:0 0 auto;background:transparent;border:0;cursor:pointer;
   color:var(--ink-faint);font-size:15px;line-height:1;padding:2px 4px}
 .an-buang:hover{color:var(--stop)}
@@ -2497,6 +2566,9 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
   margin-bottom:10px}
 .jb-cap-ds{background:var(--aksi)}
 .jb-cap-bg{background:var(--latar)}
+/* Hasil auto-label yang belum diverifikasi manusia: amber (peringatan lembut),
+   beda dari hijau "anotasi" yang sudah dikonfirmasi. */
+.jb-cap-dicek{background:var(--warn)}
 
 @media (max-width:1000px){
   .jb-tata{flex-direction:column}
@@ -2505,7 +2577,13 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
 /* HP: baris tahap jadi satu baris penuh yang digulir mendatar, supaya tombol
    tahap tak berdesakan dengan saringan kelas dan tetap terbaca utuh. */
 @media (max-width:560px){
-  .seg.jb-tab{flex:1 1 100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  /* Cari nama berkas + pemilih urutan di halaman job. Ikut membungkus ke baris
+   berikutnya seperti kontrol saringan lain di baris yang sama. */
+.jb-cari{display:inline-flex;align-items:center;gap:6px}
+.jb-cari input[type=search]{min-width:15rem;max-width:100%}
+.jb-urut{display:inline-flex;align-items:center;gap:6px}
+@media (max-width:820px){.jb-cari input[type=search]{min-width:9rem}}
+.seg.jb-tab{flex:1 1 100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
 }
 /* Angka di kontrol tersegmen menempel ke katanya: "Semua50". Diberi jarak di
    sini, bukan spasi di templat, supaya tidak ada spasi yang ikut tersalin saat
@@ -3068,7 +3146,7 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
    Kotaknya jadi kolom tiga bagian: judul tetap, isi menggulung, kaki tetap.
    .dlg-kotak biasa menggulung SELURUH kotak, jadi judul dan tombol tutup ikut
    hilang ke atas begitu isinya 21 baris. */
-#op-dlg .dlg-kotak{width:min(560px,100%);max-height:min(660px,84vh);max-height:min(660px,84dvh);
+#op-dlg .dlg-kotak,#sp-dlg .dlg-kotak,#az-dlg .dlg-kotak{width:min(560px,100%);max-height:min(660px,84vh);max-height:min(660px,84dvh);
   padding:0;display:flex;flex-direction:column;overflow:hidden}
 .op-dlg-atas{flex:0 0 auto;padding:18px 20px 12px;border-bottom:1px solid var(--line)}
 .op-dlg-atas h3{margin:0 0 4px}
@@ -3260,6 +3338,136 @@ body.grid-tetap .hal{position:static;flex:0 0 auto}
 .op-dlg-bawah{flex:0 0 auto;display:flex;align-items:center;gap:10px;
   padding:12px 20px;border-top:1px solid var(--line);background:var(--raised)}
 .op-dlg-bawah .spacer{flex:1}
+
+/* ------------------------------------------------- pemilih projek tujuan
+   Baris projek dibuat dari <button role="radio">, bukan <input type=radio> +
+   label: yang dibutuhkan di sini satu baris penuh yang bisa diklik di mana
+   saja, bisa disusuri panah, dan tetap terbaca pembaca layar sebagai pilihan
+   tunggal. Warnanya seluruhnya dari token tema, jadi terang dan gelap ikut
+   sendiri tanpa aturan terpisah. */
+.sp-baris{display:flex;align-items:baseline;gap:10px;width:100%;
+  padding:9px 12px;border:1px solid transparent;border-radius:8px;
+  background:transparent;color:var(--ink);font:inherit;text-align:left;
+  cursor:pointer}
+.sp-baris+.sp-baris{margin-top:2px}
+.sp-baris:hover{background:var(--hover)}
+.sp-baris[aria-checked="true"]{background:var(--ok-bg);border-color:var(--ok)}
+.sp-baris:focus-visible{outline:2px solid var(--ok);outline-offset:-1px}
+.sp-nama{flex:1 1 auto;min-width:0;font-size:13px;font-weight:600;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sp-ket{flex:0 0 auto;font-size:11.5px;color:var(--ink-faint);
+  font-variant-numeric:tabular-nums}
+.sp-baris[aria-checked="true"] .sp-ket{color:var(--ink-dim)}
+#sp-daftar{padding-top:8px}
+
+/* Centang "salin beserta label" duduk di kaki, sebaris dengan tombolnya:
+   keputusan ini bagian dari tindakan yang akan dijalankan, bukan setelan
+   terpisah, jadi tempatnya di sebelah tombol yang menjalankannya. */
+.sp-centang{display:flex;align-items:flex-start;gap:8px;cursor:pointer;
+  flex:1 1 auto;min-width:0}
+/* Label tombol tak boleh dipatahkan jadi dua baris: tingginya sudah dikunci
+   36px, jadi baris kedua tercetak keluar dari tombolnya. */
+.op-dlg-bawah .wz-tbl{white-space:nowrap}
+
+/* ------------------------------------------------------ dialog auto-label
+   Empat sumber dulu berjajar sebagai empat centang setara, dan tak ada apa
+   pun di layar yang mengatakan bahwa dua di antaranya berbagi satu kolom
+   nama objek dan satu ambang. Sekarang mereka dua KELOMPOK: yang dipakai
+   bersama tinggal di dalam kotak kelompoknya, jadi aturan kombinasinya
+   terbaca dari bentuknya, bukan dari paragraf bantuan. */
+.az-lingkup{display:flex;align-items:center;gap:8px;margin-top:12px;flex-wrap:wrap}
+.az-lingkup select{flex:0 1 auto;min-width:0}
+/* Cacahnya keterangan milik kontrol di atasnya, jadi dirapatkan ke sana.
+   .halus bawaannya display:block + margin-top:10px, dan di dalam flex yang
+   membungkus itu membuatnya terbaca sebagai kalimat lepas, bukan sebagai
+   jawaban atas pilihan yang baru saja dibuat. */
+.az-lingkup>span.halus{flex:1 1 100%;margin:2px 0 0;font-size:11.5px;
+  color:var(--ink-dim)}
+
+.az-langkah{margin:16px 0 2px;font-size:11px;text-transform:uppercase;
+  letter-spacing:.09em;color:var(--ink-faint);font-weight:700}
+.az-langkah:first-child{margin-top:12px}
+.az-langkah-ket{margin:0 0 10px}
+
+.az-grup{border:1px solid var(--line);border-radius:10px;background:var(--panel);
+  padding:12px 14px;margin-bottom:10px}
+.az-grup h5{margin:0 0 2px;font-size:13px;color:var(--ink)}
+.az-grup>p.halus{margin:0 0 10px}
+.az-grup .az-src{display:flex;align-items:center;gap:8px;margin-top:8px;
+  font-size:13px;font-weight:600;color:var(--ink);cursor:pointer}
+.az-grup .az-src input{accent-color:var(--ok);flex:0 0 auto}
+.az-src-ko{margin:6px 0 0 24px}
+/* Diredupkan, TIDAK dikunci dari tetikus: kendali yang mati masih harus bisa
+   difokus dan menjelaskan dirinya. pointer-events:none di sini dulu yang
+   mengunci kolom nama objek milik seluruh kelompok. */
+.az-src-ko.mati{opacity:.45}
+.az-lebar{display:block;width:100%;margin-top:2px}
+/* Label dan kotak angkanya satu baris yang rapat; keterangannya baris
+   SENDIRI di bawah. Dibiarkan ikut membungkus di baris yang sama, flex
+   melemparkan keterangannya ke bawah lalu merenggangkan label dan kotaknya
+   ke dua ujung, dan keduanya jadi tak tampak sepasang. */
+.az-ambang{display:grid;grid-template-columns:auto auto 1fr;gap:4px 8px;
+  align-items:center;margin-top:10px}
+.az-ambang input{width:5.5rem}
+/* Hanya SPAN keterangan yang melebar penuh. Ditulis `.az-ambang .halus`,
+   aturannya kena label di sebelah kiri juga (keduanya .halus), dan labelnya
+   terdorong ke barisnya sendiri -- persis gejala yang mau dihindari. */
+.az-ambang>span.halus{grid-column:1/-1;margin:0}
+.az-ambang>label.halus{margin:0}
+
+.az-hasil{display:grid;grid-template-columns:repeat(auto-fit,minmax(13rem,1fr));
+  gap:10px 14px;align-items:end}
+.az-hasil>span{display:flex;flex-direction:column;gap:4px;min-width:0}
+.az-hasil .az-lebar2{grid-column:1/-1}
+.az-hasil input,.az-hasil select{width:100%}
+
+.az-awas{margin:10px 0 0;padding:8px 10px;border-radius:8px;font-size:12px;
+  line-height:1.5;background:var(--warn-bg);border:1px solid var(--warn);
+  color:var(--ink)}
+.az-halang:empty{display:none}
+.az-halang{margin:4px 0 0;padding:12px 14px;border-radius:9px;font-size:12.5px;
+  line-height:1.55;background:var(--warn-bg);border:1px solid var(--warn);
+  color:var(--ink)}
+
+.az-lanjut{margin-top:14px;border-top:1px solid var(--line);padding-top:10px}
+.az-lanjut summary{cursor:pointer;font-size:12.5px;color:var(--ink-dim);
+  font-weight:600}
+.az-lanjut summary:focus-visible{outline:2px solid var(--ok);outline-offset:2px}
+.az-lanjut>p.halus{margin:8px 0 0}
+#az-maju:empty{display:none}
+.az-sebab{margin:0;flex:0 1 auto;min-width:0;color:var(--warn)}
+.az-sebab:empty{display:none}
+
+/* ------------------------------------------------- panduan auto-label
+   Tombolnya sebaris dengan judul supaya terlihat sejak pandangan pertama:
+   orang yang baru membuka dialog ini belum tahu ada aturan yang perlu
+   dibaca, jadi pintunya tak boleh disembunyikan di bawah setelan. */
+.az-judul-baris{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.az-judul-baris h3{flex:1 1 auto;min-width:0}
+.az-bantu{display:inline-flex;align-items:center;gap:5px;flex:0 0 auto;
+  padding:4px 10px;border:1px solid var(--line2);border-radius:999px;
+  background:var(--raised);color:var(--ink-dim);font:inherit;font-size:11.5px;
+  font-weight:600;cursor:pointer}
+.az-bantu svg{width:15px;height:15px;flex:0 0 auto}
+.az-bantu:hover{background:var(--hover);color:var(--ink);border-color:var(--ink-faint)}
+.az-bantu[aria-expanded="true"]{background:var(--ok-bg);border-color:var(--ok);
+  color:var(--ink)}
+.az-bantu:focus-visible{outline:2px solid var(--ok);outline-offset:2px}
+
+.az-panduan{padding:4px 0 8px;font-size:12.5px;line-height:1.65;color:var(--ink-dim)}
+.az-panduan h4{margin:16px 0 4px;font-size:13px;color:var(--ink)}
+.az-panduan h4:first-child{margin-top:6px}
+.az-panduan p{margin:0 0 7px}
+.az-panduan b{color:var(--ink);font-weight:600}
+.az-panduan-tutup{margin-top:12px}
+.sp-centang input{margin-top:2px;flex:0 0 auto;accent-color:var(--ok)}
+.sp-centang b{display:block;font-size:12.5px;font-weight:600;color:var(--ink)}
+.sp-centang i{display:block;font-style:normal;font-size:11px;
+  color:var(--ink-faint);line-height:1.4}
+@media (max-width:560px){
+  .op-dlg-bawah{flex-wrap:wrap}
+  .sp-centang{max-width:none;order:-1;width:100%}
+}
 
 @media (max-width:900px){
   .wz{max-width:none}

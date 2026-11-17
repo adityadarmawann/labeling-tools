@@ -141,6 +141,10 @@
         return bukaPrelabel(id);
       }
 
+      if (b.dataset.aksi === 'autolabel') {
+        return bukaAutolabel({ tid: id });
+      }
+
       if (b.dataset.aksi === 'catatan') {
         const el = kartu.querySelector('.an-catatan');
         const v = prompt('Catatan untuk pelabelnya:', el ? el.textContent.trim() : '');
@@ -173,30 +177,33 @@
     };
   }
 
-  // ---- kirim gambar satu job ke projek lain milik sendiri (GAMBAR SAJA, disalin).
+  // ---- kirim gambar satu job ke projek lain milik sendiri (disalin).
   // Sumbernya tak berubah; gambar mendarat di "Belum ditugaskan" tujuan sbg batch
-  // senama judul job, siap dianotasi di sana.
+  // senama judul job, siap dianotasi di sana. Anotasinya ikut kalau dipilih.
   async function kirimKeProjek(id, judul) {
     const dsNama = isi.dataset.ds || '';
     const d = await send('/api/projek/daftar');
-    const lain = ((d && d.projek) || [])
-      .map((x) => x.nama).filter((nm) => nm && nm !== dsNama);
+    const lain = ((d && d.projek) || []).filter((x) => x && x.nama && x.nama !== dsNama);
     if (!lain.length) { toast('Belum ada projek lain untuk dikirimi'); return; }
-    const tujuan = prompt(
-      `Kirim (salin) gambar job "${judul}" ke projek mana?\n\n`
-      + `Pilihan: ${lain.join(', ')}\n\n`
-      + 'GAMBAR SAJA yang disalin (tanpa anotasi). Job ini di sini tidak berubah.',
-      lain[0]);
-    if (tujuan === null) return;
-    const t = (tujuan || '').trim();
-    if (!lain.includes(t)) { toast(`Projek "${t}" tak ada di daftar projekmu`); return; }
-    toast('Menyalin gambar ke ' + t + '…');
+    const pil = await pilihProjek({
+      judul: `Kirim gambar "${judul}" ke projek lain`,
+      keterangan: 'Gambarnya DISALIN. Job ini di sini tidak berubah, dan '
+        + 'gambar yang sudah ada di tujuan tidak ditimpa.',
+      daftar: lain,
+      aksi: 'Kirim ke sini',
+      labelKet: 'Anotasi hanya ikut untuk gambar yang benar-benar baru di '
+        + 'tujuan, supaya label orang lain di sana tak tertimpa.',
+    });
+    if (!pil) return;
+    toast('Menyalin gambar ke ' + pil.tujuan + '…');
     const j = await send('/api/tugas/kirim-ke-projek', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ job: id, tujuan: t, ds: dsNama }),
+      body: JSON.stringify({ job: id, tujuan: pil.tujuan, ds: dsNama,
+                             label: !!pil.label }),
     });
     if (!j || !j.ok) { toast((j && j.error) || 'gagal mengirim'); return; }
     toast(`${j.disalin} gambar disalin ke ${j.tujuan}`
+          + (j.label ? ` · ${j.label_ikut} label ikut` : '')
           + (j.sudah_ada ? ` · ${j.sudah_ada} sudah ada di sana` : ''));
   }
 
@@ -369,6 +376,23 @@
     mulai.textContent = 'Mulai'; mulai.disabled = false;
   }
 
+  /*
+   * Rincian "dilewati". Satu angka gabungan tak memberi petunjuk apa-apa:
+   * gambar yang modelnya memang tak menemukan apa pun berarti ganti
+   * prompt/model, sedangkan gambar yang tak boleh ditulis berarti minta akses.
+   * Dua tindakan yang sama sekali berbeda, dan dulu dilaporkan dengan kalimat
+   * yang sama persis.
+   */
+  function rincianLewat(m) {
+    const n = m.dilewati || 0;
+    if (!n) return '';
+    const bagian = [];
+    if (m.kosong) bagian.push(m.kosong + ' tanpa objek ditemukan');
+    if (m.ditolak) bagian.push(m.ditolak + ' tanpa izin tulis');
+    return ', ' + n + ' dilewati'
+      + (bagian.length ? ' (' + bagian.join(', ') + ')' : '');
+  }
+
   function plPantau() {
     plHenti();
     const box = plEl('pl-maju');
@@ -385,8 +409,8 @@
       }
       if (m.selesai) {
         box.innerHTML = '<div style="padding:12px 16px"><p><b>Selesai.</b> '
-          + (m.diproses || 0) + ' gambar diisi, ' + (m.objek || 0) + ' objek, '
-          + (m.dilewati || 0) + ' dilewati.</p>'
+          + (m.diproses || 0) + ' gambar diisi, ' + (m.objek || 0) + ' objek'
+          + rincianLewat(m) + '.</p>'
           + '<button class="wz-tbl wz-tbl-pri" type="button" onclick="location.reload()">'
           + 'Muat ulang untuk melihat</button></div>';
         plSelesai(); return;
@@ -434,6 +458,429 @@
     document.addEventListener('keydown', (ev) => {
       if (ev.key === 'Escape' && !plDlg.hidden) plTutup();
     });
+  }
+
+  // ---- Auto-label tanpa latih (zero-shot YOLO-World / SAM 3) --------------
+  const azDlg = document.getElementById('az-dlg');
+  let azScope = null;       // {tid: id} untuk satu job, atau {batch: nama} sebatch
+  let azTimer = null;
+  const azEl = (id) => document.getElementById(id);
+  const azEsc = (s) => String(s).replace(/[&<>"]/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  function azHenti() { if (azTimer) { clearInterval(azTimer); azTimer = null; } }
+  function azTutup() { azHenti(); if (azDlg) azDlg.hidden = true; }
+  function azSelesai() {
+    azHenti();
+    azEl('az-batal').hidden = true;
+    const mulai = azEl('az-mulai');
+    if (mulai) mulai.disabled = false;
+  }
+
+  // Tiap centang sumber -> blok konfigurasinya.
+  const AZ_KO = { 'az-s-terlatih': 'az-terlatih',
+                  'az-s-eksternal': 'az-ko-eksternal',
+                  'az-s-zeroshot': 'az-ko-zeroshot',
+                  'az-s-gdino': 'az-ko-gdino' };
+  /* Yang dimatikan KENDALINYA, bukan bloknya.
+   *
+   * Dulu blok yang tak dicentang diberi kelas .mati yang memasang
+   * pointer-events:none, dan kolom nama objek tinggal di dalam blok
+   * Zero-shot. Jadi mematikan Zero-shot membuat kolom itu tak bisa diketik
+   * sama sekali, padahal GroundingDINO membacanya -- resep "recall tinggi"
+   * mustahil disetel. Kolomnya kini naik ke tingkat kelompok, dan yang
+   * diredupkan cuma isi blok sumbernya sendiri.
+   *
+   * Sekalian: kedua <select> model LEPAS dari disabled. Keduanya ditulis
+   * disabled di markup dan tak pernah dinyalakan, jadi memilih latihan mana
+   * atau model .pt mana yang dipakai memang tidak pernah bisa. */
+  function azToggle(cbId) {
+    const blok = azEl(AZ_KO[cbId]);
+    const nyala = azEl(cbId).checked;
+    blok.classList.toggle('mati', !nyala);
+    const kendali = blok.matches('select,input')
+      ? [blok] : [...blok.querySelectorAll('select,input,button')];
+    for (const k of kendali) {
+      if (k.type !== 'file') k.disabled = !nyala;
+    }
+  }
+
+  function azIsiInfo(j, resetCek) {
+    azEl('az-model').innerHTML = (j.teks || []).map((m) => {
+      const unduh = m.terunduh ? '' : ' — unduh ~' + (m.unduh_mb || '?') + ' MB sekali';
+      const bentuk = m.bentuk === 'polygon' ? 'poligon' : 'kotak';
+      return '<option value="' + azEsc(m.model) + '"'
+        + (m.model === j.model_bawaan ? ' selected' : '') + '>'
+        + azEsc(m.nama || m.model) + ' (' + bentuk + ')' + azEsc(unduh) + '</option>';
+    }).join('');
+    const ter = j.terlatih || [];
+    azEl('az-terlatih').innerHTML = ter.length
+      ? ter.map((m) => '<option value="' + m.nomor + '" data-kelas="'
+          + ((m.kelas || []).length) + '">Latihan L' + m.nomor
+          + (m.versi != null ? ' (v' + m.versi + ')' : '') + ' — '
+          + ((m.kelas || []).length) + ' kelas</option>').join('')
+      : '<option value="">(belum ada model terlatih)</option>';
+    const ext = j.eksternal || [];
+    azEl('az-eksternal').innerHTML = ext.length
+      ? ext.map((m) => '<option value="' + azEsc(m.nama) + '">' + azEsc(m.nama)
+          + (m.task ? ' (' + azEsc(m.task) + ')' : '') + '</option>').join('')
+      : '<option value="">(belum ada model diunggah)</option>';
+    if (!azEl('az-prompt').value) {
+      azEl('az-prompt').value = (j.prompt_bawaan || []).join(', ');
+    }
+    // Kelas yang sudah ada di projek, supaya nama kelas hasil bisa DIPILIH.
+    // Mengetik dari nol tiap kali bukan cuma lambat: satu huruf berbeda
+    // melahirkan kelas kembar yang baru ketahuan jauh di kemudian hari.
+    const dl = azEl('az-kelas-daftar');
+    if (dl) {
+      dl.innerHTML = (j.kelas || [])
+        .map((k) => '<option value="' + azEsc(k) + '"></option>').join('');
+      azEl('az-kelas-ket').textContent = (j.kelas || []).length
+        ? 'Pilih salah satu dari ' + (j.kelas || []).length + ' kelas projek, '
+          + 'atau ketik nama baru. Dikosongkan berarti memakai nama dari model '
+          + 'atau dari nama objek yang dicari.'
+        : 'Projek ini belum punya kelas, jadi ketik sendiri namanya. '
+          + 'Dikosongkan berarti memakai nama dari model atau dari nama objek '
+          + 'yang dicari.';
+    }
+    // GroundingDINO hanya ditawarkan kalau paketnya ada (server GPU).
+    const gd = !!j.groundingdino_siap;
+    azEl('az-src-gdino-lbl').hidden = !gd;
+    azEl('az-ko-gdino').hidden = !gd;
+    if (resetCek) {
+      // Bawaan masuk akal: zero-shot nyala; model terlatih nyala kalau ada.
+      azEl('az-s-zeroshot').checked = true;
+      azEl('az-s-terlatih').checked = ter.length > 0;
+      azEl('az-s-eksternal').checked = false;
+      azEl('az-s-gdino').checked = false;      // opt-in (lebih noisy)
+      for (const id of Object.keys(AZ_KO)) azToggle(id);
+    }
+  }
+
+  /* Keterangan lingkup: selain "belum", hasilnya DITAMBAHKAN ke yang sudah
+     ada, bukan menggantinya. Itu satu-satunya hal yang bisa mengejutkan dari
+     pilihan ini, jadi disebut di sebelahnya, bukan di dokumentasi. */
+  let azCacah = null;        // {sasaran: {total, boleh}} dari /info
+
+  const azAngka = (n) => Number(n).toLocaleString('id-ID');
+
+  /* Berapa gambar yang akan dikerjakan, untuk pilihan "Kerjakan" yang sedang
+     dipilih. Tanpa angka ini "berhenti setelah 1000 gambar" cuma tebakan
+     tanpa jangkar, dan satu-satunya cara tahu lingkupnya kosong adalah
+     menjalankannya dulu lalu membaca "0 diproses". */
+  function azKetSasaran() {
+    const v = azEl('az-sasaran').value;
+    const ket = azEl('az-sasaran-ket');
+    const c = azCacah && azCacah[v];
+    const tambah = v === 'belum' ? ''
+      : ' Bentuk baru ditambahkan ke yang sudah ada, bukan menggantinya.';
+    if (!c) { ket.textContent = tambah.trim(); azMulaiSiap(); return; }
+    let t = azAngka(c.total) + ' gambar';
+    // Gambar yang tak boleh ditulis akun ini tetap masuk lingkup lalu
+    // dilewati saat jalan. Disebut di sini, bukan baru muncul di hasil.
+    if (c.boleh < c.total) {
+      t += ', ' + azAngka(c.total - c.boleh) + ' di antaranya tak bisa kamu tulis';
+    }
+    ket.textContent = t + tambah;
+    azMulaiSiap();
+  }
+
+  /* Mulai hanya menyala kalau permintaannya memang akan lolos di server:
+     ada gambarnya, dan ada sumbernya. Alasannya ditaruh di sebelah tombol,
+     bukan di toast yang baru muncul sesudah ditekan. */
+  function azMulaiSiap() {
+    const mulai = azEl('az-mulai');
+    if (!mulai || mulai.textContent === 'Memuat…') return;
+    const v = azEl('az-sasaran').value;
+    const c = azCacah && azCacah[v];
+    const adaSumber = ['az-s-terlatih', 'az-s-eksternal', 'az-s-zeroshot',
+                       'az-s-gdino'].some((id) => azEl(id).checked);
+    let sebab = '';
+    if (c && c.boleh === 0) {
+      sebab = c.total === 0
+        ? 'Tidak ada gambar yang cocok. Ganti pilihan "Kerjakan".'
+        : 'Semua gambar di lingkup ini tidak bisa kamu tulis.';
+    } else if (!adaSumber) {
+      sebab = 'Pilih dulu satu sumber.';
+    }
+    azEl('az-sebab').textContent = sebab;
+    mulai.disabled = !!sebab;
+  }
+
+  for (const id of ['az-s-terlatih', 'az-s-eksternal', 'az-s-zeroshot',
+                    'az-s-gdino']) {
+    const el = azEl(id);
+    if (el) el.addEventListener('change', azMulaiSiap);
+  }
+  for (const id of ['az-kelas-nama', 'az-bentuk', 'az-terlatih',
+                    'az-s-terlatih', 'az-s-gdino', 'az-prompt',
+                    'az-s-zeroshot']) {
+    const el = azEl(id);
+    if (el) el.addEventListener('change', azAwas);
+    if (el && el.tagName === 'INPUT' && el.type === 'text') {
+      el.addEventListener('input', azAwas);
+    }
+  }
+  if (azEl('az-sasaran')) azEl('az-sasaran').addEventListener('change', azKetSasaran);
+
+  async function bukaAutolabel(scope) {
+    if (!azDlg) return;
+    azScope = scope;          // {tid} atau {batch}
+    azHenti();
+    azDlg.hidden = false;
+    azPanduan(false);          // selalu mulai dari setelan, bukan panduan basi
+    azEl('az-maju').innerHTML = '';
+    azEl('az-batal').hidden = true;
+    azEl('az-unggah-status').textContent = '';
+    const mulai = azEl('az-mulai');
+    mulai.disabled = true; mulai.textContent = 'Memuat…';
+    // Lingkup ikut dikirim: cacahnya harus cacah gambar JOB/BATCH ini,
+    // bukan seluruh projek.
+    const q = new URLSearchParams();
+    if (azScope && azScope.tid) q.set('tid', azScope.tid);
+    if (azScope && azScope.batch != null) q.set('batch', azScope.batch);
+    const j = await send('/api/autolabel/info'
+      + (q.toString() ? '?' + q.toString() : ''));
+    if (!j || !j.ok) {
+      azEl('az-maju').innerHTML = '<p class="bad" style="padding:12px 16px">'
+        + azEsc((j && j.error) || 'gagal memuat') + '</p>';
+      mulai.textContent = 'Mulai'; return;
+    }
+    azCacah = (j.cacah && Object.keys(j.cacah).length) ? j.cacah : null;
+    azIsiInfo(j, true);
+    mulai.textContent = 'Mulai';
+    /* Dua keadaan membuat dialog ini tak bisa dipakai sama sekali, dan dulu
+       dua-duanya baru ketahuan SESUDAH Mulai ditekan: orang menyetel sumber,
+       ambang dan nama kelas lebih dulu, lalu dijawab satu baris merah.
+       Projek kerangka bahkan tak pernah disebut di antarmuka sama sekali --
+       penolakannya hanya hidup di dalam pekerja. */
+    if (azHalang(j)) { mulai.disabled = true; return; }
+    azKetSasaran();      // mengisi cacah lalu menilai tombol Mulai
+    azAwas();
+  }
+
+  /* Panduan. Menggantikan isian supaya bisa dibaca tanpa terpotong kotak
+     setelan, dan tombol Mulai ikut dimatikan selama dibaca: menekan Mulai
+     dari balik panduan berarti menjalankan setelan yang sedang tak terlihat. */
+  let azTerhalang = false;
+
+  function azPanduan(buka) {
+    const pan = azEl('az-panduan');
+    const tbl = azEl('az-bantu');
+    if (!pan || !tbl) return;
+    pan.hidden = !buka;
+    tbl.setAttribute('aria-expanded', buka ? 'true' : 'false');
+    // Saat terhalang (projek kerangka / training jalan), isian memang sudah
+    // disembunyikan azHalang; jangan dimunculkan kembali saat panduan ditutup.
+    azEl('az-atur').hidden = buka || azTerhalang;
+    const mulai = azEl('az-mulai');
+    if (buka) { mulai.disabled = true; } else if (!azTerhalang) { azMulaiSiap(); }
+    if (buka) pan.scrollTop = 0;
+  }
+
+  if (azEl('az-bantu')) {
+    azEl('az-bantu').addEventListener('click', () => {
+      azPanduan(azEl('az-panduan').hidden);
+    });
+  }
+  if (azEl('az-panduan-tutup')) {
+    azEl('az-panduan-tutup').addEventListener('click', () => azPanduan(false));
+  }
+
+  /* Pesan yang MENGGANTI seluruh isian. Mengembalikan true kalau dialog ini
+     memang tak bisa dipakai sekarang. */
+  function azHalang(j) {
+    const kotak = azEl('az-halang');
+    const atur = azEl('az-atur');
+    let html = '';
+    if (j.jenis === 'kerangka') {
+      html = '<b>Projek kerangka (pose) belum bisa auto-label gabungan.</b> '
+        + 'Pakai "Pre-label dengan AI", yang memakai model pose projek ini.';
+    } else if (j.training_aktif) {
+      html = '<b>Training sedang berjalan di server ini</b>, jadi auto-label '
+        + 'dinonaktifkan sampai selesai. Anotasi manual tetap bisa.';
+    }
+    kotak.innerHTML = html;
+    kotak.hidden = !html;
+    azTerhalang = !!html;
+    atur.hidden = azTerhalang || !azEl('az-panduan').hidden;
+    return azTerhalang;
+  }
+
+  /* Peringatan yang hanya muncul saat pasangan pilihannya memang bikin
+     kejutan. Keduanya dulu terjadi diam-diam. */
+  function azAwas() {
+    const nama = (azEl('az-kelas-nama').value || '').trim();
+    const nKelas = parseInt(azEl('az-terlatih').selectedOptions.length
+      ? (azEl('az-terlatih').selectedOptions[0].dataset.kelas || '0') : '0', 10);
+    const pakaiTerlatih = azEl('az-s-terlatih').checked;
+    const wKelas = azEl('az-awas-kelas');
+    // Satu nama dipakai untuk SEMUA objek dari SEMUA sumber. Pada model
+    // berkelas banyak itu melenyapkan taksonominya tanpa sepatah kata pun.
+    if (nama && pakaiTerlatih && nKelas > 1) {
+      wKelas.textContent = 'Semua objek dari semua sumber akan diberi nama "'
+        + nama + '", termasuk ' + nKelas + ' kelas milik model terlatih.';
+      wKelas.hidden = false;
+    } else { wKelas.hidden = true; }
+
+    // Beberapa nama objek dalam satu jalan. Kotaknya tetap benar, tetapi
+    // kelasnya tersebar acak: diukur di projek paragon, 40 dari 40 objek
+    // dapat kelas yang salah meski kedua produknya jelas berbeda bentuknya.
+    // Satu nama per jalan membuat semuanya dapat kelas yang sama, dan yang
+    // perlu dibetulkan tangan tinggal yang minoritas.
+    const wPrompt = azEl('az-awas-prompt');
+    const pakaiTeks = azEl('az-s-zeroshot').checked || azEl('az-s-gdino').checked;
+    const nNama = (azEl('az-prompt').value || '').split(',')
+      .map((x) => x.trim()).filter(Boolean).length;
+    if (pakaiTeks && nNama > 1) {
+      wPrompt.textContent = 'Ada ' + nNama + ' nama objek di satu jalan. '
+        + 'Kotaknya tetap benar, tetapi kelasnya tidak bisa dipercaya: model '
+        + 'teks kerap keliru memilih di antara beberapa nama sekaligus, '
+        + 'bahkan untuk benda yang jelas berbeda. Isi satu nama saja, lalu '
+        + 'jalankan lagi untuk nama berikutnya.';
+      wPrompt.hidden = false;
+    } else { wPrompt.hidden = true; }
+
+    const wBentuk = azEl('az-awas-bentuk');
+    const bentuk = azEl('az-bentuk').value;
+    if (bentuk === 'kotak' && azEl('az-s-gdino').checked) {
+      wBentuk.textContent = 'Dengan bentuk "kotak", SAM tidak dijalankan, jadi '
+        + 'hasil GroundingDINO tetap kotak.';
+      wBentuk.hidden = false;
+    } else { wBentuk.hidden = true; }
+  }
+
+  function azPantau() {
+    azHenti();
+    const box = azEl('az-maju');
+    azTimer = setInterval(async () => {
+      const j = await send('/api/autolabel/kemajuan');
+      const m = (j && j.maju) || {};
+      if (m.galat) {
+        box.innerHTML = '<p class="bad" style="padding:12px 16px">'
+          + azEsc(m.galat) + '</p>'; azSelesai(); return;
+      }
+      if (m.dibatalkan) {
+        box.innerHTML = '<p class="halus" style="padding:12px 16px">Dibatalkan.</p>';
+        azSelesai(); return;
+      }
+      if (m.selesai) {
+        box.innerHTML = '<div style="padding:12px 16px"><p><b>Selesai.</b> '
+          + (m.diproses || 0) + ' gambar diisi, ' + (m.objek || 0) + ' objek'
+          + rincianLewat(m) + '.</p>'
+          + '<button class="wz-tbl wz-tbl-pri" type="button" onclick="location.reload()">'
+          + 'Muat ulang untuk melihat</button></div>';
+        azSelesai(); return;
+      }
+      const pct = m.persen || 0;
+      box.innerHTML = '<div style="padding:12px 16px"><p class="halus">'
+        + azEsc(m.fase_nama || 'Memproses') + ' — ' + pct + '%'
+        + (m.total ? (' (' + (m.diproses || 0) + '/' + m.total + ')') : '')
+        + '</p><div class="pl-bar"><i style="width:' + pct + '%"></i></div></div>';
+    }, 1000);
+  }
+
+  if (azDlg) {
+    // Centang sumber -> redupkan/terangkan konfigurasinya.
+    for (const id of Object.keys(AZ_KO)) {
+      azEl(id).addEventListener('change', () => azToggle(id));
+    }
+
+    // Unggah .pt: PUT berkas, lalu segarkan daftar model diunggah + pilih.
+    azEl('az-file').addEventListener('change', async () => {
+      const f = azEl('az-file').files[0];
+      if (!f) return;
+      const st = azEl('az-unggah-status');
+      st.textContent = 'Mengunggah ' + f.name + '…';
+      try {
+        const r = await fetch('/api/autolabel/model-unggah?nama='
+                              + encodeURIComponent(f.name), { method: 'PUT', body: f });
+        const j = await r.json();
+        if (!j || !j.ok) { st.textContent = 'Gagal: ' + ((j && j.error) || ''); return; }
+        st.textContent = 'Terunggah: ' + j.nama;
+        const info = await send('/api/autolabel/info');
+        if (info && info.ok) {
+          azIsiInfo(info, false);
+          azEl('az-s-eksternal').checked = true; azToggle('az-s-eksternal');
+          azEl('az-eksternal').value = j.nama;
+        }
+      } catch (e) { st.textContent = 'Gagal unggah'; }
+      azEl('az-file').value = '';
+    });
+
+    azEl('az-mulai').addEventListener('click', async () => {
+      const sumber = [];
+      // Nama kelas hasil: satu nilai untuk SATU jalan, bukan per sumber.
+      // Satu jalan auto-label mengerjakan satu sasaran ("objeknya", lalu
+      // "logonya"), jadi semua sumber yang dicentang sedang mencari benda
+      // yang sama dan harus menuliskan nama kelas yang sama.
+      const kelasNama = (azEl('az-kelas-nama').value || '').trim();
+      // Ambang model .pt TERPISAH dari ambang zero-shot, dan benar-benar
+      // dikirim: dulu kedua sumber model tidak mengirim conf sama sekali,
+      // jadi nilainya selalu jatuh ke 0,25 bawaan server apa pun isinya.
+      const confModel = parseFloat(azEl('az-conf-model').value || '0.25');
+      if (azEl('az-s-terlatih').checked && azEl('az-terlatih').value) {
+        sumber.push({ jenis: 'terlatih',
+                      nomor: parseInt(azEl('az-terlatih').value, 10),
+                      conf: confModel, kelas_nama: kelasNama });
+      }
+      if (azEl('az-s-eksternal').checked && azEl('az-eksternal').value) {
+        sumber.push({ jenis: 'eksternal', nama: azEl('az-eksternal').value,
+                      conf: confModel, kelas_nama: kelasNama });
+      }
+      if (azEl('az-s-zeroshot').checked) {
+        const prompt = azEl('az-prompt').value.trim();
+        if (!prompt) { toast('Isi objek zero-shot, atau matikan sumbernya'); return; }
+        sumber.push({ jenis: 'zeroshot', model: azEl('az-model').value,
+                      prompt, conf: parseFloat(azEl('az-conf').value || '0.1'),
+                      kelas_nama: kelasNama });
+      }
+      if (azEl('az-s-gdino').checked) {
+        // Nama objeknya sama dengan Zero-shot (satu kolom milik kelompok ini);
+        // kosong -> kelas projek. Ambangnya SENDIRI: dulu ia diam-diam memakai
+        // ambang zero-shot (0,1), bukan 0,25 yang diasumsikan server, dan
+        // itulah sebabnya sumber ini terasa penuh derau.
+        sumber.push({ jenis: 'groundingdino', prompt: azEl('az-prompt').value.trim(),
+                      conf: parseFloat(azEl('az-conf-gdino').value || '0.25'),
+                      kelas_nama: kelasNama });
+      }
+      if (!sumber.length) { toast('Pilih minimal satu sumber'); return; }
+      const batas = parseInt(azEl('az-batas').value || '1000', 10);
+      const iou = parseFloat(azEl('az-iou').value || '0.6');
+      const sasaran = azEl('az-sasaran').value || 'belum';
+      const bentuk = azEl('az-bentuk').value || '';
+      azEl('az-mulai').disabled = true;
+      const j = await send('/api/autolabel/mulai', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...azScope, sumber, batas, iou, sasaran,
+                               bentuk }),
+      });
+      if (!j || !j.ok) {
+        azEl('az-maju').innerHTML = '<p class="bad" style="padding:12px 16px">'
+          + azEsc((j && j.error) || 'gagal memulai') + '</p>';
+        azEl('az-mulai').disabled = false; return;
+      }
+      azEl('az-batal').hidden = false;
+      azPantau();
+    });
+    azEl('az-batal').addEventListener('click', async () => {
+      await send('/api/autolabel/batal', { method: 'POST' });
+      toast('Membatalkan…');
+    });
+    for (const x of azDlg.querySelectorAll('[data-az-tutup]')) {
+      x.addEventListener('click', azTutup);
+    }
+    document.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Escape' && !azDlg.hidden) azTutup();
+    });
+    // Tombol terlihat: di kartu job (per job) dan kartu batch (sebatch, tak
+    // perlu bagi tugas dulu). data-autolabel-batch boleh "" (unggahan tanpa nama).
+    for (const b of document.querySelectorAll('[data-autolabel-job]')) {
+      b.addEventListener('click', () => bukaAutolabel({ tid: b.dataset.autolabelJob }));
+    }
+    for (const b of document.querySelectorAll('[data-autolabel-batch]')) {
+      b.addEventListener('click', () => bukaAutolabel({ batch: b.dataset.autolabelBatch }));
+    }
   }
 })();
 

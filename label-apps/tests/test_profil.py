@@ -111,7 +111,7 @@ def test_ganti_sandi_butuh_sandi_sekarang(klien, lingkungan):
     klien.get("/logout")
     r = klien.post("/login", data={"user": "paul", "pw": PW_PAUL},
                    follow_redirects=False)
-    assert r.status_code == 401
+    assert r.status_code == 303 and "e=salah" in r.headers["location"]
     assert masuk(klien, "paul", "sandi-paul-baru-1")
 
 

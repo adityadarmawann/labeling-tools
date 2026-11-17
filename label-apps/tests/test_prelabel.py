@@ -141,6 +141,31 @@ def test_rute_kemajuan_dan_model(klien, lingkungan):
     assert r.json()["model"] == []              # belum ada training
 
 
+def test_model_eksternal_lister(tmp_path, monkeypatch):
+    d = buat_dataset(tmp_path / "proj", 1, 0)
+    ext = d / ".latih" / "_eksternal"
+    ext.mkdir(parents=True)
+    (ext / "model-a.pt").write_bytes(b"x")
+    (ext / "rusak.pt").write_bytes(b"x")
+
+    class _M:
+        names = {0: "botol", 1: "kaleng"}
+        task = "detect"
+
+    def fake_muat(pt):
+        if "rusak" in str(pt):
+            raise RuntimeError("bukan ultralytics")
+        return _M()
+    monkeypatch.setattr(prelabel, "_muat_model", fake_muat)
+
+    out = {m["nama"]: m for m in prelabel.model_eksternal(d)}
+    assert out["model-a"]["kelas"] == ["botol", "kaleng"]
+    assert out["model-a"]["task"] == "detect"
+    assert out["rusak"]["task"] == "gagal-dimuat"       # tak menjatuhkan daftar
+    # Projek tanpa folder eksternal -> daftar kosong.
+    assert prelabel.model_eksternal(buat_dataset(tmp_path / "kosong", 1, 0)) == []
+
+
 def test_rute_mulai_tanpa_model_ditolak(klien, lingkungan):
     from conftest import masuk
     masuk(klien, "paul", PW_PAUL)
@@ -150,3 +175,30 @@ def test_rute_mulai_tanpa_model_ditolak(klien, lingkungan):
     r = klien.post("/api/prelabel/mulai", json={"tid": "t1"})
     assert r.json()["ok"] is False
     assert "model" in r.json()["error"].lower()
+
+
+def test_rute_mulai_terima_batch(klien, lingkungan):
+    """Bodi lingkup rute pre-label dibuat SAMA dengan /api/autolabel/mulai:
+    `batch` (boleh "") atau `tid`. Tanpa ini, satu-satunya jalur yang bisa
+    projek pose tak punya pintu sebatch."""
+    from conftest import masuk
+    masuk(klien, "paul", PW_PAUL)
+    d = lingkungan["ruang"] / "mini-batch"
+    buat_dataset(d, 2, 0)
+    klien.post(f"/setsrc?path={d}")
+    # 'batch' hadir -> tid TIDAK lagi wajib; yang menolak nanti modelnya.
+    r = klien.post("/api/prelabel/mulai", json={"batch": "", "nomor": 1})
+    j = r.json()
+    assert j["ok"] is True or "model" in str(j.get("error", "")).lower()
+    assert "tugas tak disebut" not in str(j.get("error", ""))
+
+
+def test_rute_mulai_tanpa_lingkup_ditolak(klien, lingkungan):
+    from conftest import masuk
+    masuk(klien, "paul", PW_PAUL)
+    d = lingkungan["ruang"] / "mini-nolingkup"
+    buat_dataset(d, 1, 0)
+    klien.post(f"/setsrc?path={d}")
+    r = klien.post("/api/prelabel/mulai", json={"nomor": 1})
+    assert r.json()["ok"] is False
+    assert "tugas" in r.json()["error"].lower()

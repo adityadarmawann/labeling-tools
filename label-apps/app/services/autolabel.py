@@ -89,6 +89,13 @@ _KUNCI = threading.Lock()
 _cache: OrderedDict[tuple, tuple] = OrderedDict()
 _sesi_mobilesam = None
 
+# GroundingDINO (transformers): detektor open-vocabulary teks->kotak. Recall
+# tinggi (menangkap yang YOLO-World/SAM 3 lewatkan); hanya kotak, jadi SAM bisa
+# merapikannya jadi mask terpisah ("Grounded-SAM"). Dimuat sekali, di-cache.
+_GDINO_ID = "IDEA-Research/grounding-dino-tiny"
+_KUNCI_GD = threading.Lock()
+_gdino = None                 # (processor, model, device) atau None
+
 
 def dir_model() -> Path:
     """Folder berisi berkas .onnx MobileSAM."""
@@ -343,16 +350,28 @@ def _segment_mobilesam(img: Path, points, labels, eps) -> Usulan:
 OSAM_GPU = (os.environ.get("LABELAPP_OSAM_GPU") or "").strip().lower() in (
     "1", "true", "ya")
 
-# Model osam yang cukup KECIL untuk muat di GPU 8 GB — boleh naik GPU kalau ada
-# ruang. SAM 3 (3,4 GB bobot + buffer 1,64 GB) dan YOLO-World TIDAK muat (diuji
-# OOM bahkan saat GPU kosong), jadi TETAP di CPU apa pun keadaannya.
+# Model osam yang boleh naik GPU (gate OSAM_GPU_BEBAS per-model). Diukur ulang
+# di stack sekarang (torch 2.14 cu130, onnxruntime-gpu 1.30, GPU 8 GB), SEMUA
+# dengan sesi hemat memori (lihat _sesi_osam_gpu): mem_pattern mati + arena
+# kSameAsRequested + workspace conv kecil, yang menurunkan puncak tanpa memperlambat.
+#   sam2:tiny/small, efficientsam  -> ~2,5 GB, ~1,5 dtk/klik.
+#   yoloworld:latest (teks->kotak) -> ~1,85 GB, ~2 dtk/gambar (dulu dikira tak
+#     muat; ternyata muat dan jauh lebih cepat dari CPU ~4 dtk).
+#   sam3:latest (teks->poligon)    -> HYBRID: image_encoder (ViT-H, berat) di
+#     GPU, language_encoder + decoder di CPU. Memuat ketiganya ke GPU sekaligus
+#     OOM (bobot menyita VRAM sebelum encoder memuncak), tetapi encoder sendirian
+#     memuncak ~6,8 GB dan MUAT di 8 GB. Hasil: ~13 dtk/gambar di GPU vs ~35 dtk
+#     di CPU. Pembagian encoder-GPU/sisa-CPU diatur _blob_boleh_gpu.
 OSAM_GPU_KECIL = {"sam2:tiny", "sam2:small",
-                  "efficientsam:10m", "efficientsam:latest"}
+                  "efficientsam:10m", "efficientsam:latest",
+                  "yoloworld:latest", "sam3:latest"}
 # Sisa VRAM minimal supaya osam boleh naik GPU. Di bawah ini — mis. training
 # atau pembuatan versi sedang memakai GPU — osam JATUH KE CPU: pelan, tapi tidak
-# merebut memori fungsi utama itu dan tidak OOM. sam2:small ~4 GB, jadi ~4,7 GB
-# menyisakan sedikit kepala.
+# merebut memori fungsi utama itu dan tidak OOM. Default ~4,7 GB (sam2:small ~4
+# GB + sedikit kepala). SAM 3 memuncak ~6,8 GB (hampir seluruh GPU), jadi hanya
+# naik saat GPU nyaris kosong: butuh ~7,2 GB bebas.
 OSAM_GPU_MIN_BEBAS = 4_700_000_000
+OSAM_GPU_BEBAS = {"sam3:latest": 7_200_000_000}
 
 _osam_dipaksa = False
 _osam_model_kini = None                # model yang sedang dimuat -> pemilih provider
@@ -376,9 +395,38 @@ def _boleh_gpu_osam(model) -> bool:
         if not torch.cuda.is_available():
             return False
         bebas, _ = torch.cuda.mem_get_info()
-        return bebas >= OSAM_GPU_MIN_BEBAS
+        return bebas >= OSAM_GPU_BEBAS.get(model, OSAM_GPU_MIN_BEBAS)
     except Exception:
         return False
+
+
+def _blob_boleh_gpu(model, blob) -> bool:
+    """Per-SESI: tidak semua sesi sebuah model muat di GPU bareng. SAM 3 punya
+    tiga sesi; kalau ketiganya di GPU, bobotnya menyita VRAM dan encoder OOM saat
+    memuncak. Maka hanya image_encoder (yang berat) di GPU; language_encoder +
+    decoder (input teks/kecil) tetap CPU. Model lain: semua sesinya boleh GPU."""
+    if model == "sam3:latest":
+        return "image_encoder" in (getattr(blob, "url", "") or "")
+    return True
+
+
+def _sesi_osam_gpu(blob):
+    """Sesi onnxruntime CUDA hemat memori untuk osam: mem_pattern mati + arena
+    kSameAsRequested + workspace conv kecil menurunkan puncak VRAM (SAM 3
+    encoder: ~7,7 GB -> ~6,8 GB) tanpa memperlambat. Jatuh ke CPU kalau CUDA
+    gagal dibuat (mis. driver)."""
+    import onnxruntime as ort
+    so = ort.SessionOptions()
+    so.enable_mem_pattern = False
+    cuda_opt = {"arena_extend_strategy": "kSameAsRequested",
+                "cudnn_conv_use_max_workspace": "0",
+                "cudnn_conv_algo_search": "HEURISTIC"}
+    try:
+        return ort.InferenceSession(
+            blob.path, sess_options=so,
+            providers=[("CUDAExecutionProvider", cuda_opt), "CPUExecutionProvider"])
+    except Exception:            # noqa: BLE001 -- CUDA gagal -> CPU
+        return ort.InferenceSession(blob.path, providers=["CPUExecutionProvider"])
 
 
 def _siapkan_osam():
@@ -396,9 +444,9 @@ def _siapkan_osam():
     asli = _m._load_inference_session
 
     def _rute(blob, providers=None):
-        if _boleh_gpu_osam(_osam_model_kini):
-            return asli(blob, providers=["CUDAExecutionProvider",
-                                         "CPUExecutionProvider"])
+        if (_boleh_gpu_osam(_osam_model_kini)
+                and _blob_boleh_gpu(_osam_model_kini, blob)):
+            return _sesi_osam_gpu(blob)
         return asli(blob, providers=["CPUExecutionProvider"])
 
     _m._load_inference_session = _rute
@@ -465,8 +513,12 @@ def bebaskan_gpu() -> bool:
     efek. Sesinya dimuat ULANG otomatis pada klik SAM berikutnya -- dan selama
     training berjalan, muatan ulang itu jatuh ke CPU (lihat _boleh_gpu_osam dan
     MobileSam.__init__), jadi VRAM tetap milik training."""
-    global _sesi_mobilesam
+    global _sesi_mobilesam, _gdino
     lepas = False
+    with _KUNCI_GD:                  # lepas GroundingDINO juga (menahan ~2 GB)
+        if _gdino is not None:
+            _gdino = None
+            lepas = True
     with _KUNCI:                     # jangan lepas sesi di tengah inferensi
         if _sesi_mobilesam is not None:
             _sesi_mobilesam = None
@@ -558,7 +610,7 @@ def dari_teks(img: Path, teks: list[str], model: str = "yoloworld:latest",
     rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
 
     with _KUNCI:            # sesi model global, harus diserialkan
-        _osam_model_kini = model        # SAM 3 / YOLO-World -> selalu CPU (tak muat)
+        _osam_model_kini = model        # pemilih provider saat sesi dibuat (_rute)
         r = osam.apis.generate(osam.types.GenerateRequest(
             model=model, image=rgb,
             prompt=osam.types.Prompt(texts=teks, score_threshold=float(ambang),
@@ -587,12 +639,143 @@ def dari_teks(img: Path, teks: list[str], model: str = "yoloworld:latest",
     return out
 
 
+# ---------------------------------------------------------------- GroundingDINO
+
+def _boleh_gpu_gdino() -> bool:
+    """GPU untuk GroundingDINO (~2 GB) kalau olah=gpu, CUDA ada, tak ada training,
+    dan VRAM bebas cukup. Selain itu CPU (lambat tapi jalan)."""
+    if olah_gpu.MODE != "gpu" or gpu_sinyal.latih_aktif():
+        return False
+    try:
+        import torch
+        if not torch.cuda.is_available():
+            return False
+        bebas, _ = torch.cuda.mem_get_info()
+        return bebas >= 3_000_000_000
+    except Exception:                # noqa: BLE001
+        return False
+
+
+def _muat_gdino():
+    """Muat GroundingDINO sekali (cache). Dipanggil DI DALAM _KUNCI_GD."""
+    global _gdino
+    dev = "cuda" if _boleh_gpu_gdino() else "cpu"
+    if _gdino is not None and _gdino[2] == dev:
+        return _gdino
+    from transformers import AutoProcessor, GroundingDinoForObjectDetection
+    proc = AutoProcessor.from_pretrained(_GDINO_ID)
+    model = GroundingDinoForObjectDetection.from_pretrained(_GDINO_ID).to(dev).eval()
+    _gdino = (proc, model, dev)
+    return _gdino
+
+
+def gdino_tersedia() -> bool:
+    """transformers punya GroundingDINO (paket terpasang) -> bisa ditawarkan."""
+    try:
+        import transformers          # noqa: F401
+        from transformers import GroundingDinoForObjectDetection  # noqa: F401
+        return True
+    except Exception:                # noqa: BLE001
+        return False
+
+
+def _samakan(t: str) -> str:
+    """Bentuk banding: huruf dan angka saja, huruf kecil."""
+    return "".join(c for c in str(t).lower() if c.isalnum())
+
+
+def cocokkan_istilah(frasa: str, istilah: list[str]) -> str:
+    """Frasa balasan GroundingDINO -> SATU istilah dari prompt.
+
+    GroundingDINO melakukan phrase grounding: untuk tiap kotak ia
+    mengembalikan potongan token prompt yang cocok, bukan istilah yang kita
+    minta. Pada nama kelas ber-garis-bawah, tokenizer memecahnya jadi subkata
+    lalu merangkainya kembali apa adanya, sehingga satu kelas
+    `kahf_skinergizing_facewash_50ml` melahirkan belasan "kelas" baru:
+    `kahf _ skiner facewash _ml`, `kaf skin face`, bahkan `ka`.
+
+    Ditulis mentah sebagai nama kelas, pecahan itu mengotori daftar kelas
+    projek dan tiap satunya harus dihapus dengan tangan. Padahal tiap deteksi
+    PASTI berasal dari salah satu istilah yang kita kirim, jadi yang benar
+    adalah mengembalikannya ke istilah itu.
+
+    Dikembalikan dalam ejaan ASLI yang diketik orang, bukan versi huruf kecil
+    yang dikirim ke model.
+    """
+    if not istilah:
+        return str(frasa).strip()
+    f = _samakan(frasa)
+    if not f:
+        return istilah[0]
+    from difflib import SequenceMatcher
+    terbaik, nilai = istilah[0], -1.0
+    for it in istilah:
+        n = _samakan(it)
+        if not n:
+            continue
+        # Awalan diutamakan: pecahan GroundingDINO hampir selalu potongan
+        # DEPAN istilahnya, dan rasio kemiripan saja bisa kalah pada istilah
+        # panjang yang kebetulan banyak huruf samanya.
+        r = SequenceMatcher(None, f, n).ratio() + (0.25 if n.startswith(f) else 0)
+        if r > nilai:
+            terbaik, nilai = it, r
+    return terbaik
+
+
+def dari_groundingdino(img: Path, teks: list[str], ambang: float = 0.25,
+                       teks_ambang: float = 0.2, maks: int = 100) -> list[Temuan]:
+    """Open-vocabulary teks -> KOTAK via GroundingDINO. teks huruf kecil dipisah
+    '. ' (format GroundingDINO). Kotak saja; untuk projek segmentasi, pemanggil
+    merapikan tiap kotak jadi mask lewat dari_kotak (SAM)."""
+    # Ejaan ASLI dipertahankan untuk nama kelas; yang dikirim ke model tetap
+    # huruf kecil (format GroundingDINO). Tanpa ini, kelas "Botol PET" pulang
+    # jadi "botol pet" tanpa ada yang memintanya.
+    asli = [str(t).strip() for t in teks if str(t).strip()]
+    teks = [t.lower() for t in asli]
+    if not teks:
+        raise TidakAdaObjek("belum ada nama objek yang dicari")
+    bgr = cv2.imread(str(img))
+    if bgr is None:
+        raise TidakAdaObjek("gambar tidak bisa dibaca")
+    H, W = bgr.shape[:2]
+    rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+    prompt = ". ".join(teks) + "."
+    import torch
+    with _KUNCI_GD:
+        proc, model, dev = _muat_gdino()
+        inp = proc(images=rgb, text=prompt, return_tensors="pt").to(dev)
+        with torch.no_grad():
+            keluar = model(**inp)
+        try:
+            res = proc.post_process_grounded_object_detection(
+                keluar, inp["input_ids"], box_threshold=float(ambang),
+                text_threshold=float(teks_ambang), target_sizes=[(H, W)])[0]
+        except TypeError:            # tanda tangan transformers lebih baru
+            res = proc.post_process_grounded_object_detection(
+                keluar, threshold=float(ambang), text_threshold=float(teks_ambang),
+                target_sizes=[(H, W)])[0]
+    boxes = res["boxes"].cpu().numpy()
+    skor = res["scores"].cpu().numpy()
+    labs = res.get("text_labels") or res.get("labels") or [""] * len(boxes)
+    out: list[Temuan] = []
+    for (x1, y1, x2, y2), s, l in list(zip(boxes, skor, labs))[:int(maks)]:
+        x1, y1, x2, y2 = float(x1), float(y1), float(x2), float(y2)
+        out.append(Temuan(label=cocokkan_istilah(l, asli),
+                          points=[[x1, y1], [x2, y2]],
+                          bbox=(int(x1), int(y1), int(x2), int(y2)),
+                          skor=float(s), shape_type="rectangle"))
+    if not out:
+        raise TidakAdaObjek("GroundingDINO tak menemukan objek")
+    return out
+
+
 def info() -> dict:
     """Keadaan mesin, untuk ditampilkan di antarmuka."""
     d = dir_model()
     ada = bool(list(d.glob("*encoder*.onnx")) and list(d.glob("*decoder*.onnx")))
     return {"default": MODEL_DEFAULT, "tersedia": sorted(MODEL_DIIZINKAN),
             "mobilesam_siap": ada, "dir_model": str(d),
+            "groundingdino_siap": gdino_tersedia(),
             "provider": _sesi_mobilesam.provider if _sesi_mobilesam else None,
             # Model teks dilaporkan terpisah beserta ukuran unduhannya dan
             # apakah bobotnya sudah ada, supaya antarmuka bisa mengatakan

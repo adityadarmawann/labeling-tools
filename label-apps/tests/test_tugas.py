@@ -2242,9 +2242,15 @@ def test_saringan_kelas_di_halaman_tugas(klien, lingkungan):
     rapat = " ".join(h.split())
     # Daftar saringan menyebut kelas yang benar-benar dipakai DI JOB INI,
     # dengan jumlahnya, plus latar.
-    assert "<span>botol</span><b>1</b>" in rapat
-    assert "<span>mlp</span><b>2</b>" in rapat
-    assert "<span>Latar (tanpa objek)</span><b>1</b>" in rapat
+    # Dua angka dengan satuannya: GAMBAR lalu OBJEK. Angka tunggal dulu
+    # berarti gambar di halaman ini tetapi objek di kisi Dataset,
+    # padahal kontrolnya terlihat sama persis.
+    assert "<span>botol</span>" in rapat
+    assert 'gambar memuat kelas ini">1</b>' in rapat
+    assert 'objek berkelas ini">' in rapat
+    assert "<span>mlp</span>" in rapat
+    assert 'gambar memuat kelas ini">2</b>' in rapat
+    assert "<span>Latar (tanpa objek)</span>" in rapat
     # Tiap ubin membawa kelasnya sebagai JSON, bukan teks berpemisah: nama
     # kelas boleh berisi apa saja.
     assert rapat.count("data-kelas='[") == 4

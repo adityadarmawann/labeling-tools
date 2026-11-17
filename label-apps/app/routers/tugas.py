@@ -21,6 +21,7 @@ from ..deps import current_session, current_session_api, bodi_json
 from ..services import tag as svc_tag
 from ..services import projek as svc_projek
 from ..services import tugas as svc
+from ..services import konteks_kisi
 from ..services import surel
 from ..session import Session
 from ..templating import templates
@@ -136,6 +137,15 @@ def _belum_ditugaskan(sess: Session, d, data: dict, batch: str = "") -> list[str
 
 @router.get("/anotasi", response_class=HTMLResponse)
 async def halaman_papan(request: Request, ds: str = "", urut: str = "terbaru",
+                        # Saringan papan. Tiga kolom merender SELURUH kartu
+                        # tanpa paginasi dan tanpa saringan apa pun: pada
+                        # projek dengan 40 tugas, satu-satunya cara mencari
+                        # pekerjaan seseorang adalah membaca satu per satu.
+                        # CVAT dan Label Studio sama-sama punya saringan
+                        # assignee dan state di papan pekerjaannya.
+                        pelabel_q: str = Query("", alias="pl"),
+                        keadaan_q: str = Query("", alias="kd"),
+                        cari_q: str = Query("", alias="q"),
                         sess: Session = Depends(current_session),
                         settings: Settings = Depends(get_settings)):
     """
@@ -188,6 +198,11 @@ async def halaman_papan(request: Request, ds: str = "", urut: str = "terbaru",
     # yang datasetnya banyak latar tampak macet.
     berlabel = {kunci_dari[id(it)] for it in items
                 if scanner.severity(it) != "stop"}
+    # Hasil auto-label yang belum diperiksa manusia, per gambar. Dari field
+    # item pemindai (ikut cache, jadi gratis) -> kartu batch bisa menyebut
+    # berapa yang menunggu verifikasi tanpa membaca satu .json pun lagi.
+    dicek = {kunci_dari[id(it)] for it in items
+             if scanner.severity(it) != "stop" and it.get("perlu_dicek")}
 
     # Nama unggahan tiap gambar, dipakai mengelompokkan kolom pertama.
     tdata_tag = svc_tag.baca(d)
@@ -202,11 +217,39 @@ async def halaman_papan(request: Request, ds: str = "", urut: str = "terbaru",
     # Nama sumber dataset (data.yaml ekspor Roboflow) buat menamai kartu kolom
     # Dataset — unggahan dataset jadi yang auto-masuk tampil sebagai kartu.
     sumber_impor = scanner.nama_sumber_dataset(d)
-    papan = svc.papan(data, berlabel, semua, batch_dari, urut, sumber_impor)
+    papan = svc.papan(data, berlabel, semua, batch_dari, dicek, urut,
+                      sumber_impor)
+
+    # Saringan papan, dipasang SESUDAH kartunya disusun supaya angka per-orang
+    # dan hitungan kolom tetap menghitung keseluruhan, bukan hasil saringan.
+    # Daftar pilihannya juga diambil dari kartu yang BELUM disaring, kalau
+    # tidak memilih satu pelabel akan membuat pelabel lain hilang dari menu.
+    n_kartu_semua = len(papan["kartu"])      # SEBELUM disaring
+    pelabel_ada = sorted({k["pelabel"] for k in papan["kartu"] if k["pelabel"]})
+    pelabel_f = pelabel_q if pelabel_q in pelabel_ada else ""
+    keadaan_f = keadaan_q if keadaan_q in (svc.BARU, svc.JALAN,
+                                           svc.SELESAI) else ""
+    cari_p = (cari_q or "").strip()
+    if pelabel_f or keadaan_f or cari_p:
+        pola = cari_p.lower()
+        papan = dict(papan)
+        papan["kartu"] = [
+            k for k in papan["kartu"]
+            if (not pelabel_f or k["pelabel"] == pelabel_f)
+            and (not keadaan_f or k["keadaan"] == keadaan_f)
+            and (not pola or pola in str(k["judul"]).lower()
+                 or pola in str(k["pelabel"]).lower())]
     return templates.TemplateResponse(request, "anotasi.html", {
+        "pelabel_ada": pelabel_ada, "pelabel_f": pelabel_f,
+        "keadaan_f": keadaan_f, "cari_papan": cari_p,
+        "n_kartu_semua": n_kartu_semua,
         "sess": sess, "pr": pr, "aktif": "anotasi",
         "boleh_kelola": svc.boleh_kelola(data, sess.user),
         "boleh_bagi": svc.boleh_bagi(data, sess.user),
+        # Boleh mengerjakan gambar yang belum ditugaskan ke siapa pun. Lebih
+        # longgar dari boleh_bagi: Labeler berakses "semua" ikut, karena
+        # haknya memang berlaku untuk gambar apa pun di projek ini.
+        "boleh_lepas": svc.boleh_labeli_lepas(data, sess.user),
         "pemilik": data["pemilik"] or sess.user,
         "aku": sess.user,
         # Dipakai kolom "Dikerjakan" yang kosong untuk membedakan anggota yang
@@ -266,6 +309,30 @@ async def get_skeleton(ds: str = "", sess: Session = Depends(current_session_api
     return {"ok": True, "skeleton": data.get("skeleton"),
             "jenis": data.get("jenis_anotasi", ""),
             "boleh_ubah": svc.boleh_kelola(data, sess.user)}
+
+
+@router.get("/api/tugas/tata-contoh")
+async def tata_contoh(ds: str = "",
+                      sess: Session = Depends(current_session_api),
+                      settings: Settings = Depends(get_settings)):
+    """Tata letak keypoint contoh, diambil dari anotasi projek yang sudah ada.
+
+    Dipakai "Drop semua" ketika projek belum pernah menyimpan tata letak
+    default. Membaca saja: siapa pun yang boleh membuka projeknya boleh
+    memintanya, sama seperti ia boleh melihat anotasi yang jadi sumbernya.
+    """
+    d = svc_projek.temukan(settings.uploads_root, sess.user, ds) if ds else sess.src
+    if d is None:
+        return {"ok": False, "error": "projek tidak ada / belum ada yang dibuka"}
+    data = await asyncio.to_thread(svc.baca_projek, d, settings.uploads_root)
+    titik = ((data.get("skeleton") or {}).get("titik")) or []
+    if not titik:
+        return {"ok": False, "error": "projek ini belum punya template keypoint"}
+    r = await asyncio.to_thread(svc.tata_contoh, d, titik)
+    if not r:
+        return {"ok": False, "error": "belum ada satu pun instance lengkap "
+                                      "untuk dicontoh"}
+    return {"ok": True, **r}
 
 
 @router.post("/api/tugas/skeleton")
@@ -386,6 +453,12 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
                       per_q: int = Query(0, alias="per"),
                       hal_q: int = Query(1, alias="hal"),
                       dari_q: int = Query(0, alias="dari"),
+                      # Cari nama berkas dan urutan. Halaman INILAH yang bisa
+                      # berisi 11 ribu gambar, dan sampai sekarang ia satu-
+                      # satunya kisi tanpa keduanya: urutannya dipaku nama naik
+                      # dan Ctrl+F peramban cuma mengenai 50 ubin yang tampil.
+                      cari_q: str = Query("", alias="q"),
+                      urut_q: str = Query("nama", alias="s"),
                       sess: Session = Depends(current_session),
                       settings: Settings = Depends(get_settings)):
     """
@@ -432,12 +505,18 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
     with sess.lock:
         items = list(sess.items)
     punya = set(job.get("gambar") or [])
+    # Kelas objek skeleton projek, dipakai melipat instance pose jadi satu
+    # objek alih-alih 33 "kelas" bernama slot titik.
+    skel_kelas = str(((data.get("skeleton") or {}).get("kelas") or "")).strip()
     isi = []
     for it in items:
         k = svc_tag.kunci_gambar(d, it["img"])
         if k not in punya:
             continue
         sev = scanner.severity(it)
+        # Objek per kelas gambar ini, dengan instance pose dilipat. Dihitung
+        # SEKALI lalu dipakai dua kali (daftar kelas + jumlah objek).
+        per_kelas, _ = scanner.objek_per_kelas(it, skel_kelas)
         isi.append({
             "it": it, "kunci": k,
             # Latar TERMASUK sudah dianotasi. Menandai gambar tanpa objek
@@ -447,7 +526,15 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
             # satu contoh negatif.
             "berlabel": sev != "stop",
             "latar": sev == "bg",
-            "kelas": sorted({str(s["label"]) for s in it["shapes"]}),
+            # Hasil auto-label yang belum diverifikasi manusia. Dari item scan
+            # (gratis, ikut cache) -> badge + tab + hitungan tanpa baca .json lagi.
+            "perlu_dicek": (sev != "stop") and bool(it.get("perlu_dicek")),
+            # Kelas yang ADA di gambar ini, dan berapa OBJEK tiap kelasnya.
+            # Aturan pelipatan instance pose sama dengan kisi Dataset dan
+            # halaman Lihat (scanner.objek_per_kelas): tanpa itu satu gambar
+            # court berisi satu objek mendaftar 33 "kelas" bernama slot titik.
+            "kelas": sorted(per_kelas),
+            "objek": per_kelas,
             "di_dataset": svc.sudah_dimasukkan(data, k),
         })
     isi.sort(key=lambda x: x["it"]["img"].name)
@@ -459,6 +546,8 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
     n_label = sum(1 for x in isi if x["berlabel"])
     n_latar = sum(1 for x in isi if x["latar"])
     n_ds = sum(1 for x in isi if x["di_dataset"])
+    n_dicek = sum(1 for x in isi if x["perlu_dicek"])
+    n_verif = sum(1 for x in isi if x["berlabel"] and not x["perlu_dicek"])
     # Tahap alur kerja "sudah dilabeli, belum di dataset": gambar yang
     # pekerjaannya selesai tapi belum dikumpulkan. Dihitung langsung, bukan
     # n_label - n_ds: tidak semua yang di dataset harus berlabel, jadi selisih
@@ -468,18 +557,31 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
     # yang menawarkan kelas yang tidak ada isinya selalu memberi nol, dan yang
     # membacanya menyangka jatahnya kosong.
     kelas_hitung: dict[str, int] = {}
+    kelas_objek: dict[str, int] = {}
     for x in isi:
         for k2 in x["kelas"]:
             kelas_hitung[k2] = kelas_hitung.get(k2, 0) + 1
+            kelas_objek[k2] = kelas_objek.get(k2, 0) + x["objek"].get(k2, 0)
 
     # -- saringan, DI SERVER (dulu di job.js) --------------------------------
-    saring = saring_q if saring_q in ("semua", "belum", "sudah") else "semua"
+    saring = (saring_q if saring_q in ("semua", "belum", "sudah", "dicek",
+                                       "verif") else "semua")
     # Latar termasuk "sudah dianotasi": menandai gambar tanpa objek adalah
     # keputusan yang sudah diambil, bukan pekerjaan yang belum dikerjakan.
     if saring == "belum":
         tampil = [x for x in isi if not x["berlabel"]]
     elif saring == "sudah":
         tampil = [x for x in isi if x["berlabel"]]
+    elif saring == "dicek":
+        # Hasil auto-label yang BELUM diverifikasi manusia (field item dari scan,
+        # gratis). "berlabel" sudah tercakup di perlu_dicek, tetapi dibiarkan
+        # eksplisit agar niatnya jelas.
+        tampil = [x for x in isi if x["perlu_dicek"]]
+    elif saring == "verif":
+        # Sudah dilabeli DAN sudah dilewati manusia. Pasangan dari "dicek":
+        # tanpa dia, "sudah" mencampur hasil AI mentah dengan yang benar-benar
+        # selesai diperiksa, dan tidak ada cara melihat kemajuan verifikasi.
+        tampil = [x for x in isi if x["berlabel"] and not x["perlu_dicek"]]
     else:
         tampil = list(isi)
     # Saringan status dataset — terpisah dari status anotasi. Pada projek besar
@@ -503,6 +605,23 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
                   if (latar_pilih and x["latar"])
                   or (kpset & set(x["kelas"]))]
 
+    # Cari nama berkas. Dipasang SESUDAH saringan lain, sama seperti di kisi
+    # Dataset, supaya "cari" selalu berarti "di antara yang sedang tampil".
+    cari = (cari_q or "").strip()
+    if cari:
+        pola = cari.lower()
+        tampil = [x for x in tampil if pola in x["it"]["img"].name.lower()]
+
+    # Urutan. Memakai daftar dan fungsi yang SAMA dengan kisi Dataset, bukan
+    # daftar kedua: dua daftar urutan pasti berbeda suatu saat, dan halaman
+    # yang menawarkan "Objek terbanyak" lalu mengurutkan nama adalah bug yang
+    # tak menyalakan alarm apa pun.
+    urut = urut_q if urut_q in konteks_kisi.URUT else konteks_kisi.URUT_BAWAAN
+    if urut != konteks_kisi.URUT_BAWAAN:
+        pos = {id(it): i for i, it in
+               enumerate(konteks_kisi.urutkan([x["it"] for x in tampil], urut))}
+        tampil.sort(key=lambda x: pos.get(id(x["it"]), 0))
+
     # -- paginasi, pola sama persis dengan grid Dataset ----------------------
     per = per_efektif(per_q, request)
     n_tampil = len(tampil)
@@ -517,11 +636,14 @@ async def halaman_job(request: Request, tid: str, ds: str = "",
         x["meta"] = scanner.meta_simpan(x["it"])
 
     resp = templates.TemplateResponse(request, "job.html", {
+        "cari": cari, "urut": urut, "urut_pilihan": konteks_kisi.URUT,
         "sess": sess, "pr": pr, "aktif": "anotasi", "aku": sess.user,
         "tid": tid, "job": job, "isi": halaman,
         "n": n_semua, "n_label": n_label, "n_latar": n_latar,
-        "n_dataset": n_ds,
+        "n_dataset": n_ds, "n_dicek": n_dicek, "n_verif": n_verif,
         "kelas_hitung": dict(sorted(kelas_hitung.items())),
+        # Pasangan satuannya: kelas_hitung = GAMBAR, kelas_objek = OBJEK.
+        "kelas_objek": kelas_objek,
         # Warna kelas pilihan projek untuk swatch di menu saringan kelas.
         "warna_peta": data.get("kelas_warna") or {},
         "persen": round(n_label * 100 / n_semua) if n_semua else 0,
@@ -1285,9 +1407,12 @@ async def kirim_ke_projek(request: Request,
                           sess: Session = Depends(current_session_api),
                           settings: Settings = Depends(get_settings)):
     """
-    Salin GAMBAR satu job ke projek LAIN milik sendiri (gambar saja, tanpa
-    anotasi). Sumber tak berubah; gambar mendarat di "Belum ditugaskan" tujuan,
-    ditandai batch senama judul job supaya jadi satu kartu di sana.
+    Salin gambar satu job ke projek LAIN milik sendiri. Sumber tak berubah;
+    gambar mendarat di "Belum ditugaskan" tujuan, ditandai batch senama judul
+    job supaya jadi satu kartu di sana.
+
+    Body `label` menentukan anotasinya ikut atau tidak. Bawaannya TIDAK ikut,
+    sama seperti perilaku lama, supaya pemanggil lama tak berubah artinya.
 
     Mengelola media = pemilik atau Editor (boleh_unggah), dan harus boleh_unggah
     juga di projek TUJUAN. Kemajuan dilaporkan lewat /api/impor/kemajuan.
@@ -1342,7 +1467,7 @@ async def kirim_ke_projek(request: Request,
     try:
         hasil = await asyncio.to_thread(
             svc_projek.salin_gambar_ke_projek, d_tujuan, gambar, batch_nama,
-            kunci=sess.user)
+            kunci=sess.user, label=bool(body.get("label")))
     except svc_projek.Tolak as e:
         return {"ok": False, "error": str(e)}
 

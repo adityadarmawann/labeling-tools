@@ -1810,6 +1810,16 @@ def kelas_versi(ds: Path, nomor: int) -> list[str]:
 _INDEKS_CACHE: dict[tuple[str, int], tuple[float, dict]] = {}
 
 
+def kpt_versi(ds: Path, nomor: int) -> int:
+    """Jumlah keypoint (K dari `kpt_shape`) sebuah versi; 0 kalau bukan versi
+    pose. Sepasang dengan kelas_versi: sama-sama dibaca dari data.yaml versi,
+    yang memang satu-satunya sumber kebenaran tentang bentuk labelnya."""
+    yml = dir_versi(ds, nomor) / "data.yaml"
+    if not yml.exists():
+        return 0
+    return int((scanner._pose_dari_yaml(yml) or {}).get("K") or 0)
+
+
 def indeks_hasil(ds: Path, nomor: int) -> dict:
     """Indeks RINGAN isi sebuah versi untuk halaman Hasil (grid per-versi):
     tiap gambar + split-nya + nama kelas yang ada di dalamnya, plus hitungan
@@ -1835,6 +1845,10 @@ def indeks_hasil(ds: Path, nomor: int) -> dict:
     if simpan and simpan[0] == mt:
         return simpan[1]
     nama_kelas = kelas_versi(ds, nomor)
+    # kpt_shape versi ini. Tanpa K, baris YOLO-pose (1+4+3K kolom) tak bisa
+    # dibedakan dari poligon dan terbuang diam-diam -- seluruh gambar versi
+    # pose lalu terhitung "negatif" dengan hitungan kelas nol.
+    K = kpt_versi(ds, nomor)
     items: list[dict] = []
     jumlah = {s: 0 for s in SPLIT}
     hitung: dict[str, int] = defaultdict(int)
@@ -1847,7 +1861,8 @@ def indeks_hasil(ds: Path, nomor: int) -> dict:
             lp = d / split / "labels" / f"{ip.stem}.txt"
             seen: list[str] = []
             lihat = set()
-            for c, _ in olah.baca_label(lp):
+            for b in olah.baca_bentuk(lp, K):
+                c = b["kelas"]
                 n = nama_kelas[c] if 0 <= c < len(nama_kelas) else str(c)
                 if n not in lihat:
                     lihat.add(n)
@@ -1862,7 +1877,7 @@ def indeks_hasil(ds: Path, nomor: int) -> dict:
                 hitung[n] += 1
     hasil = {"kelas": nama_kelas, "items": items, "jumlah_split": jumlah,
              "hitung_kelas": dict(hitung), "negatif": negatif,
-             "total": len(items)}
+             "total": len(items), "K": K}
     if len(_INDEKS_CACHE) >= 6:                       # bounded: 6 versi terakhir
         _INDEKS_CACHE.pop(next(iter(_INDEKS_CACHE)))
     _INDEKS_CACHE[kunci] = (mt, hasil)
@@ -1942,15 +1957,20 @@ def isi_versi(ds: Path, nomor: int, contoh: int = 12) -> dict:
         if baris.startswith("names:"):
             isi = baris.split(":", 1)[1].strip().strip("[]")
             nama_kelas = [x.strip().strip("'\"") for x in isi.split(",") if x.strip()]
+    # Sadar pose, sama alasannya seperti di indeks_hasil: tanpa K, baris
+    # YOLO-pose terbuang (K ganjil) atau terbaca sebagai poligon campur-aduk
+    # (K genap), dan panel detail melaporkan seluruh versi "negatif".
+    K = kpt_versi(ds, nomor)
     for s in SPLIT:
         ldir = d / s / "labels"
         berkas = sorted(ldir.glob("*.txt")) if ldir.is_dir() else []
         jumlah[s] = len(berkas)
         for p in berkas:
-            lab = olah.baca_label(p)
+            lab = olah.baca_bentuk(p, K)
             if not lab:
                 negatif += 1
-            for c, _ in lab:
+            for b in lab:
+                c = b["kelas"]
                 per_kelas[nama_kelas[c] if c < len(nama_kelas) else str(c)] += 1
     # Contoh diambil merata dari train, bukan 12 pertama: dua belas berkas
     # pertama menurut abjad hampir selalu berasal dari satu gambar sumber yang

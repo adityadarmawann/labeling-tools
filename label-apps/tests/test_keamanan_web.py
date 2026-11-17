@@ -67,16 +67,24 @@ def test_rate_limit_login_terproksi(klien, monkeypatch):
     monkeypatch.setattr(auth, "FAILED_LOGIN_DELAY", 0.0)
     auth._gagal_login.clear()
     hdr = {"X-Forwarded-For": "203.0.113.7"}
-    # Sejumlah _RL_MAKS gagal berturut dari IP terproksi yang sama -> masih 401.
+    # Kegagalan masuk kini POST lalu REDIRECT lalu GET: merender hasilnya
+    # langsung dari POST membuat muat ulang menagih "Confirm Form
+    # Resubmission", dan di Chrome ERR_CACHE_MISS. Yang diuji di sini sifat
+    # keamanannya, bukan bentuk responsnya: kode galat di tujuan redirect.
     for _ in range(auth._RL_MAKS):
         r = klien.post("/login", data={"user": "anggi", "pw": "salahsalah"},
                        headers=hdr, follow_redirects=False)
-        assert r.status_code == 401
+        assert r.status_code == 303
+        assert "e=salah" in r.headers["location"], r.headers["location"]
     # Percobaan berikutnya diblokir sementara.
     r = klien.post("/login", data={"user": "anggi", "pw": "salahsalah"},
                    headers=hdr, follow_redirects=False)
-    assert r.status_code == 429
+    assert r.status_code == 303
+    assert "e=limit" in r.headers["location"], r.headers["location"]
     assert r.headers.get("retry-after")
+    # Dan halaman tujuannya benar-benar memberitahu orangnya.
+    h = klien.get(r.headers["location"]).text
+    assert "Terlalu banyak percobaan gagal" in h
     auth._gagal_login.clear()
 
 
@@ -89,7 +97,8 @@ def test_tanpa_proxy_tak_kena_rate_limit(klien, monkeypatch):
     for _ in range(auth._RL_MAKS + 3):
         r = klien.post("/login", data={"user": "anggi", "pw": "salahsalah"},
                        follow_redirects=False)
-        assert r.status_code == 401
+        assert r.status_code == 303
+        assert "e=salah" in r.headers["location"]      # ditolak, bukan dibatasi
 
 
 def test_mode_undangan_tutup_daftar_publik(klien, monkeypatch):
