@@ -74,6 +74,22 @@ mkdir -p logs run
 
 pid_prod() { pgrep -f "run\.py .*--port $PORT" || true; }
 
+# Apakah prod yang sedang jalan DIPEGANG systemd (higolab.service)?
+#
+# Sejak prod punya unit systemd, langkah "matikan lalu nyalakan" di bawah tak
+# lagi aman dijalankan apa adanya. Membunuh prod membuat wrapper unitnya ikut
+# berhenti, systemd menyalakannya kembali karena Restart=on-failure, dan pada
+# saat yang sama skrip ini sudah menyalakan prod yang kedua sendiri. Keduanya
+# lalu berebut port yang sama, dan dev ikut mati tanpa ada yang memintanya.
+#
+# Diperiksa lewat cgroup prosesnya, bukan sekadar "unitnya aktif": prod bisa
+# saja dinyalakan dengan tangan sementara unitnya kebetulan juga hidup.
+prod_milik_systemd() {
+  local p; p=$(pid_prod)
+  [[ -n "$p" ]] || return 1
+  grep -qi "higolab" "/proc/$p/cgroup" 2>/dev/null
+}
+
 ringkas() {
   local p; p=$(pid_prod)
   if [[ -n "$p" ]]; then
@@ -201,20 +217,30 @@ if [[ "$TANYA" == 1 ]]; then
 fi
 
 # ---------------------------------------------------------------- 4. ganti
-echo "4/5  Mematikan yang lama, menyalakan yang baru"
-P=$(pid_prod)
-if [[ -n "$P" ]]; then
-  kill -TERM $P 2>/dev/null || true
-  for _ in $(seq 1 20); do [[ -z "$(pid_prod)" ]] && break; sleep 0.5; done
-  if [[ -n "$(pid_prod)" ]]; then
-    kuning "     Belum mau berhenti, dipaksa."
-    kill -KILL $(pid_prod) 2>/dev/null || true
-    sleep 1
-  fi
-fi
 echo "     --- $(date '+%F %T') deploy $KINI ---" >> "$LOG"
-setsid nohup ./start.sh prod >> "$LOG" 2>&1 < /dev/null &
-disown || true
+if prod_milik_systemd; then
+  echo "4/5  Menyalakan ulang lewat systemd (higolab.service)"
+  kuning "     Unitnya menyalakan prod DAN dev, jadi keduanya ikut restart."
+  if ! sudo systemctl restart higolab; then
+    merah "     Gagal menyalakan ulang unitnya. Kodenya sudah telanjur naik,"
+    merah "     jadi jalankan 'sudo systemctl restart higolab' sendiri."
+    exit 1
+  fi
+else
+  echo "4/5  Mematikan yang lama, menyalakan yang baru"
+  P=$(pid_prod)
+  if [[ -n "$P" ]]; then
+    kill -TERM $P 2>/dev/null || true
+    for _ in $(seq 1 20); do [[ -z "$(pid_prod)" ]] && break; sleep 0.5; done
+    if [[ -n "$(pid_prod)" ]]; then
+      kuning "     Belum mau berhenti, dipaksa."
+      kill -KILL $(pid_prod) 2>/dev/null || true
+      sleep 1
+    fi
+  fi
+  setsid nohup ./start.sh prod >> "$LOG" 2>&1 < /dev/null &
+  disown || true
+fi
 
 # ---------------------------------------------------------------- 5. buktikan
 echo "5/5  Menunggu prod menjawab"
