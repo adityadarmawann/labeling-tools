@@ -1316,6 +1316,58 @@ async def dataset_siap(request: Request,
     return {"ok": True, **r}
 
 
+@router.post("/api/tugas/buang-ai")
+async def buang_ai(request: Request,
+                   sess: Session = Depends(current_session_api),
+                   settings: Settings = Depends(get_settings)):
+    """
+    Singkirkan hasil auto-label yang BELUM diverifikasi dalam satu lingkup.
+
+    Lingkupnya sama persis dengan yang dipakai auto-label sendiri
+    (tugas.target_autolabel dengan sasaran "dicek"), jadi yang dibuang memang
+    yang tadi ditulisnya, bukan tebakan lain yang kebetulan mirip.
+
+    Membuang anotasi orang lain adalah pengelolaan, bukan pelabelan, jadi
+    haknya sama dengan hapus batch: pemilik atau Editor.
+    """
+    body = await bodi_json(request)
+    ds = str(body.get("ds") or "")
+    if ds:
+        d0 = svc_projek.temukan(settings.uploads_root, sess.user, ds)
+        if d0 is not None and str(sess.src or "") != str(d0):
+            await asyncio.to_thread(sess.load, d0)
+    data, galat = _siap(sess)
+    if galat:
+        return {"ok": False, "error": galat}
+    if not svc.boleh_unggah(data, sess.user):
+        return {"ok": False, "error": "hanya pemilik atau Editor yang bisa "
+                                      "membuang hasil AI"}
+
+    tid = str(body.get("job") or "") or None
+    batch = body.get("batch")
+    batch = None if batch is None else str(batch)
+    if tid is None and batch is None:
+        return {"ok": False, "error": "lingkupnya belum disebut"}
+
+    with sess.lock:
+        items = list(sess.items)
+    target = svc.target_autolabel(items, data, sess.src, tid=tid, batch=batch,
+                                  sasaran="dicek")
+    if target is None:
+        return {"ok": False, "error": "tugas tak dikenal"}
+
+    r = await asyncio.to_thread(svc.buang_hasil_ai, sess.src, target)
+    if not r["dibuang"]:
+        return {"ok": False,
+                "error": "tidak ada hasil AI yang belum diverifikasi di sini"}
+    # Berkasnya sudah pindah; pindai ulang supaya sesi ini tidak lagi menunjuk
+    # anotasi yang tak ada, dan buang cache survei supaya angka di kartu dan
+    # sidebar ikut segar.
+    await asyncio.to_thread(sess.load, sess.src)
+    svc_projek.lupakan_survei(sess.src)
+    return {"ok": True, **r}
+
+
 @router.post("/api/tugas/hapus-batch")
 async def hapus_batch(request: Request,
                       sess: Session = Depends(current_session_api),

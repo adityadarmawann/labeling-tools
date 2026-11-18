@@ -190,6 +190,16 @@
                     title="Kelola batch ini" aria-label="Kelola batch">&#8942;</button>
             <span class="menu-isi">
               <a class="menu-aksi" href="/bagi?ds={{ pr.ds | urlquote }}{% if b.batch %}&batch={{ b.batch | urlquote }}{% endif %}">Bagikan batch ini &rarr;</a>
+              {#- Muncul hanya kalau memang ada hasil AI yang menunggu.
+                  Auto-label yang salah resep meninggalkan ratusan anotasi
+                  keliru sekaligus, dan membetulkannya satu per satu jauh
+                  lebih lama daripada menjalankannya ulang. -#}
+              {% if b.dicek %}
+              <button class="menu-aksi an-buang-ai" type="button"
+                      data-buang-batch="{{ b.batch }}" data-n="{{ b.dicek }}"
+                      data-nama="{{ b.batch or 'Tanpa nama unggahan' }}">
+                Buang {{ b.dicek }} hasil AI&hellip;</button>
+              {% endif %}
               <button class="menu-aksi menu-bahaya an-hapus-batch" type="button"
                       data-hapus-batch="{{ b.batch }}" data-n="{{ b.n }}"
                       data-nama="{{ b.batch or 'Tanpa nama unggahan' }}"
@@ -299,6 +309,12 @@
             <span class="menu-isi">
               <a class="menu-aksi" href="/tugas/{{ k.id }}?ds={{ pr.ds | urlquote }}">
                 Lihat isinya</a>
+              {% if k.dicek %}
+              <button class="menu-aksi an-buang-ai" type="button"
+                      data-buang-job="{{ k.id }}" data-n="{{ k.dicek }}"
+                      data-nama="{{ k.judul }}">
+                Buang {{ k.dicek }} hasil AI&hellip;</button>
+              {% endif %}
               <button class="menu-aksi" type="button" data-aksi="prelabel"
                       data-id="{{ k.id }}">Pre-label dengan AI&hellip;</button>
               <button class="menu-aksi" type="button" data-aksi="pelabel"
@@ -426,6 +442,12 @@
             <span class="menu-isi">
               <a class="menu-aksi" href="/tugas/{{ k.id }}?ds={{ pr.ds | urlquote }}">
                 Lihat isinya</a>
+              {% if k.dicek %}
+              <button class="menu-aksi an-buang-ai" type="button"
+                      data-buang-job="{{ k.id }}" data-n="{{ k.dicek }}"
+                      data-nama="{{ k.judul }}">
+                Buang {{ k.dicek }} hasil AI&hellip;</button>
+              {% endif %}
               <button class="menu-aksi" type="button" data-aksi="prelabel"
                       data-id="{{ k.id }}">Pre-label dengan AI&hellip;</button>
               <button class="menu-aksi" type="button" data-aksi="pelabel"

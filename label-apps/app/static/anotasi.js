@@ -79,6 +79,38 @@
     };
   }
 
+  /* Buang hasil auto-label yang belum diverifikasi, sebatch atau sejob.
+     Dipisahkan dari "Hapus batch": yang itu membuang GAMBARNYA, yang ini cuma
+     anotasi yang ditulis AI dan gambarnya tetap di tempatnya, siap dicoba
+     lagi dengan resep yang berbeda. */
+  for (const b of document.querySelectorAll('.an-buang-ai')) {
+    b.onclick = async () => {
+      const n = b.dataset.n || '';
+      const nama = b.dataset.nama || 'ini';
+      if (!confirm(`Buang ${n} hasil AI dari "${nama}"?\n\n`
+                   + 'Gambarnya TIDAK dihapus, hanya anotasi yang ditulis AI '
+                   + 'dan belum kamu verifikasi. Yang sudah kamu simpan '
+                   + 'sendiri tidak ikut terbuang.\n\n'
+                   + 'Berkasnya dipindahkan, bukan dihapus, jadi masih bisa '
+                   + 'dikembalikan dari folder penyimpanannya.')) return;
+      b.disabled = true;
+      const ds = (document.getElementById('an-isi') || {}).dataset
+        ? document.getElementById('an-isi').dataset.ds || '' : '';
+      const badan = { ds };
+      if (b.dataset.buangJob) badan.job = b.dataset.buangJob;
+      else badan.batch = b.dataset.buangBatch || '';
+      const j = await send('/api/tugas/buang-ai', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(badan),
+      });
+      if (!j.ok) { toastSesudahMuat(j.error); location.reload(); return; }
+      toastSesudahMuat(`${j.dibuang} anotasi AI dibuang (${j.bentuk} objek)`
+        + (j.dilindungi ? ` · ${j.dilindungi} dilindungi karena sudah kamu sentuh` : '')
+        + (j.folder ? ` · tersimpan di ${j.folder}` : ''));
+      location.reload();
+    };
+  }
+
   for (const b of document.querySelectorAll('.an-hapus-batch')) {
     b.onclick = async () => {
       const batch = b.dataset.hapusBatch || '';

@@ -496,6 +496,39 @@ def _segment_osam(img: Path, points, labels, model: str, eps) -> Usulan:
                   model, dari_cache)
 
 
+def panaskan(img: Path, model: str = MODEL_DEFAULT) -> bool:
+    """Hitung embedding gambar lalu simpan di cache, TANPA menghasilkan mask.
+
+    Klik pertama pada sebuah gambar membayar satu kali jalan encoder; klik
+    berikutnya memakai embedding yang sama dan selesai dalam hitungan puluhan
+    milidetik. Terukur di prod pada sam2:small, gambar 640x640: klik pertama
+    1,5 sampai 2,0 detik, klik berikutnya 0,03 detik.
+
+    Selisih itu tak hilang dengan model yang lebih cepat, karena ia memang
+    harga sekali encode. Yang bisa dilakukan adalah MEMBAYARNYA LEBIH AWAL,
+    saat gambarnya baru tampil dan orangnya masih memandangi objek sebelum
+    mengklik. Itulah gunanya fungsi ini.
+
+    Mengembalikan True kalau embeddingnya sudah siap sesudah pemanggilan ini
+    (entah baru dihitung atau memang sudah ada).
+    """
+    if model not in MODEL_DIIZINKAN:
+        raise TidakAdaObjek(f"model '{model}' tidak dikenal")
+    kunci = _kunci_cache(img, model)
+    if kunci in _cache:
+        _cache.move_to_end(kunci)
+        return True
+    # Jalur pemanasan memakai mesin yang sama dengan segmentasi, bukan
+    # menyalinnya: dua jalur yang menghitung embedding dengan cara sedikit
+    # berbeda akan menghasilkan dua entri cache untuk satu gambar, dan
+    # pemanasannya jadi sia-sia tanpa ada yang tahu.
+    try:
+        _segment(img, [[1.0, 1.0]], [1], model, EPSILON_ANYLABELING)
+    except TidakAdaObjek:
+        pass                     # tak menemukan objek di titik umpan: wajar
+    return _kunci_cache(img, model) in _cache
+
+
 def _segment(img: Path, points, labels, model: str, eps: float) -> Usulan:
     if model not in MODEL_DIIZINKAN:
         raise TidakAdaObjek(f"model '{model}' tidak diizinkan")

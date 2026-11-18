@@ -580,6 +580,33 @@ async def api_sam(request: Request, sess: Session = Depends(current_session_api)
             "model": u.model, "dari_cache": u.dari_cache}
 
 
+@router.post("/api/sam/panaskan")
+async def api_sam_panaskan(request: Request,
+                           sess: Session = Depends(current_session_api)):
+    """Siapkan embedding SAM sebuah gambar lebih awal, tanpa menghasilkan mask.
+
+    Dipanggil kanvas begitu gambarnya tampil. Klik pertama pada sebuah gambar
+    membayar satu kali jalan encoder (1,5 sampai 2,0 detik pada sam2:small),
+    klik berikutnya 0,03 detik. Selisih itu tak hilang dengan model yang lebih
+    cepat karena ia memang harga sekali encode; yang bisa dilakukan adalah
+    membayarnya saat orangnya masih memandangi objek sebelum mengklik.
+
+    Sengaja tak pernah menjawab galat yang perlu ditindaklanjuti: ini
+    kenyamanan, bukan pekerjaan. Kalau gagal, klik pertama cuma kembali
+    selambat sebelumnya.
+    """
+    body = await bodi_json(request)
+    it = sess.find(body.get("path", ""))
+    if it is None:
+        return {"ok": False, "siap": False}
+    model = body.get("model") or autolabel.MODEL_DEFAULT
+    try:
+        siap = await asyncio.to_thread(autolabel.panaskan, it["img"], model)
+    except Exception:                                  # noqa: BLE001
+        return {"ok": False, "siap": False}
+    return {"ok": True, "siap": bool(siap)}
+
+
 @router.post("/api/deteksi")
 async def api_deteksi(request: Request, sess: Session = Depends(current_session_api)):
     """

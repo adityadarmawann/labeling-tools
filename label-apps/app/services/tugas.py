@@ -455,6 +455,83 @@ def boleh_labeli_lepas(data: dict, akun: str) -> bool:
     return ((data["anggota"].get(akun) or {}).get("akses")) == "semua"
 
 
+def buang_hasil_ai(ds: Path, items: list) -> dict:
+    """Singkirkan hasil auto-label yang BELUM diverifikasi, bisa dikembalikan.
+
+    Auto-label yang salah resep meninggalkan ratusan anotasi keliru sekaligus,
+    dan membetulkannya satu per satu jauh lebih lama daripada menjalankannya
+    ulang. Tanpa jalan ini, satu-satunya cara adalah membuka tiap gambar lalu
+    menghapus bentuknya dengan tangan.
+
+    DUA penjaga, dan keduanya diperiksa pada tiap berkas tepat sebelum
+    disentuh:
+
+      1. Hanya berkas yang masih bertanda `perlu_dicek`. Begitu manusia
+         menyimpannya, tandanya hilang dan berkas itu bukan lagi hasil AI
+         mentah melainkan pekerjaan orang.
+      2. Hanya yang TIDAK menyimpan nama pelabel. Nama itu ditulis jalur
+         simpan manusia, jadi keberadaannya berarti gambar ini pernah
+         disentuh orang betapapun tandanya berbunyi.
+
+    Berkasnya DIPINDAHKAN ke folder berawalan titik, bukan dihapus. Folder
+    bertitik dilewati pemindai, jadi isinya tak muncul sebagai gambar baru,
+    tetapi berkasnya tetap utuh dan bisa dikembalikan dengan satu perintah
+    yang ditulis di CATATAN.txt di dalamnya.
+    """
+    import json
+    import shutil
+    from datetime import datetime
+
+    cap = datetime.now().strftime("%Y%m%d-%H%M%S")
+    tujuan = Path(ds) / f".ai-dibuang-{cap}"
+    dibuang = bentuk = dilindungi = 0
+    siap = False
+    for it in items:
+        lab = Path(it["img"]).with_suffix(".json")
+        if not lab.is_file():
+            continue
+        try:
+            d = json.loads(lab.read_text())
+        except (OSError, ValueError):
+            continue
+        if not d.get("perlu_dicek"):
+            continue
+        if str(d.get("pelabel") or "").strip():
+            dilindungi += 1
+            continue
+        if not siap:
+            (tujuan / "isi").mkdir(parents=True, exist_ok=True)
+            siap = True
+        # Nama berkas bisa bertabrakan kalau gambar bernama sama ada di dua
+        # subfolder; diberi awalan jalur relatifnya supaya tetap bisa
+        # dikembalikan ke tempat asalnya.
+        try:
+            rel = lab.relative_to(ds)
+        except ValueError:
+            rel = Path(lab.name)
+        sasaran = tujuan / "isi" / str(rel).replace("/", "__")
+        bentuk += len(d.get("shapes") or [])
+        try:
+            shutil.move(str(lab), str(sasaran))
+        except OSError:
+            continue
+        dibuang += 1
+
+    if siap:
+        (tujuan / "CATATAN.txt").write_text(
+            f"Hasil auto-label yang dibuang pada {cap}.\n"
+            f"{dibuang} berkas anotasi, {bentuk} bentuk.\n\n"
+            "Semuanya masih bertanda perlu_dicek dan tak satu pun menyimpan\n"
+            "nama pelabel, jadi tak ada pekerjaan manusia di dalamnya.\n\n"
+            "Nama berkas di sini memakai '__' sebagai pengganti '/' dari jalur\n"
+            "aslinya, supaya bisa dikembalikan ke tempat semula.\n",
+            encoding="utf-8")
+        log.info("buang hasil AI di %s: %s berkas, %s bentuk, %s dilindungi",
+                 Path(ds).name, f"{dibuang:,}", f"{bentuk:,}", dilindungi)
+    return {"dibuang": dibuang, "bentuk": bentuk, "dilindungi": dilindungi,
+            "folder": tujuan.name if siap else ""}
+
+
 def target_autolabel(items: list, data: dict, ds: Path, *,
                      tid: str | None = None, batch: str | None = None,
                      sasaran: str = "belum") -> list | None:
