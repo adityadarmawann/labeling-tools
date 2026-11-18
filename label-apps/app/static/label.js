@@ -952,6 +952,9 @@ const NAMA_JENIS = { polygon: 'Poligon', rectangle: 'Rectangle', circle: 'Circle
    terhadap panah dan Delete padahal orang sudah beralih menggambar. */
 function setMode(m) {
   S.mode = m;
+  // Beralih KE alat AI juga memanaskan: gambar sering dibuka dengan alat
+  // manual lebih dulu, dan tanpa ini pemanasannya terlewat sama sekali.
+  if (MODE_AI.includes(m)) panaskanSam();
   S.draft = null;
   // 'geser' cuma memindahkan sudut pandang. Membuang pilihan di sini membuat
   // orang kehilangan objek yang sedang dikerjakan hanya karena menggeser
@@ -3420,8 +3423,42 @@ img.onload = () => {
   // sama seperti Roboflow. Ditaruh di onload supaya tidak berebut jalur
   // dengan gambar yang sedang ditunggu orang.
   praambilTetangga();
+  panaskanSam();
 };
 img.onerror = () => { pesan('Gambar gagal dimuat'); toast('Gambar gagal dimuat'); };
+
+/* Siapkan embedding SAM gambar INI lebih awal, di latar.
+
+   Klik PERTAMA pada sebuah gambar membayar satu kali jalan encoder: terukur
+   di prod pada sam2:small, 1,5 sampai 2,0 detik. Klik kedua dan seterusnya
+   0,03 detik, karena memakai embedding yang sama. Melabeli berarti terus
+   berpindah gambar, jadi harga itu dibayar berulang-ulang, satu kali tiap
+   gambar, dan itulah yang terasa lambat.
+
+   Yang dilakukan di sini bukan mempercepat encodernya melainkan memindahkan
+   waktunya: dikerjakan begitu gambarnya tampil, selagi orangnya masih
+   memandangi objek dan memutuskan mau mengklik di mana.
+
+   Hanya saat alat AI yang sedang dipakai. Orang yang melabeli manual tak
+   perlu membebani GPU untuk sesuatu yang tak akan ia pakai, dan GPU itu
+   dipakai bersama training serta pembuatan versi.
+
+   Gagal tidak diapa-apakan: ini kenyamanan, bukan pekerjaan. Kalau gagal,
+   klik pertama cuma kembali selambat sebelumnya. */
+const MODE_AI = ['p+', 'p-', 'rect'];
+let _panasUntuk = '';
+
+async function panaskanSam() {
+  if (!D.path || _panasUntuk === D.path) return;
+  if (!MODE_AI.includes(S.mode)) return;
+  _panasUntuk = D.path;
+  try {
+    await fetch('/api/sam/panaskan', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: D.path, model: el('model').value }),
+    });
+  } catch (e) { /* biarkan: klik pertama cuma kembali selambat sebelumnya */ }
+}
 
 /* Ambil-dulu beberapa gambar tetangga ke cache peramban. ±2, bukan cuma ±1:
    orang menekan panah beruntun ke satu arah, dan yang kedua harus sudah siap
