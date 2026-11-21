@@ -107,3 +107,40 @@ def test_osam_ke_cpu_saat_training_aktif(monkeypatch):
         assert autolabel._boleh_gpu_osam("sam2:small") is False
     finally:
         _bersihkan()
+
+
+def test_ambang_vram_sam3_ikut_versi_osam(monkeypatch):
+    """Ambang 7,2 GB itu milik bobot float32 di osam 0.5, bukan hukum alam.
+
+    Diukur di mesin ini, proses segar, satu model saja, di luar yang sudah
+    dipakai proses lain: sam2:small ~2,2 GB dan sam3:latest ~2,8 GB dengan
+    bobot float16 di osam 0.12. Membawa ambang lama ke sana membuat SAM 3
+    praktis selalu jatuh ke CPU, dan di CPU ia terukur 67 detik per klik
+    lewat jalur aplikasi.
+    """
+    from app.services import autolabel
+
+    assert autolabel.OSAM_GPU_BEBAS["sam3:latest"] > autolabel.OSAM_GPU_MIN_BEBAS
+    assert "sam3:latest" not in autolabel.OSAM_GPU_BEBAS_OSAM_BARU, \
+        "di osam 0.12 ia tak butuh ambang khusus lagi"
+
+    monkeypatch.setattr(autolabel.olah_gpu, "MODE", "gpu")
+    monkeypatch.setattr(autolabel.gpu_sinyal, "latih_aktif", lambda: False)
+
+    kelas = type("T", (), {})
+    torch_palsu = kelas()
+    torch_palsu.cuda = kelas()
+    torch_palsu.cuda.is_available = staticmethod(lambda: True)
+    # 6,0 GB bebas: cukup untuk ambang umum 4,7 GB, tak cukup untuk 7,2 GB.
+    torch_palsu.cuda.mem_get_info = staticmethod(lambda: (6_000_000_000,
+                                                          8_200_000_000))
+    import sys
+    monkeypatch.setitem(sys.modules, "torch", torch_palsu)
+
+    monkeypatch.setattr(autolabel.osam_api, "baru", lambda: False)
+    assert autolabel._boleh_gpu_osam("sam3:latest") is False
+
+    monkeypatch.setattr(autolabel.osam_api, "baru", lambda: True)
+    assert autolabel._boleh_gpu_osam("sam3:latest") is True, \
+        "dengan float16 ia harus boleh naik GPU pada sisa VRAM yang sama"
+    assert autolabel._boleh_gpu_osam("sam2:small") is True

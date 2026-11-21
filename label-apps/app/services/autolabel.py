@@ -421,7 +421,22 @@ OSAM_GPU_KECIL = {"sam2:tiny", "sam2:small",
 # GB + sedikit kepala). SAM 3 memuncak ~6,8 GB (hampir seluruh GPU), jadi hanya
 # naik saat GPU nyaris kosong: butuh ~7,2 GB bebas.
 OSAM_GPU_MIN_BEBAS = 4_700_000_000
+# Ambang khusus per model, UNTUK osam 0.5, yang bobotnya float32.
 OSAM_GPU_BEBAS = {"sam3:latest": 7_200_000_000}
+
+# Di osam 0.12 bobotnya float16 dan tak ada lagi model yang butuh ambang
+# khusus. Diukur di mesin ini, proses segar, satu model saja, di luar yang
+# sudah dipakai proses lain:
+#
+#   sam2:small   ~2,2 GB
+#   sam3:latest  ~2,8 GB   klik pertama 7,1 dtk (memuat bobot 1,8 GB), gambar
+#                          baru 1,3 dtk, klik lagi di gambar yang sama 0,01 dtk
+#
+# Keduanya di bawah ambang umum 4,7 GB, jadi tabel ini kosong dan SAM 3 ikut
+# aturan yang sama dengan model lain. Membiarkan ambang 7,2 GB di sini akan
+# membuatnya praktis selalu jatuh ke CPU, dan di CPU ia terukur 67 detik per
+# klik lewat jalur aplikasi: bukan sesuatu yang bisa dipakai orang.
+OSAM_GPU_BEBAS_OSAM_BARU: dict[str, int] = {}
 
 _osam_dipaksa = False
 _osam_model_kini = None                # model yang sedang dimuat -> pemilih provider
@@ -445,7 +460,8 @@ def _boleh_gpu_osam(model) -> bool:
         if not torch.cuda.is_available():
             return False
         bebas, _ = torch.cuda.mem_get_info()
-        return bebas >= OSAM_GPU_BEBAS.get(model, OSAM_GPU_MIN_BEBAS)
+        tabel = OSAM_GPU_BEBAS_OSAM_BARU if osam_api.baru() else OSAM_GPU_BEBAS
+        return bebas >= tabel.get(model, OSAM_GPU_MIN_BEBAS)
     except Exception:
         return False
 
@@ -454,7 +470,11 @@ def _blob_boleh_gpu(model, blob) -> bool:
     """Per-SESI: tidak semua sesi sebuah model muat di GPU bareng. SAM 3 punya
     tiga sesi; kalau ketiganya di GPU, bobotnya menyita VRAM dan encoder OOM saat
     memuncak. Maka hanya image_encoder (yang berat) di GPU; language_encoder +
-    decoder (input teks/kecil) tetap CPU. Model lain: semua sesinya boleh GPU."""
+    decoder (input teks/kecil) tetap CPU. Model lain: semua sesinya boleh GPU.
+
+    Hanya berlaku untuk osam 0.5, sebab hanya di sana pembuat sesi ditambal.
+    Di 0.12 bobotnya float16, ketiga sesinya muat bersama, dan perangkatnya
+    dipilih per klien, bukan per sesi."""
     if model == "sam3:latest":
         return "image_encoder" in (getattr(blob, "url", "") or "")
     return True

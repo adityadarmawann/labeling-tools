@@ -1833,7 +1833,10 @@ def test_info_melaporkan_model_teks_beserta_ukuran_unduhannya():
     teks = {t["model"]: t for t in autolabel.info()["teks"]}
     assert set(teks) == {"yoloworld:latest", "sam3:latest"}
     assert teks["yoloworld:latest"]["unduh_mb"] == 641
-    assert teks["sam3:latest"]["unduh_mb"] == 3412
+    # Angkanya ikut versi osam: float32 3,4 GB di 0.5, float16 1,8 GB di 0.12.
+    from app.services import osam_api
+    assert teks["sam3:latest"]["unduh_mb"] == (
+        autolabel.UNDUH_SAM3_OSAM_BARU if osam_api.baru() else 3412)
     assert all(isinstance(t["terunduh"], bool) for t in teks.values())
 
 

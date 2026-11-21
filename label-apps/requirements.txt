@@ -17,9 +17,26 @@ PyYAML==6.0.3
 # saat klik SAM pertama. Karena itu keduanya harus tercatat di sini: pemasangan
 # bersih yang mengikuti README tidak boleh menghasilkan fitur yang mati diam.
 onnxruntime==1.28.0
-# osam menyediakan EfficientSAM dan SAM 2 tanpa perlu mengurus berkas ONNX
-# sendiri; MobileSAM tetap lewat onnxruntime langsung.
-osam==0.5.0
+# osam menyediakan EfficientSAM, SAM 2, dan SAM 3 tanpa perlu mengurus berkas
+# ONNX sendiri; MobileSAM tetap lewat onnxruntime langsung.
+#
+# 0.12 bukan sekadar perbaikan: API publiknya berganti (apis.generate menjadi
+# Client.segment) DAN di sana SAM 3 menerima klik titik, yang di 0.5 ditolak.
+# Kode berjalan di atas keduanya lewat app/services/osam_api.py, jadi urutan
+# pemasangannya di server yang sudah hidup boleh begini dan hanya begini:
+#
+#   1. kirim kodenya (./deploy.sh), prod lama maupun baru sama-sama jalan
+#   2. pasang paketnya di venv yang dipakai server
+#   3. muat ulang servicenya
+#
+# Dibalik, yaitu memasang paket lebih dulu, membuat klik SAM di prod gagal
+# dengan ModuleNotFoundError sampai servicenya dimuat ulang, sebab kode lama
+# mengimpor osam.apis yang sudah tidak ada.
+#
+# Memasangnya memerlukan pip 26.3 ke atas. Yang lebih tua berhenti dengan
+# "InvalidVersion: '6.8.0-138-generic'": metadata osam membandingkan
+# platform_release, dan versi kernel Linux bukan nomor versi PEP 440.
+osam==0.12.0
 # Pembuatan versi dataset. Sama seperti dua di atas, keduanya diimpor MALAS di
 # dalam fungsi (olah.py:128 dan _A()), jadi server tetap menyala tanpa mereka
 # dan yang mati hanyalah tab Versi — diam-diam, sampai orang menekan Buat dan
