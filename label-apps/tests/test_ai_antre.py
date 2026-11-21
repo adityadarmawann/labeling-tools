@@ -179,3 +179,19 @@ def test_lingkup_kosong_dilaporkan_sebagai_sebab():
         src = inspect.getsource(f)
         assert "if not target:" in src, f.__module__
         assert "tidak ada gambar yang cocok di lingkup ini" in src, f.__module__
+
+
+def test_klaim_yang_tugasnya_belum_terdaftar_tetap_dijaga():
+    """Polaritasnya harus gagal ke arah MENJAGA, bukan melepas.
+
+    _tugas[akun] baru diisi beberapa baris sesudah klaim diambil. Dengan
+    polaritas sebaliknya ada jendela sempit saat klaim yang baru saja diambil
+    terbaca tak bertuan, dan permintaan kedua bisa menyelinap masuk. Pernah
+    terlihat sebagai uji yang kadang lulus kadang tidak, tergantung beban
+    mesin.
+    """
+    import pathlib
+    for f in ("app/routers/autolabel.py", "app/routers/prelabel.py"):
+        src = pathlib.Path(f).read_text()
+        assert "t is None or not t.done()" in src, f
+        assert "t is not None and not t.done()" not in src, f

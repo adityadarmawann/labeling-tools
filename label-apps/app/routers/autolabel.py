@@ -168,8 +168,14 @@ def _spawn(akun: str, buat_hasil) -> bool:
     # Terjadi di prod. `_tugas[akun]` diisi di bawah; selama tugasnya belum
     # ada atau sudah selesai, klaimnya dianggap tak bertuan.
     def masih_jalan() -> bool:
+        # Tugas yang BELUM terdaftar dianggap masih jalan, bukan mati.
+        # _tugas[akun] baru diisi beberapa baris di bawah, jadi dengan
+        # polaritas sebaliknya ada jendela sempit saat klaim yang baru saja
+        # diambil terbaca tak bertuan, dan permintaan kedua bisa menyelinap
+        # masuk. Kebocoran yang mau diperbaiki tetap tertangkap: di sana
+        # tugasnya ADA dan sudah selesai.
         t = _tugas.get(akun)
-        return t is not None and not t.done()
+        return t is None or not t.done()
 
     if ai_antre.klaim(akun, FITUR, masih_jalan):
         return False

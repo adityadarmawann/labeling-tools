@@ -459,7 +459,20 @@ class Session:
         return {"K": len(t), "titik": list(t)} if t else None
 
     def muat_ulang_item(self, it: dict) -> None:
-        """Baca ulang anotasi SATU gambar dari disk."""
+        """Baca ulang anotasi SATU gambar dari disk.
+
+        `perlu_dicek` ikut disegarkan, dan itu bukan kerapian. Nilai keempat
+        dari read_json dulu dibuang ke `_`, sehingga menyimpan sebuah gambar
+        membersihkan tandanya DI BERKAS tetapi tidak di ingatan sesi. Dari
+        layar: spanduk berubah jadi "Terverifikasi" begitu disimpan, lalu
+        kembali jadi "belum diverifikasi" begitu orangnya pindah gambar dan
+        kembali lagi, karena jalur pindah gambar membaca ingatan sesi itu.
+        Pekerjaannya tidak hilang, tetapi tak ada yang bisa mempercayai
+        tandanya.
+
+        Label YOLO (.txt) tak punya tempat menyimpan tanda ini sama sekali,
+        jadi di cabang itu ia selalu False, sama seperti saat dipindai.
+        """
         try:
             if it.get("yolo"):
                 sh = scanner.read_yolo(it["labels"], it["W"], it["H"],
@@ -467,10 +480,12 @@ class Session:
                 scanner._gabung_cadangan(it["img"], sh)
                 it["shapes"] = sh
                 it["issues"] = scanner.inspect(sh, it["W"], it["H"], True)
+                it["perlu_dicek"] = False
             else:
-                sh, W, H, _ = scanner.read_json(it["img"].with_suffix(".json"))
+                sh, W, H, pd = scanner.read_json(it["img"].with_suffix(".json"))
                 it["shapes"] = sh
                 it["issues"] = scanner.inspect(sh, W or it["W"], H or it["H"], True)
+                it["perlu_dicek"] = bool(pd)
         except Exception:
             it["issues"] = ["berkas anotasi rusak"]
         self.drop_thumbs_for(it)
