@@ -75,86 +75,142 @@
 
       Bawaannya "otomatis": ditebak dari bentuk TERBANYAK, dan tebakannya
       disebutkan apa adanya supaya tidak ada yang mengira sudah memilih. -#}
-  <div class="an-kendali">
-  {% if boleh_kelola %}
-  <div class="an-jenis an-kendali-baris">
-    <label class="halus" for="an-jenis">Format anotasi</label>
-    <select class="chip" id="an-jenis" data-ds="{{ pr.ds }}">
-      <option value=""{% if not jenis %} selected{% endif %}>Otomatis
-        ({{ "kotak" if jenis_efektif == "kotak" else "poligon" }}, dari bentuk
-        terbanyak)</option>
-      <option value="poligon"{% if jenis == "poligon" %} selected{% endif %}>
-        Poligon (segmentasi)</option>
-      <option value="kotak"{% if jenis == "kotak" %} selected{% endif %}>
-        Kotak (deteksi)</option>
-    </select>
-    <span class="halus" id="an-jenis-pesan">
-      {%- if jenis_efektif == "poligon" -%}
-      {#- Tidak menyebut "perlu dicek": tanda itu HANYA ditulis auto-label,
-          dan buatversi tak pernah menulisnya sama sekali. Teks lama
-          menjanjikan keadaan yang tidak pernah ada dan tak bisa dicari dengan
-          saringan mana pun. Yang benar-benar terjadi: gambarnya dikembalikan
-          ke kolom Anotasi saat versi dibuat. -#}
-      Kotak, titik, dan garis tidak dipakai, dan gambarnya dikembalikan ke
-      sini saat versi dibuat.
-      {%- else -%}
-      Poligon diturunkan jadi kotak pembungkusnya saat versi dibuat. Tidak ada
-      bentuk yang ditolak.
-      {%- endif -%}
+  {#- SATU baris: cari, pelabel, keadaan, urutan, lalu setelan projek di
+      ujung kanan.
+
+      Sebelumnya blok ini memakai .an-kendali-baris, yaitu grid TIGA kolom yang
+      ditulis untuk pola "label | kendali | kalimat bantuan", satu kendali per
+      baris. Diisi dua belas anak, penempatan otomatis grid menaruh label
+      "Keadaan" dan "Urutkan" di kolom ketiga baris sebelumnya, dan dua select
+      mendarat di kolom label selebar 96px sehingga isinya terpotong di tengah
+      kata. Hasilnya bukan cuma boros 200 piksel, melainkan terbaca rusak.
+
+      Tetap SATU form, bukan dua yang berdampingan. Dua form berarti tiap sisi
+      harus menitipkan nilai sisi lain sebagai input tersembunyi, dan satu yang
+      terlupa membuat mencari diam-diam membuang saringan pelabel. -#}
+  <div class="an-kendali bar bar-saring">
+    <form class="an-saring" method="get" action="/anotasi">
+      <input type="hidden" name="ds" value="{{ pr.ds }}">
+
+      <span class="saring-cari">
+        <label class="sr-only" for="an-cari">Cari judul tugas atau nama pelabel</label>
+        <input class="cari-nama" id="an-cari" type="search" name="q"
+               value="{{ cari_papan }}" autocomplete="off" spellcheck="false"
+               placeholder="Cari judul tugas atau pelabel"
+               title="Mencari di judul tugas dan nama pelabel">
+        <button class="chip" type="submit">Cari</button>
+      </span>
+
+      {#- Tombol ini HANYA tampil di layar sempit (lihat app.css). Lencananya
+          menyebut berapa saringan yang berlaku, supaya saringan yang sedang
+          terlipat tak pernah bekerja diam-diam. -#}
+      {%- set n_saring = (1 if pelabel_f else 0) + (1 if keadaan_f else 0)
+                       + (1 if cari_papan else 0) %}
+      <button class="chip saring-lipat" id="saring-lipat" type="button"
+              aria-expanded="false" aria-controls="an-saring-isi"
+              title="Tampilkan saringan papan">
+        Saringan{% if n_saring %} <b>{{ n_saring }}</b>{% endif %}</button>
+
+      <span class="saring-pisah"></span>
+
+      <span class="an-saring-isi" id="an-saring-isi">
+        {#- Tiap select mengirim formnya sendiri saat diubah, jadi tak ada lagi
+            tombol "Terapkan": satu pilihan, satu tindakan. Kotak cari tetap
+            punya tombolnya sendiri, karena mengetik tak punya saat "selesai"
+            yang bisa ditebak mesin. -#}
+        {% if pelabel_ada %}
+        <span class="saring-urut saring-sel"{% if pelabel_f %} data-on{% endif %}>
+          <label class="halus" for="an-pl">Pelabel</label>
+          <select id="an-pl" name="pl" onchange="this.form.submit()">
+            <option value="">Semua pelabel</option>
+            {%- for nama in pelabel_ada %}
+            <option value="{{ nama }}"{% if pelabel_f == nama %} selected{% endif %}>{{ nama }}</option>
+            {%- endfor %}
+          </select>
+        </span>
+        {% endif %}
+
+        <span class="saring-urut saring-sel"{% if keadaan_f %} data-on{% endif %}>
+          <label class="halus" for="an-kd">Keadaan</label>
+          <select id="an-kd" name="kd" onchange="this.form.submit()">
+            <option value="">Semua keadaan</option>
+            <option value="baru"{% if keadaan_f == 'baru' %} selected{% endif %}>Belum disentuh</option>
+            <option value="jalan"{% if keadaan_f == 'jalan' %} selected{% endif %}>Sedang dikerjakan</option>
+            <option value="selesai"{% if keadaan_f == 'selesai' %} selected{% endif %}>Selesai</option>
+          </select>
+        </span>
+
+        {#- Pil urut sengaja tak pernah menyala: mengurutkan tidak menyempitkan
+            apa pun, jadi menyalakannya menyamakan dua hal yang berbeda. -#}
+        <span class="saring-urut">
+          <label class="halus" for="an-urut">Urutkan</label>
+          <select id="an-urut" name="urut" onchange="this.form.submit()">
+            {%- for nilai, nama in urut_pilihan.items() %}
+            <option value="{{ nilai }}"{% if urut == nilai %} selected{% endif %}>{{ nama }}</option>
+            {%- endfor %}
+          </select>
+        </span>
+      </span>
+
+      <span class="saring-dorong"></span>
+
+      {% if pelabel_f or keadaan_f or cari_papan %}
+      <a class="chip saring-pil" href="/anotasi?ds={{ pr.ds | urlquote }}{% if urut != 'terbaru' %}&amp;urut={{ urut }}{% endif %}"
+         title="Bersihkan saringan papan"
+         aria-label="Bersihkan saringan papan. Kini tampil {{ kartu | length }} dari {{ n_kartu_semua }} tugas.">
+        {{ kartu | length }} dari {{ n_kartu_semua }} tugas
+        <span aria-hidden="true">&times;</span></a>
+      {% endif %}
+    </form>
+
+    {#- Format anotasi BUKAN saringan: ia setelan projek yang menentukan bentuk
+        mana yang dianggap tak sesuai, dan bentuk tak sesuai dikembalikan ke
+        kolom "Belum ditugaskan" saat versi dibuat. Jadi ia mengubah pekerjaan
+        orang lain, bukan cuma tampilan, dan hanya pemilik yang melihatnya.
+
+        Ia dipindah ke balik satu pil: dulu ia beserta kalimat penjelasnya
+        memakan 72 piksel pada SETIAP pemuatan halaman, untuk setelan yang
+        diubah paling banyak sekali per projek. Ia juga di LUAR form di atas,
+        supaya tak pernah ikut terkirim sebagai saringan. -#}
+    {% if boleh_kelola %}
+    <span class="saring-pisah"></span>
+    <span class="menu an-jenis" id="menu-jenis">
+      <button class="chip" id="jenis-tombol" type="button"
+              title="Format anotasi yang dituju projek ini">
+        Format:
+        {%- if not jenis %} Otomatis
+        {%- elif jenis == 'poligon' %} Poligon
+        {%- else %} Kotak{% endif %}</button>
+      <span class="menu-isi">
+        <span class="menu-judul">Format anotasi projek</span>
+        <span class="menu-catatan">Setelan projek, berlaku untuk semua anggota.</span>
+        <span class="menu-baris">
+          <label class="sr-only" for="an-jenis">Format anotasi projek</label>
+          <select class="chip" id="an-jenis" data-ds="{{ pr.ds }}"
+                  aria-describedby="an-jenis-pesan">
+            <option value=""{% if not jenis %} selected{% endif %}>Otomatis
+              ({{ "kotak" if jenis_efektif == "kotak" else "poligon" }}, dari bentuk
+              terbanyak)</option>
+            <option value="poligon"{% if jenis == "poligon" %} selected{% endif %}>
+              Poligon (segmentasi)</option>
+            <option value="kotak"{% if jenis == "kotak" %} selected{% endif %}>
+              Kotak (deteksi)</option>
+          </select>
+        </span>
+        {#- role=status: JS menulis "Menyimpan..." dan pesan galat ke sini, dan
+            keduanya harus sampai ke pembaca layar tanpa memindahkan fokus. -#}
+        <span class="menu-catatan" id="an-jenis-pesan" role="status" aria-live="polite">
+          {%- if jenis_efektif == "poligon" -%}
+          Kotak, titik, dan garis tidak dipakai, dan gambarnya dikembalikan ke
+          sini saat versi dibuat.
+          {%- else -%}
+          Poligon diturunkan jadi kotak pembungkusnya saat versi dibuat. Tidak ada
+          bentuk yang ditolak.
+          {%- endif -%}
+        </span>
+      </span>
     </span>
-  </div>
-  {% endif %}
-
-  {# ------------------------------------------- saringan papan + urutan
-
-     Tiga kolom merender SELURUH kartu tanpa paginasi. Pada projek dengan 40
-     tugas, satu-satunya cara mencari pekerjaan seseorang adalah membaca satu
-     per satu. Datanya sudah ada di tiap kartu (pelabel, keadaan, judul);
-     yang tidak ada cuma kontrolnya.
-
-     Semuanya dalam SATU form GET supaya memilih pelabel tidak membuang
-     urutan, dan sebaliknya. #}
-  <form class="an-urut an-kendali-baris" method="get" action="/anotasi">
-    <input type="hidden" name="ds" value="{{ pr.ds }}">
-
-    {% if pelabel_ada %}
-    <label class="halus" for="an-pl">Pelabel</label>
-    <select class="chip" id="an-pl" name="pl" onchange="this.form.submit()">
-      <option value="">semua pelabel</option>
-      {%- for nama in pelabel_ada %}
-      <option value="{{ nama }}"{% if pelabel_f == nama %} selected{% endif %}>{{ nama }}</option>
-      {%- endfor %}
-    </select>
     {% endif %}
-
-    <label class="halus" for="an-kd">Keadaan</label>
-    <select class="chip" id="an-kd" name="kd" onchange="this.form.submit()">
-      <option value="">semua keadaan</option>
-      <option value="baru"{% if keadaan_f == 'baru' %} selected{% endif %}>Belum disentuh</option>
-      <option value="jalan"{% if keadaan_f == 'jalan' %} selected{% endif %}>Sedang dikerjakan</option>
-      <option value="selesai"{% if keadaan_f == 'selesai' %} selected{% endif %}>Selesai</option>
-    </select>
-
-    <label class="sr-only" for="an-cari">Cari judul tugas atau nama pelabel</label>
-    <input class="chip" id="an-cari" type="search" name="q" value="{{ cari_papan }}"
-           placeholder="cari judul tugas atau pelabel…"
-           autocomplete="off" spellcheck="false">
-
-    <label class="halus" for="an-urut">Urutkan</label>
-    <select class="chip" id="an-urut" name="urut" onchange="this.form.submit()">
-      {%- for nilai, nama in urut_pilihan.items() %}
-      <option value="{{ nilai }}"{% if urut == nilai %} selected{% endif %}>{{ nama }}</option>
-      {%- endfor %}
-    </select>
-    <button class="chip" type="submit">Terapkan</button>
-
-    {% if pelabel_f or keadaan_f or cari_papan %}
-    <a class="chip saring-pil" href="/anotasi?ds={{ pr.ds | urlquote }}{% if urut != 'terbaru' %}&amp;urut={{ urut }}{% endif %}"
-       title="Buang saringan papan">
-      {{ kartu | length }} dari {{ n_kartu_semua }} tugas
-      <span aria-hidden="true">&times;</span></a>
-    {% endif %}
-  </form>
   </div>
 
   {# ---------------------------------------------------- tiga kolom #}

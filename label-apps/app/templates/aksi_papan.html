@@ -69,16 +69,21 @@
   </p>
   {% endif %}
 
-  <div class="an-kendali">
-  {# ---------------------------------------------------- urutan #}
-  <form class="an-urut an-kendali-baris" method="get" action="/aksi/papan">
+  {#- Satu pil, idiom yang sama dengan bilah saringan papan Anotasi dan kisi
+      Dataset. Dulu di sini ada grid tiga kolom yang ditulis untuk pola
+      "label | kendali | kalimat bantuan"; untuk satu kendali tanpa kalimat
+      bantuan, grid itu cuma menyisakan dua kolom kosong. -#}
+  <div class="an-kendali bar bar-saring">
+  <form class="an-saring" method="get" action="/aksi/papan">
     <input type="hidden" name="ds" value="{{ pr.ds }}">
-    <label class="halus" for="an-urut">Urutkan</label>
-    <select class="chip" id="an-urut" name="urut" onchange="this.form.submit()">
-      {%- for nilai, nama in urut_pilihan.items() %}
-      <option value="{{ nilai }}"{% if urut == nilai %} selected{% endif %}>{{ nama }}</option>
-      {%- endfor %}
-    </select>
+    <span class="saring-urut">
+      <label class="halus" for="an-urut">Urutkan</label>
+      <select id="an-urut" name="urut" onchange="this.form.submit()">
+        {%- for nilai, nama in urut_pilihan.items() %}
+        <option value="{{ nilai }}"{% if urut == nilai %} selected{% endif %}>{{ nama }}</option>
+        {%- endfor %}
+      </select>
+    </span>
     <noscript><button class="chip" type="submit">Terapkan</button></noscript>
   </form>
   </div>
