@@ -895,7 +895,7 @@ fieldset.vh-fgrup>legend{padding:0;float:none}
 .saring-pil:focus-visible,.seg-opt:focus-visible{
   outline:2px solid var(--aksi);outline-offset:2px;border-radius:99px}
 .saring-pil{display:inline-flex;align-items:center;gap:6px;
-  background:var(--sunk);border-color:var(--garis);color:var(--ink)}
+  background:var(--sunk);border-color:var(--line2);color:var(--ink)}
 .saring-pil span[aria-hidden]{color:var(--ink-dim);font-size:14px;line-height:1}
 .saring-pil:hover{border-color:var(--ink-dim)}
 .saring-pil:hover span[aria-hidden]{color:var(--ink)}
@@ -2596,7 +2596,7 @@ button.an-mulai.an-autolabel{background:none;border:0;cursor:pointer;
 .bg-menunggu:hover{background:transparent}
 
 /* Atur peran anggota + scope batch (RBAC). */
-.bg-atur{flex:0 0 auto;background:transparent;border:1px solid var(--garis);
+.bg-atur{flex:0 0 auto;background:transparent;border:1px solid var(--line2);
   border-radius:7px;cursor:pointer;color:var(--ink-faint);font-size:11px;
   line-height:1;padding:3px 7px}
 .bg-atur:hover{color:var(--ink);border-color:var(--aksi)}
@@ -3288,41 +3288,40 @@ button.an-mulai.an-autolabel{background:none;border:0;cursor:pointer;
 /* Kenapa jumlah gambar versi ini lebih sedikit daripada yang diperkirakan.
    Tanpa kalimat ini, selisihnya cuma terlihat sebagai angka yang tidak cocok
    dan tidak ada yang bisa menjelaskannya besok. */
-/* Kendali papan Anotasi: "Format anotasi" dan "Urutkan". Keduanya setelan
-   papan, bukan saringan tampilan, jadi mereka dikelompokkan.
+/* Bilah saringan papan Anotasi.
 
-   Dulu tiap baris adalah flex-nya sendiri. Akibatnya label yang panjangnya
-   berbeda ("Format anotasi" 77px, "Urutkan" 37px) mendorong dropdown-nya ke
-   posisi x yang berbeda, lebar dropdown mengikuti isi masing-masing (274px
-   lawan 144px), dan kalimat penjelas yang panjang menempel di kanan baris
-   pertama sehingga baris itu jauh lebih berat daripada baris kedua. Tiga
-   ketidakrataan itu membuat sepasang kendali terbaca sebagai dua serpihan.
+   Dulu di sini ada grid TIGA kolom (.an-kendali-baris) yang ditulis untuk pola
+   "label | kendali | kalimat bantuan", satu kendali per baris. Bilah saringan
+   lalu memakai ulang kelas yang sama dengan dua belas anak, dan penempatan
+   otomatis grid menaruh label "Keadaan" serta "Urutkan" di kolom ketiga baris
+   SEBELUMNYA, sementara dua select mendarat di kolom label selebar 96px lalu
+   terpotong di tengah kata. Boros 200 piksel sekaligus terbaca rusak, dan
+   ruang itu diambil langsung dari ketiga kolom papan di bawahnya.
 
-   Sekarang tiap baris memakai grid dengan lebar kolom yang SAMA, diambil dari
-   satu tempat (--an-label dan --an-pilih di induknya), jadi kedua dropdown
-   mulai dan berakhir di titik yang sama. Kalimat penjelasnya turun ke bawah
-   dropdown-nya sebagai baris bantuan, tetap sejajar kolom kendali. */
-.an-kendali{--an-label:96px;--an-pilih:300px;margin:14px 0 12px}
-.an-kendali-baris{display:grid;align-items:center;gap:6px 10px;margin:0;
-  grid-template-columns:var(--an-label) minmax(0,var(--an-pilih))
-    minmax(0,1fr)}
-/* Jarak antarbaris dibuat lebih besar daripada jarak kendali ke baris
-   bantuannya, supaya jelas kalimat bantuan itu milik kendali di ATASnya. */
-.an-kendali-baris + .an-kendali-baris{margin-top:12px}
-.an-kendali-baris > .halus{margin:0;font-size:11.5px;color:var(--ink-dim)}
-/* Lebar dropdown ditentukan kolomnya, bukan isinya: itu satu-satunya cara
-   "Terbaru dibagi" yang pendek berakhir di garis yang sama dengan
-   "Otomatis (poligon, dari bentuk terbanyak)" yang panjang. */
-.an-kendali-baris > select.chip{width:100%;padding:5px 9px;font-size:12.5px}
-#an-jenis-pesan{grid-column:2 / -1;max-width:62ch;color:var(--ink-faint);
-  line-height:1.5}
-/* Layar sempit: kolom label 96px + dropdown 300px tidak lagi muat berdampingan,
-   jadi labelnya naik ke atas kendalinya. */
-@media (max-width:560px){
-  .an-kendali-baris{grid-template-columns:minmax(0,1fr);gap:4px}
-  .an-kendali-baris > select.chip{max-width:var(--an-pilih)}
-  #an-jenis-pesan{grid-column:1}
-}
+   Geometrinya kini seluruhnya dari .bar + .bar-saring milik kisi Dataset, jadi
+   tak ada aturan tata letak baru yang perlu dijaga sendiri di sini. */
+.an-kendali{margin:0 0 12px}
+/* Form dan pembungkus kendali sengaja tak punya kotak sendiri: anaknya yang
+   harus jadi item flex bilahnya, supaya semuanya duduk di satu baris. */
+.an-saring,.an-saring-isi{display:contents}
+
+/* Select saringan dalam pil. Bentuknya sama dengan .saring-urut, bedanya ia
+   BISA menyala: mengurutkan tak menyempitkan apa pun, menyaring iya, dan saat
+   kendalinya terlipat di layar sempit, pil inilah satu-satunya yang memberi
+   tahu papan sedang disaring. Memakai --ok-bg, bukan isian penuh seperti
+   .chip[data-on]: di sini pil berjajar tiga, dan tiga balok pekat membuat
+   bilah setipis ini terbaca lebih berat daripada papan di bawahnya. */
+.saring-sel[data-on]{border-color:var(--aksi);background:var(--ok-bg)}
+.saring-sel[data-on] select{color:var(--ink);font-weight:600}
+/* Nama pelabel bisa sepanjang apa pun. Tanpa batas ini satu nama panjang
+   mendorong pil berikutnya ke baris kedua, dan tinggi yang baru dihemat
+   kembali lagi. Teks utuhnya tetap terbaca saat dropdown dibuka. */
+.saring-sel select{max-width:150px;text-overflow:ellipsis}
+
+/* Baris select di dalam menu Format. */
+.menu-baris{display:block;padding:4px 12px 8px}
+.menu-baris select.chip{width:100%;padding:5px 9px;font-size:12.5px}
+#an-jenis-pesan{display:block;color:var(--ink-faint);line-height:1.5}
 
 .vs-pulang{margin:10px 0 0;padding:10px 12px;border-radius:8px;
   background:var(--bahaya-lembut);color:var(--ink-dim);font-size:11.5px;

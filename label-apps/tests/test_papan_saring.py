@@ -40,7 +40,9 @@ def test_kontrol_saringan_papan_ada(klien, lingkungan):
     d, _a, _b = _papan(klien, lingkungan)
     h = klien.get("/anotasi", params={"ds": d.name}).text
     assert 'id="an-pl"' in h and 'id="an-kd"' in h and 'id="an-cari"' in h
-    assert "semua pelabel" in h and "Sedang dikerjakan" in h
+    # Huruf kapital sejak bilahnya jadi pil: isinya kini berdiri sendiri
+    # sebagai pilihan, bukan sambungan dari label di sebelah kirinya.
+    assert "Semua pelabel" in h and "Sedang dikerjakan" in h
 
 
 def test_saring_per_pelabel(klien, lingkungan):
@@ -102,5 +104,9 @@ def test_saringan_tak_membuang_urutan(klien, lingkungan):
     d, _a, _b = _papan(klien, lingkungan)
     h = klien.get("/anotasi",
                   params={"ds": d.name, "pl": "anggi", "urut": "pelabel"}).text
-    form = h[h.index('class="an-urut'):h.index("</form>", h.index('class="an-urut'))]
+    # Diiris dari FORM-nya, bukan dari kelas tata letak yang bisa berganti:
+    # yang dijaga di sini perilakunya, yaitu menyaring tak membuang urutan.
+    i = h.index('<form class="an-saring"')
+    form = h[i:h.index("</form>", i)]
     assert 'value="pelabel" selected' in form
+    assert 'value="anggi" selected' in form

@@ -435,6 +435,16 @@ def jalankan(ds: Path, uploads_root: Path, tid: str, nomor: int, akun: str,
     `batal` callable -> True untuk berhenti. Melempar Dibatalkan kalau diminta,
     FileNotFoundError kalau modelnya tak ada atau tasknya tak dikenal."""
     kunci = akun
+    # Saluran kemajuan DIKOSONGKAN lebih dulu, bukan sekadar ditimpa nol.
+    #
+    # catat_maju menggabung (d.update), jadi bendera akhir jalan SEBELUMNYA
+    # (selesai, galat, dibatalkan, training) tetap tinggal walau pencacahnya
+    # sudah disetel nol di sini. Antarmuka memeriksa `selesai` lebih dulu,
+    # sehingga jalan kedua dan seterusnya di proses server yang sama LANGSUNG
+    # memperlihatkan "Selesai. 0 gambar diisi, 0 objek" lalu berhenti memantau,
+    # padahal pekerjaannya baru saja mulai dan terus menulis di latar.
+    # Dilaporkan dari prod: 580 berkas ditulis sementara layar berkata nol.
+    bersihkan_maju(kunci)
     catat_maju(kunci, jalan=True, persen=0.0, fase_nama="Menunggu giliran",
                diproses=0, objek=0, dilewati=0, total=0)
 

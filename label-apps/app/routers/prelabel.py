@@ -71,7 +71,14 @@ async def mulai(request: Request,
     # Satu pekerjaan AI per akun, LINTAS FITUR (lihat services/ai_antre.py).
     # Klaimnya atomik dan diambil DI SINI, sesudah seluruh validasi bodi lewat,
     # supaya tak ada jalur penolakan yang meninggalkan klaim tersangkut.
-    if (lain := ai_antre.klaim(sess.user, FITUR)):
+    # Klaim dititipi cara memeriksa pekerjanya; lihat services/ai_antre.py.
+    # Tanpa itu, pekerjaan yang berhenti tanpa sempat melepas mengunci akun
+    # ini selamanya dari semua fitur AI.
+    def _masih_jalan(_akun=sess.user) -> bool:
+        t = _tugas.get(_akun)
+        return t is not None and not t.done()
+
+    if (lain := ai_antre.klaim(sess.user, FITUR, _masih_jalan)):
         return {"ok": False, "error": f"masih ada {lain} yang berjalan; tunggu "
                                       "sampai selesai atau batalkan dulu"}
 

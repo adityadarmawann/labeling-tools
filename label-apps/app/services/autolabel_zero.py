@@ -129,6 +129,16 @@ def jalankan(ds: Path, uploads_root: Path, tid: str, akun: str,
     if not prompt:
         raise ValueError("belum ada nama kelas untuk dicari")
 
+    # Saluran kemajuan DIKOSONGKAN lebih dulu, bukan sekadar ditimpa nol.
+    #
+    # catat_maju menggabung (d.update), jadi bendera akhir jalan SEBELUMNYA
+    # (selesai, galat, dibatalkan, training) tetap tinggal walau pencacahnya
+    # sudah disetel nol di sini. Antarmuka memeriksa `selesai` lebih dulu,
+    # sehingga jalan kedua dan seterusnya di proses server yang sama LANGSUNG
+    # memperlihatkan "Selesai. 0 gambar diisi, 0 objek" lalu berhenti memantau,
+    # padahal pekerjaannya baru saja mulai dan terus menulis di latar.
+    # Dilaporkan dari prod: 580 berkas ditulis sementara layar berkata nol.
+    bersihkan_maju(kunci)
     catat_maju(kunci, jalan=True, persen=0.0, fase_nama="Menunggu giliran",
                diproses=0, objek=0, dilewati=0, total=0, model=model)
 
@@ -170,6 +180,14 @@ def jalankan(ds: Path, uploads_root: Path, tid: str, akun: str,
                 else ("ai" if sasaran == "dicek" else "semua"))
             if target is None:
                 raise FileNotFoundError("tugas tak dikenal")
+        # Sepadan dengan jalur gabungan: nol sasaran dilaporkan sebagai SEBAB,
+        # bukan dijalankan sampai selesai dengan "0 dari 0" yang tak
+        # menjelaskan apa pun.
+        if not target:
+            raise ValueError(
+                "tidak ada gambar yang cocok di lingkup ini. Kalau semuanya "
+                "sudah dianotasi, ganti pilihan \"Kerjakan\" jadi "
+                "\"+ hasil AI yang belum diverifikasi\" atau \"semua\".")
         if batas and batas > 0:
             target = target[:int(batas)]
         total = len(target)

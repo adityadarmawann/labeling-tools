@@ -95,3 +95,87 @@ def test_klaim_tak_tertinggal_saat_permintaan_ditolak(klien, lingkungan):
     r = klien.post("/api/autolabel/mulai", json={"batch": "", "sumber": [{}]})
     assert r.json()["ok"] is False                   # tak ada sumber yang sah
     assert ai_antre.sedang_jalan("paul") == ""       # dan klaimnya bersih
+
+
+# ------------------------------------------- klaim yang pekerjanya sudah mati
+def test_klaim_basi_tak_mengunci_akun_selamanya():
+    """Dilaporkan dari prod: auto-label dijawab "masih ada auto-label yang
+    berjalan" padahal tak ada apa pun yang berjalan, dan satu-satunya jalan
+    keluar adalah menyalakan ulang server.
+
+    Sebabnya klaim dulu cuma nama fitur, tanpa cara apa pun memeriksa
+    keadaannya. Satu pekerja yang berhenti tanpa sempat melepas (thread mati
+    di luar blok try, tugas asyncio dibatalkan, galat di jalur tak terduga)
+    meninggalkan nama itu di sana untuk selamanya.
+    """
+    from app.services import ai_antre
+    ai_antre.lepas("uji-basi")
+    hidup = {"ya": True}
+    assert ai_antre.klaim("uji-basi", "auto-label", lambda: hidup["ya"]) is None
+    # selagi pekerjanya hidup, klaim kedua memang harus ditolak
+    assert ai_antre.klaim("uji-basi", "pre-label", lambda: True) == "auto-label"
+    # begitu pekerjanya mati, klaimnya tak boleh menghalangi lagi
+    hidup["ya"] = False
+    assert ai_antre.klaim("uji-basi", "pre-label", lambda: True) is None
+    ai_antre.lepas("uji-basi")
+
+
+def test_sedang_jalan_tak_melaporkan_yang_sudah_mati():
+    """Kalau tidak, antarmuka terus menampilkan pekerjaan yang sudah tak ada."""
+    from app.services import ai_antre
+    ai_antre.lepas("uji-lapor")
+    ai_antre.klaim("uji-lapor", "auto-label", lambda: False)
+    assert ai_antre.sedang_jalan("uji-lapor") == ""
+    ai_antre.lepas("uji-lapor")
+
+
+def test_tanpa_pemeriksa_tetap_seperti_dulu():
+    """Pemanggil lama yang tak menitipkan pemeriksa tak boleh berubah arti."""
+    from app.services import ai_antre
+    ai_antre.lepas("uji-lama")
+    assert ai_antre.klaim("uji-lama", "auto-label") is None
+    assert ai_antre.klaim("uji-lama", "pre-label") == "auto-label"
+    assert ai_antre.sedang_jalan("uji-lama") == "auto-label"
+    ai_antre.lepas("uji-lama")
+
+
+def test_pemeriksa_yang_rusak_dianggap_mati():
+    """Lebih baik salah melepas daripada mengunci akun selamanya."""
+    from app.services import ai_antre
+    ai_antre.lepas("uji-rusak")
+
+    def meledak():
+        raise RuntimeError("pemeriksa rusak")
+
+    ai_antre.klaim("uji-rusak", "auto-label", meledak)
+    assert ai_antre.sedang_jalan("uji-rusak") == ""
+    ai_antre.lepas("uji-rusak")
+
+
+def test_rute_spawn_menitipkan_pemeriksa():
+    """Penjaga supaya pemeriksanya tak terlepas lagi dari jalur nyatanya."""
+    import pathlib
+    for f in ("app/routers/autolabel.py", "app/routers/prelabel.py"):
+        src = pathlib.Path(f).read_text()
+        assert "t.done()" in src, f
+        assert "ai_antre.klaim(" in src and "masih_jalan" in src, f
+
+
+def test_batalkan_membereskan_klaim_basi():
+    """Benderanya dibaca pekerja; tanpa pekerja, tak ada yang membacanya."""
+    import pathlib
+    src = pathlib.Path("app/routers/autolabel.py").read_text()
+    i = src.index('@router.post("/api/autolabel/batal")')
+    blok = src[i:i + 900]
+    assert "ai_antre.sedang_jalan(sess.user)" in blok
+
+
+def test_lingkup_kosong_dilaporkan_sebagai_sebab():
+    """Dilaporkan dari prod: bilah kemajuan berhenti di "0 dari 0" tanpa
+    sepatah kata, dan orangnya mengira fiturnya rusak lalu mencoba lagi."""
+    import inspect
+    from app.services import autolabel_gabung, autolabel_zero
+    for f in (autolabel_gabung.jalankan, autolabel_zero.jalankan):
+        src = inspect.getsource(f)
+        assert "if not target:" in src, f.__module__
+        assert "tidak ada gambar yang cocok di lingkup ini" in src, f.__module__

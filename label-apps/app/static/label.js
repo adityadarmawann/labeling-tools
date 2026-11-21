@@ -1950,8 +1950,22 @@ function tanyaKelas({ label = '', group_id = null, flags = {}, judul = 'Kelas un
     const resmi = new Set(D.kelas_resmi || []);
     const ketik = disaring ? teks.value.trim().toLowerCase() : '';
     box.innerHTML = '';
-    semuaKelas()
-      .filter(k => !ketik || k.toLowerCase().startsWith(ketik))
+    /* Dicocokkan DI MANA SAJA dalam nama kelas, bukan hanya dari huruf
+       pertama. Taksonomi di sini berawalan seragam ("pet_fanta",
+       "pet_frestea", "pet_sprite"), jadi pencocokan berawalan menuntut orang
+       mengetik ulang awalan yang sama berkali-kali sebelum daftarnya
+       menyempit: "pet_s" hanya untuk sampai ke sprite. Dengan pencocokan di
+       mana saja, "s" atau "spr" sudah cukup.
+
+       Yang berawalan tetap DIDAHULUKAN. Mengetik "pet" pada projek yang punya
+       "pet_fanta" dan "sample_pet" harus memberi yang pertama lebih dulu: itu
+       yang hampir selalu dimaksud, dan membiarkan urutannya tercampur membuat
+       pencocokan di mana saja terasa lebih berantakan daripada berawalan,
+       bukan lebih berguna. */
+    const cocok = semuaKelas().filter(k => !ketik || k.toLowerCase().includes(ketik));
+    const awalan = ketik ? cocok.filter(k => k.toLowerCase().startsWith(ketik)) : cocok;
+    const sisa = ketik ? cocok.filter(k => !k.toLowerCase().startsWith(ketik)) : [];
+    [...awalan, ...sisa]
       .forEach(k => {
         const d = document.createElement('div');
         d.className = 'it';
@@ -1978,6 +1992,11 @@ function tanyaKelas({ label = '', group_id = null, flags = {}, judul = 'Kelas un
   // Pelengkapan sebaris, mode "startswith" bawaan AnyLabeling
   // (configs/anylabeling_config.yaml:63). Yang diketik tetap yang menentukan;
   // sisanya cuma tersorot dan hilang begitu diketik lagi.
+  //
+  // SENGAJA tetap berawalan, berbeda dari penyaring daftar di atas yang
+  // mencocokkan di mana saja. Melengkapi sebaris berarti menambahkan huruf di
+  // BELAKANG yang sudah diketik; dari "s" tak ada cara menambah huruf sampai
+  // menjadi "pet_sprite" tanpa mengubah yang sudah diketik orang.
   let hapusTerakhir = false;
   teks.oninput = () => {
     disaring = true;
