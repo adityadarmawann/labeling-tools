@@ -36,6 +36,7 @@ import numpy as np
 from . import olah_gpu
 from . import gpu_sinyal
 from ..log import catat
+from . import osam_api
 
 log = catat("labelapp.autolabel")
 
@@ -68,7 +69,28 @@ MODEL_DIIZINKAN = {
     # satunya cara tahu adalah mencobanya pada gambar yang bermasalah itu.
     "sam2:latest",          # base plus
     "sam2:large",
+    # SAM 3 asli. Hanya muncul kalau osam terpasang 0.12 ke atas; lihat
+    # MODEL_PERLU_OSAM_BARU di bawah dan `model_klik()`.
+    #
+    # Diukur pada 6 gambar berlabel manusia di projek coca-cola, batch yang
+    # dilaporkan "jadi jelek banget", satu klik di tengah objek:
+    #
+    #   sam2:small   IoU rata 0,84   terburuk 0,32   0,30 dtk
+    #   sam3:latest  IoU rata 0,94   terburuk 0,84   1,29 dtk klik pertama,
+    #                                                0,01 dtk klik berikutnya
+    #
+    # Yang menentukan kasus terburuknya, bukan rata-ratanya: pada objek yang
+    # sulit sam2:small sempat jatuh ke 0,32, SAM 3 tak pernah di bawah 0,84.
+    # Harganya bobot 1,8 GB sekali unduh dan klik pertama yang lebih lama,
+    # jadi ia DITAWARKAN, bukan dijadikan bawaan.
+    "sam3:latest",
 }
+
+# Model yang jalur kliknya baru ada di osam 0.12. Di 0.5 SAM 3 menolak klik
+# tunggal mentah-mentah ("only two point prompts (left-top, right-bottom) are
+# supported"), jadi menawarkannya di sana berarti menjanjikan sesuatu yang
+# pasti gagal pada klik pertama.
+MODEL_PERLU_OSAM_BARU = {"sam3:latest"}
 
 # Model yang menerima PROMPT TEKS: sebutkan nama kelasnya, lalu seluruh gambar
 # dipindai sekaligus. Ini padanan dua hal di AnyLabeling yang ternyata satu
@@ -83,6 +105,13 @@ MODEL_TEKS = {
                          "bentuk": "rectangle"},
     "sam3:latest": {"nama": "SAM 3", "unduh_mb": 3412, "bentuk": "polygon"},
 }
+
+# Unduhan SAM 3 bergantung versi osam, dan angkanya disebut di antarmuka, jadi
+# tak boleh satu angka untuk dua kenyataan: 0.5 memakai salinan float32 (3,4
+# GB), 0.12 memakai float16 di GPU, yaitu 1,8 GB untuk kelima berkas yang
+# dipakai jalur gambar (encoder gambar 887 MB, encoder bahasa 772 MB, decoder
+# 63 MB, decoder titik 9 MB, penyusut mask, ditambah berkas memori ~75 MB).
+UNDUH_SAM3_OSAM_BARU = 1800
 
 # Ukuran kanvas encoder. Nilai (tinggi, lebar) ini diambil apa adanya dari
 # SegmentAnythingONNX AnyLabeling (`self.input_size`), bukan dipilih sendiri:
@@ -103,6 +132,11 @@ CACHE_MAKS = 8
 
 _KUNCI = threading.Lock()
 _cache: OrderedDict[tuple, tuple] = OrderedDict()
+# Jalur osam 0.12 tidak menyimpan embedding di sini (osam yang menyimpannya),
+# hanya CATATAN gambar mana yang sudah pernah di-encode, supaya `panaskan`
+# menjawab jujur. Dibatasi sama dengan cache di atas, lebih kecil daripada
+# anggaran osam, jadi catatan ini tak pernah lebih optimistis dari kenyataan.
+_panas: OrderedDict[tuple, bool] = OrderedDict()
 _sesi_mobilesam = None
 
 # GroundingDINO (transformers): detektor open-vocabulary teks->kotak. Recall
@@ -455,6 +489,11 @@ def _siapkan_osam():
     global _osam_dipaksa
     if _osam_dipaksa:
         return
+    if osam_api.baru():
+        # osam 0.12 memilih perangkatnya lewat argumen klien, jadi tak ada yang
+        # perlu ditambal. Modulnya pun tak ada lagi di sana.
+        _osam_dipaksa = True
+        return
     import osam.types._model as _m
 
     asli = _m._load_inference_session
@@ -469,7 +508,70 @@ def _siapkan_osam():
     _osam_dipaksa = True
 
 
+def _prompt_osam_baru(points, labels) -> dict:
+    """Terjemahkan prompt gaya osam 0.5 ke bentuk 0.12.
+
+    Di 0.5 sebuah kotak dikirim sebagai dua titik berlabel 2 dan 3 (sudut
+    kiri-atas dan kanan-bawah). Di 0.12 kotak punya medannya sendiri, dan
+    label titik hanya boleh 0 atau 1, jadi mengirim 2 dan 3 ke sana ditolak.
+    Bentuk pemanggil di aplikasi ini tidak diubah: penerjemahannya di sini.
+    """
+    titik: list[tuple[float, float]] = []
+    lab: list[int] = []
+    sudut: dict[int, tuple[float, float]] = {}
+    for (x, y), l in zip(points, labels):
+        if int(l) in (2, 3):
+            sudut[int(l)] = (float(x), float(y))
+        else:
+            titik.append((float(x), float(y)))
+            lab.append(int(l))
+    if (2 in sudut) != (3 in sudut):
+        raise TidakAdaObjek("kotak hanya punya satu sudut")
+    out: dict = {}
+    if 2 in sudut:
+        out["box"] = (*sudut[2], *sudut[3])
+    if titik:
+        out["points"] = titik
+        out["point_labels"] = lab
+    if not out:
+        raise TidakAdaObjek("prompt kosong")
+    return out
+
+
+def _segment_osam_baru(img: Path, points, labels, model: str, eps) -> Usulan:
+    """Jalur osam 0.12: satu panggilan, embedding diurus osam sendiri.
+
+    Cache embedding tak lagi dipegang di sini. osam menyimpannya sendiri,
+    berkunci nama model dan sha256 gambar, dengan anggaran 1 GB. Yang tetap
+    dicatat hanyalah gambar mana yang SUDAH pernah di-encode, supaya
+    `panaskan` bisa menjawab jujur tanpa menghitung ulang.
+    """
+    prompt = _prompt_osam_baru(points, labels)
+    bgr = cv2.imread(str(img))
+    if bgr is None:
+        raise TidakAdaObjek("gambar tidak bisa dibaca")
+    rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+    kunci = _kunci_cache(img, model)
+    dari_cache = kunci in _panas
+    anotasi = osam_api.segmen(model, rgb, gpu=_boleh_gpu_osam(model), **prompt)
+    _panas[kunci] = True
+    _panas.move_to_end(kunci)
+    while len(_panas) > CACHE_MAKS:
+        _panas.popitem(last=False)
+    if not anotasi:
+        raise TidakAdaObjek("SAM tidak menemukan objek di sana")
+    a = anotasi[0]
+    bb = a.bounding_box
+    poly = mask_ke_poligon(a.mask, (bb.xmin, bb.ymin), eps)
+    if poly is None:
+        raise TidakAdaObjek("mask terlalu kecil untuk dijadikan poligon")
+    return Usulan(poly.tolist(), (bb.xmin, bb.ymin, bb.xmax, bb.ymax),
+                  model, dari_cache)
+
+
 def _segment_osam(img: Path, points, labels, model: str, eps) -> Usulan:
+    if osam_api.baru():
+        return _segment_osam_baru(img, points, labels, model, eps)
     global _osam_model_kini
     _osam_model_kini = model            # pemilih provider saat sesi dimuat
     _siapkan_osam()
@@ -528,11 +630,12 @@ def panaskan(img: Path, model: str = MODEL_DEFAULT) -> bool:
     Mengembalikan True kalau embeddingnya sudah siap sesudah pemanggilan ini
     (entah baru dihitung atau memang sudah ada).
     """
-    if model not in MODEL_DIIZINKAN:
+    if model not in model_klik():
         raise TidakAdaObjek(f"model '{model}' tidak dikenal")
     kunci = _kunci_cache(img, model)
-    if kunci in _cache:
-        _cache.move_to_end(kunci)
+    sudah = _panas if osam_api.baru() else _cache
+    if kunci in sudah:
+        sudah.move_to_end(kunci)
         return True
     # Jalur pemanasan memakai mesin yang sama dengan segmentasi, bukan
     # menyalinnya: dua jalur yang menghitung embedding dengan cara sedikit
@@ -542,11 +645,11 @@ def panaskan(img: Path, model: str = MODEL_DEFAULT) -> bool:
         _segment(img, [[1.0, 1.0]], [1], model, EPSILON_ANYLABELING)
     except TidakAdaObjek:
         pass                     # tak menemukan objek di titik umpan: wajar
-    return _kunci_cache(img, model) in _cache
+    return _kunci_cache(img, model) in (_panas if osam_api.baru() else _cache)
 
 
 def _segment(img: Path, points, labels, model: str, eps: float) -> Usulan:
-    if model not in MODEL_DIIZINKAN:
+    if model not in model_klik():
         raise TidakAdaObjek(f"model '{model}' tidak diizinkan")
     with _KUNCI:            # kedua mesin memakai sesi global, harus diserialkan
         if model == "mobilesam":
@@ -572,16 +675,24 @@ def bebaskan_gpu() -> bool:
         if _sesi_mobilesam is not None:
             _sesi_mobilesam = None
             lepas = True
-        try:
-            import osam.apis as _a
-            if getattr(_a, "running_model", None) is not None:
-                _a.running_model = None
+        if osam_api.baru():
+            # 0.12: menutup kliennya melepas model DAN cache embeddingnya.
+            # Catatan gambar yang sudah di-encode ikut dikosongkan, kalau tidak
+            # `panaskan` akan mengaku siap untuk embedding yang sudah lenyap.
+            if osam_api.tutup():
                 lepas = True
-            # Sesi NMS osam (dipakai sebagian model) juga menahan sedikit VRAM.
-            if getattr(_a, "_non_maximum_suppression_inference_session", None) is not None:
-                _a._non_maximum_suppression_inference_session = None
-        except Exception:            # noqa: BLE001 -- osam belum pernah dipakai
-            pass
+            _panas.clear()
+        else:
+            try:
+                import osam.apis as _a
+                if getattr(_a, "running_model", None) is not None:
+                    _a.running_model = None
+                    lepas = True
+                # Sesi NMS osam (dipakai sebagian model) juga menahan sedikit VRAM.
+                if getattr(_a, "_non_maximum_suppression_inference_session", None) is not None:
+                    _a._non_maximum_suppression_inference_session = None
+            except Exception:        # noqa: BLE001 -- osam belum pernah dipakai
+                pass
     # Melepas objek sesi -> kolektor sampah menutup arena CUDA onnxruntime; lalu
     # minta torch melepas blok cache-nya juga.
     import gc
@@ -650,23 +761,29 @@ def dari_teks(img: Path, teks: list[str], model: str = "yoloworld:latest",
 
     global _osam_model_kini
     _siapkan_osam()
-    import osam.apis
-    import osam.types
 
     bgr = cv2.imread(str(img))
     if bgr is None:
         raise TidakAdaObjek("gambar tidak bisa dibaca")
     rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
 
-    with _KUNCI:            # sesi model global, harus diserialkan
-        _osam_model_kini = model        # pemilih provider saat sesi dibuat (_rute)
-        r = osam.apis.generate(osam.types.GenerateRequest(
-            model=model, image=rgb,
-            prompt=osam.types.Prompt(texts=teks, score_threshold=float(ambang),
-                                     max_annotations=int(maks))))
+    if osam_api.baru():
+        with _KUNCI:        # sesi model global, harus diserialkan
+            anotasi = osam_api.segmen(model, rgb, gpu=_boleh_gpu_osam(model),
+                                      texts=teks, score_threshold=float(ambang),
+                                      max_annotations=int(maks))
+    else:
+        import osam.apis
+        import osam.types
+        with _KUNCI:        # sesi model global, harus diserialkan
+            _osam_model_kini = model    # pemilih provider saat sesi dibuat (_rute)
+            anotasi = osam.apis.generate(osam.types.GenerateRequest(
+                model=model, image=rgb,
+                prompt=osam.types.Prompt(texts=teks, score_threshold=float(ambang),
+                                         max_annotations=int(maks)))).annotations
 
     out: list[Temuan] = []
-    for a in r.annotations or []:
+    for a in anotasi or []:
         bb = a.bounding_box
         if bb is None:
             continue
@@ -818,19 +935,38 @@ def dari_groundingdino(img: Path, teks: list[str], ambang: float = 0.25,
     return out
 
 
+def model_klik() -> list[str]:
+    """Model yang boleh dipakai untuk prompt titik atau kotak DI MESIN INI.
+
+    Satu sumber untuk dua hal yang harus sepakat: daftar di pemilih model dan
+    penjaga di jalur segmentasi. Kalau keduanya ditulis terpisah, yang paling
+    mungkin terjadi adalah antarmuka menawarkan model yang backendnya tolak.
+    """
+    tersedia = osam_api.baru()
+    return sorted(m for m in MODEL_DIIZINKAN
+                  if tersedia or m not in MODEL_PERLU_OSAM_BARU)
+
+
 def info() -> dict:
     """Keadaan mesin, untuk ditampilkan di antarmuka."""
     d = dir_model()
     ada = bool(list(d.glob("*encoder*.onnx")) and list(d.glob("*decoder*.onnx")))
-    return {"default": MODEL_DEFAULT, "tersedia": sorted(MODEL_DIIZINKAN),
+    return {"default": MODEL_DEFAULT, "tersedia": model_klik(),
             "mobilesam_siap": ada, "dir_model": str(d),
             "groundingdino_siap": gdino_tersedia(),
             "provider": _sesi_mobilesam.provider if _sesi_mobilesam else None,
             # Model teks dilaporkan terpisah beserta ukuran unduhannya dan
             # apakah bobotnya sudah ada, supaya antarmuka bisa mengatakan
             # biayanya SEBELUM orang menekan tombolnya.
-            "teks": [{"model": m, **d2, "terunduh": _sudah_terunduh(m)}
+            "teks": [{"model": m, **d2, "unduh_mb": _unduh_mb(m, d2),
+                       "terunduh": _sudah_terunduh(m)}
                      for m, d2 in sorted(MODEL_TEKS.items())]}
+
+
+def _unduh_mb(model: str, d: dict) -> int:
+    if model == "sam3:latest" and osam_api.baru():
+        return UNDUH_SAM3_OSAM_BARU
+    return int(d.get("unduh_mb") or 0)
 
 
 def _sudah_terunduh(model: str) -> bool:
@@ -843,6 +979,10 @@ def _sudah_terunduh(model: str) -> bool:
     satu model mana pun pernah diunduh, yaitu persis jenis klaim keliru yang
     membuat antarmuka berbohong.
     """
+    if osam_api.baru():
+        # 0.12 menyebutkannya langsung di daftar modelnya: `size` kosong
+        # selama bobotnya belum ada di disk.
+        return osam_api.terunduh(model)
     try:
         import osam.apis
         k = osam.apis.get_model_type_by_name(model)
@@ -854,3 +994,4 @@ def _sudah_terunduh(model: str) -> bool:
 def kosongkan_cache() -> None:
     with _KUNCI:
         _cache.clear()
+        _panas.clear()

@@ -142,6 +142,22 @@ def jenis_prompt(model: str) -> frozenset[str]:
     return _jenis_prompt.get(model, frozenset())
 
 
+def terunduh(model: str) -> bool:
+    """Bobot model itu sudah lengkap di cache atau belum.
+
+    Tidak di-cache, berbeda dari `jenis_prompt`: jenis prompt sebuah model
+    tetap, sedangkan "sudah terunduh" justru berubah tepat ketika orang
+    menunggu jawabannya.
+    """
+    try:
+        for m in klien(False).list():
+            if m.name == model:
+                return m.size is not None
+    except Exception as e:              # noqa: BLE001
+        log.warning("status unduhan %s tak terbaca: %s", model, e)
+    return False
+
+
 def tutup() -> bool:
     """Lepaskan semua klien beserta model yang mereka pegang.
 
