@@ -52,6 +52,22 @@ MODEL_DIIZINKAN = {
     "efficientsam:latest",
     "sam2:tiny",            # lewat osam, batas objek lebih rapi
     "sam2:small",
+    # Dua yang lebih besar, DITAWARKAN tetapi bukan bawaan.
+    #
+    # Diukur pada 8 gambar berlabel manusia di projek coca-cola, satu klik di
+    # tengah objek, dibanding kotak buatan orang:
+    #
+    #   sam2:tiny    IoU rata 0,97   8/8 di atas 0,7   0,21 dtk
+    #   sam2:small   IoU rata 0,99   8/8 di atas 0,7   0,17 dtk
+    #   sam2:large   IoU rata 0,98   8/8 di atas 0,7   0,61 dtk
+    #
+    # Jadi yang lebih besar TIDAK otomatis lebih baik, dan pada foto produk
+    # satu objek begini small malah unggul tipis sambil tiga kali lebih
+    # cepat. Keduanya tetap ditawarkan karena bentuk yang sulit (objek tipis,
+    # tepi berbaur, objek saling menutup) bisa berbeda ceritanya, dan satu-
+    # satunya cara tahu adalah mencobanya pada gambar yang bermasalah itu.
+    "sam2:latest",          # base plus
+    "sam2:large",
 }
 
 # Model yang menerima PROMPT TEKS: sebutkan nama kelasnya, lalu seluruh gambar
