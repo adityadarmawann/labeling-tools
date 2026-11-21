@@ -162,7 +162,16 @@ def _spawn(akun: str, buat_hasil) -> bool:
     sebenarnya; pemeriksaan di rute hanya untuk pesan yang lebih cepat)."""
     """Jalankan `buat_hasil()` (yang memanggil jalankan) di thread, petakan hasil/
     galat ke saluran kemajuan bersama. buat_hasil mengembalikan dict hasil."""
-    if ai_antre.klaim(akun, FITUR):
+    # Klaim dititipi cara memeriksa pekerjanya. Tanpa itu, satu pekerjaan yang
+    # berhenti tanpa sempat melepas mengunci akun ini SELAMANYA dari semua
+    # fitur AI, dan satu-satunya jalan keluar adalah menyalakan ulang server.
+    # Terjadi di prod. `_tugas[akun]` diisi di bawah; selama tugasnya belum
+    # ada atau sudah selesai, klaimnya dianggap tak bertuan.
+    def masih_jalan() -> bool:
+        t = _tugas.get(akun)
+        return t is not None and not t.done()
+
+    if ai_antre.klaim(akun, FITUR, masih_jalan):
         return False
     _batal[akun] = False
 
@@ -349,5 +358,14 @@ async def kemajuan(sess: Session = Depends(current_session_api)):
 
 @router.post("/api/autolabel/batal")
 async def batal(sess: Session = Depends(current_session_api)):
+    """Minta pekerjaan AI akun ini berhenti.
+
+    Benderanya dibaca pekerja di sela-sela gambar. Kalau pekerjanya sudah tak
+    ada, benderanya tak akan pernah dibaca siapa pun, jadi di sini klaimnya
+    ikut dibereskan: sedang_jalan() membuang klaim yang pekerjanya sudah mati.
+    Tanpa itu, tombol Batalkan tampak tak melakukan apa-apa pada keadaan yang
+    justru paling membutuhkannya.
+    """
     _batal[sess.user] = True
-    return {"ok": True}
+    sisa = ai_antre.sedang_jalan(sess.user)      # ikut membuang klaim basi
+    return {"ok": True, "masih_jalan": bool(sisa)}

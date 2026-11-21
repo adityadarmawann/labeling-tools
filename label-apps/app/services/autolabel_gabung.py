@@ -296,6 +296,16 @@ def jalankan(ds: Path, uploads_root: Path, akun: str, batas: int, sumber: list,
     if not sumber:
         raise ValueError("belum ada sumber auto-label dipilih")
 
+    # Saluran kemajuan DIKOSONGKAN lebih dulu, bukan sekadar ditimpa nol.
+    #
+    # catat_maju menggabung (d.update), jadi bendera akhir jalan SEBELUMNYA
+    # (selesai, galat, dibatalkan, training) tetap tinggal walau pencacahnya
+    # sudah disetel nol di sini. Antarmuka memeriksa `selesai` lebih dulu,
+    # sehingga jalan kedua dan seterusnya di proses server yang sama LANGSUNG
+    # memperlihatkan "Selesai. 0 gambar diisi, 0 objek" lalu berhenti memantau,
+    # padahal pekerjaannya baru saja mulai dan terus menulis di latar.
+    # Dilaporkan dari prod: 580 berkas ditulis sementara layar berkata nol.
+    bersihkan_maju(kunci)
     catat_maju(kunci, jalan=True, persen=0.0, fase_nama="Menunggu giliran",
                diproses=0, objek=0, dilewati=0, total=0)
     if gpu_sinyal.latih_aktif():
@@ -323,6 +333,16 @@ def jalankan(ds: Path, uploads_root: Path, akun: str, batas: int, sumber: list,
                                         sasaran=sasaran)
         if target is None:
             raise FileNotFoundError("tugas tak dikenal")
+        # Nol sasaran dilaporkan sebagai SEBAB, bukan dijalankan sampai selesai
+        # dengan "0 dari 0". Bilah kemajuan yang berhenti di nol tanpa sepatah
+        # kata membuat orang mengira fiturnya rusak, lalu mencoba lagi dan lagi;
+        # terjadi di prod. Lingkup yang kosong hampir selalu berarti pilihan
+        # "Kerjakan" tak cocok dengan keadaan gambarnya.
+        if not target:
+            raise ValueError(
+                "tidak ada gambar yang cocok di lingkup ini. Kalau semuanya "
+                "sudah dianotasi, ganti pilihan \"Kerjakan\" jadi "
+                "\"+ hasil AI yang belum diverifikasi\" atau \"semua\".")
         if batas and batas > 0:
             target = target[:int(batas)]
 
