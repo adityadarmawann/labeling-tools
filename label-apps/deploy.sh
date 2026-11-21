@@ -256,5 +256,14 @@ if [[ "${KODE:-}" != 200 ]]; then
   exit 1
 fi
 echo "$KINI" > "$CAP"
-hijau "     Prod hidup di commit $KINI — http://$(ip -4 -o addr show scope global | awk '{print $4}' | cut -d/ -f1 | head -1):$PORT/"
-redup "     Log: $LOG"
+# Alamat yang DIPAKAI ORANG, bukan alamat yang kebetulan dipakai mesin.
+#
+# Dulu baris ini mencetak http://<IP publik>:$PORT/. Itu selalu tautan mati:
+# prod mengikat 127.0.0.1 saja dan nginx yang melayani dari luar, jadi port
+# itu tak pernah terjangkau dari laptop mana pun. Deploy yang berhasil lalu
+# tampak gagal, dan yang dicurigai justru backendnya.
+PUBLIK="${LABELAPP_URL_PUBLIK:-https://annotate.higo.id/}"
+hijau "     Prod hidup di commit $KINI"
+redup "     Dicek di : http://127.0.0.1:$PORT/login  (loopback, di balik nginx)"
+redup "     Buka di  : $PUBLIK"
+redup "     Log      : $LOG"
