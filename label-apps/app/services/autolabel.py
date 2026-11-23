@@ -494,8 +494,18 @@ def _boleh_gpu_osam(model) -> bool:
             return True
         bebas, _ = torch.cuda.mem_get_info()
         if osam_api.baru():
+            if osam_api.residen() == model and osam_api.residen_gpu():
+                # Sudah termuat di GPU: ia tidak butuh ruang BARU. Menuntut
+                # sisa VRAM untuknya membuat klik kedua dan seterusnya jatuh
+                # ke CPU justru saat modelnya sudah siap di GPU, dan itu
+                # terlihat sebagai "kadang cepat, kadang 30 detik".
+                return True
             butuh = OSAM_GPU_BEBAS_OSAM_BARU.get(model, OSAM_GPU_MIN_BEBAS_BARU)
-            if bebas < butuh and osam_api.residen() not in (None, model):
+            log.debug("gpu? %s bebas=%.2fGB butuh=%.2fGB residen=%s",
+                      model, bebas / 1e9, butuh / 1e9, osam_api.residen())
+            lepas_dari = osam_api.residen()
+            if bebas < butuh and lepas_dari not in (None, model):
+                sebelum = bebas
                 # Yang menahan VRAM adalah model LAIN yang masih dipegang.
                 # Melepasnya jauh lebih baik daripada diam-diam pindah ke CPU:
                 # memuat ulang dibayar SEKALI beberapa detik, sedangkan CPU
@@ -507,7 +517,17 @@ def _boleh_gpu_osam(model) -> bool:
                 except Exception:                      # noqa: BLE001
                     pass
                 bebas, _ = torch.cuda.mem_get_info()
-            return bebas >= butuh
+                log.info("melepas %s untuk %s: bebas %.2f -> %.2f GB",
+                         lepas_dari, model, sebelum / 1e9, bebas / 1e9)
+            boleh = bebas >= butuh
+            if not boleh:
+                # Dicatat sebagai PERINGATAN, bukan debug: jatuh ke CPU berarti
+                # puluhan detik per gambar, dan tanpa baris ini satu-satunya
+                # gejalanya adalah "kok lambat" tanpa sebab yang bisa dilihat.
+                log.warning("SAM %s ke CPU: VRAM bebas %.2f GB, butuh %.2f GB, "
+                            "yang menggenggam: %s", model, bebas / 1e9,
+                            butuh / 1e9, lepas_dari or "tak ada")
+            return boleh
         return bebas >= OSAM_GPU_BEBAS.get(model, OSAM_GPU_MIN_BEBAS)
     except Exception:
         return False

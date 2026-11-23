@@ -1,7 +1,7 @@
 """Satu pintu ke osam, supaya dua generasi API-nya tidak bocor ke mana-mana.
 
 osam mengganti API publiknya di 0.12: `apis.generate` dengan request pydantic
-berganti `Client(in_process=True).segment(...)`. Yang membuat perpindahan itu
+berganti `Client(...).segment(...)`. Yang membuat perpindahan itu
 layak dikerjakan adalah SAM 3: di 0.5 ia hanya menerima dua titik sudut
 sebagai kotak dan menolak klik tunggal dengan
 
@@ -110,7 +110,10 @@ def test_klien_dibuat_sekali_per_perangkat(osam_baru):
     c = osam_api.klien(True)
     assert c is not a, "GPU dan CPU adalah klien berbeda"
     assert (a.device, c.device) == ("cpu", "cuda")
-    assert a.in_process is True, "tidak boleh menyalakan server terpisah"
+    assert a.in_process is False, (
+        "model harus berjalan di proses terpisah: ONNX Runtime tidak "
+        "mengembalikan VRAM selama prosesnya hidup, jadi di dalam proses app "
+        "memori itu tak pernah bisa dilepas")
     assert a.max_loaded_models == osam_api.MODEL_RESIDEN
 
 

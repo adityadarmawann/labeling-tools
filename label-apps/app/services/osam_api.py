@@ -7,7 +7,7 @@ sementara:
         onnxruntime dibuat di `osam.types._model`, embedding gambar
         dikembalikan ke pemanggil supaya bisa disimpan sendiri, dan pilihan
         CPU atau GPU hanya bisa diatur dengan menambal pembuat sesi itu.
-  0.12  `osam.Client(in_process=True, device=...)` dengan metode `segment`.
+  0.12  `osam.Client(device=...)` dengan metode `segment`.
         Sesi, pelepasan model saat diam, dan pemakaian ulang embedding diurus
         osam sendiri, dan perangkatnya dipilih lewat argumen.
 
@@ -66,6 +66,10 @@ _jenis_prompt: dict[str, frozenset[str]] = {}
 # Dipakai penjaga VRAM untuk menjawab satu pertanyaan: "kalau saya lepas yang
 # sedang dipegang, apakah yang diminta jadi muat?"
 _model_residen: str | None = None
+# Apakah yang residen itu dimuat di GPU. Dipakai penjaga VRAM: model yang SUDAH
+# termuat di GPU tidak butuh ruang baru, jadi menuntut sisa VRAM untuknya
+# membuatnya jatuh ke CPU justru saat ia sebenarnya sudah siap di GPU.
+_residen_gpu: bool = False
 
 
 def baru() -> bool:
@@ -84,9 +88,7 @@ def klien(gpu: bool):
 
     Satu klien per perangkat, bukan satu untuk semua: pilihan CPU atau GPU
     diputuskan per panggilan oleh penjaga VRAM di `autolabel`, sedangkan
-    sebuah klien memegang perangkatnya sejak dibuat. `in_process=True` berarti
-    tidak ada server terpisah yang dinyalakan; modelnya berjalan di proses app
-    seperti sebelumnya.
+    sebuah klien memegang perangkatnya sejak dibuat.
     """
     import osam
     nama = "cuda" if gpu else "cpu"
@@ -97,9 +99,24 @@ def klien(gpu: bool):
     # Pembuatan klien dikerjakan DI LUAR kunci. Kalau di dalam, jatuhnya GPU ke
     # CPU memanggil fungsi ini lagi sementara kuncinya masih dipegang, dan
     # threading.Lock bukan reentran: prosesnya menggantung tanpa pesan apa pun.
+    #
+    # Modelnya berjalan di PROSES TERPISAH (server pribadi osam), bukan di
+    # proses app. Sempat sebaliknya, dan itu terbukti salah untuk mesin ini:
+    # ONNX Runtime TIDAK mengembalikan VRAM ke driver selama prosesnya masih
+    # hidup. Diukur langsung: memuat sam2:small di GPU menaikkan pemakaian
+    # 5,73 -> 7,07 GB, dan sesudah close() + gc + del hanya turun ke 7,03 GB.
+    # Artinya tiap model yang pernah naik GPU menyita VRAM sampai servernya
+    # dimatikan, dan model berikutnya kehabisan ruang lalu jatuh ke CPU, yaitu
+    # 28 detik per gambar.
+    #
+    # Dengan proses terpisah, menutup klien berarti prosesnya berakhir dan
+    # memorinya kembali UTUH: terukur 7,10 -> 5,62 GB, tepat ke angka semula.
+    # Kecepatannya tidak berkurang, sebab yang lewat antarproses hanya gambar
+    # dan hasilnya: klik pertama 1,26 dtk (sama seperti di dalam proses), klik
+    # kedua di gambar yang sama 0,014 dtk karena embeddingnya tetap dipakai
+    # ulang di sisi server.
     try:
-        c = osam.Client(in_process=True, device=nama,
-                        max_loaded_models=MODEL_RESIDEN)
+        c = osam.Client(device=nama, max_loaded_models=MODEL_RESIDEN)
     except Exception as e:              # noqa: BLE001 -- CUDA tak terpakai
         if not gpu:
             raise
@@ -136,14 +153,15 @@ def segmen(model: str, rgb, *, gpu: bool = False, **prompt) -> list:
     diulang di CPU: lebih lambat, tetapi tetap memberi hasil, dan itulah
     perilaku yang dulu harus ditambal sendiri.
     """
-    global _model_residen
+    global _model_residen, _residen_gpu
     try:
-        _model_residen = model
+        _model_residen, _residen_gpu = model, gpu
         return klien(gpu).segment(model, rgb, **prompt)
     except Exception as e:              # noqa: BLE001
         if not gpu or not _kehabisan_memori(e):
             raise
         log.warning("osam %s kehabisan VRAM, diulang di CPU: %s", model, e)
+        _residen_gpu = False
         return klien(False).segment(model, rgb, **prompt)
 
 
@@ -185,6 +203,11 @@ def residen() -> str | None:
     return _model_residen
 
 
+def residen_gpu() -> bool:
+    """Apakah model yang sedang dipegang itu dimuat di GPU."""
+    return _residen_gpu
+
+
 def tutup() -> bool:
     """Lepaskan semua klien beserta model yang mereka pegang.
 
@@ -198,7 +221,7 @@ def tutup() -> bool:
     turut, di mesin 31 GB dengan swap 2 GB, dan di sanalah ia pernah
     menggelepar sampai SSH tak menjawab. malloc_trim mengembalikannya.
     """
-    global _model_residen
+    global _model_residen, _residen_gpu
     with _KUNCI:
         ada = bool(_klien)
         for c in _klien.values():
@@ -208,6 +231,7 @@ def tutup() -> bool:
                 pass
         _klien.clear()
         _model_residen = None
+        _residen_gpu = False
     if ada:
         _kembalikan_ram()
     return ada
