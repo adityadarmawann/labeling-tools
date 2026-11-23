@@ -144,3 +144,69 @@ def test_ambang_vram_sam3_ikut_versi_osam(monkeypatch):
     assert autolabel._boleh_gpu_osam("sam3:latest") is True, \
         "dengan float16 ia harus boleh naik GPU pada sisa VRAM yang sama"
     assert autolabel._boleh_gpu_osam("sam2:small") is True
+
+
+def test_ambang_baru_tak_menjatuhkan_sam_ke_cpu(monkeypatch):
+    """Sisa VRAM 4,5 GB adalah keadaan NYATA di prod, bukan karangan.
+
+    Proses prod sendiri memegang ~3,3 GB untuk konteks CUDA torch, jadi yang
+    tersisa 4,5 GB. Dengan ambang lama 4,7 GB, SAM tak pernah sekali pun naik
+    GPU di sana: log prod mencatat "Initialized inference sessions on 'cpu'"
+    untuk SAM 3 maupun sam2:small, dan satu gambar makan 19 detik.
+    """
+    import sys
+
+    from app.services import autolabel
+
+    monkeypatch.setattr(autolabel.olah_gpu, "MODE", "gpu")
+    monkeypatch.setattr(autolabel.gpu_sinyal, "latih_aktif", lambda: False)
+    monkeypatch.setattr(autolabel, "OSAM_GPU", False)
+    kelas = type("T", (), {})
+    t = kelas(); t.cuda = kelas()
+    t.cuda.is_available = staticmethod(lambda: True)
+    t.cuda.mem_get_info = staticmethod(lambda: (4_500_000_000, 8_200_000_000))
+    monkeypatch.setitem(sys.modules, "torch", t)
+
+    monkeypatch.setattr(autolabel.osam_api, "baru", lambda: True)
+    for m in ("sam2:small", "sam2:latest", "sam2:large", "sam3:latest"):
+        assert autolabel._boleh_gpu_osam(m) is True, m
+
+
+def test_semua_model_pilihan_boleh_naik_gpu():
+    """Model yang bisa dipilih orang tetapi tak ada di daftar GPU berarti
+    memilih CPU tanpa ada yang memberi tahu. Itu yang terjadi pada sam2:large
+    dan sam2:latest: keduanya ditawarkan sejak kemarin, keduanya selalu di
+    CPU, dan yang terasa adalah "kok sama saja lambatnya"."""
+    from app.services import autolabel
+
+    lewat_osam = {m for m in autolabel.MODEL_DIIZINKAN if m != "mobilesam"}
+    tertinggal = lewat_osam - autolabel.OSAM_GPU_KECIL
+    assert not tertinggal, f"tak pernah bisa naik GPU: {sorted(tertinggal)}"
+
+
+def test_saklar_paksa_benar_benar_memaksa(monkeypatch):
+    """LABELAPP_OSAM_GPU=1 menjanjikan "semua model osam ke GPU".
+
+    Dulu ia hanya melewati penjaga ukuran, sedangkan ambang VRAM tetap
+    menjatuhkannya ke CPU: saklar yang tidak benar-benar memaksa. Penjaga
+    training tetap berlaku, dan itu disengaja.
+    """
+    import sys
+
+    from app.services import autolabel
+
+    monkeypatch.setattr(autolabel.olah_gpu, "MODE", "gpu")
+    monkeypatch.setattr(autolabel, "OSAM_GPU", True)
+    kelas = type("T", (), {})
+    t = kelas(); t.cuda = kelas()
+    t.cuda.is_available = staticmethod(lambda: True)
+    t.cuda.mem_get_info = staticmethod(lambda: (500_000_000, 8_200_000_000))
+    monkeypatch.setitem(sys.modules, "torch", t)
+
+    monkeypatch.setattr(autolabel.gpu_sinyal, "latih_aktif", lambda: False)
+    assert autolabel._boleh_gpu_osam("sam3:latest") is True, \
+        "VRAM sesak pun, saklar paksa harus tetap GPU"
+
+    monkeypatch.setattr(autolabel.gpu_sinyal, "latih_aktif", lambda: True)
+    assert autolabel._boleh_gpu_osam("sam3:latest") is False, \
+        "training yang sedang jalan tetap menang atas saklar paksa"

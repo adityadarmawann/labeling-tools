@@ -412,7 +412,13 @@ OSAM_GPU = (os.environ.get("LABELAPP_OSAM_GPU") or "").strip().lower() in (
 #     OOM (bobot menyita VRAM sebelum encoder memuncak), tetapi encoder sendirian
 #     memuncak ~6,8 GB dan MUAT di 8 GB. Hasil: ~13 dtk/gambar di GPU vs ~35 dtk
 #     di CPU. Pembagian encoder-GPU/sisa-CPU diatur _blob_boleh_gpu.
-OSAM_GPU_KECIL = {"sam2:tiny", "sam2:small",
+#   sam2:large, sam2:latest  -> DITAMBAHKAN sesudah terbukti: keduanya masuk
+#     daftar pilihan model tetapi tidak pernah masuk daftar ini, jadi memilih
+#     salah satunya berarti memilih CPU tanpa ada yang memberi tahu. Itu
+#     persis yang dilaporkan: "aku pakai sam2 large dulu, tapi loadingnya jadi
+#     sama". Diukur di mesin ini, float16, di luar yang sudah dipakai proses
+#     lain: sam2:large 3,22 GB, sam2:latest 2,37 GB.
+OSAM_GPU_KECIL = {"sam2:tiny", "sam2:small", "sam2:latest", "sam2:large",
                   "efficientsam:10m", "efficientsam:latest",
                   "yoloworld:latest", "sam3:latest"}
 # Sisa VRAM minimal supaya osam boleh naik GPU. Di bawah ini — mis. training
@@ -436,7 +442,26 @@ OSAM_GPU_BEBAS = {"sam3:latest": 7_200_000_000}
 # aturan yang sama dengan model lain. Membiarkan ambang 7,2 GB di sini akan
 # membuatnya praktis selalu jatuh ke CPU, dan di CPU ia terukur 67 detik per
 # klik lewat jalur aplikasi: bukan sesuatu yang bisa dipakai orang.
-OSAM_GPU_BEBAS_OSAM_BARU: dict[str, int] = {}
+# Satu-satunya yang butuh ambang sendiri di jalur baru. Diukur 3,22 GB, jadi
+# 3,5 GB terlalu mepet untuknya.
+OSAM_GPU_BEBAS_OSAM_BARU: dict[str, int] = {"sam2:large": 4_000_000_000}
+
+# Sisa VRAM minimal untuk jalur osam 0.12. Lebih rendah daripada 4,7 GB di
+# atas, dan itu bukan pelonggaran asal: angka 4,7 GB ditulis saat sam2:small
+# dikira menyita ~4 GB. Diukur ulang di mesin ini dengan bobot float16, proses
+# segar, satu model saja, di luar yang sudah dipakai proses lain:
+#
+#   sam2:small   ~2,2 GB
+#   sam2:latest  ~2,4 GB
+#   sam3:latest  ~2,8 GB
+#   sam2:large   ~3,2 GB   (ambangnya sendiri, lihat tabel di atas)
+#
+# 3,5 GB menampung ketiga yang pertama dengan sisa ~700 MB. Angka lama membuat SAM
+# praktis TIDAK PERNAH naik GPU di prod: proses prod sendiri memegang ~3,3 GB
+# (konteks CUDA torch), jadi sisa bebasnya 4,5 GB, selalu kalah dari 4,7 GB.
+# Terbukti di log prod: "Initialized inference sessions on 'cpu'" untuk SAM 3
+# maupun sam2:small, dan satu gambar makan 19 detik.
+OSAM_GPU_MIN_BEBAS_BARU = 3_500_000_000
 
 _osam_dipaksa = False
 _osam_model_kini = None                # model yang sedang dimuat -> pemilih provider
@@ -459,9 +484,19 @@ def _boleh_gpu_osam(model) -> bool:
         import torch
         if not torch.cuda.is_available():
             return False
+        if OSAM_GPU:
+            # Saklar paksa. Namanya menjanjikan "semua model osam ke GPU", dan
+            # dulu ia hanya melewati penjaga ukuran sehingga ambang VRAM tetap
+            # menjatuhkannya ke CPU: saklar yang tidak benar-benar memaksa.
+            # Penjaga training DI ATAS tetap berlaku, dan itu disengaja.
+            # Merebut 2,8 GB dari training yang sudah berjalan berjam-jam
+            # adalah kerugian yang jauh lebih mahal daripada klik yang lambat.
+            return True
         bebas, _ = torch.cuda.mem_get_info()
-        tabel = OSAM_GPU_BEBAS_OSAM_BARU if osam_api.baru() else OSAM_GPU_BEBAS
-        return bebas >= tabel.get(model, OSAM_GPU_MIN_BEBAS)
+        if osam_api.baru():
+            return bebas >= OSAM_GPU_BEBAS_OSAM_BARU.get(
+                model, OSAM_GPU_MIN_BEBAS_BARU)
+        return bebas >= OSAM_GPU_BEBAS.get(model, OSAM_GPU_MIN_BEBAS)
     except Exception:
         return False
 
