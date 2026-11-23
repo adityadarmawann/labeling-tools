@@ -729,3 +729,49 @@ def test_kanvas_menampilkan_keadaan_sekarang_bukan_saat_projek_dibuka(
     assert "dari-paul" in lain.get(f"/view?path={g[0]}").text
     isi = json.loads(pathlib.Path(g[0]).with_suffix(".json").read_text())
     assert [s["label"] for s in isi["shapes"]] == ["dari-paul"]
+
+
+# ------------------------------------------------- header keamanan
+
+def test_header_keamanan_terpasang_di_tiap_jawaban(klien):
+    """Dipasang aplikasi sendiri, bukan hanya di nginx.
+
+    Alasannya satu: server dev berjalan TANPA nginx di depannya, dan prod
+    pernah dipindah-pindah proxy. Header yang hanya ada di proxy berarti
+    perlindungan yang hilang diam-diam begitu jalurnya berubah.
+    """
+    r = klien.get("/login")
+    h = {k.lower(): v for k, v in r.headers.items()}
+    assert h.get("x-content-type-options") == "nosniff"
+    assert h.get("x-frame-options") == "SAMEORIGIN"
+    assert "strict-origin" in h.get("referrer-policy", "")
+
+
+def test_csp_menutup_tiga_lubang_tanpa_menyentuh_skrip(klien):
+    """CSP-nya sengaja sempit: tak ada script-src sama sekali.
+
+    Halaman di aplikasi ini memakai skrip sebaris (tema dipasang sebelum CSS
+    melukis, konteks projek dititipkan ke tiap permintaan). CSP yang mengatur
+    script-src akan mematikan keduanya, dan halaman patah adalah harga yang
+    tak sepadan. Tiga arahan di bawah menutup lubang nyata tanpa risiko itu.
+    """
+    csp = klien.get("/login").headers.get("content-security-policy", "")
+    assert "frame-ancestors 'self'" in csp
+    assert "form-action 'self'" in csp, \
+        "form masuk palsu tak boleh bisa mengirim sandi ke situs lain"
+    assert "base-uri 'self'" in csp
+    assert "script-src" not in csp, "jangan matikan skrip sebaris halaman ini"
+
+
+def test_kamera_tetap_boleh_untuk_unggah_ponsel(klien):
+    """Unggah lewat ponsel memakai kamera; mikrofon dan lokasi tak pernah."""
+    pp = klien.get("/login").headers.get("permissions-policy", "")
+    assert "camera=(self)" in pp
+    assert "microphone=()" in pp and "geolocation=()" in pp
+
+
+def test_hsts_hanya_saat_https(klien):
+    """Di HTTP polos (dev/lokal) HSTS tak boleh dipasang: ia akan mengunci
+    peramban ke HTTPS untuk host yang memang belum punya sertifikat."""
+    r = klien.get("/login")
+    assert "strict-transport-security" not in {k.lower() for k in r.headers}

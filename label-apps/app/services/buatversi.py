@@ -424,6 +424,25 @@ class Pekerjaan:
         if self.pakai_gpu:
             log.info("augmentasi memakai GPU (%s), %s operasi",
                      olah_gpu.alasan(), len(self._par_gpu))
+            # VRAM SAM dilepas dulu. Model SAM yang pernah naik GPU menyita
+            # beberapa GB sampai dilepas, dan kartu ini 8 GB: terlihat sebagai
+            # "CUDA error: out of memory" pada augmentasi, bukan pada SAM-nya,
+            # sehingga sebabnya tak tampak dari pesan galatnya.
+            #
+            # Baru bisa dikerjakan sejak model berjalan di proses terpisah.
+            # Sebelumnya melepas tidak mengembalikan apa pun (ONNX Runtime
+            # menahan VRAM selama prosesnya hidup), jadi penjaga seperti ini
+            # hanya akan memberi rasa aman yang palsu.
+            #
+            # Sesudah ini SAM masih boleh naik GPU lagi kalau ruangnya cukup;
+            # yang menjaganya adalah ambang VRAM di autolabel, bukan baris ini.
+            try:
+                from . import autolabel
+                if autolabel.bebaskan_gpu():
+                    log.info("VRAM SAM dilepas untuk augmentasi GPU")
+            except Exception:                              # noqa: BLE001
+                log.warning("gagal melepas VRAM SAM sebelum augmentasi",
+                            exc_info=True)
         self._batal = batal or (lambda: False)
         self.dirv = dir_versi(ds, nomor)
         # Format keluaran ditentukan SETELAN PROJEK (dengan tebakan mayoritas

@@ -121,8 +121,21 @@ def test_ambang_vram_sam3_ikut_versi_osam(monkeypatch):
     from app.services import autolabel
 
     assert autolabel.OSAM_GPU_BEBAS["sam3:latest"] > autolabel.OSAM_GPU_MIN_BEBAS
-    assert "sam3:latest" not in autolabel.OSAM_GPU_BEBAS_OSAM_BARU, \
-        "di osam 0.12 ia tak butuh ambang khusus lagi"
+    # Di osam 0.12 ambangnya PER MODEL, diukur, dan jauh lebih rendah.
+    baru_ = autolabel.OSAM_GPU_BEBAS_OSAM_BARU["sam3:latest"]
+    assert baru_ < autolabel.OSAM_GPU_BEBAS["sam3:latest"] / 2
+    # Model kecil tak boleh ikut menanggung ambang milik model besar: satu
+    # angka rata selalu ditentukan yang terbesar, dan itu yang membuat
+    # sam2:small dikirim ke CPU saat VRAM bebas 3,35 GB padahal ia cuma
+    # butuh 2,2 GB.
+    assert autolabel.OSAM_GPU_MIN_BEBAS_BARU < baru_
+    for kecil in ("sam2:small", "sam2:tiny", "efficientsam:10m"):
+        butuh = autolabel.OSAM_GPU_BEBAS_OSAM_BARU.get(
+            kecil, autolabel.OSAM_GPU_MIN_BEBAS_BARU)
+        assert butuh <= autolabel.OSAM_GPU_MIN_BEBAS_BARU, kecil
+    assert (autolabel.OSAM_GPU_BEBAS_OSAM_BARU["sam2:large"]
+            > autolabel.OSAM_GPU_BEBAS_OSAM_BARU["sam3:latest"]), \
+        "sam2:large yang paling lapar (3,2 GB), ambangnya harus paling tinggi"
 
     monkeypatch.setattr(autolabel.olah_gpu, "MODE", "gpu")
     monkeypatch.setattr(autolabel.gpu_sinyal, "latih_aktif", lambda: False)
@@ -210,3 +223,67 @@ def test_saklar_paksa_benar_benar_memaksa(monkeypatch):
     monkeypatch.setattr(autolabel.gpu_sinyal, "latih_aktif", lambda: True)
     assert autolabel._boleh_gpu_osam("sam3:latest") is False, \
         "training yang sedang jalan tetap menang atas saklar paksa"
+
+
+def test_model_lain_dilepas_sebelum_menyerah_ke_cpu(monkeypatch):
+    """VRAM yang ditahan model LAIN bukan alasan sah untuk pindah ke CPU.
+
+    Memuat ulang dibayar sekali beberapa detik; CPU dibayar puluhan detik
+    setiap gambar (terukur: sam3:latest 28 dtk per gambar di CPU, 1,3 dtk di
+    GPU).
+    """
+    import sys
+
+    from app.services import autolabel
+
+    monkeypatch.setattr(autolabel.olah_gpu, "MODE", "gpu")
+    monkeypatch.setattr(autolabel.gpu_sinyal, "latih_aktif", lambda: False)
+    monkeypatch.setattr(autolabel, "OSAM_GPU", False)
+    monkeypatch.setattr(autolabel.osam_api, "baru", lambda: True)
+
+    keadaan = {"bebas": 1_000_000_000, "dilepas": False}
+
+    def tutup():
+        keadaan["dilepas"] = True
+        keadaan["bebas"] = 6_000_000_000     # model lain melepaskan VRAM-nya
+        return True
+
+    monkeypatch.setattr(autolabel.osam_api, "tutup", tutup)
+    monkeypatch.setattr(autolabel.osam_api, "residen", lambda: "sam2:large")
+
+    kelas = type("T", (), {})
+    t = kelas(); t.cuda = kelas()
+    t.cuda.is_available = staticmethod(lambda: True)
+    t.cuda.empty_cache = staticmethod(lambda: None)
+    t.cuda.mem_get_info = staticmethod(
+        lambda: (keadaan["bebas"], 8_200_000_000))
+    monkeypatch.setitem(sys.modules, "torch", t)
+
+    assert autolabel._boleh_gpu_osam("sam3:latest") is True
+    assert keadaan["dilepas"] is True
+
+
+def test_model_yang_sama_tak_dilepas_percuma(monkeypatch):
+    """Kalau yang residen justru model yang diminta, melepasnya hanya membuat
+    ia dimuat ulang tanpa alasan."""
+    import sys
+
+    from app.services import autolabel
+
+    monkeypatch.setattr(autolabel.olah_gpu, "MODE", "gpu")
+    monkeypatch.setattr(autolabel.gpu_sinyal, "latih_aktif", lambda: False)
+    monkeypatch.setattr(autolabel, "OSAM_GPU", False)
+    monkeypatch.setattr(autolabel.osam_api, "baru", lambda: True)
+    monkeypatch.setattr(autolabel.osam_api, "residen", lambda: "sam3:latest")
+
+    dilepas = []
+    monkeypatch.setattr(autolabel.osam_api, "tutup",
+                        lambda: dilepas.append(True))
+    kelas = type("T", (), {})
+    t = kelas(); t.cuda = kelas()
+    t.cuda.is_available = staticmethod(lambda: True)
+    t.cuda.mem_get_info = staticmethod(lambda: (1_000_000_000, 8_200_000_000))
+    monkeypatch.setitem(sys.modules, "torch", t)
+
+    assert autolabel._boleh_gpu_osam("sam3:latest") is False
+    assert dilepas == [], "jangan melepas model yang justru sedang diminta"

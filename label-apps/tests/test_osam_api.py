@@ -1,7 +1,7 @@
 """Satu pintu ke osam, supaya dua generasi API-nya tidak bocor ke mana-mana.
 
 osam mengganti API publiknya di 0.12: `apis.generate` dengan request pydantic
-berganti `Client(in_process=True).segment(...)`. Yang membuat perpindahan itu
+berganti `Client(...).segment(...)`. Yang membuat perpindahan itu
 layak dikerjakan adalah SAM 3: di 0.5 ia hanya menerima dua titik sudut
 sebagai kotak dan menolak klik tunggal dengan
 
@@ -110,7 +110,10 @@ def test_klien_dibuat_sekali_per_perangkat(osam_baru):
     c = osam_api.klien(True)
     assert c is not a, "GPU dan CPU adalah klien berbeda"
     assert (a.device, c.device) == ("cpu", "cuda")
-    assert a.in_process is True, "tidak boleh menyalakan server terpisah"
+    assert a.in_process is False, (
+        "model harus berjalan di proses terpisah: ONNX Runtime tidak "
+        "mengembalikan VRAM selama prosesnya hidup, jadi di dalam proses app "
+        "memori itu tak pernah bisa dilepas")
     assert a.max_loaded_models == osam_api.MODEL_RESIDEN
 
 
@@ -171,3 +174,42 @@ def test_tutup_melepas_semua_klien(osam_baru):
     assert (cpu.tertutup, gpu.tertutup) == (True, True)
     assert osam_api.tutup() is False, "tak ada klien -> tak ada yang dilepas"
     assert osam_api.klien(False) is not cpu, "klien baru dibuat sesudah ditutup"
+
+
+def test_residen_dicatat_dan_dilepas(osam_baru):
+    """Penjaga VRAM perlu tahu model mana yang sedang dipegang, supaya ia bisa
+    melepas yang lain alih-alih diam-diam pindah ke CPU."""
+    assert osam_api.residen() is None
+    osam_api.segmen("sam2:small", "gambar", gpu=False, points=[(1.0, 1.0)],
+                    point_labels=[1])
+    assert osam_api.residen() == "sam2:small"
+    osam_api.tutup()
+    assert osam_api.residen() is None
+
+
+def test_dua_model_boleh_residen_bersama():
+    """Dua orang bisa memakai model BERBEDA pada saat yang sama, misalnya satu
+    sam2 dan satu SAM 3. Dengan satu model residen, tiap pergantian giliran
+    memuat ulang bobot, dan untuk SAM 3 itu 6 sampai 7 detik setiap kali.
+
+    Menahan dua baru aman sejak modelnya berjalan di proses terpisah: di dalam
+    proses app, VRAM tak pernah kembali sehingga menahan dua berarti menimbun.
+    SAM 3 2,8 GB + sam2:small 2,2 GB = 5,0 GB, dan proses app kini hanya
+    memegang konteks torch ~1,4 GB, jadi totalnya muat di kartu 8 GB.
+    """
+    assert osam_api.MODEL_RESIDEN == 2
+
+
+def test_melepas_mengembalikan_ram_ke_sistem(osam_baru, monkeypatch):
+    """Melepas objeknya saja menyerahkan memori ke alokator C, bukan ke
+    sistem, sehingga RSS prosesnya tetap tinggi."""
+    dipanggil = []
+    monkeypatch.setattr(osam_api, "_kembalikan_ram",
+                        lambda: dipanggil.append(True))
+    osam_api.klien(False)
+    assert osam_api.tutup() is True
+    assert dipanggil == [True]
+
+    dipanggil.clear()
+    assert osam_api.tutup() is False
+    assert dipanggil == [], "tak ada yang dilepas -> tak perlu merapikan"

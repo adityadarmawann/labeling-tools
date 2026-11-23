@@ -1032,3 +1032,37 @@ def test_halaman_hasil_versi_grid_dan_filter(klien, lingkungan):
     # versi tak ada -> balik ke /versi, bukan 500
     r3 = klien.get("/versi/hasil?nomor=999", follow_redirects=False)
     assert r3.status_code in (303, 307)
+
+
+def test_augmentasi_gpu_melepas_vram_sam_lebih_dulu(tmp_path, monkeypatch):
+    """Model SAM yang pernah naik GPU menyita beberapa GB sampai dilepas.
+
+    Di kartu 8 GB ini akibatnya muncul sebagai "CUDA error: out of memory"
+    pada AUGMENTASI, bukan pada SAM-nya, sehingga sebabnya tak tampak dari
+    pesan galatnya. Terbukti: suite penuh gagal 24 uji olah_gpu sekaligus
+    karena dua model SAM berumur panjang menggenggam 7,7 dari 8,2 GB.
+    """
+    from app.services import autolabel, buatversi, olah_gpu
+
+    dilepas = []
+    monkeypatch.setattr(olah_gpu, "tersedia", lambda: True)
+    monkeypatch.setattr(olah_gpu, "par_gpu", lambda *a, **k: {})
+    monkeypatch.setattr(olah_gpu, "alasan", lambda: "uji")
+    monkeypatch.setattr(autolabel, "bebaskan_gpu",
+                        lambda: dilepas.append(True) or True)
+
+    buatversi.Pekerjaan(tmp_path, 1, [], {}, {}, {}, kunci="uji")
+    assert dilepas == [True], "VRAM SAM harus dilepas sebelum augmentasi GPU"
+
+
+def test_augmentasi_cpu_tak_mengusik_sam(tmp_path, monkeypatch):
+    """Tanpa GPU, tak ada alasan mengusik model yang sedang dipakai orang."""
+    from app.services import autolabel, buatversi, olah_gpu
+
+    dilepas = []
+    monkeypatch.setattr(olah_gpu, "tersedia", lambda: False)
+    monkeypatch.setattr(autolabel, "bebaskan_gpu",
+                        lambda: dilepas.append(True) or True)
+
+    buatversi.Pekerjaan(tmp_path, 1, [], {}, {}, {}, kunci="uji")
+    assert dilepas == []

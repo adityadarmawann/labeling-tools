@@ -7,7 +7,7 @@ sementara:
         onnxruntime dibuat di `osam.types._model`, embedding gambar
         dikembalikan ke pemanggil supaya bisa disimpan sendiri, dan pilihan
         CPU atau GPU hanya bisa diatur dengan menambal pembuat sesi itu.
-  0.12  `osam.Client(in_process=True, device=...)` dengan metode `segment`.
+  0.12  `osam.Client(device=...)` dengan metode `segment`.
         Sesi, pelepasan model saat diam, dan pemakaian ulang embedding diurus
         osam sendiri, dan perangkatnya dipilih lewat argumen.
 
@@ -37,15 +37,41 @@ from ..log import catat
 
 log = catat("labelapp.osam")
 
-# Berapa model boleh tinggal termuat sekaligus. Dua, bukan satu: jalur klik
-# (sam2/sam3) dan jalur prompt teks (yoloworld/sam3) memakai model berbeda,
-# dan dengan satu saja, bergantian memakai keduanya berarti memuat ulang bobot
-# setiap kali. Model yang diam tetap dilepas osam sendiri sesudah keep_alive.
+# Berapa model boleh tinggal termuat sekaligus. DUA.
+#
+# Angkanya sempat diturunkan ke satu, dan itu benar SELAMA model masih
+# berjalan di dalam proses app: di sana VRAM tak pernah bisa dikembalikan,
+# jadi menahan dua model berarti menimbun dan membuat yang berikutnya jatuh
+# ke CPU. Sejak modelnya pindah ke proses terpisah, alasan itu hilang: ruang
+# yang dipegang benar-benar bisa dilepas saat dibutuhkan.
+#
+# Yang menentukan sekarang adalah pemakaian nyata: dua orang memakai model
+# BERBEDA pada saat yang sama, misalnya satu sam2 dan satu SAM 3. Dengan satu
+# model residen, tiap pergantian memuat ulang bobot, dan untuk SAM 3 itu 6
+# sampai 7 detik SETIAP kali giliran berpindah. Dengan dua, keduanya tinggal
+# dan tak ada yang perlu dimuat ulang.
+#
+# Muat: SAM 3 ~2,8 GB + sam2:small ~2,2 GB = 5,0 GB, dan proses app sendiri
+# hanya memegang konteks CUDA torch ~1,4 GB karena modelnya tak lagi di sana.
+# Totalnya ~6,4 GB di kartu 8 GB.
+#
+# Kalau model KETIGA diminta dan ruangnya kurang, penjaga VRAM di autolabel
+# melepas yang sedang dipegang lalu memeriksa ulang, bukan diam-diam pindah
+# ke CPU. Jalur itu baru benar-benar bekerja sejak prosesnya terpisah:
+# terukur di log, "bebas 1,13 -> 4,04 GB".
 MODEL_RESIDEN = 2
 
 _KUNCI = threading.Lock()
 _klien: dict[str, Any] = {}
 _jenis_prompt: dict[str, frozenset[str]] = {}
+# Model yang terakhir dipakai, yaitu satu-satunya yang residen (MODEL_RESIDEN).
+# Dipakai penjaga VRAM untuk menjawab satu pertanyaan: "kalau saya lepas yang
+# sedang dipegang, apakah yang diminta jadi muat?"
+_model_residen: str | None = None
+# Apakah yang residen itu dimuat di GPU. Dipakai penjaga VRAM: model yang SUDAH
+# termuat di GPU tidak butuh ruang baru, jadi menuntut sisa VRAM untuknya
+# membuatnya jatuh ke CPU justru saat ia sebenarnya sudah siap di GPU.
+_residen_gpu: bool = False
 
 
 def baru() -> bool:
@@ -64,9 +90,7 @@ def klien(gpu: bool):
 
     Satu klien per perangkat, bukan satu untuk semua: pilihan CPU atau GPU
     diputuskan per panggilan oleh penjaga VRAM di `autolabel`, sedangkan
-    sebuah klien memegang perangkatnya sejak dibuat. `in_process=True` berarti
-    tidak ada server terpisah yang dinyalakan; modelnya berjalan di proses app
-    seperti sebelumnya.
+    sebuah klien memegang perangkatnya sejak dibuat.
     """
     import osam
     nama = "cuda" if gpu else "cpu"
@@ -77,9 +101,24 @@ def klien(gpu: bool):
     # Pembuatan klien dikerjakan DI LUAR kunci. Kalau di dalam, jatuhnya GPU ke
     # CPU memanggil fungsi ini lagi sementara kuncinya masih dipegang, dan
     # threading.Lock bukan reentran: prosesnya menggantung tanpa pesan apa pun.
+    #
+    # Modelnya berjalan di PROSES TERPISAH (server pribadi osam), bukan di
+    # proses app. Sempat sebaliknya, dan itu terbukti salah untuk mesin ini:
+    # ONNX Runtime TIDAK mengembalikan VRAM ke driver selama prosesnya masih
+    # hidup. Diukur langsung: memuat sam2:small di GPU menaikkan pemakaian
+    # 5,73 -> 7,07 GB, dan sesudah close() + gc + del hanya turun ke 7,03 GB.
+    # Artinya tiap model yang pernah naik GPU menyita VRAM sampai servernya
+    # dimatikan, dan model berikutnya kehabisan ruang lalu jatuh ke CPU, yaitu
+    # 28 detik per gambar.
+    #
+    # Dengan proses terpisah, menutup klien berarti prosesnya berakhir dan
+    # memorinya kembali UTUH: terukur 7,10 -> 5,62 GB, tepat ke angka semula.
+    # Kecepatannya tidak berkurang, sebab yang lewat antarproses hanya gambar
+    # dan hasilnya: klik pertama 1,26 dtk (sama seperti di dalam proses), klik
+    # kedua di gambar yang sama 0,014 dtk karena embeddingnya tetap dipakai
+    # ulang di sisi server.
     try:
-        c = osam.Client(in_process=True, device=nama,
-                        max_loaded_models=MODEL_RESIDEN)
+        c = osam.Client(device=nama, max_loaded_models=MODEL_RESIDEN)
     except Exception as e:              # noqa: BLE001 -- CUDA tak terpakai
         if not gpu:
             raise
@@ -116,12 +155,15 @@ def segmen(model: str, rgb, *, gpu: bool = False, **prompt) -> list:
     diulang di CPU: lebih lambat, tetapi tetap memberi hasil, dan itulah
     perilaku yang dulu harus ditambal sendiri.
     """
+    global _model_residen, _residen_gpu
     try:
+        _model_residen, _residen_gpu = model, gpu
         return klien(gpu).segment(model, rgb, **prompt)
     except Exception as e:              # noqa: BLE001
         if not gpu or not _kehabisan_memori(e):
             raise
         log.warning("osam %s kehabisan VRAM, diulang di CPU: %s", model, e)
+        _residen_gpu = False
         return klien(False).segment(model, rgb, **prompt)
 
 
@@ -158,13 +200,30 @@ def terunduh(model: str) -> bool:
     return False
 
 
+def residen() -> str | None:
+    """Model yang sedang dipegang, atau None kalau belum ada."""
+    return _model_residen
+
+
+def residen_gpu() -> bool:
+    """Apakah model yang sedang dipegang itu dimuat di GPU."""
+    return _residen_gpu
+
+
 def tutup() -> bool:
     """Lepaskan semua klien beserta model yang mereka pegang.
 
-    Dipakai `autolabel.bebaskan_gpu` sebelum training lokal mulai. Klien baru
-    dibuat lagi sendiri pada panggilan berikutnya, dan selama training
-    berjalan penjaga VRAM akan mengarahkannya ke CPU.
+    Dipakai `autolabel.bebaskan_gpu` sebelum training lokal mulai, dan oleh
+    penjaga VRAM saat model yang diminta tak muat bersama yang sedang
+    dipegang. Klien baru dibuat lagi sendiri pada panggilan berikutnya.
+
+    Melepas saja tidak cukup untuk RAM. Sesudah objeknya dilepas, memorinya
+    kembali ke alokator C, bukan ke sistem, sehingga RSS prosesnya tetap
+    tinggi: terukur 10,7 GB pada proses yang memuat banyak model berturut-
+    turut, di mesin 31 GB dengan swap 2 GB, dan di sanalah ia pernah
+    menggelepar sampai SSH tak menjawab. malloc_trim mengembalikannya.
     """
+    global _model_residen, _residen_gpu
     with _KUNCI:
         ada = bool(_klien)
         for c in _klien.values():
@@ -173,4 +232,19 @@ def tutup() -> bool:
             except Exception:           # noqa: BLE001 -- sudah tertutup
                 pass
         _klien.clear()
+        _model_residen = None
+        _residen_gpu = False
+    if ada:
+        _kembalikan_ram()
     return ada
+
+
+def _kembalikan_ram() -> None:
+    """Kembalikan memori yang sudah dilepas ke sistem, bukan hanya ke alokator."""
+    import gc
+    gc.collect()
+    try:
+        import ctypes
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except Exception:                   # noqa: BLE001 -- bukan glibc
+        pass

@@ -442,9 +442,21 @@ OSAM_GPU_BEBAS = {"sam3:latest": 7_200_000_000}
 # aturan yang sama dengan model lain. Membiarkan ambang 7,2 GB di sini akan
 # membuatnya praktis selalu jatuh ke CPU, dan di CPU ia terukur 67 detik per
 # klik lewat jalur aplikasi: bukan sesuatu yang bisa dipakai orang.
-# Satu-satunya yang butuh ambang sendiri di jalur baru. Diukur 3,22 GB, jadi
-# 3,5 GB terlalu mepet untuknya.
-OSAM_GPU_BEBAS_OSAM_BARU: dict[str, int] = {"sam2:large": 4_000_000_000}
+# Ambang PER MODEL, bukan satu angka untuk semua. Satu angka rata selalu
+# ditentukan model terbesar, dan akibatnya model kecil ditolak padahal
+# ruangnya jelas cukup: terbukti di log, sam2:small dikirim ke CPU saat VRAM
+# bebas 3,35 GB sementara ia hanya butuh 2,2 GB.
+#
+# Isinya puncak terukur di mesin ini (float16, proses segar, satu model, di
+# luar yang sudah dipakai proses lain) ditambah sisa aman ~0,4 GB:
+#
+#   sam2:small   2,2 GB  -> 2,6     sam3:latest  2,8 GB  -> 3,3
+#   sam2:latest  2,4 GB  -> 2,8     sam2:large   3,2 GB  -> 3,7
+OSAM_GPU_BEBAS_OSAM_BARU: dict[str, int] = {
+    "sam2:latest": 2_800_000_000,
+    "sam3:latest": 3_300_000_000,
+    "sam2:large": 3_700_000_000,
+}
 
 # Sisa VRAM minimal untuk jalur osam 0.12. Lebih rendah daripada 4,7 GB di
 # atas, dan itu bukan pelonggaran asal: angka 4,7 GB ditulis saat sam2:small
@@ -456,12 +468,14 @@ OSAM_GPU_BEBAS_OSAM_BARU: dict[str, int] = {"sam2:large": 4_000_000_000}
 #   sam3:latest  ~2,8 GB
 #   sam2:large   ~3,2 GB   (ambangnya sendiri, lihat tabel di atas)
 #
-# 3,5 GB menampung ketiga yang pertama dengan sisa ~700 MB. Angka lama membuat SAM
+# Bawaan 2,6 GB dipakai model yang tak disebut di tabel (sam2:tiny,
+# efficientsam, sam2:small), yang semuanya seukuran sam2:small atau lebih
+# kecil. Angka lama membuat SAM
 # praktis TIDAK PERNAH naik GPU di prod: proses prod sendiri memegang ~3,3 GB
 # (konteks CUDA torch), jadi sisa bebasnya 4,5 GB, selalu kalah dari 4,7 GB.
 # Terbukti di log prod: "Initialized inference sessions on 'cpu'" untuk SAM 3
 # maupun sam2:small, dan satu gambar makan 19 detik.
-OSAM_GPU_MIN_BEBAS_BARU = 3_500_000_000
+OSAM_GPU_MIN_BEBAS_BARU = 2_600_000_000
 
 _osam_dipaksa = False
 _osam_model_kini = None                # model yang sedang dimuat -> pemilih provider
@@ -494,8 +508,40 @@ def _boleh_gpu_osam(model) -> bool:
             return True
         bebas, _ = torch.cuda.mem_get_info()
         if osam_api.baru():
-            return bebas >= OSAM_GPU_BEBAS_OSAM_BARU.get(
-                model, OSAM_GPU_MIN_BEBAS_BARU)
+            if osam_api.residen() == model and osam_api.residen_gpu():
+                # Sudah termuat di GPU: ia tidak butuh ruang BARU. Menuntut
+                # sisa VRAM untuknya membuat klik kedua dan seterusnya jatuh
+                # ke CPU justru saat modelnya sudah siap di GPU, dan itu
+                # terlihat sebagai "kadang cepat, kadang 30 detik".
+                return True
+            butuh = OSAM_GPU_BEBAS_OSAM_BARU.get(model, OSAM_GPU_MIN_BEBAS_BARU)
+            log.debug("gpu? %s bebas=%.2fGB butuh=%.2fGB residen=%s",
+                      model, bebas / 1e9, butuh / 1e9, osam_api.residen())
+            lepas_dari = osam_api.residen()
+            if bebas < butuh and lepas_dari not in (None, model):
+                sebelum = bebas
+                # Yang menahan VRAM adalah model LAIN yang masih dipegang.
+                # Melepasnya jauh lebih baik daripada diam-diam pindah ke CPU:
+                # memuat ulang dibayar SEKALI beberapa detik, sedangkan CPU
+                # dibayar puluhan detik SETIAP gambar. Terukur di dev:
+                # sam3:latest 28 detik per gambar di CPU, 1,3 detik di GPU.
+                osam_api.tutup()
+                try:
+                    torch.cuda.empty_cache()
+                except Exception:                      # noqa: BLE001
+                    pass
+                bebas, _ = torch.cuda.mem_get_info()
+                log.info("melepas %s untuk %s: bebas %.2f -> %.2f GB",
+                         lepas_dari, model, sebelum / 1e9, bebas / 1e9)
+            boleh = bebas >= butuh
+            if not boleh:
+                # Dicatat sebagai PERINGATAN, bukan debug: jatuh ke CPU berarti
+                # puluhan detik per gambar, dan tanpa baris ini satu-satunya
+                # gejalanya adalah "kok lambat" tanpa sebab yang bisa dilihat.
+                log.warning("SAM %s ke CPU: VRAM bebas %.2f GB, butuh %.2f GB, "
+                            "yang menggenggam: %s", model, bebas / 1e9,
+                            butuh / 1e9, lepas_dari or "tak ada")
+            return boleh
         return bebas >= OSAM_GPU_BEBAS.get(model, OSAM_GPU_MIN_BEBAS)
     except Exception:
         return False
