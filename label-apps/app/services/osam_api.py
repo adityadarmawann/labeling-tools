@@ -134,6 +134,27 @@ def klien(gpu: bool):
     return dipakai
 
 
+def _klien_bertanya():
+    """Klien mana pun yang SUDAH hidup, untuk pertanyaan yang tidak
+    menjalankan model: daftar model dan status unduhan bobotnya.
+
+    Dulu keduanya memanggil klien CPU. Sejak tiap klien menjadi PROSES
+    tersendiri, itu berarti sekadar bertanya "model apa saja yang ada"
+    menyalakan satu proses penuh yang lalu menganggur selamanya. Terlihat di
+    prod: dua server model, yang kedua 140 MB RAM tanpa satu pun model dan
+    tanpa VRAM.
+
+    Kalau memang belum ada yang hidup, barulah klien CPU dibuat, sebab
+    pertanyaan ini tak pernah pantas menyalakan GPU.
+    """
+    with _KUNCI:
+        for nama in ("cuda", "cpu"):
+            c = _klien.get(nama)
+            if c is not None:
+                return c
+    return klien(False)
+
+
 def _kehabisan_memori(e: BaseException) -> bool:
     """Apakah galat ini soal memori perangkat, bukan soal permintaan kita.
 
@@ -176,7 +197,7 @@ def jenis_prompt(model: str) -> frozenset[str]:
     """
     if not _jenis_prompt:
         try:
-            for m in klien(False).list():
+            for m in _klien_bertanya().list():
                 _jenis_prompt[m.name] = frozenset(m.prompt_kinds)
         except Exception as e:          # noqa: BLE001
             log.warning("daftar model osam tak terbaca: %s", e)
@@ -192,7 +213,7 @@ def terunduh(model: str) -> bool:
     menunggu jawabannya.
     """
     try:
-        for m in klien(False).list():
+        for m in _klien_bertanya().list():
             if m.name == model:
                 return m.size is not None
     except Exception as e:              # noqa: BLE001

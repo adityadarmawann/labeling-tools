@@ -213,3 +213,25 @@ def test_melepas_mengembalikan_ram_ke_sistem(osam_baru, monkeypatch):
     dipanggil.clear()
     assert osam_api.tutup() is False
     assert dipanggil == [], "tak ada yang dilepas -> tak perlu merapikan"
+
+
+def test_bertanya_daftar_model_tak_menyalakan_proses_baru(osam_baru):
+    """Tiap klien adalah PROSES tersendiri sejak model dipindahkan ke luar.
+
+    Karena itu "model apa saja yang ada" tidak boleh membuat klien baru kalau
+    sudah ada yang hidup. Terlihat di prod sebagai server model kedua, 140 MB
+    RAM, tanpa satu pun model dan tanpa VRAM.
+    """
+    osam_api.klien(True)                      # satu klien GPU sudah hidup
+    jumlah = len(osam_baru.dibuat)
+    osam_api.jenis_prompt("sam3:latest")
+    osam_api.terunduh("sam3:latest")
+    assert len(osam_baru.dibuat) == jumlah, \
+        "bertanya daftar model tak boleh menyalakan proses baru"
+
+
+def test_tanpa_klien_hidup_pertanyaan_memakai_cpu(osam_baru):
+    """Kalau memang belum ada yang hidup, pertanyaan ini tak pernah pantas
+    menyalakan GPU."""
+    osam_api.jenis_prompt("sam3:latest")
+    assert [c.device for c in osam_baru.dibuat] == ["cpu"]
