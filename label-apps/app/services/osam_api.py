@@ -37,15 +37,35 @@ from ..log import catat
 
 log = catat("labelapp.osam")
 
-# Berapa model boleh tinggal termuat sekaligus. Dua, bukan satu: jalur klik
-# (sam2/sam3) dan jalur prompt teks (yoloworld/sam3) memakai model berbeda,
-# dan dengan satu saja, bergantian memakai keduanya berarti memuat ulang bobot
-# setiap kali. Model yang diam tetap dilepas osam sendiri sesudah keep_alive.
-MODEL_RESIDEN = 2
+# Berapa model boleh tinggal termuat sekaligus. SATU.
+#
+# Sempat dua, dengan alasan yang masuk akal di atas kertas: jalur klik dan
+# jalur prompt teks memakai model berbeda, jadi menahan keduanya menghindari
+# muat ulang. Diuji di mesin ini, alasan itu kalah oleh kenyataan.
+#
+# VRAM. Kartu ini 8 GB dan dipakai bersama prod, dev, serta training. Dengan
+# dua model residen, model kedua sering tidak kebagian ruang lalu DIAM-DIAM
+# jatuh ke CPU. Terukur lewat HTTP di dev, delapan model klik berurutan:
+# efficientsam dan sam2 tiny/small/latest naik CUDA (0,4 sampai 1,3 dtk),
+# sedangkan sam2:large (8 dtk) dan sam3:latest (28 dtk) mendapat 'cpu' justru
+# karena VRAM sudah dimakan model sebelumnya.
+#
+# RAM. Satu proses yang memuat banyak model berturut-turut tercatat menggenggam
+# 10,7 GB. Mesin ini 31 GB dengan swap 2 GB, dan di sanalah ia pernah
+# menggelepar sampai SSH tak menjawab dan harus di-reboot paksa.
+#
+# Harganya: berpindah antara klik dan deteksi teks memuat ulang bobot sekali.
+# Untuk SAM 3 itu sekitar 7 detik. Dibandingkan 28 detik PER GAMBAR di CPU,
+# itu pertukaran yang jelas menguntungkan.
+MODEL_RESIDEN = 1
 
 _KUNCI = threading.Lock()
 _klien: dict[str, Any] = {}
 _jenis_prompt: dict[str, frozenset[str]] = {}
+# Model yang terakhir dipakai, yaitu satu-satunya yang residen (MODEL_RESIDEN).
+# Dipakai penjaga VRAM untuk menjawab satu pertanyaan: "kalau saya lepas yang
+# sedang dipegang, apakah yang diminta jadi muat?"
+_model_residen: str | None = None
 
 
 def baru() -> bool:
@@ -116,7 +136,9 @@ def segmen(model: str, rgb, *, gpu: bool = False, **prompt) -> list:
     diulang di CPU: lebih lambat, tetapi tetap memberi hasil, dan itulah
     perilaku yang dulu harus ditambal sendiri.
     """
+    global _model_residen
     try:
+        _model_residen = model
         return klien(gpu).segment(model, rgb, **prompt)
     except Exception as e:              # noqa: BLE001
         if not gpu or not _kehabisan_memori(e):
@@ -158,13 +180,25 @@ def terunduh(model: str) -> bool:
     return False
 
 
+def residen() -> str | None:
+    """Model yang sedang dipegang, atau None kalau belum ada."""
+    return _model_residen
+
+
 def tutup() -> bool:
     """Lepaskan semua klien beserta model yang mereka pegang.
 
-    Dipakai `autolabel.bebaskan_gpu` sebelum training lokal mulai. Klien baru
-    dibuat lagi sendiri pada panggilan berikutnya, dan selama training
-    berjalan penjaga VRAM akan mengarahkannya ke CPU.
+    Dipakai `autolabel.bebaskan_gpu` sebelum training lokal mulai, dan oleh
+    penjaga VRAM saat model yang diminta tak muat bersama yang sedang
+    dipegang. Klien baru dibuat lagi sendiri pada panggilan berikutnya.
+
+    Melepas saja tidak cukup untuk RAM. Sesudah objeknya dilepas, memorinya
+    kembali ke alokator C, bukan ke sistem, sehingga RSS prosesnya tetap
+    tinggi: terukur 10,7 GB pada proses yang memuat banyak model berturut-
+    turut, di mesin 31 GB dengan swap 2 GB, dan di sanalah ia pernah
+    menggelepar sampai SSH tak menjawab. malloc_trim mengembalikannya.
     """
+    global _model_residen
     with _KUNCI:
         ada = bool(_klien)
         for c in _klien.values():
@@ -173,4 +207,18 @@ def tutup() -> bool:
             except Exception:           # noqa: BLE001 -- sudah tertutup
                 pass
         _klien.clear()
+        _model_residen = None
+    if ada:
+        _kembalikan_ram()
     return ada
+
+
+def _kembalikan_ram() -> None:
+    """Kembalikan memori yang sudah dilepas ke sistem, bukan hanya ke alokator."""
+    import gc
+    gc.collect()
+    try:
+        import ctypes
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except Exception:                   # noqa: BLE001 -- bukan glibc
+        pass

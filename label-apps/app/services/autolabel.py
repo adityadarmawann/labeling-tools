@@ -494,8 +494,20 @@ def _boleh_gpu_osam(model) -> bool:
             return True
         bebas, _ = torch.cuda.mem_get_info()
         if osam_api.baru():
-            return bebas >= OSAM_GPU_BEBAS_OSAM_BARU.get(
-                model, OSAM_GPU_MIN_BEBAS_BARU)
+            butuh = OSAM_GPU_BEBAS_OSAM_BARU.get(model, OSAM_GPU_MIN_BEBAS_BARU)
+            if bebas < butuh and osam_api.residen() not in (None, model):
+                # Yang menahan VRAM adalah model LAIN yang masih dipegang.
+                # Melepasnya jauh lebih baik daripada diam-diam pindah ke CPU:
+                # memuat ulang dibayar SEKALI beberapa detik, sedangkan CPU
+                # dibayar puluhan detik SETIAP gambar. Terukur di dev:
+                # sam3:latest 28 detik per gambar di CPU, 1,3 detik di GPU.
+                osam_api.tutup()
+                try:
+                    torch.cuda.empty_cache()
+                except Exception:                      # noqa: BLE001
+                    pass
+                bebas, _ = torch.cuda.mem_get_info()
+            return bebas >= butuh
         return bebas >= OSAM_GPU_BEBAS.get(model, OSAM_GPU_MIN_BEBAS)
     except Exception:
         return False

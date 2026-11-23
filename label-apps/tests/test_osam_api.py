@@ -171,3 +171,36 @@ def test_tutup_melepas_semua_klien(osam_baru):
     assert (cpu.tertutup, gpu.tertutup) == (True, True)
     assert osam_api.tutup() is False, "tak ada klien -> tak ada yang dilepas"
     assert osam_api.klien(False) is not cpu, "klien baru dibuat sesudah ditutup"
+
+
+def test_residen_dicatat_dan_dilepas(osam_baru):
+    """Penjaga VRAM perlu tahu model mana yang sedang dipegang, supaya ia bisa
+    melepas yang lain alih-alih diam-diam pindah ke CPU."""
+    assert osam_api.residen() is None
+    osam_api.segmen("sam2:small", "gambar", gpu=False, points=[(1.0, 1.0)],
+                    point_labels=[1])
+    assert osam_api.residen() == "sam2:small"
+    osam_api.tutup()
+    assert osam_api.residen() is None
+
+
+def test_hanya_satu_model_residen():
+    """Dua model residen membuat yang kedua sering tak kebagian VRAM lalu
+    jatuh ke CPU, dan membuat jejak RAM satu proses membengkak sampai 10,7 GB
+    di mesin 31 GB berswap 2 GB."""
+    assert osam_api.MODEL_RESIDEN == 1
+
+
+def test_melepas_mengembalikan_ram_ke_sistem(osam_baru, monkeypatch):
+    """Melepas objeknya saja menyerahkan memori ke alokator C, bukan ke
+    sistem, sehingga RSS prosesnya tetap tinggi."""
+    dipanggil = []
+    monkeypatch.setattr(osam_api, "_kembalikan_ram",
+                        lambda: dipanggil.append(True))
+    osam_api.klien(False)
+    assert osam_api.tutup() is True
+    assert dipanggil == [True]
+
+    dipanggil.clear()
+    assert osam_api.tutup() is False
+    assert dipanggil == [], "tak ada yang dilepas -> tak perlu merapikan"
