@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import os
 import threading
+import time
 from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
@@ -521,11 +522,17 @@ def _boleh_gpu_osam(model) -> bool:
             return True
         bebas, _ = torch.cuda.mem_get_info()
         if osam_api.baru():
-            if osam_api.residen() == model and osam_api.residen_gpu():
-                # Sudah termuat di GPU: ia tidak butuh ruang BARU. Menuntut
-                # sisa VRAM untuknya membuat klik kedua dan seterusnya jatuh
-                # ke CPU justru saat modelnya sudah siap di GPU, dan itu
-                # terlihat sebagai "kadang cepat, kadang 30 detik".
+            if model in osam_api.termuat_di_gpu():
+                # Sudah termuat di GPU: ia tidak butuh ruang BARU sepeser pun.
+                #
+                # Ditanyakan ke osam, bukan ke catatan "model terakhir
+                # dipakai". Satu catatan tak bisa mewakili DUA model yang
+                # residen: begitu dua orang memakai model berbeda bergantian,
+                # yang diminta selalu bukan yang terakhir, jadi selalu
+                # dianggap belum ada lalu dimintai ruang baru. Akibatnya
+                # server model ditutup dan KEDUANYA dimuat dari nol, berulang
+                # tiap 15 sampai 20 detik, dan bagi orangnya itu terasa
+                # sebagai SAM 3 yang lambat lima detik.
                 return True
             butuh = OSAM_GPU_BEBAS_OSAM_BARU.get(model, OSAM_GPU_MIN_BEBAS_BARU)
             log.debug("gpu? %s bebas=%.2fGB butuh=%.2fGB residen=%s",
@@ -538,14 +545,43 @@ def _boleh_gpu_osam(model) -> bool:
                 # memuat ulang dibayar SEKALI beberapa detik, sedangkan CPU
                 # dibayar puluhan detik SETIAP gambar. Terukur di dev:
                 # sam3:latest 28 detik per gambar di CPU, 1,3 detik di GPU.
-                osam_api.tutup()
+                # DUA LANGKAH, yang murah dulu.
+                #
+                # 1. Bongkar model lain saja. Murah, dan model yang diminta
+                #    beserta embedding gambarnya tetap tinggal.
+                # 2. Kalau itu tak membebaskan cukup ruang, barulah seluruh
+                #    klien ditutup, yang berarti MEMATIKAN proses server
+                #    model. Itu satu-satunya cara VRAM benar-benar kembali di
+                #    mesin ini, tetapi harganya semua model dimuat dari nol.
+                #
+                # Urutannya penting. Langsung menutup membuat dua orang yang
+                # memakai model berbeda saling menjatuhkan: di log prod
+                # terlihat "bebas 2,41 -> 8,00 GB" lalu SAM 3 dimuat ulang
+                # enam detik, hampir tiap klik. Sebaliknya, hanya membongkar
+                # tanpa jalan kedua tak membebaskan apa pun: terukur 2,22 ->
+                # 2,25 GB, sebab ONNX Runtime menahan VRAM selama prosesnya
+                # hidup.
+                dilepas = osam_api.lepas_selain(model, gpu=True)
                 try:
                     torch.cuda.empty_cache()
                 except Exception:                      # noqa: BLE001
                     pass
                 bebas, _ = torch.cuda.mem_get_info()
-                log.info("melepas %s untuk %s: bebas %.2f -> %.2f GB",
-                         lepas_dari, model, sebelum / 1e9, bebas / 1e9)
+                if bebas < butuh:
+                    osam_api.tutup()
+                    try:
+                        torch.cuda.empty_cache()
+                    except Exception:                  # noqa: BLE001
+                        pass
+                    bebas, _ = torch.cuda.mem_get_info()
+                    log.info("menutup server model untuk %s: bebas %.2f -> "
+                             "%.2f GB (membongkar %s tak cukup)", model,
+                             sebelum / 1e9, bebas / 1e9,
+                             ", ".join(dilepas) or "tak ada")
+                else:
+                    log.info("membongkar %s untuk %s: bebas %.2f -> %.2f GB",
+                             ", ".join(dilepas) or lepas_dari, model,
+                             sebelum / 1e9, bebas / 1e9)
             boleh = bebas >= butuh
             if not boleh:
                 # Dicatat sebagai PERINGATAN, bukan debug: jatuh ke CPU berarti
@@ -669,7 +705,18 @@ def _segment_osam_baru(img: Path, points, labels, model: str, eps) -> Usulan:
     rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
     kunci = _kunci_cache(img, model)
     dari_cache = kunci in _panas
-    anotasi = osam_api.segmen(model, rgb, gpu=_boleh_gpu_osam(model), **prompt)
+    gpu = _boleh_gpu_osam(model)
+    t0 = time.perf_counter()
+    anotasi = osam_api.segmen(model, rgb, gpu=gpu, **prompt)
+    # Lama tiap klik DICATAT. Sejak model berjalan di proses terpisah, log
+    # bawaan osam tak lagi sampai ke log aplikasi, jadi tanpa baris ini
+    # pertanyaan "berapa detik satu klik" hanya bisa dijawab dengan klaim.
+    # `panas` membedakan dua hal yang rasanya berbeda jauh: gambar yang
+    # embeddingnya sudah ada (puluhan milidetik) dan gambar baru.
+    log.info("SAM %s %s: %.2f dtk (%s, gambar %s)", model,
+             "kotak" if "box" in prompt else "titik",
+             time.perf_counter() - t0, "gpu" if gpu else "CPU",
+             "panas" if dari_cache else "baru")
     _panas[kunci] = True
     _panas.move_to_end(kunci)
     while len(_panas) > CACHE_MAKS:

@@ -231,6 +231,72 @@ def residen_gpu() -> bool:
     return _residen_gpu
 
 
+def termuat(gpu: bool = True) -> list[str]:
+    """Nama model yang SEDANG termuat, ditanyakan ke osam sendiri."""
+    try:
+        return [m.name for m in klien(gpu).ps()]
+    except Exception as e:                  # noqa: BLE001
+        log.warning("daftar model termuat tak terbaca: %s", e)
+        return []
+
+
+def termuat_di_gpu() -> set[str]:
+    """Model yang SEDANG termuat di GPU, ditanyakan ke osam sendiri.
+
+    Dipakai penjaga VRAM untuk satu pertanyaan sederhana: apakah model yang
+    diminta sudah ada di sana? Kalau ya, ia tak butuh ruang BARU sepeser pun.
+
+    Dulu pertanyaan itu dijawab dari catatan "model terakhir dipakai", dan
+    satu catatan tak bisa mewakili DUA model yang residen. Begitu dua orang
+    memakai model berbeda bergantian, model yang diminta selalu bukan yang
+    terakhir, jadi selalu dianggap belum ada, dimintai ruang baru, lalu
+    server modelnya ditutup dan KEDUANYA dimuat dari nol. Di log prod itu
+    terbaca sebagai pemuatan berpasangan tiap 15 sampai 20 detik, dan bagi
+    orangnya terasa sebagai SAM 3 yang lambat lima detik.
+
+    Kosong kalau belum ada klien GPU, sebab berarti memang belum ada yang
+    termuat; menanyakannya pun tak perlu menyalakan apa-apa.
+    """
+    with _KUNCI:
+        c = _klien.get("cuda")
+    if c is None:
+        return set()
+    try:
+        return {m.name for m in c.ps() if getattr(m, "device", "") == "cuda"}
+    except Exception as e:                  # noqa: BLE001
+        log.warning("daftar model di GPU tak terbaca: %s", e)
+        return set()
+
+
+def lepas_selain(model: str, gpu: bool = True) -> list[str]:
+    """Bongkar model LAIN yang sedang termuat; `model` dibiarkan.
+
+    Dulu jalur ini memanggil tutup(), dan itu terlalu kasar: tutup() menutup
+    seluruh klien, yang berarti MEMATIKAN proses server model, sehingga semua
+    model ikut lenyap dan harus dimuat dari nol. Terlihat di log prod sebagai
+    "melepas sam2:large untuk sam3:latest: bebas 2,41 -> 8,00 GB", yaitu
+    seluruh kartu dikosongkan, lalu SAM 3 dimuat ulang enam detik. Dengan dua
+    orang memakai model berbeda, itu terjadi hampir tiap klik, dan dari sisi
+    orangnya terasa sebagai "SAM 3 lambat lima detik".
+
+    keep_alive=0 membongkar satu model saja, dan model yang diminta tetap
+    tinggal beserta embedding gambarnya.
+    """
+    c = klien(gpu)
+    dilepas = []
+    for nama in termuat(gpu):
+        if nama == model:
+            continue
+        try:
+            c.load(nama, keep_alive=0)
+            dilepas.append(nama)
+        except Exception as e:              # noqa: BLE001
+            log.warning("gagal membongkar %s: %s", nama, e)
+    if dilepas:
+        _kembalikan_ram()
+    return dilepas
+
+
 def tutup() -> bool:
     """Lepaskan semua klien beserta model yang mereka pegang.
 
