@@ -53,6 +53,9 @@
    kuncinya harus tetap sama dengan konteks_kisi.KUNCI_URL di sisi server.
    Diawali '&' karena selalu menempel sesudah ?path=. #}
 {% macro ctx() -%}
+{#- Projek tab ini ikut di tiap tautan keluar (kanvas, Lihat), supaya membuka
+    projek lain di tab sebelah tidak membelokkan tautan di halaman ini. -#}
+{%- if pr and pr.ds %}&ds={{ pr.ds | urlquote }}{% endif -%}
 {%- if flt and flt != 'all' %}&f={{ flt }}{% endif -%}
 {%- if dsf and dsf != 'di' %}&dsf={{ dsf }}{% endif -%}
 {%- for k in kelas %}&c={{ k | urlquote }}{% endfor -%}

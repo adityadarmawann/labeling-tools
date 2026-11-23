@@ -7,6 +7,7 @@ punya objek, supaya tidak ada anotasi yang terhapus tanpa sengaja lewat klik.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -42,7 +43,15 @@ def write_label_file(sess) -> list[str]:
     used = {str(s["label"]).strip() for it in sess.items for s in it["shapes"]
             if s["label"] is not None and str(s["label"]).strip()}
     allv = sorted(used | set(sess.settings.extra_labels))
-    p = sess.thumbdir / "labels.txt"
+    # Namanya mengikuti PROJEK, bukan hanya akun. Satu akun kini bisa membuka
+    # beberapa projek sekaligus, satu per tab, dan satu nama berkas untuk
+    # semuanya berarti daftar kelas projek yang satu menimpa milik yang lain:
+    # membuka AnyLabeling dari tab A akan menyodorkan kelas projek tab B.
+    # Hash dipakai, bukan nama projeknya, supaya dua projek bernama sama milik
+    # pemilik berbeda tidak bertabrakan.
+    cap = (hashlib.sha1(str(sess.src).encode("utf-8", "replace")).hexdigest()[:10]
+           if sess.src else "")
+    p = sess.thumbdir / (f"labels-{cap}.txt" if cap else "labels.txt")
     p.write_text("\n".join(allv) + "\n", encoding="utf-8")
     sess.labelfile = p if allv else None
     return allv

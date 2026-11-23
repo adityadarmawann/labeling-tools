@@ -83,7 +83,10 @@ const KONTEKS = (() => {
     // Daftar ini WAJIB sama dengan konteks_kisi.KUNCI_URL di sisi server:
     // kunci yang tertinggal di sini membuat panah PERTAMA benar lalu panah
     // kedua diam-diam kembali menyusuri seluruh projek.
-    for (const k of ['job', 'saring', 'dsf', 'bg', 'f', 's', 'q', 'm', 'bt']) {
+    // 'ds' paling depan: ia yang menentukan PROJEK mana yang menjawab,
+    // jadi panah kiri/kanan dan simpan tetap di projek tab ini walau tab
+    // sebelah membuka projek lain.
+    for (const k of ['ds', 'job', 'saring', 'dsf', 'bg', 'f', 's', 'q', 'm', 'bt']) {
       if (q.get(k)) p.set(k, q.get(k));
     }
     for (const k of ['c', 'x', 'tg', 'sp', 'tu']) {

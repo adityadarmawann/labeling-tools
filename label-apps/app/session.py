@@ -20,6 +20,7 @@ import secrets
 import shutil
 import threading
 import time
+from collections import OrderedDict
 from pathlib import Path
 
 from .config import FOLDER_INTERNAL, Settings
@@ -250,12 +251,60 @@ def _pangkas_cache_pindai(d: Path) -> None:
             pass
 
 
-class Session:
-    """Keadaan milik satu akun yang sedang login."""
+class Bersama:
+    """Keadaan yang milik AKUN, bukan milik projek yang sedang dilihat.
 
-    def __init__(self, user: str, settings: Settings):
+    Satu akun kini bisa membuka beberapa projek sekaligus, satu per tab, dan
+    tiap projek punya objek Session sendiri (lihat Akun di bawah). Yang tidak
+    boleh ikut tergandakan dikumpulkan di sini:
+
+    - Nama tampil, foto, dan peran admin. Kalau tergandakan, menyimpan profil
+      di satu tab akan membuat tab lain tetap menampilkan nama lama sampai
+      login ulang.
+    - Bendera pembatalan. Pembuatan versi dilaporkan kemajuannya dengan kunci
+      AKUN (datasets.py, kunci=akun) dan rute pembatalnya tidak membawa nama
+      projek, jadi bendera yang tergandakan berarti tombol Batal menekan
+      bendera yang tidak sedang dibaca siapa pun.
+    """
+
+    def __init__(self, user: str):
+        # Peran dibaca sekali saat sesi dibuat. Membacanya ulang di tiap
+        # permintaan berarti membuka users.json puluhan kali per halaman.
+        self.admin = False
+        # Nama tampil dan foto profil dibaca SEKALI saat sesi dibuat, dengan
+        # alasan yang sama seperti `admin`: kepala halaman menampilkannya di
+        # SETIAP halaman. Keduanya disegarkan di tempat oleh rute profil saat
+        # pemiliknya menyimpan, bukan dibaca ulang dari berkas. Bawaannya nama
+        # = slug akun (kepala tetap menampilkan sesuatu walau akunnya belum
+        # punya nama tampil).
+        self.nama = user
+        self.foto = ""
+        self.split_batal = False
+        # Ditekan lewat /api/versi/batal, dibaca thread pembuat versi.
+        # Terpisah dari split_batal: keduanya bisa berjalan bersamaan,
+        # dan satu bendera untuk dua pekerjaan berarti menghentikan yang
+        # satu diam-diam menghentikan yang lain.
+        self.versi_batal = False
+        self.projek_batal = False
+
+
+class Session:
+    """Keadaan satu PROJEK yang sedang dibuka oleh satu akun.
+
+    Dulu satu objek per akun. Kini satu objek per (akun, projek), supaya dua
+    tab bisa membuka projek berbeda tanpa saling menggeser; yang memilih
+    objek mana yang melayani sebuah permintaan adalah `?ds=` di URL-nya
+    (lihat deps.current_session dan SessionStore.tampilan).
+    """
+
+    def __init__(self, user: str, settings: Settings,
+                 bersama: "Bersama | None" = None):
         self.user = user
         self.settings = settings
+        # Keadaan milik akun, DIBAGI dengan tampilan projek lain milik akun
+        # yang sama. Medan di bawahnya (admin, nama, foto, dan tiga bendera
+        # batal) hanyalah jendela ke objek ini.
+        self._bersama = bersama if bersama is not None else Bersama(user)
         self.src: Path | None = None
         # PATH projek yang terbuka, DISIMPAN untuk pulih sesudah server dimulai
         # ulang (deploy): sesi dibangun ulang dengan src=None, lalu dimuat lagi
@@ -265,6 +314,9 @@ class Session:
         # SessionStore pemilik sesi ini (diisi _bangun), supaya load() menyimpan
         # path projek baru tanpa mengikat ke store global (ramah uji).
         self._store = None
+        # Akun pemilik tampilan ini, diisi Akun._baru. Dipakai load() untuk
+        # memindahkan tampilan ini ke kunci projek yang baru dibukanya.
+        self._akun = None
         self.items: list[dict] = []
         # Indeks path->item, dibangun sekali per pemindaian. find() dipanggil
         # sekali PER thumbnail, dan halaman job memuat 11.409 thumbnail dalam
@@ -301,25 +353,61 @@ class Session:
         # persis, dan supaya dHash yang mahal itu tidak dihitung ulang tiap
         # kali tombol ekspor ditekan.
         self.rencana_split: dict | None = None
-        self.split_batal = False
-        # Ditekan lewat /api/versi/batal, dibaca thread pembuat versi.
-        # Terpisah dari split_batal: keduanya bisa berjalan bersamaan,
-        # dan satu bendera untuk dua pekerjaan berarti menghentikan yang
-        # satu diam-diam menghentikan yang lain.
-        self.versi_batal = False
-        self.projek_batal = False
-        # Peran dibaca sekali saat sesi dibuat. Membacanya ulang di tiap
-        # permintaan berarti membuka users.json puluhan kali per halaman.
-        self.admin = False
-        # Nama tampil dan foto profil dibaca SEKALI saat sesi dibuat, dengan
-        # alasan yang sama seperti `admin`: kepala halaman menampilkannya di
-        # SETIAP halaman, dan membuka users.json tiap permintaan hanya untuk
-        # satu nama berarti puluhan kali baca per muat halaman. Keduanya
-        # disegarkan di tempat oleh rute profil saat pemiliknya menyimpan —
-        # bukan dibaca ulang dari berkas. Bawaannya nama = slug akun (kepala
-        # tetap menampilkan sesuatu walau akunnya belum punya nama tampil).
-        self.nama = user
-        self.foto = ""
+
+    # -- keadaan milik akun --
+    #
+    # Jendela ke Bersama, bukan salinan. Ditulis sebagai properti supaya 240
+    # tempat yang sudah memakai sess.nama / sess.versi_batal / sess.admin
+    # tidak perlu diubah satu per satu, dan supaya tidak ada jalur yang
+    # diam-diam menulis ke salinan yang tak dibaca siapa pun.
+
+    @property
+    def admin(self) -> bool:
+        return self._bersama.admin
+
+    @admin.setter
+    def admin(self, v) -> None:
+        self._bersama.admin = bool(v)
+
+    @property
+    def nama(self) -> str:
+        return self._bersama.nama
+
+    @nama.setter
+    def nama(self, v) -> None:
+        self._bersama.nama = v
+
+    @property
+    def foto(self) -> str:
+        return self._bersama.foto
+
+    @foto.setter
+    def foto(self, v) -> None:
+        self._bersama.foto = v
+
+    @property
+    def split_batal(self) -> bool:
+        return self._bersama.split_batal
+
+    @split_batal.setter
+    def split_batal(self, v) -> None:
+        self._bersama.split_batal = bool(v)
+
+    @property
+    def versi_batal(self) -> bool:
+        return self._bersama.versi_batal
+
+    @versi_batal.setter
+    def versi_batal(self, v) -> None:
+        self._bersama.versi_batal = bool(v)
+
+    @property
+    def projek_batal(self) -> bool:
+        return self._bersama.projek_batal
+
+    @projek_batal.setter
+    def projek_batal(self, v) -> None:
+        self._bersama.projek_batal = bool(v)
 
     # -- dataset --
 
@@ -394,11 +482,20 @@ class Session:
         # ingat projek yang terbuka. Hanya saat BERUBAH: muat ulang projek yang
         # sama (segarkan) tak perlu menulis _sesi.json.
         self._src_simpan = None
-        if str(self.src) != _src_lama and self._store is not None:
-            try:
-                self._store.catat()
-            except Exception:                              # noqa: BLE001
-                pass
+        if str(self.src) != _src_lama:
+            # Kunci tampilan mengikuti projek yang kini dibukanya, dikerjakan
+            # SEBELUM dicatat ke disk supaya yang tersimpan adalah keadaan
+            # sesudah perpindahan.
+            if self._akun is not None:
+                try:
+                    self._akun.kunci_ulang(self)
+                except Exception:                          # noqa: BLE001
+                    pass
+            if self._store is not None:
+                try:
+                    self._store.catat()
+                except Exception:                          # noqa: BLE001
+                    pass
         return self.items
 
     def segarkan(self) -> bool:
@@ -590,8 +687,17 @@ class Session:
         (lihat render.dir_bersama) dan tidak boleh dihapus hanya karena satu
         orang berpindah dataset. Yang tinggal di folder akun cuma labels.txt.
         """
-        shutil.rmtree(self.thumbdir, ignore_errors=True)
+        # Dihapus hanya berkas label milik projek yang sedang ditinggalkan,
+        # bukan seluruh isi folder: folder ini milik AKUN, dan sejak satu akun
+        # bisa membuka beberapa projek sekaligus, menyapu semuanya berarti
+        # membuang daftar kelas projek yang masih terbuka di tab lain.
         self.thumbdir.mkdir(parents=True, exist_ok=True)
+        if self.labelfile:
+            try:
+                Path(self.labelfile).unlink(missing_ok=True)
+            except OSError:
+                pass
+        self.labelfile = None
 
     def drop_thumbs_for(self, item: dict) -> None:
         """Sapu thumbnail lama sebuah gambar dari cache bersama.
@@ -669,20 +775,172 @@ def _btime() -> int:
     return 0
 
 
+# Berapa projek boleh termuat sekaligus untuk satu login. Tiap tampilan
+# memegang daftar gambarnya sendiri, jadi angkanya membatasi ingatan, bukan
+# jumlah tab: tab ke-lima tetap bekerja, hanya projeknya dipindai ulang (lewat
+# cache pindai) karena tampilan yang paling lama tak dipakai sudah dilepas.
+MAKS_TAMPILAN = 4
+
+
+class Akun:
+    """Satu login: keadaan akunnya, plus projek-projek yang sedang dibukanya.
+
+    Dulu satu login = satu Session = satu projek, dan di situlah dua tab
+    saling menggeser: membuka projek lain di tab kedua mengganti projek yang
+    sedang dipakai tab pertama, sehingga tab pertama ditolak dengan "berkas
+    tidak dikenal di dataset ini" begitu ia bekerja lagi.
+
+    `tampilan` dikunci dengan PATH projek, dan urutannya adalah urutan
+    pemakaian: yang terakhir dipakai berada di ujung. Kunci "" adalah
+    tampilan yang belum menyebut projek apa pun, yaitu sesi yang baru login
+    dan permintaan lama yang tidak membawa ?ds= di URL-nya.
+    """
+
+    def __init__(self, user: str, settings: Settings, bersama: Bersama,
+                 ts: float | None = None):
+        self.user = user
+        self.settings = settings
+        self.bersama = bersama
+        self._ts = ts or time.time()
+        self.tampilan: "OrderedDict[str, Session]" = OrderedDict()
+        # Memo "nama projek di URL -> path", beserta waktu penyelesaiannya.
+        #
+        # Tanpa memo, tiap permintaan ber-?ds= harus menyelesaikan namanya
+        # lewat projek.temukan, yang menyentuh disk dan untuk projek undangan
+        # juga membaca berkas tugas. Satu halaman job memuat sebelas ribu
+        # thumbnail, masing-masing satu permintaan, jadi itu sebelas ribu
+        # pembacaan tambahan untuk jawaban yang sama persis.
+        #
+        # Diselesaikan ulang sesudah TTL supaya projek yang diganti nama,
+        # dipindah, atau dicabut haknya tidak terus dilayani dari ingatan.
+        self._peta_ds: dict[str, tuple[float, str]] = {}
+
+    TTL_PETA_DS = 60.0
+
+    def kunci_ds(self, ds: str | None) -> str:
+        """Path projek yang disebut `ds`, atau "" kalau tak ada/tak sah.
+
+        Penolakan TIDAK dikerjakan di sini. Kalau namanya tak sah, hasilnya
+        "" dan permintaan dilayani tampilan terakhir, persis seperti dulu;
+        rutenya sendiri yang mengalihkan ke /pilih. Dengan begitu kekeliruan
+        di lapisan ini tak pernah berubah menjadi akses yang terbuka.
+        """
+        ds = (ds or "").strip().strip("/")
+        if not ds:
+            return ""
+        kini = time.time()
+        memo = self._peta_ds.get(ds)
+        if memo is not None and kini - memo[0] < self.TTL_PETA_DS:
+            return memo[1]
+        from .services.projek import temukan
+        try:
+            d = temukan(self.settings.uploads_root, self.user, ds)
+        except Exception:                                  # noqa: BLE001
+            d = None
+        kunci = str(d) if d else ""
+        self._peta_ds[ds] = (kini, kunci)
+        if len(self._peta_ds) > 32:                        # jangan tumbuh terus
+            self._peta_ds.pop(next(iter(self._peta_ds)), None)
+        return kunci
+
+    def _baru(self, store: "SessionStore", kunci: str = "",
+              src: str | None = None) -> Session:
+        sess = Session(self.user, self.settings, self.bersama)
+        sess._src_simpan = (src or "").strip() or None
+        sess._store = store
+        sess._akun = self
+        self.tampilan[kunci] = sess
+        return sess
+
+    def pakai(self, store: "SessionStore", kunci: str) -> Session:
+        """Tampilan untuk kunci itu, dibuat kalau belum ada, lalu ditandai
+        baru saja dipakai.
+
+        Kunci "" berarti "projeknya tidak disebut": dilayani tampilan yang
+        TERAKHIR dipakai, persis seperti perilaku lama. Itu yang membuat
+        jalur yang belum sempat membawa ?ds= tidak putus.
+        """
+        if not kunci:
+            if self.tampilan:
+                k = next(reversed(self.tampilan))
+                self.tampilan.move_to_end(k)
+                return self.tampilan[k]
+            return self._baru(store)
+        sess = self.tampilan.get(kunci)
+        if sess is None:
+            # Kuncinya ADALAH path projeknya, jadi tampilan baru lahir sambil
+            # menitipkan path itu sebagai "projek yang harus dipulihkan".
+            # Jalur pemulihannya sudah ada dan dipakai sesudah deploy
+            # (deps._lupakan_kalau_dicabut), berjalan di luar kunci store.
+            #
+            # Tanpa titipan ini, rute API yang datang ke tampilan yang masih
+            # kosong akan menjawab "gambar tidak ada di dataset ini": hanya
+            # rute HALAMAN yang memanggil sess.load, dan tampilan bisa kosong
+            # bukan cuma di awal, melainkan juga sesudah dilepas karena
+            # MAKS_TAMPILAN terlampaui.
+            sess = self._baru(store, kunci, kunci)
+        else:
+            self.tampilan.move_to_end(kunci)
+        while len(self.tampilan) > MAKS_TAMPILAN:
+            # Yang dilepas hanya DAFTAR GAMBARNYA. Pekerjaan latar yang sedang
+            # berjalan memegang objeknya sendiri sehingga tetap selesai, dan
+            # bendera batalnya milik akun (lihat Bersama), bukan milik
+            # tampilan, jadi tombol Batal tetap sampai.
+            self.tampilan.popitem(last=False)
+        return sess
+
+    def kunci_ulang(self, sess: Session) -> None:
+        """Pindahkan sebuah tampilan ke kunci projek yang baru dimuatnya.
+
+        Tanpa ini, membuka projek lewat /setsrc (yang menyebut PATH, bukan
+        nama projek) lalu masuk ke halamannya lewat ?ds= akan menghasilkan
+        DUA tampilan untuk satu projek yang sama: yang satu sudah terpindai,
+        yang satu kosong dan harus memindai ulang.
+        """
+        baru = str(sess.src) if sess.src else ""
+        if not baru:
+            return
+        for k, v in list(self.tampilan.items()):
+            if v is sess and k != baru:
+                del self.tampilan[k]
+                lain = self.tampilan.get(baru)
+                if lain is not None and lain is not sess:
+                    del self.tampilan[baru]
+                self.tampilan[baru] = sess
+                return
+        if baru in self.tampilan and self.tampilan[baru] is sess:
+            self.tampilan.move_to_end(baru)
+
+    def srcs(self) -> list[str]:
+        """Path projek yang terbuka (atau tersimpan menunggu dimuat), urut
+        dari yang paling lama tak dipakai."""
+        out = []
+        for s in self.tampilan.values():
+            sp = str(s.src) if s.src else (s._src_simpan or "")
+            if sp and sp not in out:
+                out.append(sp)
+        return out
+
+
 class SessionStore:
-    """Peta sid (dari cookie) -> Session, aman dipakai dari banyak thread.
+    """Peta sid (dari cookie) -> Akun, aman dipakai dari banyak thread.
+
+    Satu Akun memegang beberapa Session, satu per projek yang sedang dibuka;
+    yang memilih di antaranya adalah `?ds=` pada URL permintaan (lihat
+    deps.current_session).
 
     Dipersistenkan ke berkas (lihat siapkan()) supaya bertahan melewati restart
     proses, kecuali mesin reboot.
     """
 
     def __init__(self):
-        self._data: dict[str, Session] = {}
+        self._data: dict[str, Akun] = {}
         self._lock = threading.Lock()
         self._berkas: Path | None = None
 
     def _bangun(self, user: str, settings: Settings, ts: float | None = None,
-                src: str | None = None) -> Session:
+                src: str | None = None,
+                srcs: list[str] | None = None) -> Akun:
         # users.json dibaca SEKALI untuk ketiga medan yang dititipkan ke sesi
         # (peran, nama tampil, foto). Akun yang sudah tak ada -> tolak: jangan
         # pulihkan sesi untuk akun yang dihapus.
@@ -691,18 +949,23 @@ class SessionStore:
         if user not in users:
             raise ValueError(f"akun {user!r} tidak ada")
         rec = users[user]
-        sess = Session(user, settings)
-        sess.admin = is_admin(users, user)
-        sess.nama = (rec.get("nama") or "").strip() or user
-        sess.foto = rec.get("foto") or ""
-        sess._ts = ts or time.time()
+        bersama = Bersama(user)
+        bersama.admin = is_admin(users, user)
+        bersama.nama = (rec.get("nama") or "").strip() or user
+        bersama.foto = rec.get("foto") or ""
+        ak = Akun(user, settings, bersama, ts)
         # Stash path projek yang terbuka saat sesi ini terakhir disimpan; dimuat
         # LAZY di permintaan pertama (deps._lupakan_kalau_dicabut), bukan di sini
         # -- memuat semua projek saat startup bisa lambat, dan sebagian sesi tak
         # akan pernah dipakai lagi.
-        sess._src_simpan = (src or "").strip() or None
-        sess._store = self
-        return sess
+        simpan = [x for x in (srcs or []) if (x or "").strip()]
+        if (src or "").strip() and src not in simpan:
+            simpan.append(src)
+        for sp in simpan[-MAKS_TAMPILAN:]:
+            ak._baru(self, sp.strip(), sp.strip())
+        if not ak.tampilan:
+            ak._baru(self)
+        return ak
 
     def siapkan(self, settings: Settings, reset: bool = False) -> None:
         """Dipanggil SEKALI saat startup. Memulihkan sesi yang bertahan dari
@@ -720,13 +983,19 @@ class SessionStore:
             self._hapus_berkas()                        # reboot / berkas aneh
             return
         batas = time.time() - _SESI_TTL_HARI * 86400
-        pulih: dict[str, Session] = {}
+        pulih: dict[str, Akun] = {}
         for sid, rec in (data.get("sesi") or {}).items():
             if not isinstance(rec, dict) or (rec.get("ts") or 0) < batas:
                 continue
             try:
-                pulih[sid] = self._bangun(rec.get("user") or "", settings,
-                                          rec.get("ts"), rec.get("src"))
+                # `srcs` (banyak projek, satu per tab) ditulis versi ini;
+                # `src` (satu projek) ditulis versi sebelumnya dan tetap
+                # dibaca supaya deploy tidak memutus sesi yang sedang hidup.
+                daftar = rec.get("srcs")
+                pulih[sid] = self._bangun(
+                    rec.get("user") or "", settings, rec.get("ts"),
+                    rec.get("src"),
+                    list(daftar) if isinstance(daftar, list) else None)
             except Exception:                           # noqa: BLE001
                 continue                                # akun hilang/rusak
         with self._lock:
@@ -757,13 +1026,17 @@ class SessionStore:
             return
         with self._lock:
             sesi = {}
-            for sid, s in self._data.items():
-                rec = {"user": s.user, "ts": getattr(s, "_ts", 0) or time.time()}
-                # src yang sedang terbuka, atau yang masih tersimpan tapi belum
-                # dimuat (sesi yang dipulihkan tapi belum menyentuh projeknya).
-                sp = str(s.src) if s.src else getattr(s, "_src_simpan", None)
-                if sp:
-                    rec["src"] = sp
+            for sid, ak in self._data.items():
+                rec = {"user": ak.user, "ts": getattr(ak, "_ts", 0) or time.time()}
+                # Seluruh projek yang terbuka (atau tersimpan menunggu dimuat),
+                # supaya tiap tab menemukan projeknya kembali sesudah deploy.
+                daftar = ak.srcs()
+                if daftar:
+                    rec["srcs"] = daftar
+                    # `src` tetap ditulis, berisi yang terakhir dipakai. Ia
+                    # satu-satunya yang dimengerti versi sebelumnya, jadi
+                    # kembali ke versi lama tidak membuat sesi hilang projek.
+                    rec["src"] = daftar[-1]
                 sesi[sid] = rec
         # Nama tmp UNIK per penulisan (pid + acak): catat() kini dipanggil tiap
         # sesi BERPINDAH projek, bukan cuma login/logout, jadi dua utas bisa
@@ -786,30 +1059,56 @@ class SessionStore:
 
     def create(self, user: str, settings: Settings) -> tuple[str, Session]:
         sid = secrets.token_urlsafe(32)
-        sess = self._bangun(user, settings)
+        ak = self._bangun(user, settings)
         with self._lock:
-            self._data[sid] = sess
+            self._data[sid] = ak
+            sess = ak.pakai(self, "")
         self._tulis()                                   # di luar lock
         return sid, sess
 
-    def get(self, sid: str | None) -> Session | None:
+    def akun(self, sid: str | None) -> Akun | None:
         if not sid:
             return None
         with self._lock:
             return self._data.get(sid)
 
+    def tampilan(self, sid: str | None, kunci: str = "") -> Session | None:
+        """Tampilan projek yang melayani sebuah permintaan.
+
+        `kunci` adalah path projek yang disebut URL-nya (dari ?ds=). Kosong
+        berarti URL-nya tidak menyebut projek, dan itu dilayani tampilan yang
+        terakhir dipakai, sama seperti sebelum satu akun bisa membuka
+        beberapa projek sekaligus.
+        """
+        if not sid:
+            return None
+        with self._lock:
+            ak = self._data.get(sid)
+            if ak is None:
+                return None
+            return ak.pakai(self, kunci or "")
+
+    def get(self, sid: str | None) -> Session | None:
+        """Tampilan yang terakhir dipakai. Dipertahankan untuk pemanggil yang
+        memang tidak punya URL (uji, dan pemeriksaan "sudah login" di rute
+        login/daftar)."""
+        return self.tampilan(sid, "")
+
     def drop(self, sid: str | None) -> None:
         if not sid:
             return
         with self._lock:
-            sess = self._data.pop(sid, None)
-        if sess:
-            shutil.rmtree(sess.thumbdir, ignore_errors=True)
+            ak = self._data.pop(sid, None)
+        if ak:
+            # Thumbnail milik AKUN, bukan milik tampilan: satu folder untuk
+            # semua projek yang dibuka akun itu, jadi dihapus sekali.
+            shutil.rmtree(Path(ak.settings.thumb_root) / safe_slug(ak.user),
+                          ignore_errors=True)
             self._tulis()
 
     def users(self) -> list[str]:
         with self._lock:
-            return sorted({s.user for s in self._data.values()})
+            return sorted({a.user for a in self._data.values()})
 
 
 store = SessionStore()
