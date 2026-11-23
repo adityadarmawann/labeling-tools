@@ -483,20 +483,33 @@ _osam_model_kini = None                # model yang sedang dimuat -> pemilih pro
 
 def _boleh_gpu_osam(model) -> bool:
     """GPU untuk osam HANYA kalau: saklar olah=gpu, model termasuk yang kecil
-    (atau OSAM_GPU dipaksa), CUDA ada, DAN VRAM cukup bebas. Selain itu CPU."""
+    (atau OSAM_GPU dipaksa), CUDA ada, DAN VRAM cukup bebas. Selain itu CPU.
+
+    SETIAP jalan menuju CPU mencatat alasannya. Dulu hanya jalur ambang VRAM
+    yang mencatat, empat jalur lain diam, dan akibatnya pertanyaan "kok SAM
+    lambat" tak bisa dijawab justru pada kasus yang paling sering: di log prod
+    ada model dimuat di 'cpu' tanpa satu pun baris yang menyebut sebabnya, dan
+    tak ada cara mengetahuinya selain menebak.
+    """
     if olah_gpu.MODE != "gpu":
+        log.info("SAM %s ke CPU: LABELAPP_OLAH=%s, bukan gpu", model,
+                 olah_gpu.MODE)
         return False
     if not OSAM_GPU and model not in OSAM_GPU_KECIL:
+        log.warning("SAM %s ke CPU: tak ada di daftar model yang boleh naik "
+                    "GPU (OSAM_GPU_KECIL)", model)
         return False
     # Training sedang memegang GPU -> SAM ke CPU, apa pun sisa VRAM-nya. Ini lebih
     # tegas daripada ambang VRAM semata: di awal training (muat data, sebelum
     # model naik GPU) VRAM sempat terlihat longgar, dan tanpa penjaga ini SAM bisa
     # menyelinap naik GPU lalu training OOM saat modelnya menyusul.
     if gpu_sinyal.latih_aktif():
+        log.info("SAM %s ke CPU: ada training yang sedang memegang GPU", model)
         return False
     try:
         import torch
         if not torch.cuda.is_available():
+            log.warning("SAM %s ke CPU: CUDA tak tersedia di proses ini", model)
             return False
         if OSAM_GPU:
             # Saklar paksa. Namanya menjanjikan "semua model osam ke GPU", dan
@@ -543,7 +556,9 @@ def _boleh_gpu_osam(model) -> bool:
                             butuh / 1e9, lepas_dari or "tak ada")
             return boleh
         return bebas >= OSAM_GPU_BEBAS.get(model, OSAM_GPU_MIN_BEBAS)
-    except Exception:
+    except Exception as e:                  # noqa: BLE001
+        log.warning("SAM %s ke CPU: pemeriksaan GPU gagal (%s: %s)",
+                    model, type(e).__name__, e)
         return False
 
 

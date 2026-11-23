@@ -10,6 +10,7 @@ tidak boleh membuat training OOM. Dua mekanisme diuji di sini:
 from __future__ import annotations
 
 import os
+import pathlib
 
 import pytest
 
@@ -56,12 +57,18 @@ def test_penanda_pid_init_dianggap_basi():
 
 
 def test_tandai_latih_tak_pernah_tulis_pid_init(monkeypatch):
-    # Walau dipaksa pid=1, yang tertulis adalah pid proses sendiri (bukan 1).
-    import json
+    """pid 1 (init) tak pernah training, dan kini penandanya TIDAK ditulis
+    sama sekali.
+
+    Dulu ia tetap ditulis memakai pid proses sendiri. Niatnya baik, akibatnya
+    tidak: di jalur peluncuran training, pid sendiri adalah proses APLIKASI,
+    jadi penandanya bertahan selama aplikasi hidup dan seluruh mesin mengira
+    ada training yang tak pernah selesai.
+    """
     _bersihkan()
     gpu_sinyal.tandai_latih(1)
-    d = json.loads(gpu_sinyal._MARKER.read_text())
-    assert d["pid"] == os.getpid() and d["pid"] > 1
+    assert not gpu_sinyal._MARKER.exists()
+    assert gpu_sinyal.latih_aktif() is False
     _bersihkan()
 
 
@@ -287,3 +294,113 @@ def test_model_yang_sama_tak_dilepas_percuma(monkeypatch):
 
     assert autolabel._boleh_gpu_osam("sam3:latest") is False
     assert dilepas == [], "jangan melepas model yang justru sedang diminta"
+
+
+def test_tiap_jalan_ke_cpu_menyebut_alasannya(monkeypatch, caplog):
+    """Jalan menuju CPU yang DIAM membuat "kok SAM lambat" tak bisa dijawab.
+
+    Terbukti di prod: ada model dimuat di 'cpu' tanpa satu pun baris yang
+    menyebut sebabnya, sementara satu-satunya jalur yang mencatat hanyalah
+    ambang VRAM. Empat jalur lain diam, dan menebak di antara empat
+    kemungkinan bukan diagnosis.
+    """
+    import logging
+    import sys
+
+    from app.services import autolabel
+
+    kelas = type("T", (), {})
+    t = kelas(); t.cuda = kelas()
+    t.cuda.is_available = staticmethod(lambda: True)
+    t.cuda.mem_get_info = staticmethod(lambda: (8_000_000_000, 8_200_000_000))
+    monkeypatch.setitem(sys.modules, "torch", t)
+    monkeypatch.setattr(autolabel, "OSAM_GPU", False)
+    monkeypatch.setattr(autolabel.osam_api, "baru", lambda: True)
+
+    def sebab(siapkan) -> str:
+        caplog.clear()
+        with caplog.at_level(logging.INFO, logger="labelapp.autolabel"):
+            siapkan()
+            assert autolabel._boleh_gpu_osam("sam2:small") is False
+        return " ".join(r.getMessage() for r in caplog.records)
+
+    def mode_bukan_gpu():
+        monkeypatch.setattr(autolabel.olah_gpu, "MODE", "cpu")
+        monkeypatch.setattr(autolabel.gpu_sinyal, "latih_aktif", lambda: False)
+    assert "LABELAPP_OLAH" in sebab(mode_bukan_gpu)
+
+    def training_jalan():
+        monkeypatch.setattr(autolabel.olah_gpu, "MODE", "gpu")
+        monkeypatch.setattr(autolabel.gpu_sinyal, "latih_aktif", lambda: True)
+    assert "training" in sebab(training_jalan)
+
+    def cuda_hilang():
+        monkeypatch.setattr(autolabel.gpu_sinyal, "latih_aktif", lambda: False)
+        t.cuda.is_available = staticmethod(lambda: False)
+    assert "CUDA tak tersedia" in sebab(cuda_hilang)
+
+    def pemeriksaan_meledak():
+        t.cuda.is_available = staticmethod(lambda: True)
+        def meledak():
+            raise RuntimeError("driver hilang")
+        t.cuda.mem_get_info = staticmethod(meledak)
+    assert "pemeriksaan GPU gagal" in sebab(pemeriksaan_meledak)
+
+
+def test_model_di_luar_daftar_gpu_juga_menyebut_alasannya(monkeypatch, caplog):
+    import logging
+    import sys
+
+    from app.services import autolabel
+
+    monkeypatch.setattr(autolabel.olah_gpu, "MODE", "gpu")
+    monkeypatch.setattr(autolabel, "OSAM_GPU", False)
+    kelas = type("T", (), {})
+    t = kelas(); t.cuda = kelas()
+    t.cuda.is_available = staticmethod(lambda: True)
+    monkeypatch.setitem(sys.modules, "torch", t)
+    with caplog.at_level(logging.INFO, logger="labelapp.autolabel"):
+        assert autolabel._boleh_gpu_osam("model-asing") is False
+    assert any("OSAM_GPU_KECIL" in r.getMessage() for r in caplog.records)
+
+
+def test_pid_kosong_tak_pernah_jadi_pid_sendiri(monkeypatch, tmp_path):
+    """Penanda ini dibaca SELURUH instalasi di mesin, termasuk prod.
+
+    Dulu pid yang kosong diam-diam diganti pid proses sendiri. Di jalur
+    peluncuran training, pid sendiri adalah proses APLIKASI, bukan
+    trainingnya, jadi penandanya bertahan selama aplikasi hidup dan setiap
+    klik SAM di seluruh mesin mengalah ke CPU untuk training yang sudah lama
+    selesai. Itu benar-benar terjadi: prod melambat berjam-jam karena penanda
+    yang ditulis proses lain.
+    """
+    from app.services import gpu_sinyal
+
+    monkeypatch.setattr(gpu_sinyal, "_MARKER", tmp_path / "penanda.json")
+    gpu_sinyal.tandai_latih(None)
+    assert not gpu_sinyal._MARKER.exists(), "pid kosong tak boleh ditulis"
+    gpu_sinyal.tandai_latih(0)
+    assert not gpu_sinyal._MARKER.exists()
+    gpu_sinyal.tandai_latih(1)
+    assert not gpu_sinyal._MARKER.exists(), "pid 1 (init) tak pernah training"
+    assert gpu_sinyal.latih_aktif() is False
+
+    gpu_sinyal.tandai_latih(os.getpid())        # pid sungguhan -> ditulis
+    assert gpu_sinyal._MARKER.exists()
+    assert gpu_sinyal.latih_aktif() is True
+    gpu_sinyal.lepas_latih()
+
+
+def test_suite_tak_pernah_menyentuh_penanda_mesin():
+    """Penjaga: fixture di conftest harus mengarahkan penanda ke tmp_path.
+
+    Tanpa itu, menjalankan suite di mesin ini membuat PROD mengira ada
+    training dan mengirim semua klik SAM ke CPU selama suite berjalan.
+    """
+    import tempfile
+
+    from app.services import gpu_sinyal
+
+    bawaan = pathlib.Path(tempfile.gettempdir()) / "labelapp-latih-gpu-aktif.json"
+    assert gpu_sinyal._MARKER != bawaan, \
+        "suite sedang memakai penanda milik seluruh mesin"

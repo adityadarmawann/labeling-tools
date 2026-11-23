@@ -21,14 +21,27 @@ import os
 import tempfile
 from pathlib import Path
 
+from ..log import catat
+
+log = catat("labelapp.gpu")
+
 _MARKER = Path(tempfile.gettempdir()) / "labelapp-latih-gpu-aktif.json"
 
 
 def tandai_latih(pid: int | None = None) -> None:
     """Dipanggil subproses training SAAT ia sudah memegang GPU (sesudah flock)."""
-    p = int(pid if pid else os.getpid())
-    if p <= 1:                       # init (pid 1) tak pernah training: pakai milik sendiri
-        p = os.getpid()
+    # pid KOSONG berarti pemanggilnya tak tahu proses mana yang memegang GPU.
+    # Dulu itu diam-diam diganti pid sendiri, dan di jalur peluncuran training
+    # pid sendiri adalah proses APLIKASI, bukan trainingnya. Akibatnya penanda
+    # bertahan selama aplikasi hidup, dan setiap klik SAM di seluruh mesin
+    # mengalah ke CPU untuk training yang sudah lama selesai.
+    if not pid:
+        log.warning("tandai_latih dipanggil tanpa pid; penanda TIDAK ditulis")
+        return
+    p = int(pid)
+    if p <= 1:                       # init (pid 1) tak pernah training
+        log.warning("tandai_latih dipanggil dengan pid %s; diabaikan", p)
+        return
     try:
         _MARKER.write_text(json.dumps({"pid": p}))
     except OSError:

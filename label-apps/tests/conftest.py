@@ -131,6 +131,24 @@ def buat_dataset(d: Path, n_img: int, n_ann: int) -> Path:
     return d
 
 
+@pytest.fixture(autouse=True)
+def _penanda_gpu_terisolasi(tmp_path, monkeypatch):
+    """Penanda "training sedang memegang GPU" ada di /tmp dengan nama tetap,
+    dan dibaca SELURUH instalasi di mesin ini: prod, dev, dan suite ini.
+
+    Pernah terjadi sungguhan: satu uji menjalankan jalur peluncuran training,
+    penandanya tertulis dengan pid pytest, dan PROD membacanya lalu mengirim
+    semua klik SAM ke CPU selama suite berjalan. Dari luar itu tampak sebagai
+    "HIGOLAB mendadak lemot" tanpa sebab yang kelihatan.
+
+    Dipasang di conftest, bukan di satu berkas uji, karena yang menulis bukan
+    hanya uji yang memanggilnya langsung: kode aplikasi pun menulisnya.
+    """
+    from app.services import gpu_sinyal
+    monkeypatch.setattr(gpu_sinyal, "_MARKER",
+                        tmp_path / "labelapp-latih-gpu-aktif.json")
+
+
 @pytest.fixture
 def lingkungan(tmp_path, monkeypatch):
     """Setelan aplikasi yang seluruhnya menunjuk ke tmp_path."""
