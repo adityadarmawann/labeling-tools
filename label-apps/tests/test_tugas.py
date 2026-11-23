@@ -2852,7 +2852,7 @@ def test_find_pakai_indeks_dan_tetap_benar_setelah_anotasi_berubah(klien, lingku
     klien.post(f"/setsrc?path={d}")
     gambar = sorted(str(p) for p in d.glob("*.jpg"))
 
-    sess = next(iter(sesi_mod.store._data.values()))
+    sess = next(iter(sesi_mod.store._data.values())).pakai(sesi_mod.store, "")
     # indeks terbangun, dan menunjuk ke objek item yang sama dengan daftarnya
     assert len(sess._by_path) == len(sess.items) == 4
     it0 = sess.find(gambar[0])

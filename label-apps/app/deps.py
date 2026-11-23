@@ -79,7 +79,17 @@ def sesi_otomatis(request: Request) -> Session | None:
     akun = user_slug(st.autologin)
     if akun not in load_users(st.users_file):
         return None
-    _, sess = store.create(akun, st)
+    sid, sess = store.create(akun, st)
+    # Projek yang disebut URL ikut dihormati di sini juga. Tanpa ini, jalur
+    # autologin membuat sesi yang belum membuka projek apa pun, lalu rute API
+    # menjawab "gambar tidak ada di dataset ini" untuk permintaan yang sudah
+    # menyebut projeknya dengan jelas. Terbukti di server dev: halamannya
+    # terbuka, tetapi isinya tidak pernah datang.
+    ak = store.akun(sid)
+    if ak is not None:
+        pilih = store.tampilan(sid, ak.kunci_ds(request.query_params.get("ds")))
+        if pilih is not None:
+            return pilih
     return sess
 
 
@@ -137,9 +147,28 @@ def _lupakan_kalau_dicabut(sess: Session) -> Session:
     return sess
 
 
+def _sesi_permintaan(request: Request) -> Session | None:
+    """Tampilan projek yang melayani permintaan ini.
+
+    Satu login bisa membuka beberapa projek sekaligus, satu per tab, dan yang
+    memilih di antaranya adalah `?ds=` pada URL permintaan. URL yang tidak
+    menyebut projek dilayani tampilan yang terakhir dipakai, persis seperti
+    perilaku lama, supaya jalur yang belum membawa ds tidak putus.
+
+    Penjagaan hak tidak dipindahkan ke sini: nama yang tak sah atau tak boleh
+    dibuka menghasilkan kunci kosong, dan rutenya sendiri yang mengalihkan ke
+    /pilih seperti biasa.
+    """
+    sid = request.cookies.get(COOKIE_NAME)
+    ak = store.akun(sid)
+    if ak is None:
+        return None
+    return store.tampilan(sid, ak.kunci_ds(request.query_params.get("ds")))
+
+
 def current_session(request: Request) -> Session:
     """Sesi akun untuk halaman HTML. Tanpa sesi -> NeedsLogin."""
-    sess = store.get(request.cookies.get(COOKIE_NAME))
+    sess = _sesi_permintaan(request)
     if sess is None:
         sess = sesi_otomatis(request)
     if sess is None:
@@ -149,13 +178,30 @@ def current_session(request: Request) -> Session:
 
 def current_session_api(request: Request) -> Session:
     """Sesi akun untuk endpoint JSON. Tanpa sesi -> 401 dengan pesan jelas."""
-    sess = store.get(request.cookies.get(COOKIE_NAME))
+    sess = _sesi_permintaan(request)
     if sess is None:
         sess = sesi_otomatis(request)
     if sess is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED,
                             "sesi habis — muat ulang halaman lalu masuk lagi")
     return _lupakan_kalau_dicabut(sess)
+
+
+def sesi_projek(request: Request, d) -> Session:
+    """Tampilan khusus untuk projek `d`, untuk rute yang MEMBUKA projek lewat
+    PATH, bukan lewat ?ds=.
+
+    Pemilih projek memanggil /setsrc dengan path, dan URL-nya tidak menyebut
+    nama projek apa pun. Tanpa pembantu ini, projek yang baru dipilih dimuat
+    ke tampilan yang terakhir dipakai, yaitu tampilan milik TAB LAIN: tab itu
+    lalu mendapati projeknya berganti tanpa ia melakukan apa pun, persis
+    gejala yang hendak diperbaiki.
+
+    Haknya tetap diperiksa rutenya sendiri (boleh_buka) sebelum dan sesudah
+    ini; yang dipilih di sini hanya tampilan mana yang dipakai.
+    """
+    sess = store.tampilan(request.cookies.get(COOKIE_NAME), str(d))
+    return sess if sess is not None else current_session_api(request)
 
 
 def require_local(request: Request) -> None:
@@ -168,6 +214,8 @@ def require_local(request: Request) -> None:
 
 
 def optional_session(request: Request) -> Session | None:
+    """Dipakai rute login/daftar hanya untuk bertanya "sudah login?", jadi
+    tampilan mana yang kembali tidak penting di sana."""
     return store.get(request.cookies.get(COOKIE_NAME))
 
 
@@ -218,7 +266,8 @@ ApiSessionDep = Depends(current_session_api)
 LocalOnly = Depends(require_local)
 
 __all__ = ["Settings", "Session", "NeedsLogin", "is_local", "current_session",
-           "current_session_api", "require_local", "optional_session",
+           "current_session_api", "sesi_projek", "require_local",
+           "optional_session",
            "login_redirect", "SettingsDep", "SessionDep", "ApiSessionDep",
            "LocalOnly"]
 

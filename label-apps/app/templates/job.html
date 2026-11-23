@@ -77,6 +77,8 @@
         folder projek. `job` selalu disertakan — di tab "Semua" pun kiri/kanan
         tetap dalam penugasan ini, bukan projek utuh. -#}
     {%- macro konteks() -%}
+    {#- Projek tab ini ikut, dengan alasan yang sama seperti di kisi Dataset. -#}
+    {%- if pr and pr.ds %}&ds={{ pr.ds | urlquote }}{% endif -%}
     &job={{ tid | urlquote }}
     {%- if saring != 'semua' %}&saring={{ saring }}{% endif -%}
     {%- if dsf != 'semua' %}&dsf={{ dsf }}{% endif -%}

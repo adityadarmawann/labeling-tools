@@ -10,7 +10,7 @@ from fastapi.responses import HTMLResponse, Response
 
 from ..config import Settings, get_settings
 from ..deps import (bodi_json, current_session, current_session_api,
-                    is_local, require_local)
+                    is_local, require_local, sesi_projek)
 from ..log import catat
 from ..services import (anylabeling, buatversi, export, riwayat, scanner, split,
                         tugas, versi)
@@ -56,7 +56,7 @@ def boleh_buka(d: Path, sess: Session, settings: Settings) -> str:
 
 
 @router.post("/setsrc")
-async def set_source(path: str = "",
+async def set_source(request: Request, path: str = "",
                      sess: Session = Depends(current_session_api),
                      settings: Settings = Depends(get_settings)):
     raw = (path or "").strip()
@@ -68,6 +68,9 @@ async def set_source(path: str = "",
     tolak = await asyncio.to_thread(boleh_buka, d, sess, settings)
     if tolak:
         return {"ok": False, "error": tolak}
+    # Projeknya dimuat ke TAMPILAN MILIK PROJEK ITU, bukan ke tampilan yang
+    # kebetulan terakhir dipakai: yang terakhir dipakai bisa milik tab lain.
+    sess = sesi_projek(request, d)
     n = len(await asyncio.to_thread(sess.load, d))
     # Projek KOSONG (0 gambar) tetap boleh dibuka. Projek yang baru dibuat memang
     # belum berisi apa pun, dan membukanya justru LANGKAH MENUJU "Unggah data" —
@@ -105,7 +108,8 @@ async def rescan(sess: Session = Depends(current_session_api)):
 
 
 @router.post("/pickdir", dependencies=[Depends(require_local)])
-async def pick_dir(sess: Session = Depends(current_session_api),
+async def pick_dir(request: Request,
+                   sess: Session = Depends(current_session_api),
                    settings: Settings = Depends(get_settings)):
     """Dialog folder milik sistem — hanya untuk akses dari mesin server."""
     start = str(sess.src or Path.home())
@@ -121,6 +125,7 @@ async def pick_dir(sess: Session = Depends(current_session_api),
     tolak = await asyncio.to_thread(boleh_buka, d, sess, settings)
     if tolak:
         return {"ok": False, "error": tolak}
+    sess = sesi_projek(request, d)      # alasannya sama seperti /setsrc
     n = len(await asyncio.to_thread(sess.load, d))
     return {"ok": True, "dir": str(d), "n": n}
 

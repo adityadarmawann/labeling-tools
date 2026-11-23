@@ -620,7 +620,10 @@ def test_ringkasan_tidak_menahan_kunci_sesi_selama_menghitung(klien, lingkungan,
 
     masuk(klien, "paul", PW_PAUL)
     klien.post(f"/setsrc?path={lingkungan['roots'] / 'ds-alpha'}")
-    sess = next(iter(store._data.values()))
+    # Satu login kini memegang beberapa tampilan projek; yang dipakai di
+    # sini yang terakhir dibuka, sama dengan yang dilayani permintaan
+    # tanpa ?ds=.
+    sess = next(iter(store._data.values())).pakai(store, "")
 
     terkunci = []
     asli = export.ringkasan

@@ -20,7 +20,7 @@ import pathlib
 
 import pytest
 
-from app.services import autolabel
+from app.services import autolabel, osam_api
 
 
 @pytest.fixture(autouse=True)
@@ -30,11 +30,34 @@ def cache_bersih():
     autolabel._cache.clear()
 
 
+def _catatan():
+    """Tempat "gambar ini sudah di-encode" dicatat, sesuai versi osam.
+
+    Di osam 0.5 embeddingnya disimpan sendiri di _cache. Di 0.12 osam yang
+    menyimpannya, dan yang ada di sini hanya catatan gambar mana yang sudah
+    dilewati, di _panas. Uji ini soal PERILAKU pemanasan, jadi ia mengikuti
+    tempat yang berlaku alih-alih memaku salah satu versi.
+    """
+    return autolabel._panas if osam_api.baru() else autolabel._cache
+
+
+@pytest.fixture(autouse=True)
+def _bersih():
+    """Kedua catatan dikosongkan sebelum dan sesudah tiap uji: keduanya milik
+    modul, dan uji yang mewarisi isi uji sebelumnya akan lulus atau gagal
+    tergantung urutan."""
+    autolabel._cache.clear()
+    autolabel._panas.clear()
+    yield
+    autolabel._cache.clear()
+    autolabel._panas.clear()
+
+
 def _palsukan(monkeypatch, catat: list):
-    """_segment palsu yang mengisi cache persis seperti jalur sungguhan."""
+    """_segment palsu yang mencatat persis seperti jalur sungguhan."""
     def fake(img, points, labels, model, eps):
         catat.append((str(img), model))
-        autolabel._cache[autolabel._kunci_cache(img, model)] = "emb"
+        _catatan()[autolabel._kunci_cache(img, model)] = "emb"
         raise autolabel.TidakAdaObjek("palsu")
     monkeypatch.setattr(autolabel, "_segment", fake)
 
@@ -44,7 +67,7 @@ def test_panaskan_mengisi_cache(tmp_path, monkeypatch):
     catat: list = []
     _palsukan(monkeypatch, catat)
     assert autolabel.panaskan(ip) is True
-    assert autolabel._kunci_cache(ip, autolabel.MODEL_DEFAULT) in autolabel._cache
+    assert autolabel._kunci_cache(ip, autolabel.MODEL_DEFAULT) in _catatan()
     assert len(catat) == 1
 
 
@@ -68,7 +91,7 @@ def test_panaskan_memakai_mesin_yang_sama(tmp_path, monkeypatch):
     _palsukan(monkeypatch, catat)
     autolabel.panaskan(ip)
     kunci = autolabel._kunci_cache(ip, autolabel.MODEL_DEFAULT)
-    assert kunci in autolabel._cache
+    assert kunci in _catatan()
     # kunci yang sama persis dengan yang dipakai segmentasi
     assert catat[0][1] == autolabel.MODEL_DEFAULT
 

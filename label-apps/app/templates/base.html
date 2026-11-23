@@ -10,6 +10,13 @@
     halaman. Yang harus tetap terbaca di tab hanyalah HIGOLAB vs HIGOLAB-DEV,
     karena keduanya memang dibuka berdampingan. -#}
 <title>{{ nama_app() }}</title>
+{# Projek yang sedang dibuka TAB INI. Satu akun boleh membuka beberapa projek
+   sekaligus, satu per tab, dan yang memilih di antaranya adalah ?ds= pada URL
+   tiap permintaan. Halaman tahu projeknya dari sini, bukan dari ingatan
+   server, supaya membuka projek lain di tab sebelah tidak menggeser tab ini. #}
+{%- if pr is defined and pr and pr.ds %}
+<meta name="projek" content="{{ pr.ds }}">
+{%- endif %}
 <link rel="stylesheet" href="{{ statik('app.css') }}">
 <script>
 /* Dipasang sebelum CSS sempat melukis. Tanpa ini, halaman berkedip terang
@@ -20,6 +27,78 @@
     var t = localStorage.getItem('labelapp_tema');
     if (t === 'dark' || t === 'light') document.documentElement.dataset.theme = t;
   } catch (e) { /* mode privat */ }
+})();
+
+/* Projek tab ini ikut di SETIAP permintaan yang berangkat dari halaman ini.
+ *
+ * Tautan sudah membawanya sejak lama (?ds= di sidebar dan subnav), tetapi
+ * permintaan yang dibuat JS tidak, dan itulah yang dulu membuat dua tab
+ * saling menggeser: halaman tab satu benar, sedangkan isian yang dimintanya
+ * dijawab dari projek tab sebelah, yang kebetulan termuat terakhir.
+ *
+ * Dipasang di satu tempat, bukan di 52 pemanggilan fetch: satu saja yang
+ * terlewat akan tampak sebagai data projek lain yang muncul sesekali, gejala
+ * yang sangat mahal dicari. Permintaan yang SUDAH membawa ds dibiarkan apa
+ * adanya, begitu pula berkas statis dan alamat ke situs lain.
+ */
+(function () {
+  var meta = document.querySelector('meta[name="projek"]');
+  var ds = (meta && meta.content) || '';
+  if (!ds) {
+    try { ds = new URLSearchParams(location.search).get('ds') || ''; } catch (e) { ds = ''; }
+  }
+  window.PROJEK_DS = ds;
+  if (!ds) return;
+
+  function berds(u) {
+    try {
+      var url = new URL(u, location.href);
+      if (url.origin !== location.origin) return u;
+      if (url.pathname.indexOf('/static/') === 0) return u;
+      if (url.searchParams.has('ds')) return u;
+      url.searchParams.set('ds', ds);
+      return url.pathname + url.search + url.hash;
+    } catch (e) { return u; }
+  }
+
+  var fetchAsli = window.fetch;
+  if (typeof fetchAsli === 'function') {
+    window.fetch = function (masuk, opsi) {
+      try {
+        if (typeof masuk === 'string') masuk = berds(masuk);
+        else if (masuk && typeof masuk === 'object' && masuk.url)
+          masuk = new Request(berds(masuk.url), masuk);
+      } catch (e) { /* biarkan apa adanya */ }
+      return fetchAsli.call(window, masuk, opsi);
+    };
+  }
+
+  /* Unggahan memakai XMLHttpRequest, bukan fetch, karena hanya ia yang
+     melaporkan kemajuan per berkas. */
+  var bukaAsli = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function (metode, u) {
+    var arg = [].slice.call(arguments);
+    try { arg[1] = berds(u); } catch (e) { /* biarkan apa adanya */ }
+    return bukaAsli.apply(this, arg);
+  };
+
+  /* Form saringan dan pengurut. Form GET menyusun ulang seluruh query dari
+     medannya, jadi tanpa ini ds hilang justru saat orang mengurutkan. */
+  document.addEventListener('submit', function (e) {
+    var f = e.target;
+    if (!f || f.tagName !== 'FORM') return;
+    var metode = (f.getAttribute('method') || 'get').toLowerCase();
+    if (metode === 'get') {
+      if (f.querySelector('[name="ds"]')) return;
+      var i = document.createElement('input');
+      i.type = 'hidden'; i.name = 'ds'; i.value = ds;
+      f.appendChild(i);
+    } else {
+      // POST: yang dibaca pemilih tampilan adalah query pada ALAMATNYA,
+      // bukan isi bodinya, jadi ds dititipkan di action.
+      f.setAttribute('action', berds(f.getAttribute('action') || location.href));
+    }
+  }, true);
 })();
 </script>
 </head>

@@ -118,12 +118,21 @@ def test_titik_negatif_memangkas_mask(lingkaran):
 # SESI, sedangkan di sini sesinya terbentuk mulus dan yang gagal inferensinya.
 
 def test_osam_dipaksa_memakai_cpu():
-    """Penyedia osam harus CPU, berapa pun saklar olahnya."""
+    """Penyedia osam harus CPU, berapa pun saklar olahnya.
+
+    Khusus osam 0.5, satu-satunya versi yang pemilih perangkatnya harus
+    ditambal. Di 0.12 perangkat dipilih lewat argumen klien dan modul yang
+    ditambal di sini sudah tidak ada; perilaku di sana diuji terpisah di
+    test_osam_jalur_baru.py.
+    """
     from app.services import autolabel as al
+    from app.services import osam_api
 
     if al.OSAM_GPU:
         pytest.skip("LABELAPP_OSAM_GPU sengaja dinyalakan")
     pytest.importorskip("osam")
+    if osam_api.baru():
+        pytest.skip("osam 0.12 tak punya pembuat sesi untuk ditambal")
     import osam.types._model as m
 
     al._siapkan_osam()
@@ -182,7 +191,11 @@ def test_osam_routing_per_model_dan_sesak_cpu(monkeypatch):
     """Routing per-model osam berdasar VRAM bebas: sam2/efficientsam/YOLO-World
     boleh GPU saat ada ~4,7 GB bebas; SAM 3 (puncak ~6,8 GB) hanya saat GPU
     nyaris kosong (~7,2 GB bebas); dan saat VRAM sesak (training/pembuatan versi
-    memakai GPU) semua jatuh ke CPU supaya fungsi utama tak OOM."""
+    memakai GPU) semua jatuh ke CPU supaya fungsi utama tak OOM.
+
+    Angka SAM 3 di sini milik osam 0.5, yang bobotnya float32, jadi versinya
+    dipatok. Di 0.12 bobotnya float16 dan puncaknya ~2,8 GB sehingga ia ikut
+    ambang umum; itu diuji di test_gpu_sinyal.py."""
     import sys
     import types
 
@@ -196,6 +209,7 @@ def test_osam_routing_per_model_dan_sesak_cpu(monkeypatch):
     # hasilnya tak bergantung ada-tidaknya training nyata saat suite berjalan.
     monkeypatch.setattr(al.gpu_sinyal, "latih_aktif", lambda: False)
     monkeypatch.setattr(olah_gpu, "MODE", "gpu", raising=False)
+    monkeypatch.setattr(al.osam_api, "baru", lambda: False)
     fake = types.SimpleNamespace(cuda=types.SimpleNamespace(
         is_available=lambda: True,
         mem_get_info=lambda: (6_000_000_000, 8_000_000_000)))   # 6 GB bebas
