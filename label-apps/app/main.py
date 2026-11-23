@@ -172,6 +172,27 @@ def create_app() -> FastAPI:
         r.headers.setdefault("X-Content-Type-Options", "nosniff")
         r.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
         r.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        # CSP yang SENGAJA sempit cakupannya: tiga arahan yang tidak menyentuh
+        # script-src sama sekali, jadi tak ada satu pun halaman yang berisiko
+        # patah karena skrip sebaris, sementara tiga lubang nyata tertutup.
+        #
+        # - frame-ancestors: penerus X-Frame-Options yang dimengerti peramban
+        #   modern. Dipasang berdampingan, bukan menggantikan, karena peramban
+        #   lama hanya mengerti yang lama.
+        # - form-action 'self': form di halaman ini tak bisa dibelokkan
+        #   mengirim isian ke situs lain. Ini yang menjaga kalau suatu saat ada
+        #   celah penyisipan HTML: form masuk palsu tetap tak bisa mengirim
+        #   sandi ke luar.
+        # - base-uri 'self': tag <base> sisipan tak bisa membelokkan SEMUA
+        #   alamat relatif halaman ke server penyerang sekaligus.
+        r.headers.setdefault(
+            "Content-Security-Policy",
+            "frame-ancestors 'self'; form-action 'self'; base-uri 'self'")
+        # Kamera DIIZINKAN untuk halaman ini sendiri: unggah lewat ponsel
+        # memakainya. Mikrofon dan lokasi tak pernah dipakai, jadi ditutup.
+        r.headers.setdefault(
+            "Permissions-Policy",
+            "camera=(self), microphone=(), geolocation=(), interest-cohort=()")
         if lewat_https(request):
             r.headers.setdefault("Strict-Transport-Security", "max-age=15552000")
         return r
