@@ -1808,6 +1808,10 @@ const KUNCI_LIPAT = 'labelapp_panel_lipat';
   function biaya() {
     const o = pilih.selectedOptions[0];
     if (!o) return '';
+    // Tidak semua model berbiaya UNDUHAN. Ada yang tak mengunduh apa pun
+    // tetapi memanggil layanan berbayar tiap gambar, dan biaya seperti itu
+    // justru lebih perlu disebut sebelum tombolnya ditekan.
+    if (o.dataset.catatan) return o.dataset.catatan;
     return o.dataset.terunduh === '1'
       ? ''
       : `model ini perlu diunduh dulu, ±${o.dataset.unduh} MB (sekali saja)`;

@@ -183,3 +183,132 @@ def test_panggilan_gagal_dijelaskan_bukan_meledak(tmp_path, monkeypatch):
                         lambda s: types.SimpleNamespace(messages=_Pesan()))
     with pytest.raises(claude_vis.ClaudeGagal, match="401"):
         claude_vis.deteksi(ip, KELAS, settings=_Setelan())
+
+
+# ------------------------------------------------- menyatu dengan auto-label
+
+def test_pilihan_claude_muncul_hanya_saat_kuncinya_ada(monkeypatch):
+    """Menawarkan pilihan yang pasti gagal saat ditekan lebih buruk daripada
+    tidak menawarkannya. Aturan yang sama dipakai model SAM yang tak didukung
+    osam terpasang."""
+    from app.services import autolabel
+
+    assert "claude" not in autolabel.model_teks(_Setelan(kunci=""))
+    assert "claude" in autolabel.model_teks(_Setelan(kunci="sk-x"))
+    # Yang lain tak boleh ikut hilang atau berubah.
+    for m in ("yoloworld:latest", "sam3:latest"):
+        assert m in autolabel.model_teks(_Setelan(kunci=""))
+
+
+def test_daftar_di_antarmuka_mengikuti_saklarnya(monkeypatch):
+    from app.services import autolabel
+
+    monkeypatch.setattr(autolabel, "model_teks",
+                        lambda settings=None: dict(autolabel.MODEL_TEKS))
+    assert "claude" not in {t["model"] for t in autolabel.info()["teks"]}
+
+    gabung = {**autolabel.MODEL_TEKS, **autolabel.MODEL_TEKS_BERSYARAT}
+    monkeypatch.setattr(autolabel, "model_teks", lambda settings=None: gabung)
+    teks = {t["model"]: t for t in autolabel.info()["teks"]}
+    assert "claude" in teks
+    assert teks["claude"]["terunduh"] is True, "tak ada bobot untuk diunduh"
+    assert teks["claude"]["unduh_mb"] == 0
+    assert "berbayar" in teks["claude"]["catatan"], \
+        "biayanya harus disebut SEBELUM tombolnya ditekan"
+
+
+def test_dari_teks_menolak_claude_saat_saklarnya_mati(tmp_path, monkeypatch):
+    """Penjaga backend harus sepakat dengan daftarnya, bukan lebih longgar."""
+    from app.services import autolabel
+
+    ip = tmp_path / "a.jpg"
+    cv2.imwrite(str(ip), np.full((40, 40, 3), 200, np.uint8))
+    monkeypatch.setattr(autolabel, "model_teks",
+                        lambda settings=None: dict(autolabel.MODEL_TEKS))
+    with pytest.raises(autolabel.TidakAdaObjek, match="tidak menerima prompt"):
+        autolabel.dari_teks(ip, ["botol"], model="claude")
+
+
+def test_dari_teks_claude_keluar_dalam_bentuk_yang_sama(tmp_path, monkeypatch):
+    """Penggabung, tanda perlu_dicek, dan halaman verifikasi tak boleh perlu
+    tahu bahwa sumbernya Claude."""
+    from app.services import autolabel
+
+    ip = tmp_path / "a.jpg"
+    cv2.imwrite(str(ip), np.full((200, 400, 3), 200, np.uint8))
+    gabung = {**autolabel.MODEL_TEKS, **autolabel.MODEL_TEKS_BERSYARAT}
+    monkeypatch.setattr(autolabel, "model_teks", lambda settings=None: gabung)
+    monkeypatch.setattr(claude_vis, "deteksi",
+                        lambda img, kelas, **kw: [
+                            {"label": kelas[0], "bbox": (10, 20, 110, 120),
+                             "skor": 0.9}])
+    hasil = autolabel.dari_teks(ip, ["botol"], model="claude", ambang=0.1)
+    assert len(hasil) == 1
+    t = hasil[0]
+    assert (t.label, t.bbox, t.skor, t.shape_type) == (
+        "botol", (10, 20, 110, 120), 0.9, "rectangle")
+    assert t.points == [[10, 20], [110, 120]]
+
+
+def test_kegagalan_claude_jadi_pesan_yang_bisa_dibaca(tmp_path, monkeypatch):
+    from app.services import autolabel
+
+    ip = tmp_path / "a.jpg"
+    cv2.imwrite(str(ip), np.full((40, 40, 3), 200, np.uint8))
+    gabung = {**autolabel.MODEL_TEKS, **autolabel.MODEL_TEKS_BERSYARAT}
+    monkeypatch.setattr(autolabel, "model_teks", lambda settings=None: gabung)
+
+    def meledak(img, kelas, **kw):
+        raise claude_vis.ClaudeGagal("panggilan Claude gagal: 429 rate limit")
+
+    monkeypatch.setattr(claude_vis, "deteksi", meledak)
+    with pytest.raises(autolabel.TidakAdaObjek, match="429"):
+        autolabel.dari_teks(ip, ["botol"], model="claude")
+
+
+# ------------------------------------------------- antarmuka menyesuaikan
+
+def test_kanvas_membawa_catatan_biaya():
+    """Tidak semua model berbiaya UNDUHAN. Yang tak mengunduh apa pun tetapi
+    memanggil layanan berbayar tiap gambar justru lebih perlu disebut."""
+    import pathlib as _p
+
+    h = _p.Path("app/templates/label.html").read_text()
+    assert "data-catatan" in h
+
+    js = _p.Path("app/static/label.js").read_text()
+    blok = js.split("function biaya()", 1)[1].split("}", 1)[0]
+    assert "catatan" in blok, "catatan harus menang atas keterangan unduhan"
+
+    dialog = _p.Path("app/static/anotasi.js").read_text()
+    assert "m.catatan" in dialog
+
+
+def test_halaman_kanvas_menawarkan_claude_hanya_saat_hidup(klien, lingkungan,
+                                                           monkeypatch):
+    """Penjaga sebenarnya: yang dilihat orang di halaman, bukan isi dict."""
+    import re
+
+    from conftest import buat_dataset, masuk
+    from tests.test_data import PW_PAUL
+    from app.services import autolabel
+
+    d = buat_dataset(lingkungan["ruang"] / "uji-claude", 2, 1)
+    masuk(klien, "paul", PW_PAUL)
+    klien.post("/setsrc", params={"path": str(d)})
+    ip = sorted(d.glob("*.jpg"))[0]
+
+    def pilihan(h):
+        blok = re.search(r'<select id="teks-model".*?</select>', h, re.S)
+        return re.findall(r'value="([^"]+)"', blok.group(0) if blok else "")
+
+    monkeypatch.setattr(autolabel, "model_teks",
+                        lambda settings=None: dict(autolabel.MODEL_TEKS))
+    h = klien.get("/label", params={"path": str(ip)}).text
+    assert "claude" not in pilihan(h)
+
+    gabung = {**autolabel.MODEL_TEKS, **autolabel.MODEL_TEKS_BERSYARAT}
+    monkeypatch.setattr(autolabel, "model_teks", lambda settings=None: gabung)
+    h = klien.get("/label", params={"path": str(ip)}).text
+    assert "claude" in pilihan(h)
+    assert "berbayar" in h, "biayanya disebut di halaman, bukan hanya di API"

@@ -37,6 +37,12 @@ onnxruntime==1.28.0
 # "InvalidVersion: '6.8.0-138-generic'": metadata osam membandingkan
 # platform_release, dan versi kernel Linux bukan nomor versi PEP 440.
 osam==0.12.0
+# Claude sebagai sumber auto-label "Deteksi dari teks". Diimpor MALAS di dalam
+# fungsi, dan fiturnya MATI selama LABELAPP_ANTHROPIC_API_KEY kosong, jadi
+# ketidakhadirannya tak menggagalkan apa pun. Tetap didaftarkan supaya
+# pemasangan bersih tidak menghasilkan pilihan yang ada di antarmuka lalu
+# gagal saat ditekan.
+anthropic>=0.40
 # Pembuatan versi dataset. Sama seperti dua di atas, keduanya diimpor MALAS di
 # dalam fungsi (olah.py:128 dan _A()), jadi server tetap menyala tanpa mereka
 # dan yang mati hanyalah tab Versi — diam-diam, sampai orang menekan Buat dan
