@@ -37,27 +37,29 @@ from ..log import catat
 
 log = catat("labelapp.osam")
 
-# Berapa model boleh tinggal termuat sekaligus. SATU.
+# Berapa model boleh tinggal termuat sekaligus. DUA.
 #
-# Sempat dua, dengan alasan yang masuk akal di atas kertas: jalur klik dan
-# jalur prompt teks memakai model berbeda, jadi menahan keduanya menghindari
-# muat ulang. Diuji di mesin ini, alasan itu kalah oleh kenyataan.
+# Angkanya sempat diturunkan ke satu, dan itu benar SELAMA model masih
+# berjalan di dalam proses app: di sana VRAM tak pernah bisa dikembalikan,
+# jadi menahan dua model berarti menimbun dan membuat yang berikutnya jatuh
+# ke CPU. Sejak modelnya pindah ke proses terpisah, alasan itu hilang: ruang
+# yang dipegang benar-benar bisa dilepas saat dibutuhkan.
 #
-# VRAM. Kartu ini 8 GB dan dipakai bersama prod, dev, serta training. Dengan
-# dua model residen, model kedua sering tidak kebagian ruang lalu DIAM-DIAM
-# jatuh ke CPU. Terukur lewat HTTP di dev, delapan model klik berurutan:
-# efficientsam dan sam2 tiny/small/latest naik CUDA (0,4 sampai 1,3 dtk),
-# sedangkan sam2:large (8 dtk) dan sam3:latest (28 dtk) mendapat 'cpu' justru
-# karena VRAM sudah dimakan model sebelumnya.
+# Yang menentukan sekarang adalah pemakaian nyata: dua orang memakai model
+# BERBEDA pada saat yang sama, misalnya satu sam2 dan satu SAM 3. Dengan satu
+# model residen, tiap pergantian memuat ulang bobot, dan untuk SAM 3 itu 6
+# sampai 7 detik SETIAP kali giliran berpindah. Dengan dua, keduanya tinggal
+# dan tak ada yang perlu dimuat ulang.
 #
-# RAM. Satu proses yang memuat banyak model berturut-turut tercatat menggenggam
-# 10,7 GB. Mesin ini 31 GB dengan swap 2 GB, dan di sanalah ia pernah
-# menggelepar sampai SSH tak menjawab dan harus di-reboot paksa.
+# Muat: SAM 3 ~2,8 GB + sam2:small ~2,2 GB = 5,0 GB, dan proses app sendiri
+# hanya memegang konteks CUDA torch ~1,4 GB karena modelnya tak lagi di sana.
+# Totalnya ~6,4 GB di kartu 8 GB.
 #
-# Harganya: berpindah antara klik dan deteksi teks memuat ulang bobot sekali.
-# Untuk SAM 3 itu sekitar 7 detik. Dibandingkan 28 detik PER GAMBAR di CPU,
-# itu pertukaran yang jelas menguntungkan.
-MODEL_RESIDEN = 1
+# Kalau model KETIGA diminta dan ruangnya kurang, penjaga VRAM di autolabel
+# melepas yang sedang dipegang lalu memeriksa ulang, bukan diam-diam pindah
+# ke CPU. Jalur itu baru benar-benar bekerja sejak prosesnya terpisah:
+# terukur di log, "bebas 1,13 -> 4,04 GB".
+MODEL_RESIDEN = 2
 
 _KUNCI = threading.Lock()
 _klien: dict[str, Any] = {}

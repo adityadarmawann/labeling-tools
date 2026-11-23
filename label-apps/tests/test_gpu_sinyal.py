@@ -121,8 +121,21 @@ def test_ambang_vram_sam3_ikut_versi_osam(monkeypatch):
     from app.services import autolabel
 
     assert autolabel.OSAM_GPU_BEBAS["sam3:latest"] > autolabel.OSAM_GPU_MIN_BEBAS
-    assert "sam3:latest" not in autolabel.OSAM_GPU_BEBAS_OSAM_BARU, \
-        "di osam 0.12 ia tak butuh ambang khusus lagi"
+    # Di osam 0.12 ambangnya PER MODEL, diukur, dan jauh lebih rendah.
+    baru_ = autolabel.OSAM_GPU_BEBAS_OSAM_BARU["sam3:latest"]
+    assert baru_ < autolabel.OSAM_GPU_BEBAS["sam3:latest"] / 2
+    # Model kecil tak boleh ikut menanggung ambang milik model besar: satu
+    # angka rata selalu ditentukan yang terbesar, dan itu yang membuat
+    # sam2:small dikirim ke CPU saat VRAM bebas 3,35 GB padahal ia cuma
+    # butuh 2,2 GB.
+    assert autolabel.OSAM_GPU_MIN_BEBAS_BARU < baru_
+    for kecil in ("sam2:small", "sam2:tiny", "efficientsam:10m"):
+        butuh = autolabel.OSAM_GPU_BEBAS_OSAM_BARU.get(
+            kecil, autolabel.OSAM_GPU_MIN_BEBAS_BARU)
+        assert butuh <= autolabel.OSAM_GPU_MIN_BEBAS_BARU, kecil
+    assert (autolabel.OSAM_GPU_BEBAS_OSAM_BARU["sam2:large"]
+            > autolabel.OSAM_GPU_BEBAS_OSAM_BARU["sam3:latest"]), \
+        "sam2:large yang paling lapar (3,2 GB), ambangnya harus paling tinggi"
 
     monkeypatch.setattr(autolabel.olah_gpu, "MODE", "gpu")
     monkeypatch.setattr(autolabel.gpu_sinyal, "latih_aktif", lambda: False)

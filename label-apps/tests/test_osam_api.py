@@ -187,11 +187,17 @@ def test_residen_dicatat_dan_dilepas(osam_baru):
     assert osam_api.residen() is None
 
 
-def test_hanya_satu_model_residen():
-    """Dua model residen membuat yang kedua sering tak kebagian VRAM lalu
-    jatuh ke CPU, dan membuat jejak RAM satu proses membengkak sampai 10,7 GB
-    di mesin 31 GB berswap 2 GB."""
-    assert osam_api.MODEL_RESIDEN == 1
+def test_dua_model_boleh_residen_bersama():
+    """Dua orang bisa memakai model BERBEDA pada saat yang sama, misalnya satu
+    sam2 dan satu SAM 3. Dengan satu model residen, tiap pergantian giliran
+    memuat ulang bobot, dan untuk SAM 3 itu 6 sampai 7 detik setiap kali.
+
+    Menahan dua baru aman sejak modelnya berjalan di proses terpisah: di dalam
+    proses app, VRAM tak pernah kembali sehingga menahan dua berarti menimbun.
+    SAM 3 2,8 GB + sam2:small 2,2 GB = 5,0 GB, dan proses app kini hanya
+    memegang konteks torch ~1,4 GB, jadi totalnya muat di kartu 8 GB.
+    """
+    assert osam_api.MODEL_RESIDEN == 2
 
 
 def test_melepas_mengembalikan_ram_ke_sistem(osam_baru, monkeypatch):
