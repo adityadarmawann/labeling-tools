@@ -404,3 +404,99 @@ def test_suite_tak_pernah_menyentuh_penanda_mesin():
     bawaan = pathlib.Path(tempfile.gettempdir()) / "labelapp-latih-gpu-aktif.json"
     assert gpu_sinyal._MARKER != bawaan, \
         "suite sedang memakai penanda milik seluruh mesin"
+
+
+def test_pelepasan_dua_langkah_bongkar_dulu_baru_tutup(monkeypatch):
+    """Membongkar satu model itu murah tetapi di mesin ini tak membebaskan
+    apa pun: terukur 2,22 -> 2,25 GB, sebab ONNX Runtime menahan VRAM selama
+    prosesnya hidup. Menutup seluruh klien membebaskan sungguhan, tetapi
+    semua model ikut dimuat dari nol.
+
+    Jadi yang murah dicoba dulu, dan yang mahal hanya kalau terpaksa.
+    """
+    import sys
+
+    from app.services import autolabel
+
+    monkeypatch.setattr(autolabel.olah_gpu, "MODE", "gpu")
+    monkeypatch.setattr(autolabel.gpu_sinyal, "latih_aktif", lambda: False)
+    monkeypatch.setattr(autolabel, "OSAM_GPU", False)
+    monkeypatch.setattr(autolabel.osam_api, "baru", lambda: True)
+    monkeypatch.setattr(autolabel.osam_api, "residen", lambda: "sam2:large")
+    monkeypatch.setattr(autolabel.osam_api, "residen_gpu", lambda: True)
+
+    urut, keadaan = [], {"bebas": 1_000_000_000}
+    kelas = type("T", (), {})
+    t = kelas(); t.cuda = kelas()
+    t.cuda.is_available = staticmethod(lambda: True)
+    t.cuda.empty_cache = staticmethod(lambda: None)
+    t.cuda.mem_get_info = staticmethod(lambda: (keadaan["bebas"], 8_200_000_000))
+    monkeypatch.setitem(sys.modules, "torch", t)
+
+    # Membongkar tak membebaskan apa pun -> harus berlanjut ke tutup().
+    def bongkar(model, gpu=True):
+        urut.append("bongkar")
+        return ["sam2:large"]
+
+    def tutup():
+        urut.append("tutup")
+        keadaan["bebas"] = 7_000_000_000
+        return True
+
+    monkeypatch.setattr(autolabel.osam_api, "lepas_selain", bongkar)
+    monkeypatch.setattr(autolabel.osam_api, "tutup", tutup)
+    assert autolabel._boleh_gpu_osam("sam3:latest") is True
+    assert urut == ["bongkar", "tutup"], urut
+
+    # Kalau membongkar SUDAH cukup, server model tak boleh ikut dimatikan.
+    urut.clear()
+    keadaan["bebas"] = 1_000_000_000
+
+    def bongkar_cukup(model, gpu=True):
+        urut.append("bongkar")
+        keadaan["bebas"] = 7_000_000_000
+        return ["sam2:large"]
+
+    monkeypatch.setattr(autolabel.osam_api, "lepas_selain", bongkar_cukup)
+    assert autolabel._boleh_gpu_osam("sam3:latest") is True
+    assert urut == ["bongkar"], "jangan matikan server kalau tak perlu"
+
+
+def test_dua_model_residen_tak_saling_menjatuhkan(monkeypatch):
+    """Dua orang memakai model BERBEDA bergantian, keduanya sudah di GPU.
+
+    Yang diminta harus langsung dipakai tanpa dimintai ruang baru. Dulu
+    pemeriksaannya memakai catatan "model terakhir dipakai", dan satu catatan
+    tak bisa mewakili dua model residen: yang diminta selalu bukan yang
+    terakhir, jadi selalu dianggap belum ada, dimintai 3,3 GB, lalu server
+    modelnya ditutup dan KEDUANYA dimuat dari nol. Di log prod itu terbaca
+    sebagai pemuatan berpasangan tiap 15 sampai 20 detik.
+    """
+    import sys
+
+    from app.services import autolabel
+
+    monkeypatch.setattr(autolabel.olah_gpu, "MODE", "gpu")
+    monkeypatch.setattr(autolabel.gpu_sinyal, "latih_aktif", lambda: False)
+    monkeypatch.setattr(autolabel, "OSAM_GPU", False)
+    monkeypatch.setattr(autolabel.osam_api, "baru", lambda: True)
+    # Keduanya termuat; sisa VRAM SENGAJA di bawah ambang mana pun.
+    monkeypatch.setattr(autolabel.osam_api, "termuat_di_gpu",
+                        lambda: {"sam2:large", "sam3:latest"})
+    ditutup = []
+    monkeypatch.setattr(autolabel.osam_api, "tutup",
+                        lambda: ditutup.append(True))
+    monkeypatch.setattr(autolabel.osam_api, "lepas_selain",
+                        lambda m, gpu=True: ditutup.append("bongkar"))
+
+    kelas = type("T", (), {})
+    t = kelas(); t.cuda = kelas()
+    t.cuda.is_available = staticmethod(lambda: True)
+    t.cuda.empty_cache = staticmethod(lambda: None)
+    t.cuda.mem_get_info = staticmethod(lambda: (500_000_000, 8_200_000_000))
+    monkeypatch.setitem(sys.modules, "torch", t)
+
+    for m in ("sam3:latest", "sam2:large", "sam3:latest", "sam2:large"):
+        assert autolabel._boleh_gpu_osam(m) is True, m
+    assert ditutup == [], \
+        "model yang sudah di GPU tak boleh memicu pembongkaran apa pun"
