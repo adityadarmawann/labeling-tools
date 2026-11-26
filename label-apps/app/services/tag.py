@@ -207,19 +207,49 @@ def hitung(data: dict) -> dict:
 
 def rapikan(ds: Path, kunci_yang_ada: set[str]) -> int:
     """
-    Buang catatan milik gambar yang berkasnya sudah tidak ada.
+    Buang catatan milik gambar yang berkasnya sudah tidak ada DI DISK.
 
     Dipanggil saat memindai ulang. Tanpa ini, gambar yang dihapus meninggalkan
     tagnya selamanya, dan angka di saringan menghitung gambar yang tidak bisa
     ditampilkan sama sekali.
+
+    YANG MEMUTUSKAN DISK, bukan `kunci_yang_ada`. Dulu sebaliknya: setiap
+    catatan yang tak ada di daftar hasil pindai langsung dibuang, dan daftar
+    itu bisa tertinggal (ada cache pindai, ada sesi yang memuat pada saat yang
+    keliru, ada kemungkinan berbarengan dengan penyalinan berkas). Akibatnya
+    nyata dan permanen: di projek coca-cola, 1.420 gambar yang baru masuk
+    pukul 09:41 sampai 09:46 kehilangan nama batchnya pukul 10:18 begitu papan
+    Anotasi dibuka, dan log hanya mencatat "1420 catatan tanpa gambar
+    dibuang". Tak ada cadangan, tak ada cara mengembalikannya. Empat projek
+    terkena, 4.141 gambar.
+
+    `kunci_yang_ada` tetap dipakai, tetapi hanya sebagai PENYARING MURAH:
+    catatan yang ada di daftar pasti selamat tanpa menyentuh disk. Sisanya
+    yang sedikit itu ditanyakan ke disk satu per satu. Pada keadaan normal
+    jumlahnya nol, jadi harganya tidak berubah.
     """
+    akar = Path(ds)
     with _kunci:
         data = baca(ds)
-        hilang = [k for k in data["gambar"] if k not in kunci_yang_ada]
-        if not hilang:
+        curiga = [k for k in data["gambar"] if k not in kunci_yang_ada]
+        if not curiga:
             return 0
-        for k in hilang:
-            data["gambar"].pop(k, None)
-        _tulis(ds, data)
-    log.info("tag dirapikan: %s catatan tanpa gambar dibuang", len(hilang))
+        hilang = [k for k in curiga if not (akar / k).exists()]
+        selamat = len(curiga) - len(hilang)
+        if hilang:
+            for k in hilang:
+                data["gambar"].pop(k, None)
+            _tulis(ds, data)
+    if selamat:
+        # Inilah kejadian yang dulu menghapus data orang. Dicatat sebagai
+        # peringatan supaya kalau daftar pindai tertinggal lagi, kita tahu
+        # tanpa harus membandingkan isi disk dengan berkas tag.
+        log.warning("tag: %s catatan DIPERTAHANKAN, berkasnya ada di disk "
+                    "walau tak ada di daftar pindai", selamat)
+    if not hilang:
+        return 0
+    # Contohnya ikut dicatat: tanpa itu kejadian seperti di coca-cola hanya
+    # meninggalkan satu angka, dan menelusurinya jadi mahal sekali.
+    log.info("tag dirapikan: %s catatan tanpa gambar dibuang (contoh: %s)",
+             len(hilang), ", ".join(hilang[:3]))
     return len(hilang)

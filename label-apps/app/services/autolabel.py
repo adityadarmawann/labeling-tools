@@ -107,6 +107,19 @@ MODEL_TEKS = {
     "sam3:latest": {"nama": "SAM 3", "unduh_mb": 3412, "bentuk": "polygon"},
 }
 
+# Claude DITARUH TERPISAH karena kemunculannya bersyarat: ia hanya ada kalau
+# kunci API disetel. Menawarkan pilihan yang pasti gagal saat ditekan lebih
+# buruk daripada tidak menawarkannya, dan itu aturan yang sama dengan model
+# SAM yang tak didukung osam terpasang.
+#
+# `unduh_mb` nol karena tak ada yang diunduh; yang perlu diketahui orang
+# justru hal lain, dan itu disebut di `catatan` supaya antarmuka bisa
+# menyebutkan biayanya SEBELUM tombolnya ditekan.
+MODEL_TEKS_BERSYARAT = {
+    "claude": {"nama": "Claude", "unduh_mb": 0, "bentuk": "rectangle",
+               "catatan": "lewat API berbayar, bukan model di server"},
+}
+
 # Unduhan SAM 3 bergantung versi osam, dan angkanya disebut di antarmuka, jadi
 # tak boleh satu angka untuk dua kenyataan: 0.5 memakai salinan float32 (3,4
 # GB), 0.12 memakai float16 di GPU, yaitu 1,8 GB untuk kelima berkas yang
@@ -916,11 +929,31 @@ def dari_teks(img: Path, teks: list[str], model: str = "yoloworld:latest",
     lain dan bahkan bentuk keluaran yang lain. Memakai ulang cache-nya akan
     memberi hasil yang salah tanpa satu pun galat.
     """
-    if model not in MODEL_TEKS:
+    if model not in model_teks():
         raise TidakAdaObjek(f"model '{model}' tidak menerima prompt teks")
     teks = [str(t).strip() for t in teks if str(t).strip()]
     if not teks:
         raise TidakAdaObjek("belum ada nama kelas yang dicari")
+
+    # Claude bukan model di server: tak ada sesi onnxruntime, tak ada VRAM,
+    # tak ada penjaga GPU. Ia dilayani di sini lalu keluar lewat bentuk yang
+    # sama dengan yang lain, supaya penggabung, tanda `perlu_dicek`, dan
+    # halaman verifikasi tak perlu tahu bedanya.
+    from . import claude_vis
+    if model == claude_vis.MODEL:
+        from ..config import get_settings
+        try:
+            temuan = claude_vis.deteksi(img, teks, settings=get_settings(),
+                                        ambang=float(ambang), maks=int(maks))
+        except claude_vis.ClaudeGagal as e:
+            raise TidakAdaObjek(str(e)) from e
+        if not temuan:
+            raise TidakAdaObjek("Claude tak menemukan objek yang cocok")
+        return [Temuan(label=d["label"],
+                       points=[[d["bbox"][0], d["bbox"][1]],
+                               [d["bbox"][2], d["bbox"][3]]],
+                       bbox=d["bbox"], skor=d["skor"], shape_type="rectangle")
+                for d in temuan]
 
     global _osam_model_kini
     _siapkan_osam()
@@ -1098,6 +1131,24 @@ def dari_groundingdino(img: Path, teks: list[str], ambang: float = 0.25,
     return out
 
 
+def model_teks(settings=None) -> dict:
+    """Model yang menerima prompt teks DI SERVER INI.
+
+    Satu sumber untuk dua hal yang harus sepakat: daftar di antarmuka dan
+    penjaga di `dari_teks`. Kalau ditulis terpisah, yang paling mungkin
+    terjadi adalah antarmuka menawarkan model yang backendnya tolak.
+    """
+    from . import claude_vis
+
+    if settings is None:
+        from ..config import get_settings
+        settings = get_settings()
+    out = dict(MODEL_TEKS)
+    if claude_vis.aktif(settings):
+        out.update(MODEL_TEKS_BERSYARAT)
+    return out
+
+
 def model_klik() -> list[str]:
     """Model yang boleh dipakai untuk prompt titik atau kotak DI MESIN INI.
 
@@ -1123,7 +1174,7 @@ def info() -> dict:
             # biayanya SEBELUM orang menekan tombolnya.
             "teks": [{"model": m, **d2, "unduh_mb": _unduh_mb(m, d2),
                        "terunduh": _sudah_terunduh(m)}
-                     for m, d2 in sorted(MODEL_TEKS.items())]}
+                     for m, d2 in sorted(model_teks().items())]}
 
 
 def _unduh_mb(model: str, d: dict) -> int:
@@ -1142,6 +1193,10 @@ def _sudah_terunduh(model: str) -> bool:
     satu model mana pun pernah diunduh, yaitu persis jenis klaim keliru yang
     membuat antarmuka berbohong.
     """
+    # Claude tak punya bobot di server; dijawab "sudah" supaya antarmuka tidak
+    # menawarkan unduhan yang memang tak pernah ada.
+    if model in MODEL_TEKS_BERSYARAT:
+        return True
     if osam_api.baru():
         # 0.12 menyebutkannya langsung di daftar modelnya: `size` kosong
         # selama bobotnya belum ada di disk.

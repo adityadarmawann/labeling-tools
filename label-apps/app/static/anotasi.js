@@ -539,7 +539,10 @@
 
   function azIsiInfo(j, resetCek) {
     azEl('az-model').innerHTML = (j.teks || []).map((m) => {
-      const unduh = m.terunduh ? '' : ' — unduh ~' + (m.unduh_mb || '?') + ' MB sekali';
+      // Catatan menang atas keterangan unduhan: model yang tak mengunduh apa
+      // pun bisa tetap berbiaya, dan biaya itu yang perlu dibaca di sini.
+      const unduh = m.catatan ? ' — ' + m.catatan
+        : (m.terunduh ? '' : ' — unduh ~' + (m.unduh_mb || '?') + ' MB sekali');
       const bentuk = m.bentuk === 'polygon' ? 'poligon' : 'kotak';
       return '<option value="' + azEsc(m.model) + '"'
         + (m.model === j.model_bawaan ? ' selected' : '') + '>'

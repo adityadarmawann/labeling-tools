@@ -192,6 +192,7 @@
         {% for t in sam.teks %}
         <option value="{{ t.model }}" data-unduh="{{ t.unduh_mb }}"
                 data-terunduh="{{ 1 if t.terunduh else 0 }}"
+                data-catatan="{{ t.catatan or '' }}"
                 data-bentuk="{{ t.bentuk }}">{{ t.nama }}</option>
         {% endfor %}
       </select>

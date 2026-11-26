@@ -190,6 +190,24 @@ class Settings:
     smtp_user: str = ""
     smtp_pass: str = ""
     smtp_from: str = ""
+    # ---- Claude sebagai sumber auto-label (deteksi dari teks) ----
+    # Kunci KOSONG = fitur MATI, dan matinya menyeluruh: pilihannya tidak
+    # muncul di antarmuka sama sekali, bukan muncul lalu gagal saat ditekan.
+    # Itu aturan yang sama dengan model SAM yang tak didukung osam terpasang.
+    #
+    # Kuncinya TIDAK ditaruh di env/prod.env yang terlacak git. Tempatnya
+    # env/rahasia.env (izin 600, tak terlacak), sama seperti smtp_pass.
+    #
+    # Yang dikerjakannya: menyebut nama kelas, lalu Claude membaca gambar dan
+    # mengembalikan kotak beserta kelasnya. Kekuatannya MEMBACA TULISAN pada
+    # kemasan (membedakan varian dan ukuran yang bentuknya mirip), bukan
+    # ketelitian piksel; kotaknya kira-kira, jadi untuk projek poligon ia
+    # dirapikan SAM seperti jalur GroundingDINO.
+    anthropic_api_key: str = ""
+    anthropic_model: str = "claude-sonnet-5"
+    # Sisi terpanjang gambar saat dikirim. Membatasi biaya token sekaligus
+    # waktu unggah; 1024 sudah cukup untuk membaca tulisan pada kemasan.
+    anthropic_sisi_maks: int = 1024
     # ---- Kaggle sebagai backend training CADANGAN (offload ke GPU gratis) ----
     # Satu server fisik ini hambatannya: training hanya bisa satu pada satu waktu
     # di GPU lokal. Backend Kaggle menambah lajur GPU di LUAR mesin ini — dataset
@@ -317,6 +335,9 @@ def get_settings() -> Settings:
         smtp_user=_get("SMTP_USER"),
         smtp_pass=_get("SMTP_PASS"),
         smtp_from=_get("SMTP_FROM"),
+        anthropic_api_key=_get("ANTHROPIC_API_KEY"),
+        anthropic_model=_get("ANTHROPIC_MODEL") or "claude-sonnet-5",
+        anthropic_sisi_maks=_int("ANTHROPIC_SISI_MAKS", 1024),
         kaggle_akun_file=_path("KAGGLE_AKUN_FILE"),
         kaggle_user=_get("KAGGLE_USER"),
         kaggle_token_file=_path("KAGGLE_TOKEN_FILE"),
