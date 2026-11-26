@@ -157,15 +157,27 @@ def set_label(ds_dir: Path, klip_rel: str, label: str, *,
 
 
 def rapikan(ds_dir: Path, kunci_yang_ada: set[str]) -> int:
-    """Buang catatan milik klip yang berkasnya sudah tidak ada (saat pindai
-    ulang), persis tag.rapikan."""
+    """Buang catatan milik klip yang berkasnya sudah tidak ada DI DISK (saat
+    pindai ulang), persis tag.rapikan -- termasuk alasannya: daftar hasil
+    pindai bisa tertinggal, dan menghapus berdasarkan daftar yang tertinggal
+    berarti membuang data yang berkasnya masih ada."""
+    akar = Path(ds_dir)
     with _kunci:
         data = baca(ds_dir)
-        hilang = [k for k in data["klip"] if k not in kunci_yang_ada]
-        if not hilang:
+        curiga = [k for k in data["klip"] if k not in kunci_yang_ada]
+        if not curiga:
             return 0
-        for k in hilang:
-            data["klip"].pop(k, None)
-        tulis(ds_dir, data)
-    log.info("klip-tag dirapikan: %s catatan tanpa klip dibuang", len(hilang))
+        hilang = [k for k in curiga if not (akar / k).exists()]
+        selamat = len(curiga) - len(hilang)
+        if hilang:
+            for k in hilang:
+                data["klip"].pop(k, None)
+            tulis(ds_dir, data)
+    if selamat:
+        log.warning("klip-tag: %s catatan DIPERTAHANKAN, berkasnya ada di disk "
+                    "walau tak ada di daftar pindai", selamat)
+    if not hilang:
+        return 0
+    log.info("klip-tag dirapikan: %s catatan tanpa klip dibuang (contoh: %s)",
+             len(hilang), ", ".join(hilang[:3]))
     return len(hilang)

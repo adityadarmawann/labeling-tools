@@ -17,9 +17,12 @@ from ..config import Settings, get_settings
 from ..deps import current_session_api, bodi_json
 from ..services import tag as svc
 from ..services import tugas as svc_tugas
+from ..log import catat
 from ..session import Session
 
 router = APIRouter(tags=["tag"])
+
+log = catat("labelapp.tag")
 
 # Satu permintaan menandai sekumpulan gambar sekaligus. Batasnya ada supaya
 # satu bodi JSON tidak pernah membuat server menahan daftar tak berhingga di
@@ -86,7 +89,16 @@ async def pasang(request: Request,
                              for it in sess.items)
                  if not svc.untuk(data, k)["batch"]]
         if not kunci:
-            return {"ok": True, "n": 0, **svc.hitung(data)}
+            # TITIK SUNYINYA. Dulu di sini jawabannya "ok, n=0" tanpa satu pun
+            # keterangan, dan peramban pun tak memeriksanya: nama batch tampak
+            # terpasang saat mengunggah lalu hilang saat halaman dimuat ulang,
+            # sebab memang tak pernah tertulis. Penyebab tersering unggahan
+            # video, yang frame-nya diekstrak di LATAR sesudah ini berjalan.
+            if body.get("batch"):
+                log.warning("nama batch %r tidak terpasang: tak ada gambar "
+                            "tanpa batch di %s", body.get("batch"), sess.src)
+            return {"ok": True, "n": 0, "kosong": bool(body.get("batch")),
+                    **svc.hitung(data)}
     else:
         if not isinstance(paths, list) or not paths:
             return {"ok": False, "error": "tidak ada gambar yang ditunjuk"}
@@ -126,4 +138,6 @@ async def pasang(request: Request,
         tambah=tambah, buang=buang,
         batch=None if batch is None else str(batch))
     data = await asyncio.to_thread(svc.baca, sess.src)
-    return {"ok": True, **r, **svc.hitung(data)}
+    # `kosong` dibawa ke peramban supaya ia bisa mengatakannya, bukan diam.
+    return {"ok": True, "kosong": bool(batch and not kunci),
+            **r, **svc.hitung(data)}

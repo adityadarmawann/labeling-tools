@@ -735,10 +735,19 @@
       pr.taktentu('Menandai gambar…');
       try {
         // tanpa_batch: yang baru masuk adalah yang belum punya nama batch.
-        await send('/api/tag/pasang', {
+        const j = await send('/api/tag/pasang', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ tanpa_batch: true, batch: namaBatch, tambah: tag }),
         });
+        // Jawabannya DIPERIKSA. Dulu diabaikan, dan "nol gambar terkena"
+        // lewat sebagai keberhasilan: namanya tampak terpasang saat
+        // mengunggah lalu hilang saat halaman dimuat ulang, sebab memang tak
+        // pernah tertulis. Paling sering terjadi pada unggahan video, yang
+        // frame-nya diekstrak di latar sesudah ini berjalan.
+        if (j && (j.kosong || j.n === 0) && namaBatch) {
+          toast('Gambar terunggah, tapi nama batch belum menempel ke satu '
+                + 'gambar pun. Beri namanya lewat kartu batch di Anotasi.');
+        }
       } catch (e) { toast('Gambar terunggah, tapi tagnya gagal disimpan'); }
     }
 
