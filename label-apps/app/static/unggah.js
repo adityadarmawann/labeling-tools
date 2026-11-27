@@ -519,7 +519,7 @@
         if (r.keadaan === 'gagal') {
           return `<div class="ug-ekstrak-baris ug-ekstrak-gagal">`
             + `<span class="ug-ekstrak-ikon">✕</span><span>${nm} gagal`
-            + (r.galat ? ` — ${esc(r.galat)}` : '') + `</span>` + tutup + `</div>`;
+            + (r.galat ? `, ${esc(r.galat)}` : '') + `</span>` + tutup + `</div>`;
         }
         return '';
       }).filter(Boolean);
@@ -618,6 +618,12 @@
     // jadi penyebutnya, dan `byteKirim` menghitung yang sudah tuntas.
     const byteTotal = semua.reduce((s, b) => s + (b.file.size || 0), 0) || 1;
     let byteKirim = 0, selesai = 0, gagal = 0;
+    // Nasib tiap berkas dicacah terpisah. "Terkirim" tidak sama dengan
+    // "bertambah": /tambah menjawab ok:true juga untuk berkas yang DILEWATI
+    // karena isinya sudah ada di projek, dan /upload menolaknya dengan
+    // sudah_ada. Tanpa cacahan ini, kiriman yang seluruhnya duplikat
+    // berakhir "Selesai" padahal tak satu gambar pun masuk.
+    let baru = 0, dilewati = 0, senama = 0;
     const arsip = [];
     const video = [];
     const fps = fpsDipilih();
@@ -664,13 +670,36 @@
       byteKirim += (b.file.size || 0);
       if (j.ok) {
         berhasil.add(b.nama);
+        // hasil dari /tambah: "baru", "sudah-ada" (dilewati, isinya identik),
+        // atau "senama" (isinya beda, disimpan dengan akhiran -2). Jalur
+        // /upload tak mengirim hasil; di sana ok:true selalu berarti baru.
+        if (j.hasil === 'sudah-ada') dilewati++;
+        else if (j.hasil === 'senama') { senama++; baru++; }
+        else baru++;
         if (j.arsip) arsip.push(j.name);
         if (j.video) video.push(j.name);
-      } else { gagal++; if (gagal <= 2) toast(b.nama + ': ' + j.error); }
+      } else {
+        gagal++;
+        if (j.sudah_ada) dilewati++;   // /upload menolak duplikat
+        if (gagal <= 2) toast(b.nama + ': ' + j.error);
+      }
       lukisBilah(0, selesai);
     }
 
     if (selesai <= gagal) { pr.gagal('Semua berkas gagal terkirim'); return; }
+
+    // Semua terkirim, tak satu pun BARU: isinya sudah ada di projek. Ini bukan
+    // keberhasilan. Tidak ada gambar yang bertambah, nama batch tak punya
+    // gambar untuk ditempeli, dan kartu batch tak akan muncul di Anotasi.
+    // Dulu keadaan ini lewat sebagai "Selesai, N gambar di dataset" (N itu
+    // total projek, bukan yang baru), sehingga tampak berhasil padahal nihil.
+    if (!baru && dilewati && !arsip.length && !video.length) {
+      pr.gagal(`Tidak ada gambar baru. ${dilewati.toLocaleString('id-ID')} berkas `
+        + 'dilewati karena nama dan isinya sudah ada di projek ini. Periksa isi '
+        + 'foldernya, kemungkinan itu salinan batch yang sudah pernah diunggah.');
+      $('ug-batal').hidden = true;
+      return;
+    }
 
     for (const nama of arsip) {
       // Projek KOSONG: /unzip (isi arsip JADI projeknya, tata YOLO). Projek
@@ -745,8 +774,11 @@
         // pernah tertulis. Paling sering terjadi pada unggahan video, yang
         // frame-nya diekstrak di latar sesudah ini berjalan.
         if (j && (j.kosong || j.n === 0) && namaBatch) {
-          toast('Gambar terunggah, tapi nama batch belum menempel ke satu '
-                + 'gambar pun. Beri namanya lewat kartu batch di Anotasi.');
+          toast(dilewati && !baru
+            ? 'Nama batch tak menempel: semua berkas yang dikirim sudah ada di '
+              + 'projek ini, jadi tidak ada gambar baru untuk diberi nama.'
+            : 'Gambar terunggah, tapi nama batch belum menempel ke satu '
+              + 'gambar pun. Beri namanya lewat kartu batch di Anotasi.');
         }
       } catch (e) { toast('Gambar terunggah, tapi tagnya gagal disimpan'); }
     }
@@ -811,10 +843,18 @@
       const ekstra = adaEkstrak
         ? ' · video sedang diekstrak jadi frame di latar (lihat status di atas)'
         : '';
+      // Yang BARU disebut lebih dulu, sebelum total projek: angka total
+      // sendirian membuat kiriman yang nihil tampak berhasil.
+      const lewat = dilewati
+        ? ` · ${dilewati.toLocaleString('id-ID')} dilewati, sudah ada` : '';
+      const ganti = senama
+        ? ` · ${senama.toLocaleString('id-ID')} disimpan dengan nama lain` : '';
       const pesan = gagal
-        ? `Selesai, ${(berhasil.size).toLocaleString('id-ID')} terkirim, `
-          + `${gagal} gagal · ${nTotal.toLocaleString('id-ID')} gambar di dataset` + ekstra
-        : `Selesai, ${nTotal.toLocaleString('id-ID')} gambar di dataset` + ekstra;
+        ? `Selesai, ${baru.toLocaleString('id-ID')} gambar baru, `
+          + `${gagal} gagal${lewat}${ganti} · `
+          + `${nTotal.toLocaleString('id-ID')} gambar di dataset` + ekstra
+        : `Selesai, ${baru.toLocaleString('id-ID')} gambar baru${lewat}${ganti} · `
+          + `${nTotal.toLocaleString('id-ID')} gambar di dataset` + ekstra;
       pr.selesai(pesan);
       if (adaEkstrak) pantauEkstrak();        // mulai pantau ekstraksi latar
       siapkanLanjut(nTotal, totalMasuk, sisaMentah);

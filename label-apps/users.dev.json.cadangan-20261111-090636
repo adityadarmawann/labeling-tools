@@ -1,0 +1,101 @@
+{
+  "devuser": {
+    "hash": "pbkdf2_sha256$200000$b6efced26e581702c5e26f60762a754d$a5204b4ab7b311d96edbb18ef4f782ac4e41ee7c2f40f9a7c4e8a4c0c723961d",
+    "nama": "devuser",
+    "email": ""
+  },
+  "darma-dev": {
+    "hash": "pbkdf2_sha256$200000$443652101ce23c61f96346b87e3e2ea6$21ff5a8505aa578b1b30494e48303ed497898a7e840aa3b68389d79f1e246fd3",
+    "nama": "darma-dev",
+    "email": "",
+    "admin": true,
+    "dibuat": "2026-08-31",
+    "oleh": "penyiapan dev"
+  },
+  "adityadarma": {
+    "hash": "pbkdf2_sha256$200000$47d75016e5ec511300a7b452e4980550$84db418b553f12e827385609fd72e3962843d75eb492442652258a93e5f9c752",
+    "nama": "adityadarma",
+    "email": "adityadarma058@gmail.com",
+    "admin": false,
+    "menunggu": false,
+    "dibuat": "2026-09-02",
+    "oleh": "daftar sendiri"
+  },
+  "qa2pelabel": {
+    "hash": "pbkdf2_sha256$200000$5de3ab9921287ef6cd3fdfb379dbaf16$4f8f362b74b2321be77f9ecacd3afcd79546cae7c1f7265d51e173038cfc21f0",
+    "nama": "qa2pelabel",
+    "email": "qa2@example.com",
+    "admin": false,
+    "menunggu": false,
+    "dibuat": "2026-09-08",
+    "oleh": "daftar sendiri"
+  },
+  "qa1-alpha": {
+    "hash": "pbkdf2_sha256$200000$96d1c005af69311e2a47fff81f5fb106$5e1e6edcc40db336ecd8645645768b0dee729fa7d8754553f8e3cede4d8a7dda",
+    "nama": "qa1-alpha",
+    "email": "qa1-alpha@contoh.test",
+    "admin": false,
+    "menunggu": false,
+    "dibuat": "2026-09-08",
+    "oleh": "daftar sendiri"
+  },
+  "qa1-beta": {
+    "hash": "pbkdf2_sha256$200000$2f692a395cf41b7b0b5ce38ba1f88e87$314d6a1c91010ee15df1f20482d5c0a60e6b529b0768ddcc6fb1a36a088c6447",
+    "nama": "qa1-beta",
+    "email": "qa1-beta@contoh.test",
+    "admin": false,
+    "menunggu": false,
+    "dibuat": "2026-09-08",
+    "oleh": "daftar sendiri"
+  },
+  "qa1-gamma": {
+    "hash": "pbkdf2_sha256$200000$2f3831b85bc44fa4df90adb70fdd2f8f$94a99268a900b0951d1f9cc328b6795220d811c6cccade697cd557c8a65356a0",
+    "nama": "qa1-gamma",
+    "email": "qa1-gamma@contoh.test",
+    "admin": false,
+    "menunggu": false,
+    "dibuat": "2026-09-08",
+    "oleh": "daftar sendiri"
+  },
+  "qa1-uji-slug": {
+    "hash": "pbkdf2_sha256$200000$5f1f06d8d5182b4f05badf36e3891650$bc8c08635ded5cf3895dbf0765b4627966b87e9e7d6de491beb371fe53928a06",
+    "nama": "QA1 Uji Slug!!",
+    "email": "",
+    "admin": false,
+    "dibuat": "2026-09-08",
+    "oleh": "daftar sendiri",
+    "disetujui_oleh": "darma-dev",
+    "disetujui": "2026-09-08"
+  },
+  "qa5-bravo": {
+    "hash": "pbkdf2_sha256$200000$b141ac5b4e465bad5285f1334c3f49f4$ff4c82176746476d19e9df5348a7ddebf4412e203852f7f5014c46ea198f711e",
+    "nama": "qa5-bravo",
+    "email": "qa5-bravo@contoh.test",
+    "admin": false,
+    "menunggu": false,
+    "dibuat": "2026-09-08",
+    "oleh": "daftar sendiri"
+  },
+  "qa2luar": {
+    "hash": "pbkdf2_sha256$200000$3426c1d4f5a51f252b61900995bd9f1b$b5db118aa0f23cf47ea7c2c05a770129267b7ee8d9463e6618f408d3b381d037",
+    "nama": "qa2luar",
+    "email": "",
+    "admin": false,
+    "menunggu": false,
+    "dibuat": "2026-09-08",
+    "oleh": "daftar sendiri"
+  },
+  "qa4pelabel": {
+    "hash": "pbkdf2_sha256$200000$6398ab89c8a73be617727bd0e059f4aa$e3933865bb7d990d19af8c46dc361f386b6232e928f94158a83da16c59cf708b",
+    "nama": "qa4pelabel",
+    "email": "",
+    "admin": false,
+    "menunggu": false,
+    "dibuat": "2026-09-08",
+    "oleh": "daftar sendiri"
+  },
+  "qa-audit": {
+    "hash": "pbkdf2_sha256$200000$43bc024057193176f8403ebc7794e915$53672df1c95393286c4f9ecc1ccb0378becce65b1ba3236fdd8500010c341975",
+    "nama": "qa-audit"
+  }
+}
