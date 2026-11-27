@@ -43,10 +43,11 @@ log = catat("labelapp.autolabel")
 
 # ---------------------------------------------------------------- setelan
 
-# Default diubah ke sam2:small atas permintaan tim: batas objeknya lebih rapi
-# daripada MobileSAM. Catatan: ia lewat osam dan menyita ~4 GB GPU pada pemakaian
-# pertama, jadi osam harus hidup. MobileSAM tetap tersedia sebagai pilihan ringan.
-MODEL_DEFAULT = "sam2:small"
+# Default diubah ke sam3:latest: pada kasus sulit (objek terburuk), sam2:small
+# jatuh ke IoU 0,32, SAM 3 tetap di atas 0,84. Bayarnya: klik pertama lebih lama
+# (1,29 dtk vs 0,17 dtk), dan bobot lebih berat (~2,8 GB vs ~2,2 GB).
+# MobileSAM dan sam2:small tetap tersedia sebagai pilihan ringan/cepat.
+MODEL_DEFAULT = "sam3:latest"
 
 MODEL_DIIZINKAN = {
     "mobilesam",            # ONNX lokal, bawaan
