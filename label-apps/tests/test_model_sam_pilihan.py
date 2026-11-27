@@ -48,13 +48,14 @@ def test_varian_lebih_besar_bisa_dipilih():
 
 
 def test_bawaannya_tak_diubah_tanpa_bukti():
-    """Yang terukur paling baik DAN paling cepat tetap jadi bawaan.
+    """Default menjadi SAM 3 karena lebih tahan pada kasus sulit.
 
-    SAM 3 lebih tahan pada objek sulit, tetapi klik pertamanya empat kali
-    lebih lama dan bobotnya 1,8 GB sekali unduh. Itu harga yang pantas
-    dipilih orangnya sendiri, bukan dibebankan ke semua orang.
+    SAM 2 small paling cepat (0,17 dtk klik pertama) tetapi pada objek
+    sulit jatuh ke IoU 0,32. SAM 3 stabil (0,84+) tetapi lebih lambat
+    (1,29 dtk klik pertama) dan lebih berat (2,8 GB). Prioritas: ketahanan
+    > kecepatan. sam2:small tetap tersedia sebagai pilihan cepat ringan.
     """
-    assert autolabel.MODEL_DEFAULT == "sam2:small"
+    assert autolabel.MODEL_DEFAULT == "sam3:latest"
 
 
 def test_sam3_ditawarkan_untuk_klik_dan_untuk_teks():
