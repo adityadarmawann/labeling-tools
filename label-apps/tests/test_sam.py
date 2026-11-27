@@ -48,7 +48,7 @@ def test_setelan_sesuai_anylabeling():
     from app.services import autolabel as al
     assert al.SAM_INPUT == (684, 1024), "ukuran kanvas encoder AnyLabeling"
     assert al.EPSILON_ANYLABELING == 0.001, "epsilon approxPolyDP AnyLabeling"
-    assert al.MODEL_DEFAULT == "sam2:small"
+    assert al.MODEL_DEFAULT == "sam3:latest", "default diubah ke SAM 3 (lebih tahan pada kasus sulit)"
     assert al.MODEL_DEFAULT in al.MODEL_DIIZINKAN
 
 
