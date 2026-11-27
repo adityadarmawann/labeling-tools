@@ -759,8 +759,9 @@
     // Menandai gambar baru (nama batch + tag). Dipisah jadi fungsi supaya untuk
     // unggahan VIDEO bisa dipanggil SESUDAH frame-nya jadi -- kalau dipanggil
     // sebelum ekstraksi, belum ada satu frame pun untuk diberi nama batch.
+    // Mengembalikan nama batch yang terbentuk (kalau berhasil).
     async function tandai() {
-      if (!(namaBatch || tag.length)) return;
+      if (!(namaBatch || tag.length)) return null;
       pr.taktentu('Menandai gambar…');
       try {
         // tanpa_batch: yang baru masuk adalah yang belum punya nama batch.
@@ -780,7 +781,8 @@
             : 'Gambar terunggah, tapi nama batch belum menempel ke satu '
               + 'gambar pun. Beri namanya lewat kartu batch di Anotasi.');
         }
-      } catch (e) { toast('Gambar terunggah, tapi tagnya gagal disimpan'); }
+        return j && j.batch ? j.batch : null;
+      } catch (e) { toast('Gambar terunggah, tapi tagnya gagal disimpan'); return null; }
     }
 
     // Menyiapkan tombol langkah berikut sesuai isi akhir unggahan.
@@ -839,22 +841,22 @@
     } else {
       // Gambar (atau campur gambar+video): gambar bisa langsung dibagi; kalau ada
       // video ikut, frame-nya menyusul di latar dan dipantau spanduk.
-      await tandai();
+      const namaBatchMasuk = await tandai();
       const ekstra = adaEkstrak
         ? ' · video sedang diekstrak jadi frame di latar (lihat status di atas)'
         : '';
       // Yang BARU disebut lebih dulu, sebelum total projek: angka total
       // sendirian membuat kiriman yang nihil tampak berhasil.
-      const lewat = dilewati
-        ? ` · ${dilewati.toLocaleString('id-ID')} dilewati, sudah ada` : '';
-      const ganti = senama
-        ? ` · ${senama.toLocaleString('id-ID')} disimpan dengan nama lain` : '';
-      const pesan = gagal
-        ? `Selesai, ${baru.toLocaleString('id-ID')} gambar baru, `
-          + `${gagal} gagal${lewat}${ganti} · `
-          + `${nTotal.toLocaleString('id-ID')} gambar di dataset` + ekstra
-        : `Selesai, ${baru.toLocaleString('id-ID')} gambar baru${lewat}${ganti} · `
-          + `${nTotal.toLocaleString('id-ID')} gambar di dataset` + ekstra;
+      let stat = `${baru.toLocaleString('id-ID')} masuk`;
+      if (dilewati) stat += `, ${dilewati.toLocaleString('id-ID')} duplikat`;
+      if (senama) stat += `, ${senama.toLocaleString('id-ID')} nama baru`;
+      if (gagal) stat += `, ${gagal} gagal`;
+      // Tambah nama batch kalau ada.
+      let pesan = `Selesai. Berkas yang dikirim: ${stat}.`;
+      if (namaBatchMasuk) {
+        pesan += ` Sudah ditambahkan ke batch "${esc(namaBatchMasuk)}".`;
+      }
+      pesan += ` ${nTotal.toLocaleString('id-ID')} gambar di dataset` + ekstra;
       pr.selesai(pesan);
       if (adaEkstrak) pantauEkstrak();        // mulai pantau ekstraksi latar
       siapkanLanjut(nTotal, totalMasuk, sisaMentah);

@@ -97,9 +97,9 @@ def test_js_menolak_melaporkan_selesai_kalau_nol_baru():
 
 def test_js_pesan_akhir_menyebut_yang_baru_dan_yang_dilewati():
     """Angka total projek sendirian membuat kiriman nihil tampak berhasil."""
-    assert "gambar baru" in JS
-    assert "dilewati, sudah ada" in JS
-    assert "disimpan dengan nama lain" in JS
+    assert "masuk" in JS and "duplikat" in JS
+    assert "nama baru" in JS
+    assert "Sudah ditambahkan ke batch" in JS
 
 
 def test_js_toast_batch_menyebut_sebab_duplikat():
